@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { FileText, Trash2, MoreVertical, ExternalLink, Pencil, FileDown, Mail } from "lucide-react";
+import { FileText, Trash2, MoreVertical, ExternalLink, Pencil, FileDown, Mail, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { CoverLetter } from "@/hooks/use-cover-letters";
 import { CoverLetterEditDialog } from "./CoverLetterEditDialog";
+import { CoverLetterVersionHistory } from "./CoverLetterVersionHistory";
 import { useCoverLetterActions, EmailDialog } from "./CoverLetterActions";
 
 interface SavedCoverLettersListProps {
@@ -43,6 +44,7 @@ export function SavedCoverLettersList({
   const [isDeleting, setIsDeleting] = useState(false);
   const [editLetter, setEditLetter] = useState<CoverLetter | null>(null);
   const [emailLetter, setEmailLetter] = useState<CoverLetter | null>(null);
+  const [historyLetter, setHistoryLetter] = useState<CoverLetter | null>(null);
   const { isExporting, exportToPdf, openEmailClient } = useCoverLetterActions();
 
   const handleDelete = async () => {
@@ -129,6 +131,15 @@ export function SavedCoverLettersList({
                     <Pencil className="h-4 w-4 mr-2" />
                     Edit
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setHistoryLetter(letter);
+                    }}
+                  >
+                    <History className="h-4 w-4 mr-2" />
+                    Version History
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={(e) => {
@@ -193,6 +204,16 @@ export function SavedCoverLettersList({
         open={!!editLetter}
         onOpenChange={(open) => !open && setEditLetter(null)}
         onSave={onUpdate}
+      />
+
+      <CoverLetterVersionHistory
+        letter={historyLetter}
+        open={!!historyLetter}
+        onOpenChange={(open) => !open && setHistoryLetter(null)}
+        onRestore={async (title, content) => {
+          if (!historyLetter) return false;
+          return await onUpdate(historyLetter.id, { title, content });
+        }}
       />
 
       <EmailDialog

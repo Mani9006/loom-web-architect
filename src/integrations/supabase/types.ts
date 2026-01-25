@@ -38,6 +38,44 @@ export type Database = {
         }
         Relationships: []
       }
+      cover_letter_versions: {
+        Row: {
+          content: string
+          cover_letter_id: string
+          created_at: string
+          id: string
+          title: string
+          user_id: string
+          version_number: number
+        }
+        Insert: {
+          content: string
+          cover_letter_id: string
+          created_at?: string
+          id?: string
+          title: string
+          user_id: string
+          version_number: number
+        }
+        Update: {
+          content?: string
+          cover_letter_id?: string
+          created_at?: string
+          id?: string
+          title?: string
+          user_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cover_letter_versions_cover_letter_id_fkey"
+            columns: ["cover_letter_id"]
+            isOneToOne: false
+            referencedRelation: "cover_letters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cover_letters: {
         Row: {
           company_name: string | null
