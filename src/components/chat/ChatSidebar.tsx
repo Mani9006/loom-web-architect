@@ -279,7 +279,7 @@ export function ChatSidebar({
             )}
           </div>
           {!isCollapsed && (
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-1">
               {onMoveToFolder && folders.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -338,9 +338,10 @@ export function ChatSidebar({
                     onDeleteConversation(conv.id);
                   }
                 }}
-                className="p-1 hover:bg-sidebar-accent rounded cursor-pointer"
+                className="p-1 hover:bg-destructive/20 rounded cursor-pointer"
+                title="Delete conversation"
               >
-                <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
               </span>
             </div>
           )}
