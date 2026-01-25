@@ -8,9 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ModelSelector } from "@/components/resume/ModelSelector";
 import { VoiceControls } from "@/components/chat/VoiceControls";
+import { VoiceInterviewSimulation, InterviewTranscript } from "@/components/chat/VoiceInterviewSimulation";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { useTextToSpeech } from "@/hooks/use-text-to-speech";
-import { Loader2, MessageSquare, Send, ArrowLeft, Sparkles, Brain, HelpCircle, Target, Mic } from "lucide-react";
+import { Loader2, MessageSquare, Send, ArrowLeft, Sparkles, Brain, HelpCircle, Target, Mic, Radio } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "@/hooks/use-toast";
 
@@ -30,6 +31,7 @@ interface InterviewPrepPanelProps {
   selectedModel: string;
   onModelChange: (model: string) => void;
   onBack?: () => void;
+  session?: { access_token: string } | null;
 }
 
 const interviewTypes = [
@@ -47,6 +49,7 @@ export function InterviewPrepPanel({
   selectedModel,
   onModelChange,
   onBack,
+  session,
 }: InterviewPrepPanelProps) {
   const [resumeText, setResumeText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
@@ -57,6 +60,7 @@ export function InterviewPrepPanel({
   const [hasGenerated, setHasGenerated] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);
   const [lastSpokenMessageId, setLastSpokenMessageId] = useState<string | null>(null);
+  const [showVoiceSimulation, setShowVoiceSimulation] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -184,6 +188,55 @@ export function InterviewPrepPanel({
     }
   }, [autoSpeak, isSpeaking, stopSpeaking]);
 
+  const handleStartVoiceSimulation = () => {
+    if (!resumeText.trim()) {
+      toast({ title: "Resume required", description: "Please upload or paste your resume.", variant: "destructive" });
+      return;
+    }
+    if (!jobDescription.trim()) {
+      toast({ title: "Job description required", description: "Please paste the job description.", variant: "destructive" });
+      return;
+    }
+    setShowVoiceSimulation(true);
+  };
+
+  const handleVoiceSimulationComplete = (transcripts: InterviewTranscript[]) => {
+    // Convert transcript to messages for the chat view
+    transcripts.forEach((t) => {
+      const qMsg: InterviewMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: `**Question:** ${t.question}`,
+        timestamp: new Date(),
+      };
+      const aMsg: InterviewMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: t.answer,
+        timestamp: new Date(),
+      };
+      onSendMessage(`[Voice Interview] ${t.question}`);
+    });
+    setShowVoiceSimulation(false);
+    setHasGenerated(true);
+  };
+
+  // Voice Simulation Mode
+  if (showVoiceSimulation) {
+    return (
+      <VoiceInterviewSimulation
+        resumeText={resumeText}
+        jobDescription={jobDescription}
+        companyName={companyName}
+        jobTitle={jobTitle}
+        interviewType={selectedType}
+        onBack={() => setShowVoiceSimulation(false)}
+        onComplete={handleVoiceSimulationComplete}
+        session={session}
+      />
+    );
+  }
+
   // Form view - before generation
   if (!hasGenerated) {
     return (
@@ -310,21 +363,37 @@ export function InterviewPrepPanel({
             </Card>
 
             {/* Model Selection & Generate */}
-            <div className="flex items-center justify-between gap-4">
-              <ModelSelector value={selectedModel} onChange={onModelChange} />
-              <Button onClick={handleGenerate} disabled={isLoading} className="gap-2">
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Generate Questions
-                  </>
-                )}
-              </Button>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-4">
+                <ModelSelector value={selectedModel} onChange={onModelChange} />
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={handleStartVoiceSimulation} 
+                    disabled={isLoading} 
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <Radio className="h-4 w-4" />
+                    Voice Simulation
+                  </Button>
+                  <Button onClick={handleGenerate} disabled={isLoading} className="gap-2">
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Text Practice
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground text-center">
+                💡 <strong>Voice Simulation</strong> provides a realistic interview experience where you speak your answers out loud
+              </p>
             </div>
           </div>
         </ScrollArea>

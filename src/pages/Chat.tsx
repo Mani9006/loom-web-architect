@@ -1944,6 +1944,7 @@ ${clientSummary}
                   selectedModel={selectedModel}
                   onModelChange={setSelectedModel}
                   onBack={handleNewChat}
+                  session={session}
                 />
               </div>
             )}
