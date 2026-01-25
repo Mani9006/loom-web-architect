@@ -9,6 +9,7 @@ import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
 import { ResumeChatPanel, ChatMessage, ProjectOptionsData, SummaryOptionsData } from "@/components/resume/ResumeChatPanel";
 import { ResumePreview } from "@/components/resume/ResumePreview";
 import { OptionsPanel } from "@/components/resume/OptionsPanel";
+import { ModelSelector } from "@/components/resume/ModelSelector";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ResumeData, Client } from "@/types/resume";
 
@@ -74,6 +75,7 @@ export default function Chat() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectOptionsData[]>([]);
   const [summaryOptions, setSummaryOptions] = useState<SummaryOptionsData | null>(null);
+  const [selectedModel, setSelectedModel] = useState("gemini-flash");
   const navigate = useNavigate();
   const { conversationId } = useParams();
   const { toast } = useToast();
@@ -310,6 +312,7 @@ ${clientSummary}
               ...resumeData,
               totalYearsExperience: totalYears,
             },
+            selectedModel,
           }),
         }
       );
@@ -516,6 +519,7 @@ ${clientSummary}
               content: m.content,
             })),
             currentResume: resumeData,
+            selectedModel,
           }),
         }
       );
@@ -694,6 +698,15 @@ ${clientSummary}
               <>
                 {/* Chat Panel - Left - Only this scrolls */}
                 <div className="w-[400px] border-r border-border flex flex-col h-full overflow-hidden">
+                  {/* Model Selector - fixed at top */}
+                  <div className="shrink-0 p-3 border-b border-border bg-background">
+                    <ModelSelector
+                      value={selectedModel}
+                      onChange={setSelectedModel}
+                      disabled={isLoading}
+                    />
+                  </div>
+                  
                   {/* Chat messages - only this part scrolls */}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     <ResumeChatPanel

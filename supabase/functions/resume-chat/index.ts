@@ -85,6 +85,192 @@ When generating a full resume, structure it as:
 
 Be conversational and helpful. Explain your choices when asked.`;
 
+// Model configuration for different providers
+type ModelConfig = {
+  provider: "lovable" | "openai" | "anthropic";
+  model: string;
+  apiUrl: string;
+  apiKeyEnv: string;
+};
+
+const MODEL_CONFIGS: Record<string, ModelConfig> = {
+  // Lovable AI Gateway models (Gemini)
+  "gemini-flash": {
+    provider: "lovable",
+    model: "google/gemini-3-flash-preview",
+    apiUrl: "https://ai.gateway.lovable.dev/v1/chat/completions",
+    apiKeyEnv: "LOVABLE_API_KEY",
+  },
+  "gemini-pro": {
+    provider: "lovable",
+    model: "google/gemini-2.5-pro",
+    apiUrl: "https://ai.gateway.lovable.dev/v1/chat/completions",
+    apiKeyEnv: "LOVABLE_API_KEY",
+  },
+  // OpenAI models
+  "gpt-4o": {
+    provider: "openai",
+    model: "gpt-4o",
+    apiUrl: "https://api.openai.com/v1/chat/completions",
+    apiKeyEnv: "OPENAI_API_KEY",
+  },
+  "gpt-4o-mini": {
+    provider: "openai",
+    model: "gpt-4o-mini",
+    apiUrl: "https://api.openai.com/v1/chat/completions",
+    apiKeyEnv: "OPENAI_API_KEY",
+  },
+  "gpt-4-turbo": {
+    provider: "openai",
+    model: "gpt-4-turbo",
+    apiUrl: "https://api.openai.com/v1/chat/completions",
+    apiKeyEnv: "OPENAI_API_KEY",
+  },
+  // Anthropic Claude models
+  "claude-sonnet": {
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    apiUrl: "https://api.anthropic.com/v1/messages",
+    apiKeyEnv: "ANTHROPIC_API_KEY",
+  },
+  "claude-opus": {
+    provider: "anthropic",
+    model: "claude-opus-4-20250514",
+    apiUrl: "https://api.anthropic.com/v1/messages",
+    apiKeyEnv: "ANTHROPIC_API_KEY",
+  },
+  "claude-haiku": {
+    provider: "anthropic",
+    model: "claude-3-5-haiku-20241022",
+    apiUrl: "https://api.anthropic.com/v1/messages",
+    apiKeyEnv: "ANTHROPIC_API_KEY",
+  },
+};
+
+async function callOpenAI(
+  apiKey: string,
+  model: string,
+  messages: Array<{ role: string; content: string }>
+): Promise<Response> {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: true,
+    }),
+  });
+  return response;
+}
+
+async function callAnthropic(
+  apiKey: string,
+  model: string,
+  messages: Array<{ role: string; content: string }>
+): Promise<Response> {
+  // Extract system message and convert messages for Anthropic format
+  const systemMessage = messages.find((m) => m.role === "system")?.content || "";
+  const anthropicMessages = messages
+    .filter((m) => m.role !== "system")
+    .map((m) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: m.content,
+    }));
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "Content-Type": "application/json",
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 8192,
+      system: systemMessage,
+      messages: anthropicMessages,
+      stream: true,
+    }),
+  });
+  return response;
+}
+
+async function callLovableAI(
+  apiKey: string,
+  model: string,
+  messages: Array<{ role: string; content: string }>
+): Promise<Response> {
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: true,
+    }),
+  });
+  return response;
+}
+
+// Transform Anthropic SSE to OpenAI-compatible format
+function transformAnthropicStream(response: Response): ReadableStream {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  return new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+        return;
+      }
+
+      const text = decoder.decode(value);
+      const lines = text.split("\n");
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6);
+          if (data === "[DONE]") {
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            continue;
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+            
+            // Handle different Anthropic event types
+            if (parsed.type === "content_block_delta" && parsed.delta?.text) {
+              const openAIFormat = {
+                choices: [
+                  {
+                    delta: { content: parsed.delta.text },
+                    index: 0,
+                  },
+                ],
+              };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIFormat)}\n\n`));
+            } else if (parsed.type === "message_stop") {
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            }
+          } catch {
+            // Skip invalid JSON
+          }
+        }
+      }
+    },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -116,7 +302,7 @@ serve(async (req) => {
       });
     }
 
-    const { messages, resumeData, currentResume } = await req.json();
+    const { messages, resumeData, currentResume, selectedModel } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Messages are required" }), {
@@ -125,10 +311,21 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      console.error("LOVABLE_API_KEY is not configured");
-      return new Response(JSON.stringify({ error: "AI service not configured" }), {
+    // Get model configuration (default to gemini-flash)
+    const modelKey = selectedModel || "gemini-flash";
+    const modelConfig = MODEL_CONFIGS[modelKey];
+    
+    if (!modelConfig) {
+      return new Response(JSON.stringify({ error: `Unknown model: ${modelKey}` }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const apiKey = Deno.env.get(modelConfig.apiKeyEnv);
+    if (!apiKey) {
+      console.error(`${modelConfig.apiKeyEnv} is not configured`);
+      return new Response(JSON.stringify({ error: `API key not configured for ${modelConfig.provider}` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -206,31 +403,35 @@ Generate the complete resume now with all options.`;
       resumeContext = `\n\n**Current Resume Data**:\n${JSON.stringify(currentResume, null, 2)}\n\nPlease use this context when making refinements or rewrites.`;
     }
 
-    console.log("Calling Lovable AI Gateway for resume generation");
+    console.log(`Calling ${modelConfig.provider} with model ${modelConfig.model}`);
 
     const allMessages = contextMessage 
       ? [{ role: "user", content: contextMessage + resumeContext }, ...messages]
       : messages.map((m: any) => ({ ...m, content: m.content + (resumeContext && m === messages[messages.length - 1] ? resumeContext : "") }));
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: RESUME_SYSTEM_PROMPT },
-          ...allMessages,
-        ],
-        stream: true,
-      }),
-    });
+    const fullMessages = [
+      { role: "system", content: RESUME_SYSTEM_PROMPT },
+      ...allMessages,
+    ];
+
+    let response: Response;
+
+    switch (modelConfig.provider) {
+      case "openai":
+        response = await callOpenAI(apiKey, modelConfig.model, fullMessages);
+        break;
+      case "anthropic":
+        response = await callAnthropic(apiKey, modelConfig.model, fullMessages);
+        break;
+      case "lovable":
+      default:
+        response = await callLovableAI(apiKey, modelConfig.model, fullMessages);
+        break;
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error(`${modelConfig.provider} API error:`, response.status, errorText);
 
       if (response.status === 429) {
         return new Response(
@@ -252,15 +453,20 @@ Generate the complete resume now with all options.`;
         );
       }
 
-      return new Response(JSON.stringify({ error: "AI service error" }), {
+      return new Response(JSON.stringify({ error: `${modelConfig.provider} API error` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log("Streaming resume response from AI gateway");
+    console.log(`Streaming response from ${modelConfig.provider}`);
 
-    return new Response(response.body, {
+    // Transform Anthropic stream to OpenAI format for consistent frontend handling
+    const streamBody = modelConfig.provider === "anthropic" 
+      ? transformAnthropicStream(response)
+      : response.body;
+
+    return new Response(streamBody, {
       headers: {
         ...corsHeaders,
         "Content-Type": "text/event-stream",
