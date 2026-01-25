@@ -7,6 +7,8 @@ import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatWelcome } from "@/components/chat/ChatWelcome";
 import { GeneralChatPanel, GeneralChatMessage } from "@/components/chat/GeneralChatPanel";
+import { ATSCheckerPanel, ATSMessage } from "@/components/chat/ATSCheckerPanel";
+import { JobSearchPanel, JobSearchMessage } from "@/components/chat/JobSearchPanel";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
 import { ResumeChatPanel, ChatMessage, ProjectOptionsData, SummaryOptionsData } from "@/components/resume/ResumeChatPanel";
 import { ResumePreview } from "@/components/resume/ResumePreview";
@@ -14,7 +16,7 @@ import { OptionsPanel } from "@/components/resume/OptionsPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ResumeData, Client } from "@/types/resume";
 
-type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat";
+type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-check" | "job-search";
 
 type Conversation = {
   id: string;
@@ -78,6 +80,8 @@ export default function Chat() {
   const [resumeData, setResumeData] = useState<ResumeData>(createEmptyResumeData());
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [generalMessages, setGeneralMessages] = useState<GeneralChatMessage[]>([]);
+  const [atsMessages, setAtsMessages] = useState<ATSMessage[]>([]);
+  const [jobMessages, setJobMessages] = useState<JobSearchMessage[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectOptionsData[]>([]);
   const [summaryOptions, setSummaryOptions] = useState<SummaryOptionsData | null>(null);
   const [selectedModel, setSelectedModel] = useState("gemini-flash");
@@ -120,6 +124,8 @@ export default function Chat() {
       setCurrentConversation(null);
       setChatMessages([]);
       setGeneralMessages([]);
+      setAtsMessages([]);
+      setJobMessages([]);
       setChatMode("welcome");
       setResumeData(createEmptyResumeData());
     }
@@ -195,12 +201,24 @@ export default function Chat() {
     setCurrentConversation(null);
     setChatMessages([]);
     setGeneralMessages([]);
+    setAtsMessages([]);
+    setJobMessages([]);
     setChatMode("welcome");
     setResumeData(createEmptyResumeData());
   };
 
   const handleStartResume = () => {
     setChatMode("resume-form");
+  };
+
+  const handleStartATSCheck = () => {
+    setChatMode("ats-check");
+    setAtsMessages([]);
+  };
+
+  const handleStartJobSearch = () => {
+    setChatMode("job-search");
+    setJobMessages([]);
   };
 
   const handleGeneralChat = async (message: string) => {
@@ -299,6 +317,429 @@ export default function Chat() {
         variant: "destructive",
       });
       setGeneralMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ATS Score Check Handler
+  const handleATSAnalyze = async (resumeText: string, jobDescription?: string) => {
+    if (!session) return;
+
+    setIsLoading(true);
+    const userContent = jobDescription
+      ? `Please analyze my resume for ATS compatibility against this job description:\n\n**Resume:**\n${resumeText}\n\n**Job Description:**\n${jobDescription}`
+      : `Please analyze my resume for ATS compatibility:\n\n${resumeText}`;
+
+    const userMsg: ATSMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: userContent,
+      timestamp: new Date(),
+    };
+
+    setAtsMessages([userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setAtsMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date(), isThinking: true },
+    ]);
+
+    try {
+      let assistantContent = "";
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content: `You are an expert ATS (Applicant Tracking System) resume analyzer. Analyze the resume and provide:
+
+1. **ATS Score**: A number from 0-100 representing ATS compatibility. Format: "**ATS Score: XX/100**"
+2. **Strengths**: What the resume does well for ATS
+3. **Issues Found**: Specific problems that could hurt ATS parsing
+4. **Missing Keywords**: Important keywords that should be added
+5. **Formatting Issues**: Any formatting that ATS systems might struggle with
+6. **Recommendations**: Specific actionable improvements
+
+Be detailed and specific. If a job description is provided, also analyze keyword matching.`,
+              },
+              { role: "user", content: userContent },
+            ],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 429) throw new Error("Rate limit exceeded.");
+        if (response.status === 402) throw new Error("AI usage limit reached.");
+        throw new Error("Failed to analyze resume");
+      }
+
+      setAtsMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
+      );
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex: number;
+
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                // Extract ATS score from content
+                const scoreMatch = assistantContent.match(/ATS Score:\s*(\d+)/i);
+                const atsScore = scoreMatch ? parseInt(scoreMatch[1]) : undefined;
+
+                setAtsMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === tempId ? { ...m, content: assistantContent, atsScore } : m
+                  )
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to analyze resume",
+        variant: "destructive",
+      });
+      setAtsMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleATSFollowUp = async (message: string) => {
+    if (!session) return;
+
+    setIsLoading(true);
+    const userMsg: ATSMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+
+    setAtsMessages((prev) => [...prev, userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setAtsMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
+    ]);
+
+    try {
+      let assistantContent = "";
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: atsMessages.concat(userMsg).map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to get response");
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex: number;
+
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                setAtsMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to get response",
+        variant: "destructive",
+      });
+      setAtsMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Job Search Handler
+  const handleJobSearch = async (resumeText: string, preferences?: string) => {
+    if (!session) return;
+
+    setIsLoading(true);
+    const userContent = preferences
+      ? `Based on my resume and preferences, find me the latest matching job opportunities:\n\n**My Resume/Skills:**\n${resumeText}\n\n**Preferences:**\n${preferences}`
+      : `Based on my resume, find me the latest matching job opportunities:\n\n${resumeText}`;
+
+    const userMsg: JobSearchMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: userContent,
+      timestamp: new Date(),
+    };
+
+    setJobMessages([userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setJobMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date(), isThinking: true },
+    ]);
+
+    try {
+      let assistantContent = "";
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content: `You are an expert job search assistant. Based on the user's resume and preferences, provide personalized job recommendations.
+
+For each recommendation:
+1. **Job Title** - A realistic job title matching their skills
+2. **Company Type** - The type of company that would hire for this role
+3. **Location** - Suggested locations or remote options
+4. **Salary Range** - Estimated salary range based on experience
+5. **Why It's a Match** - Explain why this role suits their background
+6. **Skills to Highlight** - Which skills from their resume to emphasize
+7. **Search Keywords** - Keywords to use on job boards
+
+Also provide:
+- **Top Job Boards**: Best sites to find these roles
+- **Networking Tips**: How to find opportunities in this field
+- **Application Strategy**: Tips for standing out
+
+Be specific and actionable. Reference their actual skills and experience.`,
+              },
+              { role: "user", content: userContent },
+            ],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 429) throw new Error("Rate limit exceeded.");
+        if (response.status === 402) throw new Error("AI usage limit reached.");
+        throw new Error("Failed to search jobs");
+      }
+
+      setJobMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
+      );
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex: number;
+
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                setJobMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to search jobs",
+        variant: "destructive",
+      });
+      setJobMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleJobFollowUp = async (message: string) => {
+    if (!session) return;
+
+    setIsLoading(true);
+    const userMsg: JobSearchMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+
+    setJobMessages((prev) => [...prev, userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setJobMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
+    ]);
+
+    try {
+      let assistantContent = "";
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: jobMessages.concat(userMsg).map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to get response");
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex: number;
+
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                setJobMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to get response",
+        variant: "destructive",
+      });
+      setJobMessages((prev) => prev.filter((m) => m.id !== tempId));
     } finally {
       setIsLoading(false);
     }
@@ -812,9 +1253,39 @@ ${clientSummary}
                         displayName={displayName}
                         onSuggestionClick={handleGeneralChat}
                         onStartResume={handleStartResume}
+                        onStartATSCheck={handleStartATSCheck}
+                        onStartJobSearch={handleStartJobSearch}
                       />
                     ) : undefined
                   }
+                />
+              </div>
+            )}
+
+            {/* ATS Check Mode */}
+            {chatMode === "ats-check" && (
+              <div className="flex-1">
+                <ATSCheckerPanel
+                  messages={atsMessages}
+                  isLoading={isLoading}
+                  onAnalyze={handleATSAnalyze}
+                  onSendMessage={handleATSFollowUp}
+                  selectedModel={selectedModel}
+                  onModelChange={setSelectedModel}
+                />
+              </div>
+            )}
+
+            {/* Job Search Mode */}
+            {chatMode === "job-search" && (
+              <div className="flex-1">
+                <JobSearchPanel
+                  messages={jobMessages}
+                  isLoading={isLoading}
+                  onSearch={handleJobSearch}
+                  onSendMessage={handleJobFollowUp}
+                  selectedModel={selectedModel}
+                  onModelChange={setSelectedModel}
                 />
               </div>
             )}

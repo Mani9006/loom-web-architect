@@ -1,9 +1,11 @@
-import { Sparkles, FileText, MessageSquare, Briefcase, GraduationCap } from "lucide-react";
+import { Sparkles, FileText, MessageSquare, Briefcase, Target, Search } from "lucide-react";
 
 interface ChatWelcomeProps {
   displayName: string;
   onSuggestionClick: (suggestion: string) => void;
   onStartResume: () => void;
+  onStartATSCheck: () => void;
+  onStartJobSearch: () => void;
 }
 
 const quickActions = [
@@ -14,10 +16,16 @@ const quickActions = [
     action: "resume" 
   },
   { 
-    icon: MessageSquare, 
-    label: "Career Chat", 
-    description: "Get career advice and tips",
-    prompt: "I need career advice. Can you help me with job search strategies?" 
+    icon: Target, 
+    label: "ATS Score Checker", 
+    description: "Check your resume's ATS compatibility",
+    action: "ats-check" 
+  },
+  { 
+    icon: Search, 
+    label: "Find Jobs", 
+    description: "AI-powered job search based on your resume",
+    action: "job-search" 
   },
   { 
     icon: Briefcase, 
@@ -25,15 +33,15 @@ const quickActions = [
     description: "Practice interview questions",
     prompt: "Help me prepare for a job interview. Give me common questions and tips." 
   },
-  { 
-    icon: GraduationCap, 
-    label: "Skill Development", 
-    description: "Learn new professional skills",
-    prompt: "What skills should I develop for career growth in tech?" 
-  },
 ];
 
-export function ChatWelcome({ displayName, onSuggestionClick, onStartResume }: ChatWelcomeProps) {
+export function ChatWelcome({ 
+  displayName, 
+  onSuggestionClick, 
+  onStartResume,
+  onStartATSCheck,
+  onStartJobSearch,
+}: ChatWelcomeProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 pb-16">
       <div className="text-center max-w-3xl">
@@ -52,7 +60,7 @@ export function ChatWelcome({ displayName, onSuggestionClick, onStartResume }: C
           What would you like to do today?
         </h2>
         <p className="text-muted-foreground mb-10">
-          I can help you build resumes, prepare for interviews, and advance your career.
+          I can help you build resumes, check ATS scores, find matching jobs, and advance your career.
         </p>
 
         {/* Action Cards */}
@@ -63,6 +71,10 @@ export function ChatWelcome({ displayName, onSuggestionClick, onStartResume }: C
               onClick={() => {
                 if (action.action === "resume") {
                   onStartResume();
+                } else if (action.action === "ats-check") {
+                  onStartATSCheck();
+                } else if (action.action === "job-search") {
+                  onStartJobSearch();
                 } else if (action.prompt) {
                   onSuggestionClick(action.prompt);
                 }
@@ -87,7 +99,7 @@ export function ChatWelcome({ displayName, onSuggestionClick, onStartResume }: C
             {[
               "How do I negotiate salary?",
               "Review my cover letter",
-              "Tips for remote work",
+              "Career change advice",
             ].map((prompt) => (
               <button
                 key={prompt}
