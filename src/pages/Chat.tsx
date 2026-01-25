@@ -662,7 +662,13 @@ ${clientSummary}
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background">
+      {/*
+        Fixed-screen layout:
+        - Prevent the overall page from scrolling
+        - Allow only the left chat message viewport to scroll (handled inside ResumeChatPanel)
+        - Keep the right resume preview pane fixed
+      */}
+      <div className="flex h-screen w-full overflow-hidden bg-background">
         <ChatSidebar
           conversations={conversations}
           currentConversationId={currentConversation?.id}
