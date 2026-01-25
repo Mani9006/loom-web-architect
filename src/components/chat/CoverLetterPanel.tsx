@@ -5,9 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ModelSelector } from "@/components/resume/ModelSelector";
-import { Loader2, FileText, Send, Copy, Download, ArrowLeft, Sparkles } from "lucide-react";
+import { SavedCoverLettersList } from "./SavedCoverLettersList";
+import { useCoverLetters, CoverLetter } from "@/hooks/use-cover-letters";
+import { Loader2, FileText, Send, Copy, Download, ArrowLeft, Sparkles, Save, FolderOpen } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "@/hooks/use-toast";
 
@@ -44,8 +47,17 @@ export function CoverLetterPanel({
   const [jobTitle, setJobTitle] = useState("");
   const [followUpInput, setFollowUpInput] = useState("");
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [activeTab, setActiveTab] = useState<"create" | "saved">("create");
+  const [isSaving, setIsSaving] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  const {
+    coverLetters,
+    isLoading: isLoadingCoverLetters,
+    saveCoverLetter,
+    deleteCoverLetter,
+  } = useCoverLetters();
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -81,8 +93,12 @@ export function CoverLetterPanel({
     setFollowUpInput("");
   };
 
+  const getLatestCoverLetter = () => {
+    return [...messages].reverse().find(m => m.role === "assistant" && m.content && !m.isThinking);
+  };
+
   const handleCopyLetter = () => {
-    const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && m.content);
+    const lastAssistant = getLatestCoverLetter();
     if (lastAssistant) {
       navigator.clipboard.writeText(lastAssistant.content);
       toast({ title: "Copied!", description: "Cover letter copied to clipboard." });
@@ -90,7 +106,7 @@ export function CoverLetterPanel({
   };
 
   const handleDownload = () => {
-    const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && m.content);
+    const lastAssistant = getLatestCoverLetter();
     if (lastAssistant) {
       const blob = new Blob([lastAssistant.content], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
@@ -100,6 +116,46 @@ export function CoverLetterPanel({
       a.click();
       URL.revokeObjectURL(url);
     }
+  };
+
+  const handleSave = async () => {
+    const lastAssistant = getLatestCoverLetter();
+    if (!lastAssistant) {
+      toast({ title: "Nothing to save", description: "Generate a cover letter first.", variant: "destructive" });
+      return;
+    }
+
+    setIsSaving(true);
+    const title = companyName && jobTitle 
+      ? `${companyName} - ${jobTitle}` 
+      : companyName || jobTitle || `Cover Letter ${new Date().toLocaleDateString()}`;
+
+    await saveCoverLetter({
+      title,
+      content: lastAssistant.content,
+      companyName,
+      jobTitle,
+      jobDescription,
+      resumeText,
+    });
+    setIsSaving(false);
+  };
+
+  const handleSelectSavedLetter = (letter: CoverLetter) => {
+    // Load the saved letter into the chat view
+    setCompanyName(letter.company_name || "");
+    setJobTitle(letter.job_title || "");
+    setJobDescription(letter.job_description || "");
+    setResumeText(letter.resume_text || "");
+    setHasGenerated(true);
+    setActiveTab("create");
+    
+    // Note: We show the content in the messages but can't modify parent state directly
+    // The user can see it was loaded and continue editing
+    toast({ 
+      title: "Loaded!", 
+      description: "Cover letter loaded. You can copy, download, or request revisions." 
+    });
   };
 
   // Form view - before generation
@@ -124,93 +180,119 @@ export function CoverLetterPanel({
           </div>
         </div>
 
-        <ScrollArea className="flex-1 p-4">
-          <div className="space-y-6 max-w-2xl mx-auto">
-            {/* Resume Upload */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</span>
-                  Your Resume
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <DocumentUpload
-                  onTextExtracted={(text) => handleResumeUpload(text)}
-                  accept=".pdf,.docx,.doc,.txt,.md"
-                  label="Upload your resume"
-                />
-                <div className="text-center text-sm text-muted-foreground">or paste below</div>
-                <Textarea
-                  placeholder="Paste your resume content here..."
-                  value={resumeText}
-                  onChange={(e) => setResumeText(e.target.value)}
-                  className="min-h-[120px] text-sm"
-                />
-              </CardContent>
-            </Card>
-
-            {/* Job Details */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">2</span>
-                  Job Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="company">Company Name</Label>
-                    <Input
-                      id="company"
-                      placeholder="e.g., Google"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="jobTitle">Job Title</Label>
-                    <Input
-                      id="jobTitle"
-                      placeholder="e.g., Senior Software Engineer"
-                      value={jobTitle}
-                      onChange={(e) => setJobTitle(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="jobDescription">Job Description *</Label>
-                  <Textarea
-                    id="jobDescription"
-                    placeholder="Paste the full job description here..."
-                    value={jobDescription}
-                    onChange={(e) => setJobDescription(e.target.value)}
-                    className="min-h-[150px] text-sm"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Model Selection & Generate */}
-            <div className="flex items-center justify-between gap-4">
-              <ModelSelector value={selectedModel} onChange={onModelChange} />
-              <Button onClick={handleGenerate} disabled={isLoading} className="gap-2">
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Generate Cover Letter
-                  </>
-                )}
-              </Button>
-            </div>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "create" | "saved")} className="flex-1 flex flex-col">
+          <div className="px-4 pt-4">
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="create" className="gap-2">
+                <Sparkles className="h-4 w-4" />
+                Create New
+              </TabsTrigger>
+              <TabsTrigger value="saved" className="gap-2">
+                <FolderOpen className="h-4 w-4" />
+                Saved ({coverLetters.length})
+              </TabsTrigger>
+            </TabsList>
           </div>
-        </ScrollArea>
+
+          <TabsContent value="create" className="flex-1 mt-0">
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-6 max-w-2xl mx-auto">
+                {/* Resume Upload */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</span>
+                      Your Resume
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <DocumentUpload
+                      onTextExtracted={(text) => handleResumeUpload(text)}
+                      accept=".pdf,.docx,.doc,.txt,.md"
+                      label="Upload your resume"
+                    />
+                    <div className="text-center text-sm text-muted-foreground">or paste below</div>
+                    <Textarea
+                      placeholder="Paste your resume content here..."
+                      value={resumeText}
+                      onChange={(e) => setResumeText(e.target.value)}
+                      className="min-h-[120px] text-sm"
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Job Details */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">2</span>
+                      Job Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="company">Company Name</Label>
+                        <Input
+                          id="company"
+                          placeholder="e.g., Google"
+                          value={companyName}
+                          onChange={(e) => setCompanyName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="jobTitle">Job Title</Label>
+                        <Input
+                          id="jobTitle"
+                          placeholder="e.g., Senior Software Engineer"
+                          value={jobTitle}
+                          onChange={(e) => setJobTitle(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="jobDescription">Job Description *</Label>
+                      <Textarea
+                        id="jobDescription"
+                        placeholder="Paste the full job description here..."
+                        value={jobDescription}
+                        onChange={(e) => setJobDescription(e.target.value)}
+                        className="min-h-[150px] text-sm"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Model Selection & Generate */}
+                <div className="flex items-center justify-between gap-4">
+                  <ModelSelector value={selectedModel} onChange={onModelChange} />
+                  <Button onClick={handleGenerate} disabled={isLoading} className="gap-2">
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Generate Cover Letter
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="saved" className="flex-1 mt-0 px-4">
+            <SavedCoverLettersList
+              coverLetters={coverLetters}
+              isLoading={isLoadingCoverLetters}
+              onSelect={handleSelectSavedLetter}
+              onDelete={deleteCoverLetter}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     );
   }
@@ -239,6 +321,20 @@ export function CoverLetterPanel({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleSave} 
+            disabled={isSaving || isLoading}
+            className="gap-1"
+          >
+            {isSaving ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Save className="h-3 w-3" />
+            )}
+            Save
+          </Button>
           <Button variant="outline" size="sm" onClick={handleCopyLetter} className="gap-1">
             <Copy className="h-3 w-3" />
             Copy

@@ -38,6 +38,45 @@ export type Database = {
         }
         Relationships: []
       }
+      cover_letters: {
+        Row: {
+          company_name: string | null
+          content: string
+          created_at: string
+          id: string
+          job_description: string | null
+          job_title: string | null
+          resume_text: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          company_name?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          job_description?: string | null
+          job_title?: string | null
+          resume_text?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          company_name?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          job_description?: string | null
+          job_title?: string | null
+          resume_text?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
