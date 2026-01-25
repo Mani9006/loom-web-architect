@@ -7,6 +7,7 @@ interface ChatWelcomeProps {
   onStartATSCheck: () => void;
   onStartJobSearch: () => void;
   onStartCoverLetter: () => void;
+  onStartInterviewPrep: () => void;
 }
 
 const quickActions = [
@@ -34,6 +35,12 @@ const quickActions = [
     description: "AI-powered job search based on your resume",
     action: "job-search" 
   },
+  { 
+    icon: MessageSquare, 
+    label: "Interview Prep", 
+    description: "Practice with AI-generated questions",
+    action: "interview-prep" 
+  },
 ];
 
 export function ChatWelcome({ 
@@ -43,6 +50,7 @@ export function ChatWelcome({
   onStartATSCheck,
   onStartJobSearch,
   onStartCoverLetter,
+  onStartInterviewPrep,
 }: ChatWelcomeProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 pb-16">
@@ -79,6 +87,8 @@ export function ChatWelcome({
                   onStartJobSearch();
                 } else if (action.action === "cover-letter") {
                   onStartCoverLetter();
+                } else if (action.action === "interview-prep") {
+                  onStartInterviewPrep();
                 }
               }}
               className="flex items-start gap-4 p-5 rounded-xl bg-card hover:bg-accent border border-border transition-all hover:border-primary/30 hover:shadow-md text-left group"

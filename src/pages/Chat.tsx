@@ -10,6 +10,7 @@ import { GeneralChatPanel, GeneralChatMessage } from "@/components/chat/GeneralC
 import { ATSCheckerPanel, ATSMessage } from "@/components/chat/ATSCheckerPanel";
 import { JobSearchPanel, JobSearchMessage } from "@/components/chat/JobSearchPanel";
 import { CoverLetterPanel, CoverLetterMessage } from "@/components/chat/CoverLetterPanel";
+import { InterviewPrepPanel, InterviewMessage } from "@/components/chat/InterviewPrepPanel";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
 import { ResumeChatPanel, ChatMessage, ProjectOptionsData, SummaryOptionsData } from "@/components/resume/ResumeChatPanel";
 import { ResumePreview } from "@/components/resume/ResumePreview";
@@ -17,7 +18,7 @@ import { OptionsPanel } from "@/components/resume/OptionsPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ResumeData, Client } from "@/types/resume";
 
-type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-check" | "job-search" | "cover-letter";
+type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-check" | "job-search" | "cover-letter" | "interview-prep";
 
 type Conversation = {
   id: string;
@@ -84,6 +85,7 @@ export default function Chat() {
   const [atsMessages, setAtsMessages] = useState<ATSMessage[]>([]);
   const [jobMessages, setJobMessages] = useState<JobSearchMessage[]>([]);
   const [coverLetterMessages, setCoverLetterMessages] = useState<CoverLetterMessage[]>([]);
+  const [interviewMessages, setInterviewMessages] = useState<InterviewMessage[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectOptionsData[]>([]);
   const [summaryOptions, setSummaryOptions] = useState<SummaryOptionsData | null>(null);
   const [selectedModel, setSelectedModel] = useState("gemini-flash");
@@ -206,6 +208,7 @@ export default function Chat() {
     setAtsMessages([]);
     setJobMessages([]);
     setCoverLetterMessages([]);
+    setInterviewMessages([]);
     setChatMode("welcome");
     setResumeData(createEmptyResumeData());
   };
@@ -227,6 +230,11 @@ export default function Chat() {
   const handleStartCoverLetter = () => {
     setChatMode("cover-letter");
     setCoverLetterMessages([]);
+  };
+
+  const handleStartInterviewPrep = () => {
+    setChatMode("interview-prep");
+    setInterviewMessages([]);
   };
 
   const handleGeneralChat = async (message: string) => {
@@ -754,8 +762,12 @@ Be specific and actionable. Reference their actual skills and experience.`,
   };
 
   // Cover Letter Generator Handler
-  const handleCoverLetterGenerate = async (resumeText: string, jobDescription: string, companyName: string, jobTitle: string) => {
+  const handleCoverLetterGenerate = async (resumeText: string, jobDescription: string, companyName: string, jobTitle: string, template: string = "modern") => {
     if (!session) return;
+
+    // Import template prompt helper
+    const { getTemplatePrompt } = await import("@/components/chat/CoverLetterTemplateSelector");
+    const templatePrompt = getTemplatePrompt(template as "formal" | "creative" | "modern");
 
     setIsLoading(true);
     const userContent = `Generate a professional cover letter for the following:
@@ -798,20 +810,15 @@ ${jobDescription}`;
             messages: [
               {
                 role: "system",
-                content: `You are an expert cover letter writer. Create compelling, personalized cover letters that:
+                content: `You are an expert cover letter writer. Create compelling, personalized cover letters.
 
-1. **Opening Hook**: Start with a strong, attention-grabbing opening that shows genuine interest in the company
-2. **Value Proposition**: Clearly articulate how the candidate's experience aligns with the job requirements
-3. **Specific Examples**: Use specific achievements and skills from their resume that match the job description
-4. **Company Research**: Reference the company's mission, values, or recent news when possible
-5. **Call to Action**: End with a confident closing that expresses enthusiasm for an interview
+${templatePrompt}
 
 Guidelines:
 - Keep it concise (3-4 paragraphs, under 400 words)
-- Use professional but personable tone
-- Avoid generic phrases like "I am writing to apply for..."
+- Use specific achievements and skills from their resume that match the job description
+- Reference the company's mission, values, or recent news when possible
 - Highlight 2-3 key achievements that directly relate to the role
-- Show personality while maintaining professionalism
 
 Output ONLY the cover letter text, properly formatted with paragraphs. Do not include any meta-commentary.`,
               },
@@ -972,6 +979,240 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
         variant: "destructive",
       });
       setCoverLetterMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Interview Prep Handler
+  const handleInterviewGenerate = async (resumeText: string, jobDescription: string, companyName: string, jobTitle: string, interviewType: string) => {
+    if (!session) return;
+
+    setIsLoading(true);
+    const typeLabels: Record<string, string> = {
+      behavioral: "behavioral (STAR method)",
+      technical: "technical skills and knowledge",
+      situational: "situational and problem-solving",
+      mixed: "comprehensive (behavioral, technical, and situational)",
+    };
+
+    const userContent = `Generate ${typeLabels[interviewType] || "comprehensive"} interview questions for:
+
+**Company:** ${companyName || "the company"}
+**Position:** ${jobTitle || "the position"}
+
+**My Resume/Background:**
+${resumeText}
+
+**Job Description:**
+${jobDescription}`;
+
+    const userMsg: InterviewMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: userContent,
+      timestamp: new Date(),
+    };
+
+    setInterviewMessages([userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setInterviewMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date(), isThinking: true },
+    ]);
+
+    try {
+      let assistantContent = "";
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content: `You are an expert interview coach. Generate realistic interview questions based on the candidate's resume and target job.
+
+For ${typeLabels[interviewType] || "comprehensive"} interviews, provide:
+
+1. **Opening Questions** (2-3 questions)
+   - Warm-up questions about background and motivation
+
+2. **Core Questions** (5-7 questions based on interview type)
+   - For behavioral: STAR-format questions about past experiences
+   - For technical: Role-specific technical knowledge questions
+   - For situational: Hypothetical scenarios and problem-solving
+   - For mixed: A blend of all types
+
+3. **Role-Specific Questions** (3-4 questions)
+   - Questions directly related to the job requirements
+
+4. **Closing Questions** (2 questions)
+   - Questions the candidate should ask the interviewer
+
+For each question:
+- Explain why this question is asked
+- Provide tips on how to answer effectively
+- Reference specific skills or experiences from their resume when relevant
+
+Format with clear headers and bullet points. Be specific to the role and company.`,
+              },
+              { role: "user", content: userContent },
+            ],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 429) throw new Error("Rate limit exceeded.");
+        if (response.status === 402) throw new Error("AI usage limit reached.");
+        throw new Error("Failed to generate interview questions");
+      }
+
+      setInterviewMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
+      );
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex: number;
+
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                setInterviewMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate questions",
+        variant: "destructive",
+      });
+      setInterviewMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleInterviewFollowUp = async (message: string) => {
+    if (!session) return;
+
+    setIsLoading(true);
+    const userMsg: InterviewMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+
+    setInterviewMessages((prev) => [...prev, userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setInterviewMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
+    ]);
+
+    try {
+      let assistantContent = "";
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: interviewMessages.concat(userMsg).map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to get response");
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex: number;
+
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                setInterviewMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to get response",
+        variant: "destructive",
+      });
+      setInterviewMessages((prev) => prev.filter((m) => m.id !== tempId));
     } finally {
       setIsLoading(false);
     }
@@ -1488,6 +1729,7 @@ ${clientSummary}
                         onStartATSCheck={handleStartATSCheck}
                         onStartJobSearch={handleStartJobSearch}
                         onStartCoverLetter={handleStartCoverLetter}
+                        onStartInterviewPrep={handleStartInterviewPrep}
                       />
                     ) : undefined
                   }
@@ -1531,6 +1773,21 @@ ${clientSummary}
                   isLoading={isLoading}
                   onGenerate={handleCoverLetterGenerate}
                   onSendMessage={handleCoverLetterFollowUp}
+                  selectedModel={selectedModel}
+                  onModelChange={setSelectedModel}
+                  onBack={handleNewChat}
+                />
+              </div>
+            )}
+
+            {/* Interview Prep Mode */}
+            {chatMode === "interview-prep" && (
+              <div className="flex-1">
+                <InterviewPrepPanel
+                  messages={interviewMessages}
+                  isLoading={isLoading}
+                  onGenerate={handleInterviewGenerate}
+                  onSendMessage={handleInterviewFollowUp}
                   selectedModel={selectedModel}
                   onModelChange={setSelectedModel}
                   onBack={handleNewChat}

@@ -10,7 +10,8 @@ import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ModelSelector } from "@/components/resume/ModelSelector";
 import { SavedCoverLettersList } from "./SavedCoverLettersList";
 import { useCoverLetters, CoverLetter } from "@/hooks/use-cover-letters";
-import { Loader2, FileText, Send, Copy, ArrowLeft, Sparkles, Save, FolderOpen } from "lucide-react";
+import { CoverLetterTemplateSelector, CoverLetterTemplate } from "./CoverLetterTemplateSelector";
+import { Loader2, FileText, Send, Copy, ArrowLeft, Sparkles, Save, FolderOpen, Palette } from "lucide-react";
 import { CoverLetterActionButtons } from "./CoverLetterActions";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "@/hooks/use-toast";
@@ -26,7 +27,7 @@ export interface CoverLetterMessage {
 interface CoverLetterPanelProps {
   messages: CoverLetterMessage[];
   isLoading: boolean;
-  onGenerate: (resumeText: string, jobDescription: string, companyName: string, jobTitle: string) => void;
+  onGenerate: (resumeText: string, jobDescription: string, companyName: string, jobTitle: string, template: CoverLetterTemplate) => void;
   onSendMessage: (message: string) => void;
   selectedModel: string;
   onModelChange: (model: string) => void;
@@ -50,6 +51,8 @@ export function CoverLetterPanel({
   const [hasGenerated, setHasGenerated] = useState(false);
   const [activeTab, setActiveTab] = useState<"create" | "saved">("create");
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<CoverLetterTemplate>("modern");
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -86,7 +89,13 @@ export function CoverLetterPanel({
       toast({ title: "Job description required", description: "Please paste the job description.", variant: "destructive" });
       return;
     }
-    onGenerate(resumeText, jobDescription, companyName, jobTitle);
+    onGenerate(resumeText, jobDescription, companyName, jobTitle, selectedTemplate);
+  };
+
+  const templateLabels: Record<CoverLetterTemplate, string> = {
+    formal: "Formal",
+    creative: "Creative",
+    modern: "Modern",
   };
 
   const handleFollowUp = () => {
@@ -256,6 +265,29 @@ export function CoverLetterPanel({
                   </CardContent>
                 </Card>
 
+                {/* Template Selection */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">3</span>
+                      Writing Style
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowTemplateSelector(true)}
+                      className="w-full justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Palette className="h-4 w-4" />
+                        <span>{templateLabels[selectedTemplate]} Style</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">Click to change</span>
+                    </Button>
+                  </CardContent>
+                </Card>
+
                 {/* Model Selection & Generate */}
                 <div className="flex items-center justify-between gap-4">
                   <ModelSelector value={selectedModel} onChange={onModelChange} />
@@ -275,6 +307,13 @@ export function CoverLetterPanel({
                 </div>
               </div>
             </ScrollArea>
+
+            <CoverLetterTemplateSelector
+              open={showTemplateSelector}
+              onOpenChange={setShowTemplateSelector}
+              selectedTemplate={selectedTemplate}
+              onSelect={setSelectedTemplate}
+            />
           </TabsContent>
 
           <TabsContent value="saved" className="flex-1 mt-0 px-4">
