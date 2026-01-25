@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User, Session } from "@supabase/supabase-js";
@@ -18,6 +18,7 @@ import { OptionsPanel } from "@/components/resume/OptionsPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { ResumeData, Client } from "@/types/resume";
+import { useResumeParser } from "@/hooks/use-resume-parser";
 
 type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-check" | "job-search" | "cover-letter" | "interview-prep";
 
@@ -96,6 +97,27 @@ export default function Chat() {
   const navigate = useNavigate();
   const { conversationId } = useParams();
   const { toast } = useToast();
+
+  // Resume parser for live preview updates
+  const handleResumeUpdate = useCallback((updates: Partial<ResumeData>) => {
+    setResumeData((prev) => ({ ...prev, ...updates }));
+    
+    // Also update options panel if summary options changed
+    if (updates.summaryOptions) {
+      setSummaryOptions({
+        options: updates.summaryOptions.map(opt => ({
+          id: opt.id,
+          content: opt.content,
+          isSelected: opt.isSelected,
+        })),
+      });
+    }
+  }, []);
+
+  const { parseIncremental, parseComplete, reset: resetParser } = useResumeParser(
+    resumeData,
+    handleResumeUpdate
+  );
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -1408,6 +1430,7 @@ Format with clear headers and bullet points. Be specific to the role and company
     setIsLoading(true);
     setGenerationPhase("thinking");
     setChatMode("resume-chat");
+    resetParser(); // Reset parser state for new generation
 
     // Calculate total experience
     const totalYears = calculateTotalExperience(resumeData.clients);
@@ -1532,6 +1555,8 @@ ${clientSummary}
                 setChatMessages((prev) =>
                   prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
                 );
+                // Live parse for real-time preview updates
+                parseIncremental(assistantContent);
               }
             } catch {
               buffer = line + "\n" + buffer;
@@ -1541,7 +1566,8 @@ ${clientSummary}
         }
       }
 
-      // Parse and update resume data from response
+      // Full parse after streaming complete for experience options
+      parseComplete(assistantContent);
       parseAndUpdateResumeFromAI(assistantContent);
 
       await supabase.from("messages").insert({
@@ -1735,6 +1761,8 @@ ${clientSummary}
                 setChatMessages((prev) =>
                   prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
                 );
+                // Live parse for real-time preview updates
+                parseIncremental(assistantContent);
               }
             } catch {
               buffer = line + "\n" + buffer;
@@ -1743,6 +1771,9 @@ ${clientSummary}
           }
         }
       }
+
+      // Full parse after streaming complete for experience options
+      parseComplete(assistantContent);
 
       await supabase.from("messages").insert({
         conversation_id: currentConversation.id,
