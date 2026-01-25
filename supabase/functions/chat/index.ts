@@ -127,12 +127,14 @@ serve(async (req) => {
 
     // Search for relevant memories from Mem0
     let memoryContext = "";
+    let usedMemory = false;
     if (MEM0_API_KEY && userQuery) {
       console.log("Searching Mem0 for relevant memories...");
       const memories = await searchMem0Memories(MEM0_API_KEY, user.id, userQuery);
       
       if (memories.length > 0) {
         memoryContext = `\n\n## User Memory Context\nThe following are relevant facts you remember about this user from previous conversations:\n${memories.map(m => `- ${m}`).join("\n")}\n\nUse this context to provide more personalized and relevant responses.`;
+        usedMemory = true;
         console.log("Found", memories.length, "relevant memories");
       }
     }
@@ -224,6 +226,7 @@ You have memory capabilities - you can remember user preferences, past interacti
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
+        "X-Used-Memory": usedMemory ? "true" : "false",
       },
     });
   } catch (error) {

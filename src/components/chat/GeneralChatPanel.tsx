@@ -1,11 +1,17 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, User } from "lucide-react";
+import { Send, Sparkles, User, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import { ModelSelector } from "@/components/resume/ModelSelector";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export type GeneralChatMessage = {
   id: string;
@@ -13,6 +19,7 @@ export type GeneralChatMessage = {
   content: string;
   timestamp: Date;
   isThinking?: boolean;
+  usedMemory?: boolean;
 };
 
 interface GeneralChatPanelProps {
@@ -75,8 +82,24 @@ export function GeneralChatPanel({
                 )}
               >
                 {message.role === "assistant" && (
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-4 h-4 text-white" />
+                  <div className="relative">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                    {message.usedMemory && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center border-2 border-background">
+                              <Brain className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Using remembered context</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 )}
 
