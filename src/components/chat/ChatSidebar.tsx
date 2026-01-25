@@ -30,7 +30,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SettingsDialog } from "./SettingsDialog";
@@ -100,6 +111,8 @@ export function ChatSidebar({
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [newFolderColor, setNewFolderColor] = useState("blue");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteConfirmTitle, setDeleteConfirmTitle] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Ctrl+K keyboard shortcut to focus search
@@ -330,18 +343,20 @@ export function ChatSidebar({
                 tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDeleteConversation(conv.id);
+                  setDeleteConfirmId(conv.id);
+                  setDeleteConfirmTitle(conv.title);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.stopPropagation();
-                    onDeleteConversation(conv.id);
+                    setDeleteConfirmId(conv.id);
+                    setDeleteConfirmTitle(conv.title);
                   }
                 }}
-                className="p-1 hover:bg-destructive/20 rounded cursor-pointer"
+                className="p-1 hover:bg-destructive/20 rounded cursor-pointer opacity-70 hover:opacity-100"
                 title="Delete conversation"
               >
-                <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                <Trash2 className="w-3.5 h-3.5 text-destructive" />
               </span>
             </div>
           )}
@@ -576,6 +591,32 @@ export function ChatSidebar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{deleteConfirmTitle}". This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteConfirmId) {
+                  onDeleteConversation(deleteConfirmId);
+                  setDeleteConfirmId(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
