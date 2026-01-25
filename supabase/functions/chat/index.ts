@@ -58,7 +58,7 @@ Keep letters 250-400 words, tailored to each opportunity.`,
 5. Sharing industry-specific tips`,
 };
 
-// Mem0 API functions
+// Mem0 API functions - Following official v2 API
 async function searchMem0(apiKey: string, userId: string, query: string): Promise<string[]> {
   try {
     const response = await fetch("https://api.mem0.ai/v1/memories/search/", {
@@ -67,17 +67,27 @@ async function searchMem0(apiKey: string, userId: string, query: string): Promis
         "Authorization": `Token ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query, user_id: userId, limit: 10 }),
+      body: JSON.stringify({
+        query,
+        version: "v2",
+        filters: {
+          OR: [{ user_id: userId }]
+        },
+        limit: 15,
+      }),
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      console.error("Mem0 search error:", response.status);
+      return [];
+    }
 
     const data = await response.json();
-    if (Array.isArray(data)) {
-      return data.map((m: any) => m.memory || m.content).filter(Boolean);
-    }
-    return data.results?.map((m: any) => m.memory || m.content).filter(Boolean) || [];
-  } catch {
+    // Handle both array and object response formats
+    const memories = Array.isArray(data) ? data : (data.results || data.memories || []);
+    return memories.map((m: any) => m.memory || m.content).filter(Boolean);
+  } catch (e) {
+    console.error("Mem0 search error:", e);
     return [];
   }
 }

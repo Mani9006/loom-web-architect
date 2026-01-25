@@ -146,7 +146,7 @@ Be conversational, supportive, and actionable in your advice. Help users feel co
   },
 };
 
-// Mem0 integration functions
+// Mem0 integration functions - Following official v2 API
 async function searchMemories(apiKey: string, userId: string, query: string): Promise<string[]> {
   try {
     const response = await fetch("https://api.mem0.ai/v1/memories/search/", {
@@ -155,20 +155,26 @@ async function searchMemories(apiKey: string, userId: string, query: string): Pr
         "Authorization": `Token ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query, user_id: userId, limit: 15 }),
+      body: JSON.stringify({
+        query,
+        version: "v2",
+        filters: {
+          OR: [{ user_id: userId }]
+        },
+        limit: 15,
+      }),
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      console.error("Mem0 search error:", response.status);
+      return [];
+    }
 
     const data = await response.json();
-    if (Array.isArray(data)) {
-      return data.map((m: any) => m.memory || m.content).filter(Boolean);
-    }
-    if (data.results && Array.isArray(data.results)) {
-      return data.results.map((m: any) => m.memory || m.content).filter(Boolean);
-    }
-    return [];
-  } catch {
+    const memories = Array.isArray(data) ? data : (data.results || data.memories || []);
+    return memories.map((m: any) => m.memory || m.content).filter(Boolean);
+  } catch (e) {
+    console.error("Mem0 search error:", e);
     return [];
   }
 }
