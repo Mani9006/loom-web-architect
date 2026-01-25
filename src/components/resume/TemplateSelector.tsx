@@ -57,16 +57,21 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
                 ← Back to templates
               </Button>
               <div className="flex flex-col lg:flex-row gap-6">
-                <div className="flex-1">
+                {/* Scrollable preview container */}
+                <div className="flex-1 max-h-[70vh] overflow-auto rounded-lg border border-border shadow-lg bg-muted">
                   <img
                     src={previewTemplate.preview}
                     alt={previewTemplate.name}
-                    className="w-full rounded-lg border border-border shadow-lg"
+                    className="w-full"
+                    style={{ minHeight: "100%" }}
                   />
                 </div>
                 <div className="lg:w-80 space-y-4">
                   <h3 className="text-2xl font-bold">{previewTemplate.name}</h3>
                   <p className="text-muted-foreground">{previewTemplate.description}</p>
+                  <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-2">
+                    💡 Scroll the preview to see all pages
+                  </div>
                   <div>
                     <h4 className="font-medium mb-2">Included Sections:</h4>
                     <ul className="space-y-1">
@@ -97,11 +102,12 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
                     selectedTemplateId === template.id ? "border-primary" : "border-border"
                   )}
                 >
-                  <div className="aspect-[3/4] overflow-hidden bg-muted">
+                  <div className="aspect-[3/4] overflow-hidden bg-muted relative group-hover:overflow-y-auto">
                     <img
                       src={template.preview}
                       alt={template.name}
-                      className="w-full h-full object-cover object-top transition-transform group-hover:scale-105"
+                      className="w-full transition-transform group-hover:scale-100"
+                      style={{ objectFit: "contain", objectPosition: "top" }}
                     />
                   </div>
                   
