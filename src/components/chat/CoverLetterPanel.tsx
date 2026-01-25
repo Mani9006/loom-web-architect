@@ -10,7 +10,8 @@ import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ModelSelector } from "@/components/resume/ModelSelector";
 import { SavedCoverLettersList } from "./SavedCoverLettersList";
 import { useCoverLetters, CoverLetter } from "@/hooks/use-cover-letters";
-import { Loader2, FileText, Send, Copy, Download, ArrowLeft, Sparkles, Save, FolderOpen } from "lucide-react";
+import { Loader2, FileText, Send, Copy, ArrowLeft, Sparkles, Save, FolderOpen } from "lucide-react";
+import { CoverLetterActionButtons } from "./CoverLetterActions";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "@/hooks/use-toast";
 
@@ -56,6 +57,7 @@ export function CoverLetterPanel({
     coverLetters,
     isLoading: isLoadingCoverLetters,
     saveCoverLetter,
+    updateCoverLetter,
     deleteCoverLetter,
   } = useCoverLetters();
 
@@ -105,17 +107,8 @@ export function CoverLetterPanel({
     }
   };
 
-  const handleDownload = () => {
-    const lastAssistant = getLatestCoverLetter();
-    if (lastAssistant) {
-      const blob = new Blob([lastAssistant.content], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Cover_Letter_${companyName || "Company"}_${jobTitle || "Position"}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
+  const handleUpdate = async (id: string, data: { title?: string; content?: string }): Promise<boolean> => {
+    return await updateCoverLetter(id, data);
   };
 
   const handleSave = async () => {
@@ -290,6 +283,7 @@ export function CoverLetterPanel({
               isLoading={isLoadingCoverLetters}
               onSelect={handleSelectSavedLetter}
               onDelete={deleteCoverLetter}
+              onUpdate={handleUpdate}
             />
           </TabsContent>
         </Tabs>
@@ -339,10 +333,13 @@ export function CoverLetterPanel({
             <Copy className="h-3 w-3" />
             Copy
           </Button>
-          <Button variant="outline" size="sm" onClick={handleDownload} className="gap-1">
-            <Download className="h-3 w-3" />
-            Download
-          </Button>
+          <CoverLetterActionButtons
+            content={getLatestCoverLetter()?.content || ""}
+            title={companyName && jobTitle ? `${companyName} - ${jobTitle}` : "Cover Letter"}
+            companyName={companyName}
+            jobTitle={jobTitle}
+            disabled={isLoading || !getLatestCoverLetter()}
+          />
         </div>
       </div>
 
