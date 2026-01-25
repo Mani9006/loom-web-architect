@@ -1,12 +1,12 @@
 import { useState, useRef } from "react";
-import { Search, Briefcase, MapPin, Clock, ExternalLink, Loader2, Send, Sparkles } from "lucide-react";
+import { Search, Loader2, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import ReactMarkdown from "react-markdown";
 
 export interface JobSearchMessage {
@@ -23,7 +23,7 @@ export interface JobResult {
   title: string;
   company: string;
   location: string;
-  type: string; // Full-time, Part-time, Contract
+  type: string;
   salary?: string;
   postedDate: string;
   description: string;
@@ -45,14 +45,18 @@ export function JobSearchPanel({
   isLoading,
   onSearch,
   onSendMessage,
-  selectedModel,
-  onModelChange,
 }: JobSearchPanelProps) {
   const [resumeText, setResumeText] = useState("");
   const [preferences, setPreferences] = useState("");
   const [followUpMessage, setFollowUpMessage] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleDocumentExtracted = (text: string, fileName: string) => {
+    setResumeText(text);
+    setUploadedFileName(fileName);
+  };
 
   const handleSearch = () => {
     if (!resumeText.trim()) return;
@@ -85,21 +89,43 @@ export function JobSearchPanel({
               </div>
               <h2 className="text-2xl font-semibold mb-2">AI Job Search</h2>
               <p className="text-muted-foreground">
-                Paste your resume and let AI find the latest matching jobs for you
+                Upload your resume (PDF or Word) and let AI find the latest matching jobs for you
               </p>
             </div>
 
             {/* Resume Input */}
             <div className="space-y-3">
               <Label className="text-base font-medium">Your Resume / Skills *</Label>
-              <p className="text-sm text-muted-foreground">
-                Paste your resume or describe your skills and experience
-              </p>
+              
+              {/* Document Upload Component */}
+              <DocumentUpload 
+                onTextExtracted={handleDocumentExtracted}
+                isLoading={isLoading}
+                label="Upload Resume (PDF/Word)"
+              />
+
+              {uploadedFileName && (
+                <p className="text-sm text-muted-foreground">
+                  Loaded from: <span className="font-medium">{uploadedFileName}</span>
+                </p>
+              )}
+
+              <div className="relative">
+                <div className="absolute inset-x-0 top-0 flex items-center justify-center">
+                  <span className="bg-background px-2 text-xs text-muted-foreground -translate-y-1/2">
+                    or paste your resume/skills
+                  </span>
+                </div>
+              </div>
+
               <Textarea
                 placeholder="Paste your resume or describe your skills, experience, and what you're looking for..."
                 value={resumeText}
-                onChange={(e) => setResumeText(e.target.value)}
-                className="min-h-[180px] resize-none"
+                onChange={(e) => {
+                  setResumeText(e.target.value);
+                  setUploadedFileName(null);
+                }}
+                className="min-h-[180px] resize-none mt-4"
               />
             </div>
 

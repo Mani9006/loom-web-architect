@@ -1,12 +1,11 @@
 import { useState, useRef } from "react";
-import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Send, Target } from "lucide-react";
+import { CheckCircle, Loader2, Send, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
-import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import ReactMarkdown from "react-markdown";
 
 export interface ATSMessage {
@@ -32,23 +31,17 @@ export function ATSCheckerPanel({
   isLoading,
   onAnalyze,
   onSendMessage,
-  selectedModel,
-  onModelChange,
 }: ATSCheckerPanelProps) {
   const [resumeText, setResumeText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [followUpMessage, setFollowUpMessage] = useState("");
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Read text from file
-    const text = await file.text();
+  const handleDocumentExtracted = (text: string, fileName: string) => {
     setResumeText(text);
+    setUploadedFileName(fileName);
   };
 
   const handleAnalyze = () => {
@@ -87,36 +80,43 @@ export function ATSCheckerPanel({
               </div>
               <h2 className="text-2xl font-semibold mb-2">ATS Score Checker</h2>
               <p className="text-muted-foreground">
-                Paste your resume and optionally a job description to get an ATS compatibility score
+                Upload your resume (PDF or Word) or paste text to get an ATS compatibility score
               </p>
             </div>
 
             {/* Resume Input */}
             <div className="space-y-3">
               <Label className="text-base font-medium">Your Resume *</Label>
-              <div className="flex gap-2 mb-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="gap-2"
-                >
-                  <Upload className="w-4 h-4" />
-                  Upload File
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".txt,.md,.doc,.docx"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
+              
+              {/* Document Upload Component */}
+              <DocumentUpload 
+                onTextExtracted={handleDocumentExtracted}
+                isLoading={isLoading}
+                label="Upload Resume (PDF/Word)"
+              />
+
+              {uploadedFileName && (
+                <p className="text-sm text-muted-foreground">
+                  Loaded from: <span className="font-medium">{uploadedFileName}</span>
+                </p>
+              )}
+
+              <div className="relative">
+                <div className="absolute inset-x-0 top-0 flex items-center justify-center">
+                  <span className="bg-background px-2 text-xs text-muted-foreground -translate-y-1/2">
+                    or paste your resume
+                  </span>
+                </div>
               </div>
+
               <Textarea
                 placeholder="Paste your resume content here..."
                 value={resumeText}
-                onChange={(e) => setResumeText(e.target.value)}
-                className="min-h-[200px] resize-none"
+                onChange={(e) => {
+                  setResumeText(e.target.value);
+                  setUploadedFileName(null);
+                }}
+                className="min-h-[200px] resize-none mt-4"
               />
             </div>
 
