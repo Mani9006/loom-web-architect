@@ -1,4 +1,4 @@
-import { Sparkles, FileText, MessageSquare, Briefcase, Target, Search } from "lucide-react";
+import { Sparkles, FileText, MessageSquare, Briefcase, Target, Search, Mail } from "lucide-react";
 
 interface ChatWelcomeProps {
   displayName: string;
@@ -6,6 +6,7 @@ interface ChatWelcomeProps {
   onStartResume: () => void;
   onStartATSCheck: () => void;
   onStartJobSearch: () => void;
+  onStartCoverLetter: () => void;
 }
 
 const quickActions = [
@@ -14,6 +15,12 @@ const quickActions = [
     label: "Build Resume", 
     description: "Create an ATS-optimized resume",
     action: "resume" 
+  },
+  { 
+    icon: Mail, 
+    label: "Cover Letter", 
+    description: "Generate a tailored cover letter",
+    action: "cover-letter" 
   },
   { 
     icon: Target, 
@@ -27,12 +34,6 @@ const quickActions = [
     description: "AI-powered job search based on your resume",
     action: "job-search" 
   },
-  { 
-    icon: Briefcase, 
-    label: "Interview Prep", 
-    description: "Practice interview questions",
-    prompt: "Help me prepare for a job interview. Give me common questions and tips." 
-  },
 ];
 
 export function ChatWelcome({ 
@@ -41,6 +42,7 @@ export function ChatWelcome({
   onStartResume,
   onStartATSCheck,
   onStartJobSearch,
+  onStartCoverLetter,
 }: ChatWelcomeProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 pb-16">
@@ -75,8 +77,8 @@ export function ChatWelcome({
                   onStartATSCheck();
                 } else if (action.action === "job-search") {
                   onStartJobSearch();
-                } else if (action.prompt) {
-                  onSuggestionClick(action.prompt);
+                } else if (action.action === "cover-letter") {
+                  onStartCoverLetter();
                 }
               }}
               className="flex items-start gap-4 p-5 rounded-xl bg-card hover:bg-accent border border-border transition-all hover:border-primary/30 hover:shadow-md text-left group"
