@@ -6,84 +6,104 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const RESUME_SYSTEM_PROMPT = `You are an expert resume writer and career coach. Your job is to help create compelling, ATS-friendly resumes that highlight achievements and impact.
+const RESUME_SYSTEM_PROMPT = `You are an expert resume writer creating ATS-optimized resumes following this EXACT LaTeX template structure.
 
-## Your Core Responsibilities:
-1. **Generate Resume Content**: When given user information, create a complete professional resume with compelling bullet points
-2. **Generate Multiple Options**: For each experience/client, generate 2 different project descriptions so users can choose
-3. **Generate Summary Options**: Create 2 different summary options based on combined experience
-4. **Calculate Experience**: Based on dates provided, calculate total years of experience
-5. **Refine & Improve**: Help users refine specific sections based on their feedback
-6. **Rewrite Sections**: Rewrite any section when asked
+## CRITICAL: Output Format Rules
 
-## Resume Writing Guidelines:
-- Use strong action verbs (Led, Developed, Implemented, Achieved, Spearheaded, Architected)
-- Quantify achievements whenever possible (increased by X%, saved $X, managed team of X)
-- Focus on impact and results, not just responsibilities
-- Keep bullet points concise (1-2 lines each)
-- Tailor content to the target role when specified
-- Use industry-relevant keywords for ATS optimization
-- For tech roles: mention specific technologies, frameworks, and methodologies
-
-## Output Format for Initial Generation:
-
-When generating a full resume, structure it as:
-
-# [Full Name]
-[Contact Information]
-
-## Professional Summary
-**Option 1:**
-[2-3 sentence impactful summary including total years of experience]
-
-**Option 2:**
-[Alternative 2-3 sentence summary with different focus]
-
-## Experience
-
-### [Role] | [Client/Company Name]
-*[Start Date] - [End Date]* | [Location]
-
-**Project Option 1: [Project Title]**
-- [Achievement-focused bullet with metrics]
-- [Achievement-focused bullet with metrics]
-- [Achievement-focused bullet with metrics]
-- [Achievement-focused bullet with metrics]
-
-**Project Option 2: [Alternative Project Title]**
-- [Alternative achievement-focused bullet]
-- [Alternative achievement-focused bullet]
-- [Alternative achievement-focused bullet]
-- [Alternative achievement-focused bullet]
-
-[Repeat for each client/position]
-
-## Education
-### [Degree] in [Field]
-**[School Name]** | [Graduation Date]
-
-## Certifications
-- [Certification Name] - [Issuer] | [Date]
-
-## Skills
-**[Category]**: [skill1], [skill2], [skill3]
-**[Category]**: [skill1], [skill2], [skill3]
+You MUST generate content in this EXACT structure. The frontend parses this format precisely:
 
 ---
 
+# [Full Name]
+**[Professional Title]**
+
+📍 [Location] | ✉️ [Email] | 📞 [Phone] | 🔗 [LinkedIn]
+
+## SUMMARY
+
+**Option 1:**
+[2-3 sentence professional summary with total years of experience, key skills, and value proposition]
+
+**Option 2:**
+[Alternative 2-3 sentence summary with different emphasis]
+
+## EXPERIENCE
+
+### [Role Title]
+**[Company/Client Name]** | [Start Date] -- [End Date/Present]
+*[Location]*
+
+**Project Option 1:**
+- [Achievement-focused bullet with metrics - start with strong action verb]
+- [Achievement-focused bullet with quantifiable results]
+- [Achievement-focused bullet demonstrating impact]
+- [Achievement-focused bullet with technical skills]
+- [Achievement-focused bullet showing leadership/collaboration]
+- [Achievement-focused bullet with business outcome]
+- [Achievement-focused bullet with specific technology/methodology]
+
+**Project Option 2:**
+- [Alternative achievement bullet - different project/focus]
+- [Alternative achievement bullet with different metrics]
+- [Alternative achievement bullet highlighting different skills]
+- [Alternative achievement bullet with different impact]
+- [Alternative achievement bullet showing different scope]
+- [Alternative achievement bullet with different technical depth]
+- [Alternative achievement bullet with different business value]
+
+[Repeat ### section for each role/client]
+
+## EDUCATION
+
+**[Degree Type] in [Field]**, [University Name] (GPA: [GPA]) | [Graduation Date]
+*[Location]*
+
+[Repeat for each degree]
+
+## CERTIFICATIONS
+
+- **[Certification Name]**, [Issuing Organization] | [Date]
+- **[Certification Name]**, [Issuing Organization] | [Date]
+
+## SKILLS
+
+**[Category 1]:** [skill1], [skill2], [skill3], [skill4], [skill5]
+
+**[Category 2]:** [skill1], [skill2], [skill3], [skill4]
+
+[Continue for all skill categories]
+
+## PROJECTS
+
+### [Project Name]
+*[Organization/Context] — [Date]*
+- [Project bullet describing what was built/achieved]
+- [Project bullet with technical details and impact]
+
+---
+
+## Resume Writing Guidelines:
+
+1. **Action Verbs**: Lead with powerful verbs (Architected, Spearheaded, Implemented, Optimized, Automated, Transformed, Pioneered)
+2. **Quantify Everything**: Include metrics (X%, $X saved, X users, X team members)
+3. **ATS Keywords**: Use industry-relevant technical terms and keywords
+4. **Concise Bullets**: Each bullet 1-2 lines maximum
+5. **Impact Focus**: Show results and business value, not just responsibilities
+6. **Technical Depth**: For tech roles, mention specific technologies, frameworks, methodologies
+
 ## When Refining:
-- Focus on the specific section the user asks about
-- Provide clear, actionable improvements
-- Maintain consistency with the rest of the resume
-- Keep the same format and structure
+- Keep the EXACT same format structure
+- Only update the content within sections
+- Maintain all section headers and formatting markers
+- Apply user's feedback to improve specific sections
+- Never change the template structure
 
-## When Rewriting:
-- Completely rewrite the section with fresh perspectives
-- Use different action verbs and metrics
-- Maintain professional tone
-- Ensure ATS compatibility
-
-Be conversational and helpful. Explain your choices when asked.`;
+## Important:
+- Generate 7 strong bullets per project option for experience
+- Always provide 2 summary options
+- Always provide 2 project options per role
+- Calculate total years from dates and include in summary
+- Make content specific to the target role`;
 
 // Model configuration for different providers
 type ModelConfig = {
@@ -108,40 +128,40 @@ const MODEL_CONFIGS: Record<string, ModelConfig> = {
     apiKeyEnv: "LOVABLE_API_KEY",
   },
   // OpenAI models
+  "gpt-5.2-chat-latest": {
+    provider: "openai",
+    model: "gpt-4o", // Map to available model
+    apiUrl: "https://api.openai.com/v1/chat/completions",
+    apiKeyEnv: "OPENAI_API_KEY",
+  },
   "gpt-4o": {
     provider: "openai",
     model: "gpt-4o",
     apiUrl: "https://api.openai.com/v1/chat/completions",
     apiKeyEnv: "OPENAI_API_KEY",
   },
-  "gpt-4o-mini": {
+  "gpt-4o-mini-search-preview": {
     provider: "openai",
     model: "gpt-4o-mini",
     apiUrl: "https://api.openai.com/v1/chat/completions",
     apiKeyEnv: "OPENAI_API_KEY",
   },
-  "gpt-4-turbo": {
-    provider: "openai",
-    model: "gpt-4-turbo",
-    apiUrl: "https://api.openai.com/v1/chat/completions",
-    apiKeyEnv: "OPENAI_API_KEY",
-  },
   // Anthropic Claude models
-  "claude-sonnet": {
+  "claude-haiku-4": {
+    provider: "anthropic",
+    model: "claude-3-5-haiku-20241022",
+    apiUrl: "https://api.anthropic.com/v1/messages",
+    apiKeyEnv: "ANTHROPIC_API_KEY",
+  },
+  "claude-opus-4.5": {
     provider: "anthropic",
     model: "claude-sonnet-4-20250514",
     apiUrl: "https://api.anthropic.com/v1/messages",
     apiKeyEnv: "ANTHROPIC_API_KEY",
   },
-  "claude-opus": {
+  "claude-haiku-3": {
     provider: "anthropic",
-    model: "claude-opus-4-20250514",
-    apiUrl: "https://api.anthropic.com/v1/messages",
-    apiKeyEnv: "ANTHROPIC_API_KEY",
-  },
-  "claude-haiku": {
-    provider: "anthropic",
-    model: "claude-3-5-haiku-20241022",
+    model: "claude-3-haiku-20240307",
     apiUrl: "https://api.anthropic.com/v1/messages",
     apiKeyEnv: "ANTHROPIC_API_KEY",
   },
@@ -316,16 +336,16 @@ serve(async (req) => {
     const modelConfig = MODEL_CONFIGS[modelKey];
     
     if (!modelConfig) {
-      return new Response(JSON.stringify({ error: `Unknown model: ${modelKey}` }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.log(`Unknown model ${modelKey}, falling back to gemini-flash`);
+      // Fall back to gemini-flash
     }
 
-    const apiKey = Deno.env.get(modelConfig.apiKeyEnv);
+    const config = modelConfig || MODEL_CONFIGS["gemini-flash"];
+    const apiKey = Deno.env.get(config.apiKeyEnv);
+    
     if (!apiKey) {
-      console.error(`${modelConfig.apiKeyEnv} is not configured`);
-      return new Response(JSON.stringify({ error: `API key not configured for ${modelConfig.provider}` }), {
+      console.error(`${config.apiKeyEnv} is not configured`);
+      return new Response(JSON.stringify({ error: `API key not configured for ${config.provider}` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -334,46 +354,50 @@ serve(async (req) => {
     // Build context message if resumeData is provided (first generation)
     let contextMessage = "";
     if (resumeData) {
-      const { personalInfo, clients, education, certifications, skillCategories, targetRole, totalYearsExperience, templateId } = resumeData;
+      const { personalInfo, clients, education, certifications, skillCategories, projects, targetRole, totalYearsExperience } = resumeData;
       
       const clientDetails = clients?.map((client: any, i: number) => `
 ${i + 1}. **${client.role || "Role"}** at **${client.name || "Company"}**
    - Industry: ${client.industry || "Not specified"}
    - Location: ${client.location || "Not specified"}
    - Duration: ${client.startDate || "Start"} - ${client.isCurrent ? "Present" : client.endDate || "End"}
-   - Responsibilities: ${client.responsibilities || "General duties"}
+   - Key Responsibilities: ${client.responsibilities || "General duties"}
 `).join("") || "No experience provided";
 
       const educationDetails = education?.map((edu: any, i: number) => `
 ${i + 1}. **${edu.degree || "Degree"}** in **${edu.field || "Field"}**
    - School: ${edu.school || "Not specified"}
+   - Location: ${edu.location || "Not specified"}
    - Graduation: ${edu.graduationDate || "Not specified"}
    - GPA: ${edu.gpa || "Not provided"}
 `).join("") || "No education provided";
 
       const certDetails = certifications?.map((cert: any) => 
-        `- ${cert.name || "Certification"} from ${cert.issuer || "Issuer"} (${cert.date || "Date"})`
+        `- **${cert.name || "Certification"}** from ${cert.issuer || "Issuer"} (${cert.date || "Date"})`
       ).join("\n") || "None";
 
       const skillDetails = skillCategories?.map((cat: any) => 
         `**${cat.category}**: ${cat.skills?.join(", ") || "None"}`
       ).join("\n") || "Not provided";
 
-      contextMessage = `Please generate a complete, professional resume for:
+      const projectDetails = projects?.map((proj: any) => 
+        `- **${proj.name}** (${proj.organization || "Personal"}, ${proj.date}): ${proj.bullets?.join("; ") || "No details"}`
+      ).join("\n") || "None";
 
-**Template**: ${templateId === "creative" ? "Creative (projects-focused)" : "Professional (summary + certifications)"}
+      contextMessage = `Generate a professional resume following the EXACT template format specified.
+
 **Target Role**: ${targetRole || "Not specified"}
-**Total Experience**: ${totalYearsExperience || 0}+ years (calculated from dates)
+**Total Experience**: ${totalYearsExperience || 0}+ years
 
 **Personal Information**:
-- Name: ${personalInfo?.fullName || "Not provided"}
+- Full Name: ${personalInfo?.fullName || "Not provided"}
+- Professional Title: ${personalInfo?.title || targetRole || "Professional"}
 - Email: ${personalInfo?.email || "Not provided"}
 - Phone: ${personalInfo?.phone || "Not provided"}
 - Location: ${personalInfo?.location || "Not provided"}
 - LinkedIn: ${personalInfo?.linkedin || "Not provided"}
-- Portfolio: ${personalInfo?.portfolio || "Not provided"}
 
-**Clients/Work Experience**:
+**Work Experience**:
 ${clientDetails}
 
 **Education**:
@@ -385,29 +409,38 @@ ${certDetails}
 **Skills**:
 ${skillDetails}
 
-**IMPORTANT INSTRUCTIONS**:
-1. Calculate total years of experience from the dates and include it in the summary
-2. Generate 2 DIFFERENT project/bullet point options for EACH client/role
-3. Generate 2 DIFFERENT summary options combining all experience
-4. Use metrics and quantifiable achievements where possible
-5. Tailor everything for the target role: ${targetRole || "general professional roles"}
-6. Make it ATS-friendly with relevant keywords
-7. For each project option, create distinct scenarios that could apply to this role/industry
+**Projects**:
+${projectDetails}
 
-Generate the complete resume now with all options.`;
+**CRITICAL INSTRUCTIONS**:
+1. Follow the EXACT output format from the system prompt
+2. Generate 2 summary options
+3. Generate 2 project options with 7 bullets each for EVERY role/client
+4. Include total years (${totalYearsExperience || "calculate from dates"}) in summaries
+5. Use strong action verbs and quantifiable metrics
+6. Optimize for ATS with keywords relevant to: ${targetRole || "the role"}
+7. Keep the exact markdown structure for parsing`;
     }
 
     // If currentResume is provided, add it to context for refinement
     let resumeContext = "";
     if (currentResume) {
-      resumeContext = `\n\n**Current Resume Data**:\n${JSON.stringify(currentResume, null, 2)}\n\nPlease use this context when making refinements or rewrites.`;
+      resumeContext = `
+
+**Current Resume State** (update only what user requests, keep same format):
+${JSON.stringify(currentResume, null, 2)}
+
+IMPORTANT: When refining, maintain the EXACT same template structure. Only update the content the user specifies.`;
     }
 
-    console.log(`Calling ${modelConfig.provider} with model ${modelConfig.model}`);
+    console.log(`Calling ${config.provider} with model ${config.model}`);
 
     const allMessages = contextMessage 
       ? [{ role: "user", content: contextMessage + resumeContext }, ...messages]
-      : messages.map((m: any) => ({ ...m, content: m.content + (resumeContext && m === messages[messages.length - 1] ? resumeContext : "") }));
+      : messages.map((m: any, idx: number) => ({ 
+          ...m, 
+          content: m.content + (resumeContext && idx === messages.length - 1 ? resumeContext : "") 
+        }));
 
     const fullMessages = [
       { role: "system", content: RESUME_SYSTEM_PROMPT },
@@ -416,22 +449,22 @@ Generate the complete resume now with all options.`;
 
     let response: Response;
 
-    switch (modelConfig.provider) {
+    switch (config.provider) {
       case "openai":
-        response = await callOpenAI(apiKey, modelConfig.model, fullMessages);
+        response = await callOpenAI(apiKey, config.model, fullMessages);
         break;
       case "anthropic":
-        response = await callAnthropic(apiKey, modelConfig.model, fullMessages);
+        response = await callAnthropic(apiKey, config.model, fullMessages);
         break;
       case "lovable":
       default:
-        response = await callLovableAI(apiKey, modelConfig.model, fullMessages);
+        response = await callLovableAI(apiKey, config.model, fullMessages);
         break;
     }
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`${modelConfig.provider} API error:`, response.status, errorText);
+      console.error(`${config.provider} API error:`, response.status, errorText);
 
       if (response.status === 429) {
         return new Response(
@@ -453,16 +486,16 @@ Generate the complete resume now with all options.`;
         );
       }
 
-      return new Response(JSON.stringify({ error: `${modelConfig.provider} API error` }), {
+      return new Response(JSON.stringify({ error: `${config.provider} API error` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log(`Streaming response from ${modelConfig.provider}`);
+    console.log(`Streaming response from ${config.provider}`);
 
     // Transform Anthropic stream to OpenAI format for consistent frontend handling
-    const streamBody = modelConfig.provider === "anthropic" 
+    const streamBody = config.provider === "anthropic" 
       ? transformAnthropicStream(response)
       : response.body;
 
