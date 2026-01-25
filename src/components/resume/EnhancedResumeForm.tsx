@@ -12,6 +12,133 @@ import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ResumeFormSkeleton } from "./ResumeFormSkeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+
+// Robust JSON parser that handles common AI response issues
+function parseAIResponse(content: string): Record<string, any> | null {
+  // Remove markdown code blocks if present
+  let cleaned = content
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+  
+  // Try to extract JSON object
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    console.error("No JSON object found in response:", content.substring(0, 200));
+    return null;
+  }
+  
+  let jsonString = jsonMatch[0];
+  
+  // Attempt 1: Direct parse
+  try {
+    return JSON.parse(jsonString);
+  } catch (e1) {
+    console.log("Direct parse failed, attempting cleanup...");
+  }
+  
+  // Attempt 2: Fix common issues
+  try {
+    // Replace problematic characters
+    jsonString = jsonString
+      // Fix unescaped newlines in strings
+      .replace(/(?<!\\)\n/g, '\\n')
+      // Fix unescaped tabs
+      .replace(/(?<!\\)\t/g, '\\t')
+      // Fix trailing commas before closing brackets
+      .replace(/,\s*([}\]])/g, '$1')
+      // Fix single quotes (convert to double)
+      .replace(/'/g, '"');
+    
+    return JSON.parse(jsonString);
+  } catch (e2) {
+    console.log("Cleanup parse failed, attempting regex extraction...");
+  }
+  
+  // Attempt 3: Try to extract fields manually and rebuild
+  try {
+    const result: Record<string, any> = {
+      personalInfo: { fullName: '', email: '', phone: '', location: '', linkedin: '', portfolio: '', title: '' },
+      clients: [],
+      education: [],
+      certifications: [],
+      skillCategories: [],
+      summary: '',
+      targetRole: ''
+    };
+    
+    // Extract personal info fields
+    const nameMatch = content.match(/"fullName"\s*:\s*"([^"]*?)"/);
+    if (nameMatch) result.personalInfo.fullName = nameMatch[1];
+    
+    const emailMatch = content.match(/"email"\s*:\s*"([^"]*?)"/);
+    if (emailMatch) result.personalInfo.email = emailMatch[1];
+    
+    const phoneMatch = content.match(/"phone"\s*:\s*"([^"]*?)"/);
+    if (phoneMatch) result.personalInfo.phone = phoneMatch[1];
+    
+    const locationMatch = content.match(/"location"\s*:\s*"([^"]*?)"/);
+    if (locationMatch) result.personalInfo.location = locationMatch[1];
+    
+    const linkedinMatch = content.match(/"linkedin"\s*:\s*"([^"]*?)"/);
+    if (linkedinMatch) result.personalInfo.linkedin = linkedinMatch[1];
+    
+    const titleMatch = content.match(/"title"\s*:\s*"([^"]*?)"/);
+    if (titleMatch) result.personalInfo.title = titleMatch[1];
+    
+    // Extract summary (may contain special chars)
+    const summaryMatch = content.match(/"summary"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
+    if (summaryMatch) result.summary = summaryMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"');
+    
+    const targetMatch = content.match(/"targetRole"\s*:\s*"([^"]*?)"/);
+    if (targetMatch) result.targetRole = targetMatch[1];
+    
+    // Try to parse arrays using a more lenient approach
+    const clientsMatch = content.match(/"clients"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"education"|\s*,\s*"skillCategories"|\s*})/);
+    if (clientsMatch) {
+      try {
+        // Clean and parse the clients array
+        const clientsStr = clientsMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ');
+        result.clients = JSON.parse(clientsStr);
+      } catch { /* Use empty array */ }
+    }
+    
+    const educationMatch = content.match(/"education"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"certifications"|\s*,\s*"skillCategories"|\s*})/);
+    if (educationMatch) {
+      try {
+        const eduStr = educationMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ');
+        result.education = JSON.parse(eduStr);
+      } catch { /* Use empty array */ }
+    }
+    
+    const certsMatch = content.match(/"certifications"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"skillCategories"|\s*,\s*"summary"|\s*})/);
+    if (certsMatch) {
+      try {
+        const certsStr = certsMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ');
+        result.certifications = JSON.parse(certsStr);
+      } catch { /* Use empty array */ }
+    }
+    
+    const skillsMatch = content.match(/"skillCategories"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"summary"|\s*,\s*"targetRole"|\s*})/);
+    if (skillsMatch) {
+      try {
+        const skillsStr = skillsMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ');
+        result.skillCategories = JSON.parse(skillsStr);
+      } catch { /* Use empty array */ }
+    }
+    
+    // Check if we extracted anything useful
+    if (result.personalInfo.fullName || result.personalInfo.email || result.clients.length > 0) {
+      console.log("Regex extraction successful:", result);
+      return result;
+    }
+  } catch (e3) {
+    console.error("Regex extraction failed:", e3);
+  }
+  
+  console.error("All parsing attempts failed for content:", content.substring(0, 500));
+  return null;
+}
 interface EnhancedResumeFormProps {
   data: ResumeData;
   onChange: (data: ResumeData) => void;
@@ -150,13 +277,12 @@ CRITICAL: Parse ALL experience entries, ALL education entries, ALL certification
         }
       }
 
-      // Parse the JSON from the response
-      const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("Could not extract structured data from resume");
+      // Parse the JSON from the response with robust error handling
+      const parsedData = parseAIResponse(fullContent);
+      
+      if (!parsedData) {
+        throw new Error("Could not extract structured data from resume. Please try again.");
       }
-
-      const parsedData = JSON.parse(jsonMatch[0]);
 
       // Update the form with parsed data
       const newData: ResumeData = {
