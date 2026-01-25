@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ModelSelector } from "@/components/resume/ModelSelector";
-import { Loader2, MessageSquare, Send, ArrowLeft, Sparkles, Brain, HelpCircle, Target } from "lucide-react";
+import { VoiceControls } from "@/components/chat/VoiceControls";
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
+import { useTextToSpeech } from "@/hooks/use-text-to-speech";
+import { Loader2, MessageSquare, Send, ArrowLeft, Sparkles, Brain, HelpCircle, Target, Mic } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "@/hooks/use-toast";
 
@@ -52,8 +55,44 @@ export function InterviewPrepPanel({
   const [selectedType, setSelectedType] = useState("mixed");
   const [followUpInput, setFollowUpInput] = useState("");
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [lastSpokenMessageId, setLastSpokenMessageId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Voice recognition hook
+  const { 
+    isListening, 
+    transcript, 
+    startListening, 
+    stopListening, 
+    isSupported: isRecognitionSupported 
+  } = useSpeechRecognition({
+    onResult: (result) => {
+      setFollowUpInput(result);
+    },
+    onError: (error) => {
+      if (error !== "aborted") {
+        toast({
+          title: "Voice input error",
+          description: "Could not process voice input. Please try again.",
+          variant: "destructive",
+        });
+      }
+    },
+  });
+
+  // Text-to-speech hook
+  const { 
+    isSpeaking, 
+    speak, 
+    stop: stopSpeaking, 
+    isSupported: isSpeechSupported 
+  } = useTextToSpeech({
+    onEnd: () => {
+      // Ready for next message
+    },
+  });
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -66,6 +105,29 @@ export function InterviewPrepPanel({
       setHasGenerated(true);
     }
   }, [messages]);
+
+  // Auto-speak new assistant messages
+  useEffect(() => {
+    if (!autoSpeak || !isSpeechSupported) return;
+    
+    const lastMessage = messages[messages.length - 1];
+    if (
+      lastMessage &&
+      lastMessage.role === "assistant" &&
+      !lastMessage.isThinking &&
+      lastMessage.id !== lastSpokenMessageId
+    ) {
+      setLastSpokenMessageId(lastMessage.id);
+      speak(lastMessage.content);
+    }
+  }, [messages, autoSpeak, isSpeechSupported, lastSpokenMessageId, speak]);
+
+  // Update input while listening
+  useEffect(() => {
+    if (isListening && transcript) {
+      setFollowUpInput(transcript);
+    }
+  }, [isListening, transcript]);
 
   const handleResumeUpload = (text: string) => {
     setResumeText(text);
@@ -85,9 +147,42 @@ export function InterviewPrepPanel({
 
   const handleFollowUp = () => {
     if (!followUpInput.trim() || isLoading) return;
+    if (isListening) stopListening();
     onSendMessage(followUpInput);
     setFollowUpInput("");
   };
+
+  const handleToggleListen = useCallback(() => {
+    if (isListening) {
+      stopListening();
+      // Auto-send if we have text
+      if (followUpInput.trim() && !isLoading) {
+        setTimeout(() => handleFollowUp(), 100);
+      }
+    } else {
+      setFollowUpInput("");
+      startListening();
+    }
+  }, [isListening, stopListening, startListening, followUpInput, isLoading]);
+
+  const handleToggleSpeech = useCallback(() => {
+    if (isSpeaking) {
+      stopSpeaking();
+    } else {
+      // Speak the last assistant message
+      const lastAssistantMessage = [...messages].reverse().find(m => m.role === "assistant" && !m.isThinking);
+      if (lastAssistantMessage) {
+        speak(lastAssistantMessage.content);
+      }
+    }
+  }, [isSpeaking, stopSpeaking, speak, messages]);
+
+  const handleAutoSpeakToggle = useCallback(() => {
+    setAutoSpeak(prev => !prev);
+    if (autoSpeak && isSpeaking) {
+      stopSpeaking();
+    }
+  }, [autoSpeak, isSpeaking, stopSpeaking]);
 
   // Form view - before generation
   if (!hasGenerated) {
@@ -260,6 +355,19 @@ export function InterviewPrepPanel({
             </div>
           </div>
         </div>
+        
+        {/* Voice Controls in Header */}
+        <VoiceControls
+          isListening={isListening}
+          isSpeaking={isSpeaking}
+          onToggleListen={handleToggleListen}
+          onToggleSpeech={handleToggleSpeech}
+          isProcessing={isLoading}
+          isRecognitionSupported={isRecognitionSupported}
+          isSpeechSupported={isSpeechSupported}
+          autoSpeak={autoSpeak}
+          onAutoSpeakToggle={handleAutoSpeakToggle}
+        />
       </div>
 
       {/* Messages */}
@@ -293,30 +401,55 @@ export function InterviewPrepPanel({
         </div>
       </ScrollArea>
 
-      {/* Follow-up Input */}
+      {/* Follow-up Input with Voice */}
       <div className="p-4 border-t border-border">
         <div className="flex items-center gap-2">
           <ModelSelector value={selectedModel} onChange={onModelChange} />
           <div className="flex-1 relative">
             <Input
-              placeholder="Ask for sample answers, more questions, or clarification..."
+              placeholder={isListening ? "Listening... speak now" : "Ask for sample answers, or use the mic..."}
               value={followUpInput}
               onChange={(e) => setFollowUpInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleFollowUp()}
               disabled={isLoading}
-              className="pr-12"
+              className={`pr-20 transition-all ${isListening ? "border-primary ring-2 ring-primary/20" : ""}`}
             />
-            <Button
-              size="icon"
-              variant="ghost"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-              onClick={handleFollowUp}
-              disabled={isLoading || !followUpInput.trim()}
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {isRecognitionSupported && (
+                <Button
+                  size="icon"
+                  variant={isListening ? "default" : "ghost"}
+                  className={`h-8 w-8 ${isListening ? "bg-destructive hover:bg-destructive/90 animate-pulse" : ""}`}
+                  onClick={handleToggleListen}
+                  disabled={isLoading}
+                >
+                  <Mic className="h-4 w-4" />
+                </Button>
+              )}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
+                onClick={handleFollowUp}
+                disabled={isLoading || !followUpInput.trim()}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
+        
+        {/* Voice Hint */}
+        {(isRecognitionSupported || isSpeechSupported) && (
+          <p className="text-xs text-muted-foreground mt-2 text-center">
+            {isListening 
+              ? "🎤 Listening... speak your answer" 
+              : autoSpeak 
+                ? "🔊 Auto-speak enabled - AI will read responses aloud"
+                : "💡 Use the mic to practice answering questions verbally"
+            }
+          </p>
+        )}
       </div>
     </div>
   );
