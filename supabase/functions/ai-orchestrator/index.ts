@@ -208,7 +208,8 @@ async function classifyIntent(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        // Gemini 2.5 Flash for fast intent classification (benchmarks show best speed/accuracy ratio)
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: AGENTS.orchestrator.systemPrompt },
           ...conversationHistory.slice(-3),
@@ -240,6 +241,34 @@ async function classifyIntent(
   }
 }
 
+// Model selection based on task benchmarks
+// - Gemini 2.5 Pro: Best for structured extraction, complex reasoning
+// - Claude Sonnet 4: Best for writing quality (cover letters, resume content)
+// - Gemini 2.5 Flash: Best for fast intent routing
+// - GPT-4o: Good for general reasoning tasks
+function getOptimalModelForAgent(agentType: string): string {
+  switch (agentType) {
+    case "cover_letter":
+      // Claude excels at human-like, creative writing with strict formatting
+      return "google/gemini-2.5-pro"; // Fallback to Pro since Claude needs direct API
+    case "resume":
+      // Pro model for complex structured output and achievement optimization
+      return "google/gemini-2.5-pro";
+    case "ats":
+      // Pro for accurate keyword matching and scoring
+      return "google/gemini-2.5-pro";
+    case "interview":
+      // Flash is sufficient for conversational Q&A
+      return "google/gemini-3-flash-preview";
+    case "job_search":
+      // Flash for quick recommendations
+      return "google/gemini-3-flash-preview";
+    default:
+      // General chat uses flash for speed
+      return "google/gemini-3-flash-preview";
+  }
+}
+
 // Execute specialized agent
 async function executeAgent(
   apiKey: string,
@@ -249,6 +278,9 @@ async function executeAgent(
   userMessage: string
 ): Promise<Response> {
   const agent = AGENTS[agentType as keyof typeof AGENTS] || AGENTS.general;
+  const optimalModel = getOptimalModelForAgent(agentType);
+  
+  console.log(`[Agent] Executing ${agentType} with model: ${optimalModel}`);
   
   const systemPrompt = `${agent.systemPrompt}
 
@@ -263,7 +295,7 @@ Keep responses clear, well-structured, and actionable. Use markdown formatting f
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
+      model: optimalModel,
       messages: [
         { role: "system", content: systemPrompt },
         ...messages,

@@ -186,6 +186,22 @@ serve(async (req) => {
 
     console.log(`[Chat] Mode: ${chatMode}, Messages: ${messages.length}`);
 
+    // Select optimal model based on chat mode (benchmark-driven)
+    // - cover_letter/ats: Pro for quality writing and analysis
+    // - interview/job_search: Flash for conversational speed
+    // - general: Flash for fast responses
+    const modelForMode: Record<string, string> = {
+      cover_letter: "google/gemini-2.5-pro",
+      ats: "google/gemini-2.5-pro", 
+      resume: "google/gemini-2.5-pro",
+      interview: "google/gemini-3-flash-preview",
+      job_search: "google/gemini-3-flash-preview",
+      general: "google/gemini-3-flash-preview",
+    };
+    
+    const selectedModel = modelForMode[chatMode] || "google/gemini-3-flash-preview";
+    console.log(`[Chat] Using model: ${selectedModel} for mode: ${chatMode}`);
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -193,7 +209,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: selectedModel,
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,

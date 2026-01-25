@@ -334,7 +334,8 @@ CRITICAL RULES:
                 content: `Parse this resume text (may contain OCR imperfections - use intelligence to extract correctly):\n\n${text}`
               }
             ],
-            model: "google/gemini-2.5-flash",
+            // Gemini 2.5 Pro: Best for structured data extraction from messy OCR (SOTA on derendering benchmarks)
+            model: "google/gemini-2.5-pro",
           }),
         }
       );
