@@ -10,7 +10,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
   const isCreativeTemplate = data.templateId === "creative";
 
   return (
-    <div className="h-full overflow-hidden p-6">
+    <div className="h-full overflow-y-auto p-6">
       <div className="bg-white text-black rounded-lg shadow-xl max-w-[800px] mx-auto relative">
         {/* Resume Content - Mimics actual resume layout */}
         <div className="p-8 space-y-6 text-sm leading-relaxed" style={{ fontFamily: "'Times New Roman', serif" }}>

@@ -711,8 +711,8 @@ ${clientSummary}
                   )}
                 </div>
 
-                {/* Resume Preview - Right - Fixed, no scroll */}
-                <div className="flex-1 h-full overflow-hidden">
+                {/* Resume Preview - Right - Fixed, scrolls only if content overflows */}
+                <div className="flex-1 h-full overflow-y-auto bg-muted/30">
                   <ResumePreview data={resumeData} isGenerating={isLoading} />
                 </div>
               </>
