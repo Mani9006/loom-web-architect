@@ -1,11 +1,16 @@
-import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, User } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Sparkles, User, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import { ModelSelector } from "@/components/resume/ModelSelector";
+import { VoiceControls } from "@/components/chat/VoiceControls";
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
+import { useTextToSpeech } from "@/hooks/use-text-to-speech";
+import { DocumentUpload } from "@/components/shared/DocumentUpload";
+import { useToast } from "@/hooks/use-toast";
 
 export type GeneralChatMessage = {
   id: string;
@@ -33,8 +38,63 @@ export function GeneralChatPanel({
   welcomeComponent,
 }: GeneralChatPanelProps) {
   const [input, setInput] = useState("");
+  const [showUpload, setShowUpload] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const lastAssistantMessageRef = useRef<string>("");
+  const { toast } = useToast();
 
+  // Voice recognition hook
+  const { 
+    isListening, 
+    transcript, 
+    startListening, 
+    stopListening, 
+    isSupported: isRecognitionSupported 
+  } = useSpeechRecognition({
+    onResult: (result) => {
+      setInput((prev) => prev ? `${prev} ${result}` : result);
+    },
+    onError: (error) => {
+      toast({
+        title: "Voice input error",
+        description: error,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Text-to-speech hook
+  const { 
+    isSpeaking, 
+    speak, 
+    stop: stopSpeaking, 
+    isSupported: isSpeechSupported 
+  } = useTextToSpeech({
+    onError: (error) => {
+      toast({
+        title: "Speech error",
+        description: error,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update input with live transcript
+  useEffect(() => {
+    if (transcript && isListening) {
+      setInput((prev) => {
+        // Replace the last transcript with the new one
+        const lastSpaceIndex = prev.lastIndexOf(" ");
+        if (lastSpaceIndex > -1) {
+          return `${prev.substring(0, lastSpaceIndex + 1)}${transcript}`;
+        }
+        return transcript;
+      });
+    }
+  }, [transcript, isListening]);
+
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
@@ -44,9 +104,31 @@ export function GeneralChatPanel({
     }
   }, [messages]);
 
+  // Auto-speak new assistant messages
+  useEffect(() => {
+    if (!autoSpeak || !isSpeechSupported) return;
+
+    const lastMessage = messages[messages.length - 1];
+    if (
+      lastMessage?.role === "assistant" &&
+      lastMessage.content &&
+      !lastMessage.isThinking &&
+      lastMessage.content !== lastAssistantMessageRef.current
+    ) {
+      lastAssistantMessageRef.current = lastMessage.content;
+      speak(lastMessage.content);
+    }
+  }, [messages, autoSpeak, isSpeechSupported, speak]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+    
+    // Stop listening if active
+    if (isListening) {
+      stopListening();
+    }
+    
     onSendMessage(input.trim());
     setInput("");
   };
@@ -56,6 +138,38 @@ export function GeneralChatPanel({
       e.preventDefault();
       handleSubmit(e);
     }
+  };
+
+  const handleToggleListen = useCallback(() => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  }, [isListening, startListening, stopListening]);
+
+  const handleToggleSpeech = useCallback(() => {
+    if (isSpeaking) {
+      stopSpeaking();
+    } else {
+      // Speak the last assistant message
+      const lastAssistantMessage = [...messages].reverse().find((m) => m.role === "assistant");
+      if (lastAssistantMessage?.content) {
+        speak(lastAssistantMessage.content);
+      }
+    }
+  }, [isSpeaking, stopSpeaking, speak, messages]);
+
+  const handleDocumentExtracted = (text: string, fileName: string) => {
+    setInput((prev) => {
+      const newContent = `[Uploaded: ${fileName}]\n\n${text}`;
+      return prev ? `${prev}\n\n${newContent}` : newContent;
+    });
+    setShowUpload(false);
+    toast({
+      title: "Document loaded",
+      description: `Content from "${fileName}" added to your message`,
+    });
   };
 
   return (
@@ -125,6 +239,30 @@ export function GeneralChatPanel({
         )}
       </ScrollArea>
 
+      {/* Document Upload Panel */}
+      {showUpload && (
+        <div className="shrink-0 border-t border-border bg-muted/30 p-4">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium">Upload a document</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowUpload(false)}
+                className="h-6 w-6"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <DocumentUpload
+              onTextExtracted={handleDocumentExtracted}
+              isLoading={isLoading}
+              label="Upload PDF, Word, or Image"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Input Area */}
       <div className="shrink-0 p-4 border-t border-border bg-background/80 backdrop-blur-sm">
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
@@ -134,12 +272,40 @@ export function GeneralChatPanel({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Message..."
+                placeholder={isListening ? "Listening..." : "Message..."}
                 disabled={isLoading}
-                className="min-h-[52px] max-h-40 resize-none pr-24 rounded-xl bg-muted border-0 focus-visible:ring-1"
+                className={cn(
+                  "min-h-[52px] max-h-40 resize-none pr-36 rounded-xl bg-muted border-0 focus-visible:ring-1",
+                  isListening && "ring-2 ring-destructive"
+                )}
                 rows={1}
               />
-              <div className="absolute right-2 bottom-2 flex items-center gap-2">
+              <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                {/* Attachment button */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowUpload(!showUpload)}
+                  className="h-8 w-8"
+                  disabled={isLoading}
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+
+                {/* Voice controls */}
+                <VoiceControls
+                  isListening={isListening}
+                  isSpeaking={isSpeaking}
+                  onToggleListen={handleToggleListen}
+                  onToggleSpeech={handleToggleSpeech}
+                  isProcessing={isLoading}
+                  isRecognitionSupported={isRecognitionSupported}
+                  isSpeechSupported={isSpeechSupported}
+                  autoSpeak={autoSpeak}
+                  onAutoSpeakToggle={() => setAutoSpeak(!autoSpeak)}
+                />
+
                 <ModelSelector
                   value={selectedModel}
                   onChange={onModelChange}
