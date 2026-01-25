@@ -686,10 +686,10 @@ ${clientSummary}
               </div>
             ) : (
               <>
-                {/* Chat Panel - Left */}
-                <div className="w-[400px] border-r border-border flex flex-col overflow-hidden">
-                  {/* Chat messages - scrollable */}
-                  <div className="flex-1 overflow-hidden">
+                {/* Chat Panel - Left - Only this scrolls */}
+                <div className="w-[400px] border-r border-border flex flex-col h-full overflow-hidden">
+                  {/* Chat messages - only this part scrolls */}
+                  <div className="flex-1 min-h-0 overflow-hidden">
                     <ResumeChatPanel
                       messages={chatMessages}
                       isLoading={isLoading}
@@ -698,19 +698,21 @@ ${clientSummary}
                     />
                   </div>
                   
-                  {/* Options Panel - fixed at bottom, scrollable if needed */}
+                  {/* Options Panel - fixed at bottom of chat panel */}
                   {(projectOptions.length > 0 || summaryOptions) && (
-                    <OptionsPanel
-                      projectOptions={projectOptions}
-                      summaryOptions={summaryOptions}
-                      onSelectProject={handleSelectProject}
-                      onSelectSummary={handleSelectSummary}
-                    />
+                    <div className="shrink-0 max-h-[280px] overflow-y-auto border-t border-border">
+                      <OptionsPanel
+                        projectOptions={projectOptions}
+                        summaryOptions={summaryOptions}
+                        onSelectProject={handleSelectProject}
+                        onSelectSummary={handleSelectSummary}
+                      />
+                    </div>
                   )}
                 </div>
 
-                {/* Resume Preview - Right - Fixed with internal scroll */}
-                <div className="flex-1 bg-muted/30 overflow-hidden">
+                {/* Resume Preview - Right - Fixed, no scroll */}
+                <div className="flex-1 h-full overflow-hidden">
                   <ResumePreview data={resumeData} isGenerating={isLoading} />
                 </div>
               </>
