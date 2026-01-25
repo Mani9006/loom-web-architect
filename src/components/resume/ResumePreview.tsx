@@ -7,10 +7,16 @@ interface ResumePreviewProps {
 }
 
 export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
+  // Check if we have substantial content (for multi-page indication)
+  const hasSubstantialContent = 
+    data.clients.filter(c => c.name).length >= 2 ||
+    (data.clients.filter(c => c.name).length >= 1 && data.skillCategories.length >= 3);
+
   return (
-    <div className="h-full overflow-auto p-4">
+    <div className="h-full overflow-auto p-4 bg-muted/30">
+      {/* Resume Document */}
       <div 
-        className="bg-white text-black shadow-xl mx-auto relative"
+        className="bg-white text-black shadow-xl mx-auto relative mb-8"
         style={{ 
           width: "8.5in",
           minHeight: "11in",
@@ -29,9 +35,9 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
             {data.personalInfo.fullName || "Your Name"}
           </h1>
           
-          {data.personalInfo.title && (
+          {(data.personalInfo.title || data.targetRole) && (
             <p className="mt-1 font-bold" style={{ fontSize: "11.5pt" }}>
-              {data.personalInfo.title}
+              {data.personalInfo.title || data.targetRole}
             </p>
           )}
           
@@ -39,7 +45,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
             {data.personalInfo.location && (
               <>
                 <span>📍 {data.personalInfo.location}</span>
-                <span className="text-gray-400">|</span>
+                <span className="text-muted-foreground">|</span>
               </>
             )}
             {data.personalInfo.email && (
@@ -47,13 +53,13 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
                 <a href={`mailto:${data.personalInfo.email}`} className="text-black hover:underline">
                   ✉️ {data.personalInfo.email}
                 </a>
-                <span className="text-gray-400">|</span>
+                <span className="text-muted-foreground">|</span>
               </>
             )}
             {data.personalInfo.phone && (
               <>
                 <span>📞 {data.personalInfo.phone}</span>
-                {data.personalInfo.linkedin && <span className="text-gray-400">|</span>}
+                {data.personalInfo.linkedin && <span className="text-muted-foreground">|</span>}
               </>
             )}
             {data.personalInfo.linkedin && (
@@ -87,7 +93,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
             <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">
               EXPERIENCE
             </h2>
-            <div className="space-y-4">
+            <div className="space-y-5">
               {data.clients.filter(c => c.name).map((client) => {
                 const selectedProject = client.projects.find(p => p.isSelected);
                 return (
@@ -176,11 +182,11 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
                   <tr key={cert.id}>
                     <td className="py-0.5">
                       {cert.link ? (
-                        <a href={cert.link} className="text-blue-600 font-bold hover:underline" target="_blank" rel="noopener noreferrer">
+                        <a href={cert.link} className="text-primary font-bold hover:underline" target="_blank" rel="noopener noreferrer">
                           {cert.name}
                         </a>
                       ) : (
-                        <span className="text-blue-600 font-bold">{cert.name}</span>
+                        <span className="text-primary font-bold">{cert.name}</span>
                       )}
                       {cert.issuer && <span>, {cert.issuer}</span>}
                     </td>
@@ -244,11 +250,18 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
           <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
             <div className="flex flex-col items-center gap-2">
               <Loader2 className="w-8 h-8 text-primary animate-spin" />
-              <span className="text-sm text-gray-600">Generating content...</span>
+              <span className="text-sm text-muted-foreground">Generating content...</span>
             </div>
           </div>
         )}
       </div>
+
+      {/* Page indicator */}
+      {hasSubstantialContent && (
+        <div className="text-center text-xs text-muted-foreground pb-4">
+          ↑ Scroll up to see full resume
+        </div>
+      )}
     </div>
   );
 }
