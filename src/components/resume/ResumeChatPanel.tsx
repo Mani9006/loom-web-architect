@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
-
+import { ModelSelector } from "./ModelSelector";
 export type ProjectOptionsData = {
   clientId: string;
   clientName: string;
@@ -39,6 +39,8 @@ interface ResumeChatPanelProps {
   isLoading: boolean;
   generationPhase?: "thinking" | "generating" | null;
   onSendMessage: (message: string) => void;
+  selectedModel: string;
+  onModelChange: (model: string) => void;
 }
 
 export function ResumeChatPanel({
@@ -46,6 +48,8 @@ export function ResumeChatPanel({
   isLoading,
   generationPhase,
   onSendMessage,
+  selectedModel,
+  onModelChange,
 }: ResumeChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -152,20 +156,30 @@ export function ResumeChatPanel({
       {/* Input - Fixed at bottom */}
       <div className="shrink-0 p-4 border-t border-border bg-background">
         <form onSubmit={handleSubmit} className="flex gap-2">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask AI to refine any section..."
-            disabled={isLoading}
-            className="min-h-[44px] max-h-32 resize-none bg-secondary text-sm"
-            rows={1}
-          />
+          <div className="flex-1 flex flex-col gap-2">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask AI to refine any section..."
+              disabled={isLoading}
+              className="min-h-[44px] max-h-32 resize-none bg-secondary text-sm"
+              rows={1}
+            />
+            <div className="flex items-center justify-between">
+              <ModelSelector
+                value={selectedModel}
+                onChange={onModelChange}
+                disabled={isLoading}
+                compact
+              />
+            </div>
+          </div>
           <Button
             type="submit"
             size="icon"
             disabled={!input.trim() || isLoading}
-            className="shrink-0"
+            className="shrink-0 self-start"
           >
             <Send className="h-4 w-4" />
           </Button>
