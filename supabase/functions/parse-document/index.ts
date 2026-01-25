@@ -64,6 +64,55 @@ function extractTextFromPDF(uint8Array: Uint8Array): string {
   return textParts.join(" ");
 }
 
+// Check if extracted text looks like valid resume content (not just PDF metadata)
+function isValidResumeContent(text: string): boolean {
+  const lowerText = text.toLowerCase();
+  
+  // Check for PDF metadata patterns that indicate failed extraction
+  const metadataPatterns = [
+    'pdftex',
+    'pdflatex', 
+    'tex live',
+    'd:2024', 'd:2025', 'd:2026', // PDF date stamps
+    'xetex',
+    'luatex',
+    '/type /page',
+    '/producer',
+    '/creator'
+  ];
+  
+  for (const pattern of metadataPatterns) {
+    if (lowerText.includes(pattern)) {
+      console.log("Detected PDF metadata pattern:", pattern);
+      return false;
+    }
+  }
+  
+  // Check for common resume content indicators
+  const resumeIndicators = [
+    'experience', 'education', 'skills', 'summary',
+    'email', 'phone', '@', 'university', 'college',
+    'bachelor', 'master', 'degree', 'engineer', 
+    'manager', 'developer', 'analyst', 'scientist',
+    'work', 'project', 'certification', 'linkedin'
+  ];
+  
+  let indicatorCount = 0;
+  for (const indicator of resumeIndicators) {
+    if (lowerText.includes(indicator)) {
+      indicatorCount++;
+    }
+  }
+  
+  // Need at least 2 resume indicators to be considered valid
+  if (indicatorCount < 2) {
+    console.log("Insufficient resume indicators found:", indicatorCount);
+    return false;
+  }
+  
+  return true;
+}
+
 // Count approximate number of pages in PDF
 function countPDFPages(uint8Array: Uint8Array): number {
   const textDecoder = new TextDecoder('utf-8', { fatal: false });
@@ -275,11 +324,15 @@ serve(async (req) => {
               // Try basic text extraction first
               extractedText = extractTextFromPDF(uint8Array);
               
-              if (extractedText.length < 100) {
+              // Check if extracted text is meaningful (not just PDF metadata or garbage)
+              const needsOCR = extractedText.length < 100 || 
+                !isValidResumeContent(extractedText);
+              
+              if (needsOCR) {
                 sendSSE(controller, { 
                   type: "progress", 
                   stage: "ocr_needed",
-                  message: "Scanned PDF detected, starting OCR...",
+                  message: "Using AI vision for better text extraction...",
                   progress: 10
                 });
                 
@@ -392,9 +445,11 @@ serve(async (req) => {
         
         console.log("Basic PDF text extraction length:", extractedText.length, "pages:", pageCount);
 
-        // If we have very little text, it's likely a scanned PDF - use AI Vision OCR
-        if (extractedText.length < 100) {
-          console.log("PDF appears to be scanned/image-based, using AI Vision OCR...");
+        // Check if extracted text is meaningful (not just PDF metadata or garbage)
+        const needsOCR = extractedText.length < 100 || !isValidResumeContent(extractedText);
+        
+        if (needsOCR) {
+          console.log("PDF needs OCR - either too short or contains metadata instead of content");
           
           const base64 = btoa(
             uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
