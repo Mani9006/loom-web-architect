@@ -21,6 +21,7 @@ import { SettingsDialog } from "./SettingsDialog";
 type Conversation = {
   id: string;
   title: string;
+  chat_mode?: string;
   created_at: string;
   updated_at: string;
 };

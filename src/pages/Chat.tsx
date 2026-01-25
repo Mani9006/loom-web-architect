@@ -23,6 +23,7 @@ type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-che
 type Conversation = {
   id: string;
   title: string;
+  chat_mode: string;
   created_at: string;
   updated_at: string;
 };
@@ -165,30 +166,63 @@ export default function Chat() {
 
     if (conv) {
       setCurrentConversation(conv);
+      
+      // Determine chat mode from conversation
+      const mode = (conv as any).chat_mode || "general";
+      
       const { data: msgs } = await supabase
         .from("messages")
         .select("*")
         .eq("conversation_id", id)
         .order("created_at", { ascending: true });
 
-      if (msgs) {
-        setChatMessages(
-          msgs.map((m) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant",
-            content: m.content,
-            timestamp: new Date(m.created_at),
-          }))
-        );
+      if (msgs && msgs.length > 0) {
+        const loadedMessages = msgs.map((m) => ({
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          timestamp: new Date(m.created_at),
+        }));
+
+        // Set messages based on chat mode
+        switch (mode) {
+          case "general":
+            setGeneralMessages(loadedMessages);
+            setChatMode("general");
+            break;
+          case "ats-check":
+            setAtsMessages(loadedMessages);
+            setChatMode("ats-check");
+            break;
+          case "job-search":
+            setJobMessages(loadedMessages);
+            setChatMode("job-search");
+            break;
+          case "cover-letter":
+            setCoverLetterMessages(loadedMessages);
+            setChatMode("cover-letter");
+            break;
+          case "interview-prep":
+            setInterviewMessages(loadedMessages);
+            setChatMode("interview-prep");
+            break;
+          case "resume-chat":
+            setChatMessages(loadedMessages);
+            setChatMode("resume-chat");
+            break;
+          default:
+            setGeneralMessages(loadedMessages);
+            setChatMode("general");
+        }
       }
     }
   };
 
-  const createNewConversation = async (title: string): Promise<string | null> => {
+  const createNewConversation = async (title: string, chatMode: string = "general"): Promise<string | null> => {
     if (!user) return null;
     const { data, error } = await supabase
       .from("conversations")
-      .insert({ user_id: user.id, title })
+      .insert({ user_id: user.id, title, chat_mode: chatMode })
       .select()
       .single();
 
@@ -238,11 +272,22 @@ export default function Chat() {
   };
 
   const handleGeneralChat = async (message: string) => {
-    if (!session) return;
+    if (!session || !user) return;
 
     // Switch to general chat mode if in welcome
     if (chatMode === "welcome") {
       setChatMode("general");
+    }
+
+    // Create conversation if none exists
+    let convId = currentConversation?.id;
+    if (!convId) {
+      const title = message.length > 50 ? message.substring(0, 47) + "..." : message;
+      convId = await createNewConversation(title, "general");
+      if (convId) {
+        const newConv = { id: convId, title, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+        setCurrentConversation(newConv as any);
+      }
     }
 
     setIsLoading(true);
@@ -254,6 +299,15 @@ export default function Chat() {
     };
 
     setGeneralMessages((prev) => [...prev, userMsg]);
+
+    // Save user message to database
+    if (convId) {
+      await supabase.from("messages").insert({
+        conversation_id: convId,
+        role: "user",
+        content: message,
+      });
+    }
 
     const tempId = crypto.randomUUID();
     setGeneralMessages((prev) => [
@@ -325,6 +379,18 @@ export default function Chat() {
             }
           }
         }
+      }
+
+      // Save assistant message to database
+      if (convId && assistantContent) {
+        await supabase.from("messages").insert({
+          conversation_id: convId,
+          role: "assistant",
+          content: assistantContent,
+        });
+        // Update conversation timestamp
+        await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId);
+        await fetchConversations();
       }
     } catch (error) {
       toast({
