@@ -9,7 +9,7 @@ export type AIModel = {
 };
 
 export const AI_MODELS: AIModel[] = [
-  // Gemini models (via Lovable AI)
+  // Gemini models (via Lovable AI) - keep as is
   {
     id: "gemini-flash",
     name: "Gemini Flash",
@@ -22,13 +22,7 @@ export const AI_MODELS: AIModel[] = [
     provider: "gemini",
     description: "Most capable Gemini",
   },
-  // OpenAI models
-  {
-    id: "gpt-4o",
-    name: "GPT-4o",
-    provider: "openai",
-    description: "Most capable OpenAI",
-  },
+  // OpenAI models - prioritize less tokens/cheaper models
   {
     id: "gpt-4o-mini",
     name: "GPT-4o Mini",
@@ -36,29 +30,23 @@ export const AI_MODELS: AIModel[] = [
     description: "Fast & affordable",
   },
   {
-    id: "gpt-4-turbo",
-    name: "GPT-4 Turbo",
+    id: "gpt-3.5-turbo",
+    name: "GPT-3.5 Turbo",
     provider: "openai",
-    description: "High performance",
+    description: "Fastest & cheapest",
   },
-  // Anthropic Claude models
-  {
-    id: "claude-sonnet",
-    name: "Claude Sonnet 4",
-    provider: "anthropic",
-    description: "Balanced & capable",
-  },
-  {
-    id: "claude-opus",
-    name: "Claude Opus 4",
-    provider: "anthropic",
-    description: "Most capable Claude",
-  },
+  // Anthropic Claude models - prioritize less tokens/cheaper models
   {
     id: "claude-haiku",
     name: "Claude Haiku",
     provider: "anthropic",
     description: "Fast & efficient",
+  },
+  {
+    id: "claude-sonnet",
+    name: "Claude Sonnet",
+    provider: "anthropic",
+    description: "Balanced & capable",
   },
 ];
 
@@ -78,22 +66,24 @@ interface ModelSelectorProps {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  compact?: boolean;
 }
 
-export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps) {
+export function ModelSelector({ value, onChange, disabled, compact = false }: ModelSelectorProps) {
   const selectedModel = AI_MODELS.find((m) => m.id === value);
   const Icon = selectedModel ? providerIcons[selectedModel.provider] : Sparkles;
 
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger className="w-full sm:w-[200px] bg-background">
-        <div className="flex items-center gap-2">
-          <Icon className={`h-4 w-4 ${selectedModel ? providerColors[selectedModel.provider] : ""}`} />
-          <SelectValue placeholder="Select AI Model" />
+      <SelectTrigger className={compact ? "h-8 w-auto gap-1 px-2 text-xs bg-secondary border-0" : "w-full sm:w-[200px] bg-background"}>
+        <div className="flex items-center gap-1.5">
+          <Icon className={`h-3.5 w-3.5 ${selectedModel ? providerColors[selectedModel.provider] : ""}`} />
+          {!compact && <SelectValue placeholder="Select AI Model" />}
+          {compact && <span className="text-xs">{selectedModel?.name || "Model"}</span>}
         </div>
       </SelectTrigger>
       <SelectContent className="bg-popover z-50">
-        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Gemini (Free)</div>
+        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Gemini (Lovable)</div>
         {AI_MODELS.filter((m) => m.provider === "gemini").map((model) => {
           const ModelIcon = providerIcons[model.provider];
           return (
@@ -121,7 +111,7 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
           );
         })}
         
-        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">Anthropic</div>
+        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">Claude</div>
         {AI_MODELS.filter((m) => m.provider === "anthropic").map((model) => {
           const ModelIcon = providerIcons[model.provider];
           return (

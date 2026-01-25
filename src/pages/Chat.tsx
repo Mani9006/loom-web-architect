@@ -698,22 +698,15 @@ ${clientSummary}
               <>
                 {/* Chat Panel - Left - Only this scrolls */}
                 <div className="w-[400px] border-r border-border flex flex-col h-full overflow-hidden">
-                  {/* Model Selector - fixed at top */}
-                  <div className="shrink-0 p-3 border-b border-border bg-background">
-                    <ModelSelector
-                      value={selectedModel}
-                      onChange={setSelectedModel}
-                      disabled={isLoading}
-                    />
-                  </div>
-                  
-                  {/* Chat messages - only this part scrolls */}
+                  {/* Chat messages - scrollable */}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     <ResumeChatPanel
                       messages={chatMessages}
                       isLoading={isLoading}
                       generationPhase={generationPhase}
                       onSendMessage={handleSendMessage}
+                      selectedModel={selectedModel}
+                      onModelChange={setSelectedModel}
                     />
                   </div>
                   
