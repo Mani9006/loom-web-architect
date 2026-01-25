@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { Upload, X, Loader2, CheckCircle } from "lucide-react";
+import { useState, useRef, useCallback } from "react";
+import { Upload, X, Loader2, CheckCircle, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,6 +21,8 @@ interface DocumentUploadProps {
   label?: string;
 }
 
+const VALID_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"];
+
 export function DocumentUpload({
   onTextExtracted,
   isLoading: externalLoading = false,
@@ -32,13 +34,12 @@ export function DocumentUpload({
   const [isUploading, setIsUploading] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [progressState, setProgressState] = useState<ProgressState | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const validateFile = useCallback((file: File): boolean => {
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       toast({
@@ -46,20 +47,25 @@ export function DocumentUpload({
         description: "Please upload a file smaller than 10MB",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     // Validate file type
-    const validExtensions = [".pdf", ".doc", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"];
     const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
-    if (!validExtensions.includes(fileExt)) {
+    if (!VALID_EXTENSIONS.includes(fileExt)) {
       toast({
         title: "Invalid file type",
-        description: "Please upload a PDF, Word document, or text file",
+        description: "Please upload a PDF, Word document, text file, or image",
         variant: "destructive",
       });
-      return;
+      return false;
     }
+
+    return true;
+  }, [toast]);
+
+  const processFile = useCallback(async (file: File) => {
+    if (!validateFile(file)) return;
 
     setIsUploading(true);
 
@@ -196,7 +202,51 @@ export function DocumentUpload({
         fileInputRef.current.value = "";
       }
     }
-  };
+  }, [validateFile, onTextExtracted, toast]);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+  }, [processFile]);
+
+  const isProcessing = isUploading || isParsing || externalLoading;
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isProcessing) {
+      setIsDragOver(true);
+    }
+  }, [isProcessing]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set drag over to false if we're leaving the drop zone entirely
+    if (dropZoneRef.current && !dropZoneRef.current.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (isProcessing) return;
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      processFile(files[0]);
+    }
+  }, [isProcessing, processFile]);
 
   const handleClear = () => {
     setUploadedFile(null);
@@ -206,49 +256,68 @@ export function DocumentUpload({
     }
   };
 
-  const isProcessing = isUploading || isParsing || externalLoading;
-
   return (
     <div className={cn("space-y-3", className)}>
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isProcessing}
-          className="gap-2"
-        >
-          {isUploading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading...
-            </>
-          ) : isParsing ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Processing...
-            </>
-          ) : (
-            <>
-              <Upload className="w-4 h-4" />
-              {label}
-            </>
-          )}
-        </Button>
-
-        {uploadedFile && !isProcessing && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-md text-sm">
-            <CheckCircle className="w-4 h-4 text-green-500" />
-            <span className="truncate max-w-[150px]">{uploadedFile.name}</span>
-            <button
+      {/* Drag and drop zone */}
+      <div
+        ref={dropZoneRef}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onClick={() => !isProcessing && fileInputRef.current?.click()}
+        className={cn(
+          "relative border-2 border-dashed rounded-lg p-6 transition-all cursor-pointer",
+          "flex flex-col items-center justify-center gap-2 text-center",
+          isDragOver 
+            ? "border-primary bg-primary/5" 
+            : "border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/50",
+          isProcessing && "pointer-events-none opacity-60"
+        )}
+      >
+        {isUploading ? (
+          <>
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <p className="text-sm font-medium">Uploading...</p>
+          </>
+        ) : isParsing ? (
+          <>
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <p className="text-sm font-medium">Processing document...</p>
+          </>
+        ) : isDragOver ? (
+          <>
+            <FileUp className="w-8 h-8 text-primary" />
+            <p className="text-sm font-medium text-primary">Drop file here</p>
+          </>
+        ) : uploadedFile ? (
+          <>
+            <CheckCircle className="w-8 h-8 text-green-500" />
+            <p className="text-sm font-medium">{uploadedFile.name}</p>
+            <Button
               type="button"
-              onClick={handleClear}
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClear();
+              }}
               className="text-muted-foreground hover:text-foreground"
             >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+              <X className="w-4 h-4 mr-1" />
+              Remove
+            </Button>
+          </>
+        ) : (
+          <>
+            <Upload className="w-8 h-8 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium">{label}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Drag & drop or click to browse
+              </p>
+            </div>
+          </>
         )}
 
         <input
@@ -277,7 +346,7 @@ export function DocumentUpload({
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground text-center">
         Supports: PDF (including multi-page scanned), Word (.docx), Text files, Images (PNG, JPG) - Max 10MB
       </p>
     </div>
