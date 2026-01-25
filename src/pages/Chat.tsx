@@ -5,17 +5,17 @@ import { User, Session } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { ChatHeader } from "@/components/chat/ChatHeader";
-import { ChatWelcome } from "@/components/chat/ChatWelcome";
-import { ChatMessages } from "@/components/chat/ChatMessages";
 import { ChatInput } from "@/components/chat/ChatInput";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Menu } from "lucide-react";
+import { ResumeForm, ResumeData } from "@/components/resume/ResumeForm";
+import { ResumeChat } from "@/components/resume/ResumeChat";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  isThinking?: boolean;
 };
 
 type Conversation = {
@@ -34,6 +34,9 @@ export default function Chat() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<{ full_name: string | null; email: string | null } | null>(null);
+  const [showResumeForm, setShowResumeForm] = useState(true);
+  const [generationPhase, setGenerationPhase] = useState<"thinking" | "generating" | null>(null);
+  const [resumeData, setResumeData] = useState<ResumeData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { conversationId } = useParams();
@@ -69,9 +72,12 @@ export default function Chat() {
   useEffect(() => {
     if (conversationId && user) {
       loadConversation(conversationId);
+      setShowResumeForm(false);
     } else {
       setCurrentConversation(null);
       setMessages([]);
+      setShowResumeForm(true);
+      setResumeData(null);
     }
   }, [conversationId, user]);
 
@@ -128,12 +134,12 @@ export default function Chat() {
     }
   };
 
-  const createNewConversation = async (): Promise<string | null> => {
+  const createNewConversation = async (title: string): Promise<string | null> => {
     if (!user) return null;
 
     const { data, error } = await supabase
       .from("conversations")
-      .insert({ user_id: user.id, title: "New conversation" })
+      .insert({ user_id: user.id, title })
       .select()
       .single();
 
@@ -155,32 +161,177 @@ export default function Chat() {
     setCurrentConversation(null);
     setMessages([]);
     setInput("");
+    setShowResumeForm(true);
+    setResumeData(null);
+  };
+
+  const handleGenerateResume = async (data: ResumeData) => {
+    if (!user || !session) return;
+
+    setResumeData(data);
+    setShowResumeForm(false);
+    setIsLoading(true);
+    setGenerationPhase("thinking");
+
+    try {
+      // Create conversation for this resume
+      const title = `Resume: ${data.personalInfo.fullName}`;
+      const convId = await createNewConversation(title);
+      
+      if (!convId) {
+        setIsLoading(false);
+        setShowResumeForm(true);
+        return;
+      }
+      
+      navigate(`/c/${convId}`);
+
+      // Add initial user message
+      const userSummary = `Generate my resume:\n• Name: ${data.personalInfo.fullName}\n• Target Role: ${data.targetRole || "General"}\n• Experience: ${data.experience.length} position(s)\n• Skills: ${data.skills.join(", ") || "Not specified"}`;
+      
+      const { data: savedUserMsg, error: userMsgError } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: convId,
+          role: "user",
+          content: userSummary,
+        })
+        .select()
+        .single();
+
+      if (userMsgError) throw userMsgError;
+
+      setMessages([savedUserMsg as Message]);
+
+      // Create placeholder for AI response with thinking state
+      const tempId = crypto.randomUUID();
+      setMessages((prev) => [
+        ...prev,
+        { id: tempId, role: "assistant", content: "", created_at: new Date().toISOString(), isThinking: true },
+      ]);
+
+      // Simulate thinking phase
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setGenerationPhase("generating");
+
+      // Stream AI response
+      let assistantContent = "";
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resume-chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: [],
+            resumeData: data,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error("Rate limit exceeded. Please wait a moment and try again.");
+        }
+        if (response.status === 402) {
+          throw new Error("AI usage limit reached. Please add credits to continue.");
+        }
+        throw new Error("Failed to generate resume");
+      }
+
+      // Update to show content is coming
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
+      );
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          let newlineIndex: number;
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === tempId ? { ...m, content: assistantContent } : m
+                  )
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+
+      // Save assistant message
+      const { data: savedAssistantMsg } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: convId,
+          role: "assistant",
+          content: assistantContent,
+        })
+        .select()
+        .single();
+
+      if (savedAssistantMsg) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? (savedAssistantMsg as Message) : m))
+        );
+      }
+
+      await fetchConversations();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate resume",
+        variant: "destructive",
+      });
+      setShowResumeForm(true);
+    } finally {
+      setIsLoading(false);
+      setGenerationPhase(null);
+    }
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isLoading || !user || !session) return;
+    if (!input.trim() || isLoading || !user || !session || !currentConversation) return;
 
     const userMessage = input.trim();
     setInput("");
     setIsLoading(true);
 
     try {
-      let convId = currentConversation?.id;
-
-      if (!convId) {
-        convId = await createNewConversation();
-        if (!convId) {
-          setIsLoading(false);
-          return;
-        }
-        navigate(`/c/${convId}`);
-      }
-
       // Save user message
       const { data: savedUserMsg, error: userMsgError } = await supabase
         .from("messages")
         .insert({
-          conversation_id: convId,
+          conversation_id: currentConversation.id,
           role: "user",
           content: userMessage,
         })
@@ -190,16 +341,6 @@ export default function Chat() {
       if (userMsgError) throw userMsgError;
 
       setMessages((prev) => [...prev, savedUserMsg as Message]);
-
-      // Update conversation title if first message
-      if (messages.length === 0) {
-        const title = userMessage.slice(0, 50) + (userMessage.length > 50 ? "..." : "");
-        await supabase
-          .from("conversations")
-          .update({ title })
-          .eq("id", convId);
-        await fetchConversations();
-      }
 
       // Stream AI response
       let assistantContent = "";
@@ -211,7 +352,7 @@ export default function Chat() {
       ]);
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resume-chat`,
         {
           method: "POST",
           headers: {
@@ -271,7 +412,6 @@ export default function Chat() {
                 );
               }
             } catch {
-              // Partial JSON, put back
               buffer = line + "\n" + buffer;
               break;
             }
@@ -283,7 +423,7 @@ export default function Chat() {
       const { data: savedAssistantMsg } = await supabase
         .from("messages")
         .insert({
-          conversation_id: convId,
+          conversation_id: currentConversation.id,
           role: "assistant",
           content: assistantContent,
         })
@@ -300,7 +440,7 @@ export default function Chat() {
       await supabase
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })
-        .eq("id", convId);
+        .eq("id", currentConversation.id);
 
       await fetchConversations();
     } catch (error) {
@@ -350,23 +490,27 @@ export default function Chat() {
           />
 
           <main className="flex-1 flex flex-col overflow-hidden">
-            {messages.length === 0 ? (
-              <ChatWelcome
-                displayName={displayName}
-                onSuggestionClick={(suggestion) => {
-                  setInput(suggestion);
-                }}
-              />
+            {showResumeForm ? (
+              <div className="flex-1 overflow-y-auto">
+                <ResumeForm onGenerate={handleGenerateResume} isGenerating={isLoading} />
+              </div>
             ) : (
-              <ChatMessages messages={messages} messagesEndRef={messagesEndRef} />
-            )}
+              <>
+                <ResumeChat
+                  messages={messages}
+                  messagesEndRef={messagesEndRef}
+                  isGenerating={isLoading}
+                  generationPhase={generationPhase}
+                />
 
-            <ChatInput
-              input={input}
-              isLoading={isLoading}
-              onInputChange={setInput}
-              onSend={handleSend}
-            />
+                <ChatInput
+                  input={input}
+                  isLoading={isLoading}
+                  onInputChange={setInput}
+                  onSend={handleSend}
+                />
+              </>
+            )}
           </main>
         </div>
       </div>
