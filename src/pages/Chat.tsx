@@ -5,13 +5,16 @@ import { User, Session } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { ChatHeader } from "@/components/chat/ChatHeader";
+import { ChatWelcome } from "@/components/chat/ChatWelcome";
+import { GeneralChatPanel, GeneralChatMessage } from "@/components/chat/GeneralChatPanel";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
 import { ResumeChatPanel, ChatMessage, ProjectOptionsData, SummaryOptionsData } from "@/components/resume/ResumeChatPanel";
 import { ResumePreview } from "@/components/resume/ResumePreview";
 import { OptionsPanel } from "@/components/resume/OptionsPanel";
-import { ModelSelector } from "@/components/resume/ModelSelector";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ResumeData, Client } from "@/types/resume";
+
+type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat";
 
 type Conversation = {
   id: string;
@@ -70,10 +73,11 @@ export default function Chat() {
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<{ full_name: string | null; email: string | null } | null>(null);
-  const [showForm, setShowForm] = useState(true);
+  const [chatMode, setChatMode] = useState<ChatMode>("welcome");
   const [generationPhase, setGenerationPhase] = useState<"thinking" | "generating" | null>(null);
   const [resumeData, setResumeData] = useState<ResumeData>(createEmptyResumeData());
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [generalMessages, setGeneralMessages] = useState<GeneralChatMessage[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectOptionsData[]>([]);
   const [summaryOptions, setSummaryOptions] = useState<SummaryOptionsData | null>(null);
   const [selectedModel, setSelectedModel] = useState("gemini-flash");
@@ -111,11 +115,12 @@ export default function Chat() {
   useEffect(() => {
     if (conversationId && user) {
       loadConversation(conversationId);
-      setShowForm(false);
+      setChatMode("resume-chat");
     } else {
       setCurrentConversation(null);
       setChatMessages([]);
-      setShowForm(true);
+      setGeneralMessages([]);
+      setChatMode("welcome");
       setResumeData(createEmptyResumeData());
     }
   }, [conversationId, user]);
@@ -189,8 +194,114 @@ export default function Chat() {
     navigate("/");
     setCurrentConversation(null);
     setChatMessages([]);
-    setShowForm(true);
+    setGeneralMessages([]);
+    setChatMode("welcome");
     setResumeData(createEmptyResumeData());
+  };
+
+  const handleStartResume = () => {
+    setChatMode("resume-form");
+  };
+
+  const handleGeneralChat = async (message: string) => {
+    if (!session) return;
+
+    // Switch to general chat mode if in welcome
+    if (chatMode === "welcome") {
+      setChatMode("general");
+    }
+
+    setIsLoading(true);
+    const userMsg: GeneralChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+
+    setGeneralMessages((prev) => [...prev, userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setGeneralMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date(), isThinking: true },
+    ]);
+
+    try {
+      let assistantContent = "";
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: [...generalMessages, userMsg].map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to get response");
+      }
+
+      setGeneralMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
+      );
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex: number;
+
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                setGeneralMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to get response",
+        variant: "destructive",
+      });
+      setGeneralMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const calculateTotalExperience = (clients: Client[]): number => {
@@ -233,7 +344,7 @@ export default function Chat() {
 
     setIsLoading(true);
     setGenerationPhase("thinking");
-    setShowForm(false);
+    setChatMode("resume-chat");
 
     // Calculate total experience
     const totalYears = calculateTotalExperience(resumeData.clients);
@@ -244,7 +355,7 @@ export default function Chat() {
       const convId = await createNewConversation(title);
       if (!convId) {
         setIsLoading(false);
-        setShowForm(true);
+        setChatMode("resume-form");
         return;
       }
       navigate(`/c/${convId}`);
@@ -383,7 +494,7 @@ ${clientSummary}
         description: error instanceof Error ? error.message : "Failed to generate resume",
         variant: "destructive",
       });
-      setShowForm(true);
+      setChatMode("resume-form");
     } finally {
       setIsLoading(false);
       setGenerationPhase(null);
@@ -686,7 +797,30 @@ ${clientSummary}
           <ChatHeader user={user} displayName={displayName} onSignOut={handleSignOut} />
 
           <main className="flex-1 flex overflow-hidden">
-            {showForm ? (
+            {/* Welcome / General Chat Mode */}
+            {(chatMode === "welcome" || chatMode === "general") && (
+              <div className="flex-1">
+                <GeneralChatPanel
+                  messages={generalMessages}
+                  isLoading={isLoading}
+                  onSendMessage={handleGeneralChat}
+                  selectedModel={selectedModel}
+                  onModelChange={setSelectedModel}
+                  welcomeComponent={
+                    chatMode === "welcome" ? (
+                      <ChatWelcome
+                        displayName={displayName}
+                        onSuggestionClick={handleGeneralChat}
+                        onStartResume={handleStartResume}
+                      />
+                    ) : undefined
+                  }
+                />
+              </div>
+            )}
+
+            {/* Resume Form Mode */}
+            {chatMode === "resume-form" && (
               <div className="flex-1 relative">
                 <EnhancedResumeForm
                   data={resumeData}
@@ -695,11 +829,13 @@ ${clientSummary}
                   isGenerating={isLoading}
                 />
               </div>
-            ) : (
+            )}
+
+            {/* Resume Chat Mode */}
+            {chatMode === "resume-chat" && (
               <>
-                {/* Chat Panel - Left - Only this scrolls */}
+                {/* Chat Panel - Left */}
                 <div className="w-[400px] border-r border-border flex flex-col h-full overflow-hidden">
-                  {/* Chat messages - scrollable */}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     <ResumeChatPanel
                       messages={chatMessages}
@@ -711,7 +847,6 @@ ${clientSummary}
                     />
                   </div>
                   
-                  {/* Options Panel - fixed at bottom of chat panel */}
                   {(projectOptions.length > 0 || summaryOptions) && (
                     <div className="shrink-0 max-h-[280px] overflow-y-auto border-t border-border">
                       <OptionsPanel
@@ -724,7 +859,7 @@ ${clientSummary}
                   )}
                 </div>
 
-                {/* Resume Preview - Right - Fixed, scrolls only if content exceeds viewport */}
+                {/* Resume Preview - Right */}
                 <div className="flex-1 h-full overflow-y-auto bg-muted/30">
                   <ResumePreview data={resumeData} isGenerating={isLoading} />
                 </div>
