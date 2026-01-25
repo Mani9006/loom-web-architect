@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { FileText, Trash2, MoreVertical, ExternalLink } from "lucide-react";
+import { FileText, Trash2, MoreVertical, ExternalLink, Pencil, FileDown, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -20,12 +21,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CoverLetter } from "@/hooks/use-cover-letters";
+import { CoverLetterEditDialog } from "./CoverLetterEditDialog";
+import { useCoverLetterActions, EmailDialog } from "./CoverLetterActions";
 
 interface SavedCoverLettersListProps {
   coverLetters: CoverLetter[];
   isLoading: boolean;
   onSelect: (coverLetter: CoverLetter) => void;
   onDelete: (id: string) => Promise<boolean>;
+  onUpdate: (id: string, data: { title?: string; content?: string }) => Promise<boolean>;
 }
 
 export function SavedCoverLettersList({
@@ -33,9 +37,13 @@ export function SavedCoverLettersList({
   isLoading,
   onSelect,
   onDelete,
+  onUpdate,
 }: SavedCoverLettersListProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [editLetter, setEditLetter] = useState<CoverLetter | null>(null);
+  const [emailLetter, setEmailLetter] = useState<CoverLetter | null>(null);
+  const { isExporting, exportToPdf, openEmailClient } = useCoverLetterActions();
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -115,6 +123,36 @@ export function SavedCoverLettersList({
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();
+                      setEditLetter(letter);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      exportToPdf(letter.content, letter.title);
+                    }}
+                    disabled={isExporting}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Save as PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEmailLetter(letter);
+                    }}
+                  >
+                    <Mail className="h-4 w-4 mr-2" />
+                    Send via Email
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setDeleteId(letter.id);
                     }}
                     className="text-destructive focus:text-destructive"
@@ -149,6 +187,22 @@ export function SavedCoverLettersList({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CoverLetterEditDialog
+        letter={editLetter}
+        open={!!editLetter}
+        onOpenChange={(open) => !open && setEditLetter(null)}
+        onSave={onUpdate}
+      />
+
+      <EmailDialog
+        open={!!emailLetter}
+        onOpenChange={(open) => !open && setEmailLetter(null)}
+        content={emailLetter?.content || ""}
+        companyName={emailLetter?.company_name || undefined}
+        jobTitle={emailLetter?.job_title || undefined}
+        onSend={openEmailClient}
+      />
     </>
   );
 }
