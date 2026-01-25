@@ -162,18 +162,25 @@ serve(async (req) => {
     const latestUserMessage = messages.filter((m: any) => m.role === "user").pop();
     const userQuery = latestUserMessage?.content || "";
 
-    // Search for relevant memories (parallel with building prompt)
+    // Select appropriate system prompt based on mode
+    const chatMode = mode || "general";
+
+    // Only use memory for specific career-focused modes
+    const memoryEnabledModes = ["interview", "job_search", "resume"];
+    const shouldUseMemory = memoryEnabledModes.includes(chatMode);
+
+    // Search for relevant memories only for specific modes
     let memoryContext = "";
-    if (MEM0_API_KEY && userQuery) {
+    if (MEM0_API_KEY && userQuery && shouldUseMemory) {
       const memories = await searchMem0(MEM0_API_KEY, user.id, userQuery);
       if (memories.length > 0) {
         memoryContext = `\n\n## User Context\nRelevant information from previous interactions:\n${memories.map(m => `- ${m}`).join("\n")}`;
-        console.log(`[Chat] Found ${memories.length} relevant memories`);
+        console.log(`[Chat] Found ${memories.length} relevant memories for mode: ${chatMode}`);
       }
+    } else if (!shouldUseMemory) {
+      console.log(`[Chat] Memory disabled for mode: ${chatMode}`);
     }
 
-    // Select appropriate system prompt based on mode
-    const chatMode = mode || "general";
     const basePrompt = SYSTEM_PROMPTS[chatMode] || SYSTEM_PROMPTS.general;
     const systemPrompt = basePrompt + memoryContext;
 
@@ -219,13 +226,14 @@ serve(async (req) => {
       });
     }
 
-    // Add to memory in background (fire and forget)
-    if (MEM0_API_KEY && messages.length > 0) {
+    // Add to memory in background only for career-focused modes
+    if (MEM0_API_KEY && messages.length > 0 && shouldUseMemory) {
       const recentMessages = messages.slice(-4).map((m: any) => ({
         role: m.role,
         content: m.content,
       }));
       addToMem0(MEM0_API_KEY, user.id, recentMessages);
+      console.log(`[Chat] Storing memory for mode: ${chatMode}`);
     }
 
     return new Response(response.body, {
