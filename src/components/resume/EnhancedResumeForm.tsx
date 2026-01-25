@@ -9,6 +9,7 @@ import { Plus, X, Sparkles, Loader2, FileText, Briefcase, GraduationCap, Award, 
 import { ResumeData, Client, Education, Certification, SkillCategory } from "@/types/resume";
 import { TemplateSelector } from "./TemplateSelector";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
+import { ResumeFormSkeleton } from "./ResumeFormSkeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 interface EnhancedResumeFormProps {
@@ -399,36 +400,49 @@ CRITICAL: Parse ALL experience entries, ALL education entries, ALL certification
             </CardContent>
           </Card>
 
-          {/* Template Selection Button */}
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setShowTemplateSelector(true)}
-            className="w-full justify-start gap-2 h-12"
-          >
-            <FileText className="h-4 w-4" />
-            {data.templateId
-              ? `Template: ${data.templateId === "creative" ? "Creative" : "Professional"}`
-              : "Choose Template"}
-            <span className="ml-auto text-muted-foreground">Change →</span>
-          </Button>
+          {/* Show skeleton while parsing */}
+          {isParsingResume && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-primary font-medium">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>AI is extracting your resume data...</span>
+              </div>
+              <ResumeFormSkeleton />
+            </div>
+          )}
 
-          {/* Target Role */}
-          <Card className="border-border">
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                🎯 Target Role
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <Input
-                placeholder="e.g., Senior ML Engineer, Data Scientist"
-                value={data.targetRole}
-                onChange={(e) => onChange({ ...data, targetRole: e.target.value })}
-                className="bg-background"
-              />
-            </CardContent>
-          </Card>
+          {/* Hide form fields while parsing, show when done */}
+          <div className={isParsingResume ? "opacity-0 h-0 overflow-hidden" : "space-y-4 animate-fade-in"}>
+            {/* Template Selection Button */}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowTemplateSelector(true)}
+              className="w-full justify-start gap-2 h-12"
+            >
+              <FileText className="h-4 w-4" />
+              {data.templateId
+                ? `Template: ${data.templateId === "creative" ? "Creative" : "Professional"}`
+                : "Choose Template"}
+              <span className="ml-auto text-muted-foreground">Change →</span>
+            </Button>
+
+            {/* Target Role */}
+            <Card className="border-border">
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  🎯 Target Role
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <Input
+                  placeholder="e.g., Senior ML Engineer, Data Scientist"
+                  value={data.targetRole}
+                  onChange={(e) => onChange({ ...data, targetRole: e.target.value })}
+                  className="bg-background"
+                />
+              </CardContent>
+            </Card>
 
           {/* Personal Information */}
           <Card className="border-border">
@@ -824,6 +838,7 @@ CRITICAL: Parse ALL experience entries, ALL education entries, ALL certification
               ))}
             </CardContent>
           </Card>
+          </div>
         </div>
       </ScrollArea>
 
@@ -831,8 +846,8 @@ CRITICAL: Parse ALL experience entries, ALL education entries, ALL certification
       <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent">
         <Button
           onClick={onGenerate}
-          disabled={!isFormValid || isGenerating}
-          className="w-full h-12 text-base gap-2 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 hover:opacity-90"
+          disabled={!isFormValid || isGenerating || isParsingResume}
+          className="w-full h-12 text-base gap-2"
         >
           {isGenerating ? (
             <>
