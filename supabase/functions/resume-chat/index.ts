@@ -6,6 +6,69 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Mem0 helper - search for user context
+async function searchUserMemories(userId: string): Promise<string> {
+  const MEM0_API_KEY = Deno.env.get("MEM0_API_KEY");
+  if (!MEM0_API_KEY) return "";
+
+  try {
+    const response = await fetch("https://api.mem0.ai/v1/memories/search/", {
+      method: "POST",
+      headers: {
+        "Authorization": `Token ${MEM0_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: "resume career experience skills job preferences",
+        user_id: userId,
+        limit: 10,
+      }),
+    });
+
+    if (!response.ok) return "";
+
+    const data = await response.json();
+    const memories = Array.isArray(data) 
+      ? data.map((m: any) => m.memory || m.content).filter(Boolean)
+      : data.results?.map((m: any) => m.memory || m.content).filter(Boolean) || [];
+
+    if (memories.length > 0) {
+      return `\n\n## User Context (from memory):\n${memories.map((m: string) => `- ${m}`).join("\n")}`;
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+// Mem0 helper - save resume context
+async function saveResumeContext(userId: string, resumeData: any): Promise<void> {
+  const MEM0_API_KEY = Deno.env.get("MEM0_API_KEY");
+  if (!MEM0_API_KEY || !resumeData) return;
+
+  try {
+    const contextSummary = `Resume created for ${resumeData.personalInfo?.fullName || 'user'}. ` +
+      `Target role: ${resumeData.targetRole || 'not specified'}. ` +
+      `Experience: ${resumeData.totalYearsExperience || 0}+ years. ` +
+      `Skills: ${resumeData.skillCategories?.map((c: any) => c.skills?.join(', ')).join('; ') || 'not provided'}.`;
+
+    await fetch("https://api.mem0.ai/v1/memories/", {
+      method: "POST",
+      headers: {
+        "Authorization": `Token ${MEM0_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: contextSummary }],
+        user_id: userId,
+        metadata: { type: "resume_context" },
+      }),
+    });
+  } catch (e) {
+    console.error("Memory save error:", e);
+  }
+}
+
 const RESUME_SYSTEM_PROMPT = `You are an expert resume writer creating ATS-optimized resumes following this EXACT LaTeX template structure.
 
 ## CRITICAL: Output Format Rules
@@ -350,6 +413,9 @@ serve(async (req) => {
       });
     }
 
+    // Fetch user memories in parallel with building context
+    const userMemoryPromise = searchUserMemories(user.id);
+
     // Build context message if resumeData is provided (first generation)
     let contextMessage = "";
     if (resumeData) {
@@ -432,7 +498,9 @@ ${JSON.stringify(currentResume, null, 2)}
 IMPORTANT: When refining, maintain the EXACT same template structure. Only update the content the user specifies.`;
     }
 
-    console.log(`Calling ${config.provider} with model ${config.model}`);
+    // Get user memories and add to system prompt
+    const userMemoryContext = await userMemoryPromise;
+    console.log(`Calling ${config.provider} with model ${config.model}, memory context: ${userMemoryContext.length > 0}`);
 
     const allMessages = contextMessage 
       ? [{ role: "user", content: contextMessage + resumeContext }, ...messages]
@@ -441,10 +509,17 @@ IMPORTANT: When refining, maintain the EXACT same template structure. Only updat
           content: m.content + (resumeContext && idx === messages.length - 1 ? resumeContext : "") 
         }));
 
+    const systemPromptWithMemory = RESUME_SYSTEM_PROMPT + userMemoryContext;
+    
     const fullMessages = [
-      { role: "system", content: RESUME_SYSTEM_PROMPT },
+      { role: "system", content: systemPromptWithMemory },
       ...allMessages,
     ];
+
+    // Save resume context to memory in background (fire and forget)
+    if (resumeData) {
+      saveResumeContext(user.id, resumeData);
+    }
 
     let response: Response;
 

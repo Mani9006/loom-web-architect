@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.memory-management]
 verify_jwt = false
+
+[functions.ai-orchestrator]
+verify_jwt = false
