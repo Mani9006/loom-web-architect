@@ -1,11 +1,30 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, User, Brain, FileText, Check, RefreshCw } from "lucide-react";
+import { Send, Sparkles, User, Brain, FileText, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
-import { ResumeData, SummaryOption, ProjectOption } from "@/types/resume";
+
+export type ProjectOptionsData = {
+  clientId: string;
+  clientName: string;
+  role: string;
+  options: Array<{
+    id: string;
+    title: string;
+    bullets: string[];
+    isSelected?: boolean;
+  }>;
+};
+
+export type SummaryOptionsData = {
+  options: Array<{
+    id: string;
+    content: string;
+    isSelected?: boolean;
+  }>;
+};
 
 export type ChatMessage = {
   id: string;
@@ -13,8 +32,10 @@ export type ChatMessage = {
   content: string;
   timestamp: Date;
   isThinking?: boolean;
-  type?: "text" | "summary_options" | "project_options";
-  options?: any;
+  inlineOptions?: {
+    type: "project" | "summary";
+    data: ProjectOptionsData | SummaryOptionsData;
+  };
 };
 
 interface ResumeChatPanelProps {
@@ -23,8 +44,7 @@ interface ResumeChatPanelProps {
   generationPhase?: "thinking" | "generating" | null;
   onSendMessage: (message: string) => void;
   onSelectSummary?: (optionId: string) => void;
-  onSelectProject?: (clientId: string, projectId: string) => void;
-  resumeData: ResumeData;
+  onSelectProject?: (clientId: string, optionId: string) => void;
 }
 
 export function ResumeChatPanel({
@@ -34,7 +54,6 @@ export function ResumeChatPanel({
   onSendMessage,
   onSelectSummary,
   onSelectProject,
-  resumeData,
 }: ResumeChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -67,8 +86,8 @@ export function ResumeChatPanel({
         <div className="space-y-4">
           {messages.length === 0 && (
             <div className="text-center py-12">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-6 h-6 text-primary-foreground" />
               </div>
               <h3 className="text-lg font-medium mb-2">AI Resume Assistant</h3>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto">
@@ -86,8 +105,8 @@ export function ResumeChatPanel({
               )}
             >
               {message.role === "assistant" && (
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shrink-0">
-                  <Sparkles className="w-4 h-4 text-white" />
+                <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shrink-0">
+                  <Sparkles className="w-4 h-4 text-primary-foreground" />
                 </div>
               )}
 
@@ -124,66 +143,26 @@ export function ResumeChatPanel({
                   </div>
                 )}
 
-                {/* Summary options */}
-                {message.type === "summary_options" && message.options && (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Choose a summary:</p>
-                    {(message.options as SummaryOption[]).map((option, idx) => (
-                      <button
-                        key={option.id}
-                        onClick={() => onSelectSummary?.(option.id)}
-                        className={cn(
-                          "w-full text-left p-2 rounded-lg border text-xs transition-all",
-                          option.isSelected
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/50"
-                        )}
-                      >
-                        <div className="flex items-start gap-2">
-                          <span className="font-medium shrink-0">Option {idx + 1}:</span>
-                          <span className="line-clamp-3">{option.content}</span>
-                        </div>
-                        {option.isSelected && (
-                          <Check className="h-4 w-4 text-primary mt-1" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
+                {/* Inline Project Options */}
+                {message.inlineOptions?.type === "project" && (
+                  <InlineProjectOptions
+                    data={message.inlineOptions.data as ProjectOptionsData}
+                    onSelect={onSelectProject}
+                  />
                 )}
 
-                {/* Project options */}
-                {message.type === "project_options" && message.options && (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Choose a project version:</p>
-                    {(message.options as { clientId: string; projects: ProjectOption[] }).projects.map((project, idx) => (
-                      <button
-                        key={project.id}
-                        onClick={() => onSelectProject?.(message.options.clientId, project.id)}
-                        className={cn(
-                          "w-full text-left p-2 rounded-lg border text-xs transition-all",
-                          project.isSelected
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/50"
-                        )}
-                      >
-                        <div className="font-medium mb-1">{project.title || `Project ${idx + 1}`}</div>
-                        <ul className="list-disc pl-4 space-y-0.5">
-                          {project.bullets.slice(0, 2).map((bullet, i) => (
-                            <li key={i} className="line-clamp-1">{bullet}</li>
-                          ))}
-                          {project.bullets.length > 2 && (
-                            <li className="text-muted-foreground">+{project.bullets.length - 2} more...</li>
-                          )}
-                        </ul>
-                      </button>
-                    ))}
-                  </div>
+                {/* Inline Summary Options */}
+                {message.inlineOptions?.type === "summary" && (
+                  <InlineSummaryOptions
+                    data={message.inlineOptions.data as SummaryOptionsData}
+                    onSelect={onSelectSummary}
+                  />
                 )}
               </div>
 
               {message.role === "user" && (
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
-                  <User className="w-4 h-4 text-white" />
+                <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4 text-accent-foreground" />
                 </div>
               )}
             </div>
@@ -208,7 +187,7 @@ export function ResumeChatPanel({
             type="submit"
             size="icon"
             disabled={!input.trim() || isLoading}
-            className="shrink-0 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"
+            className="shrink-0"
           >
             <Send className="h-4 w-4" />
           </Button>
@@ -234,14 +213,90 @@ export function ResumeChatPanel({
   );
 }
 
+interface InlineProjectOptionsProps {
+  data: ProjectOptionsData;
+  onSelect?: (clientId: string, optionId: string) => void;
+}
+
+function InlineProjectOptions({ data, onSelect }: InlineProjectOptionsProps) {
+  return (
+    <div className="mt-3 space-y-2 border-t border-border pt-3">
+      <p className="text-xs font-medium text-muted-foreground mb-2">
+        Choose project bullets for <span className="text-foreground">{data.clientName}</span> ({data.role}):
+      </p>
+      {data.options.map((option, idx) => (
+        <button
+          key={option.id}
+          onClick={() => onSelect?.(data.clientId, option.id)}
+          className={cn(
+            "w-full text-left p-3 rounded-lg border text-xs transition-all",
+            option.isSelected
+              ? "border-primary bg-primary/10"
+              : "border-border hover:border-primary/50 hover:bg-accent/50"
+          )}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold">{option.title || `Option ${idx + 1}`}</span>
+            {option.isSelected && <Check className="h-4 w-4 text-primary" />}
+          </div>
+          <ul className="list-disc pl-4 space-y-1 text-muted-foreground">
+            {option.bullets.slice(0, 3).map((bullet, i) => (
+              <li key={i} className="line-clamp-2">{bullet}</li>
+            ))}
+            {option.bullets.length > 3 && (
+              <li className="text-muted-foreground italic">+{option.bullets.length - 3} more bullets...</li>
+            )}
+          </ul>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+interface InlineSummaryOptionsProps {
+  data: SummaryOptionsData;
+  onSelect?: (optionId: string) => void;
+}
+
+function InlineSummaryOptions({ data, onSelect }: InlineSummaryOptionsProps) {
+  return (
+    <div className="mt-3 space-y-2 border-t border-border pt-3">
+      <p className="text-xs font-medium text-muted-foreground mb-2">Choose a professional summary:</p>
+      {data.options.map((option, idx) => (
+        <button
+          key={option.id}
+          onClick={() => onSelect?.(option.id)}
+          className={cn(
+            "w-full text-left p-3 rounded-lg border text-xs transition-all",
+            option.isSelected
+              ? "border-primary bg-primary/10"
+              : "border-border hover:border-primary/50 hover:bg-accent/50"
+          )}
+        >
+          <div className="flex items-start gap-2">
+            <span className="font-semibold shrink-0">Option {idx + 1}:</span>
+            <span className="line-clamp-4">{option.content}</span>
+          </div>
+          {option.isSelected && (
+            <div className="flex items-center gap-1 mt-2 text-primary">
+              <Check className="h-3 w-3" />
+              <span className="text-xs">Selected</span>
+            </div>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ThinkingIndicator({ phase }: { phase?: "thinking" | "generating" | null }) {
   return (
     <div className="flex items-center gap-2 py-1">
       <div className="relative">
         {phase === "thinking" ? (
-          <Brain className="w-4 h-4 text-purple-500 animate-pulse" />
+          <Brain className="w-4 h-4 text-primary animate-pulse" />
         ) : (
-          <FileText className="w-4 h-4 text-blue-500 animate-pulse" />
+          <FileText className="w-4 h-4 text-primary animate-pulse" />
         )}
       </div>
       <div>

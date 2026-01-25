@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
-import { ResumeChatPanel, ChatMessage } from "@/components/resume/ResumeChatPanel";
+import { ResumeChatPanel, ChatMessage, ProjectOptionsData, SummaryOptionsData } from "@/components/resume/ResumeChatPanel";
 import { ResumePreview } from "@/components/resume/ResumePreview";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ResumeData, Client, SummaryOption, ProjectOption } from "@/types/resume";
@@ -383,14 +383,126 @@ ${clientSummary}
     }
   };
 
-  const parseAndUpdateResumeFromAI = (content: string) => {
-    // Extract summary if present
-    const summaryMatch = content.match(/## Professional Summary\n\n([\s\S]*?)(?=\n##|$)/);
+  const parseAndUpdateResumeFromAI = (content: string, tempMsgId?: string) => {
+    // Extract summary options
+    const summaryMatch = content.match(/## Professional Summary[\s\S]*?\*\*Option 1:\*\*\s*([\s\S]*?)\*\*Option 2:\*\*\s*([\s\S]*?)(?=\n##|$)/);
+    
     if (summaryMatch) {
+      const option1 = summaryMatch[1].trim();
+      const option2 = summaryMatch[2].trim();
+      
+      const summaryOptions = [
+        { id: crypto.randomUUID(), content: option1, isSelected: false },
+        { id: crypto.randomUUID(), content: option2, isSelected: false },
+      ];
+      
       setResumeData((prev) => ({
         ...prev,
-        summary: summaryMatch[1].trim(),
+        summaryOptions,
+        summary: option1, // Default to first option
       }));
+
+      // Add inline summary options to chat
+      const summaryMsgId = crypto.randomUUID();
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: summaryMsgId,
+          role: "assistant",
+          content: "I've generated 2 summary options based on your combined experience. Please select one:",
+          timestamp: new Date(),
+          inlineOptions: {
+            type: "summary",
+            data: { options: summaryOptions },
+          },
+        },
+      ]);
+    }
+
+    // Extract project options for each client
+    const experienceSection = content.match(/## Experience([\s\S]*?)(?=\n## Education|$)/);
+    if (experienceSection) {
+      const clientSections = experienceSection[1].split(/### /).filter(Boolean);
+      
+      clientSections.forEach((section) => {
+        // Parse role and client name from "Role | Client Name"
+        const headerMatch = section.match(/^([^|]+)\s*\|\s*([^\n]+)/);
+        if (!headerMatch) return;
+        
+        const role = headerMatch[1].trim();
+        const clientName = headerMatch[2].trim();
+        
+        // Find matching client in resumeData
+        const matchingClient = resumeData.clients.find(
+          (c) => c.name.toLowerCase() === clientName.toLowerCase() || 
+                 c.role.toLowerCase() === role.toLowerCase()
+        );
+        
+        if (!matchingClient) return;
+        
+        // Extract Project Option 1 and Option 2
+        const option1Match = section.match(/\*\*Project Option 1[^*]*\*\*\s*([\s\S]*?)(?=\*\*Project Option 2|$)/);
+        const option2Match = section.match(/\*\*Project Option 2[^*]*\*\*\s*([\s\S]*?)(?=\n###|\n##|$)/);
+        
+        if (option1Match && option2Match) {
+          const extractBullets = (text: string): string[] => {
+            return text
+              .split('\n')
+              .filter((line) => line.trim().startsWith('-'))
+              .map((line) => line.replace(/^-\s*/, '').trim())
+              .filter(Boolean);
+          };
+          
+          const bullets1 = extractBullets(option1Match[1]);
+          const bullets2 = extractBullets(option2Match[1]);
+          
+          const projectOptions = [
+            {
+              id: crypto.randomUUID(),
+              title: "Option 1",
+              bullets: bullets1,
+              isSelected: false,
+            },
+            {
+              id: crypto.randomUUID(),
+              title: "Option 2",
+              bullets: bullets2,
+              isSelected: false,
+            },
+          ];
+          
+          // Update client with project options
+          setResumeData((prev) => ({
+            ...prev,
+            clients: prev.clients.map((c) =>
+              c.id === matchingClient.id
+                ? { ...c, projects: projectOptions }
+                : c
+            ),
+          }));
+          
+          // Add inline project options to chat
+          const projectMsgId = crypto.randomUUID();
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              id: projectMsgId,
+              role: "assistant",
+              content: `Choose responsibility bullets for **${clientName}** (${role}):`,
+              timestamp: new Date(),
+              inlineOptions: {
+                type: "project",
+                data: {
+                  clientId: matchingClient.id,
+                  clientName,
+                  role,
+                  options: projectOptions,
+                },
+              },
+            },
+          ]);
+        }
+      });
     }
   };
 
@@ -508,6 +620,7 @@ ${clientSummary}
   };
 
   const handleSelectSummary = (optionId: string) => {
+    // Update resume data
     setResumeData((prev) => ({
       ...prev,
       summaryOptions: prev.summaryOptions.map((opt) => ({
@@ -516,9 +629,33 @@ ${clientSummary}
       })),
       summary: prev.summaryOptions.find((opt) => opt.id === optionId)?.content || prev.summary,
     }));
+
+    // Update inline options in chat messages
+    setChatMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.inlineOptions?.type === "summary") {
+          const data = msg.inlineOptions.data as SummaryOptionsData;
+          return {
+            ...msg,
+            inlineOptions: {
+              ...msg.inlineOptions,
+              data: {
+                ...data,
+                options: data.options.map((opt) => ({
+                  ...opt,
+                  isSelected: opt.id === optionId,
+                })),
+              },
+            },
+          };
+        }
+        return msg;
+      })
+    );
   };
 
   const handleSelectProject = (clientId: string, projectId: string) => {
+    // Update resume data
     setResumeData((prev) => ({
       ...prev,
       clients: prev.clients.map((client) =>
@@ -533,6 +670,31 @@ ${clientSummary}
           : client
       ),
     }));
+
+    // Update inline options in chat messages
+    setChatMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.inlineOptions?.type === "project") {
+          const data = msg.inlineOptions.data as ProjectOptionsData;
+          if (data.clientId === clientId) {
+            return {
+              ...msg,
+              inlineOptions: {
+                ...msg.inlineOptions,
+                data: {
+                  ...data,
+                  options: data.options.map((opt) => ({
+                    ...opt,
+                    isSelected: opt.id === projectId,
+                  })),
+                },
+              },
+            };
+          }
+        }
+        return msg;
+      })
+    );
   };
 
   const handleDeleteConversation = async (id: string) => {
@@ -587,7 +749,6 @@ ${clientSummary}
                     onSendMessage={handleSendMessage}
                     onSelectSummary={handleSelectSummary}
                     onSelectProject={handleSelectProject}
-                    resumeData={resumeData}
                   />
                 </div>
 
