@@ -9,6 +9,7 @@ import { ChatWelcome } from "@/components/chat/ChatWelcome";
 import { GeneralChatPanel, GeneralChatMessage } from "@/components/chat/GeneralChatPanel";
 import { ATSCheckerPanel, ATSMessage } from "@/components/chat/ATSCheckerPanel";
 import { JobSearchPanel, JobSearchMessage } from "@/components/chat/JobSearchPanel";
+import { CoverLetterPanel, CoverLetterMessage } from "@/components/chat/CoverLetterPanel";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
 import { ResumeChatPanel, ChatMessage, ProjectOptionsData, SummaryOptionsData } from "@/components/resume/ResumeChatPanel";
 import { ResumePreview } from "@/components/resume/ResumePreview";
@@ -16,7 +17,7 @@ import { OptionsPanel } from "@/components/resume/OptionsPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ResumeData, Client } from "@/types/resume";
 
-type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-check" | "job-search";
+type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-check" | "job-search" | "cover-letter";
 
 type Conversation = {
   id: string;
@@ -82,6 +83,7 @@ export default function Chat() {
   const [generalMessages, setGeneralMessages] = useState<GeneralChatMessage[]>([]);
   const [atsMessages, setAtsMessages] = useState<ATSMessage[]>([]);
   const [jobMessages, setJobMessages] = useState<JobSearchMessage[]>([]);
+  const [coverLetterMessages, setCoverLetterMessages] = useState<CoverLetterMessage[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectOptionsData[]>([]);
   const [summaryOptions, setSummaryOptions] = useState<SummaryOptionsData | null>(null);
   const [selectedModel, setSelectedModel] = useState("gemini-flash");
@@ -203,6 +205,7 @@ export default function Chat() {
     setGeneralMessages([]);
     setAtsMessages([]);
     setJobMessages([]);
+    setCoverLetterMessages([]);
     setChatMode("welcome");
     setResumeData(createEmptyResumeData());
   };
@@ -219,6 +222,11 @@ export default function Chat() {
   const handleStartJobSearch = () => {
     setChatMode("job-search");
     setJobMessages([]);
+  };
+
+  const handleStartCoverLetter = () => {
+    setChatMode("cover-letter");
+    setCoverLetterMessages([]);
   };
 
   const handleGeneralChat = async (message: string) => {
@@ -745,6 +753,230 @@ Be specific and actionable. Reference their actual skills and experience.`,
     }
   };
 
+  // Cover Letter Generator Handler
+  const handleCoverLetterGenerate = async (resumeText: string, jobDescription: string, companyName: string, jobTitle: string) => {
+    if (!session) return;
+
+    setIsLoading(true);
+    const userContent = `Generate a professional cover letter for the following:
+
+**Company:** ${companyName || "the company"}
+**Position:** ${jobTitle || "the position"}
+
+**My Resume/Background:**
+${resumeText}
+
+**Job Description:**
+${jobDescription}`;
+
+    const userMsg: CoverLetterMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: userContent,
+      timestamp: new Date(),
+    };
+
+    setCoverLetterMessages([userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setCoverLetterMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date(), isThinking: true },
+    ]);
+
+    try {
+      let assistantContent = "";
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content: `You are an expert cover letter writer. Create compelling, personalized cover letters that:
+
+1. **Opening Hook**: Start with a strong, attention-grabbing opening that shows genuine interest in the company
+2. **Value Proposition**: Clearly articulate how the candidate's experience aligns with the job requirements
+3. **Specific Examples**: Use specific achievements and skills from their resume that match the job description
+4. **Company Research**: Reference the company's mission, values, or recent news when possible
+5. **Call to Action**: End with a confident closing that expresses enthusiasm for an interview
+
+Guidelines:
+- Keep it concise (3-4 paragraphs, under 400 words)
+- Use professional but personable tone
+- Avoid generic phrases like "I am writing to apply for..."
+- Highlight 2-3 key achievements that directly relate to the role
+- Show personality while maintaining professionalism
+
+Output ONLY the cover letter text, properly formatted with paragraphs. Do not include any meta-commentary.`,
+              },
+              { role: "user", content: userContent },
+            ],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 429) throw new Error("Rate limit exceeded.");
+        if (response.status === 402) throw new Error("AI usage limit reached.");
+        throw new Error("Failed to generate cover letter");
+      }
+
+      setCoverLetterMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
+      );
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex: number;
+
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                setCoverLetterMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate cover letter",
+        variant: "destructive",
+      });
+      setCoverLetterMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCoverLetterFollowUp = async (message: string) => {
+    if (!session) return;
+
+    setIsLoading(true);
+    const userMsg: CoverLetterMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+
+    setCoverLetterMessages((prev) => [...prev, userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setCoverLetterMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
+    ]);
+
+    try {
+      let assistantContent = "";
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content: "You are a cover letter writing assistant. Help the user revise and improve their cover letter based on their feedback. Output only the revised cover letter or the specific changes they requested.",
+              },
+              ...coverLetterMessages.concat(userMsg).map((m) => ({
+                role: m.role,
+                content: m.content,
+              })),
+            ],
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to get response");
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex: number;
+
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            if (line.startsWith(":") || line.trim() === "") continue;
+            if (!line.startsWith("data: ")) continue;
+
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                assistantContent += content;
+                setCoverLetterMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                );
+              }
+            } catch {
+              buffer = line + "\n" + buffer;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to get response",
+        variant: "destructive",
+      });
+      setCoverLetterMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const calculateTotalExperience = (clients: Client[]): number => {
     let totalMonths = 0;
     const now = new Date();
@@ -1255,6 +1487,7 @@ ${clientSummary}
                         onStartResume={handleStartResume}
                         onStartATSCheck={handleStartATSCheck}
                         onStartJobSearch={handleStartJobSearch}
+                        onStartCoverLetter={handleStartCoverLetter}
                       />
                     ) : undefined
                   }
@@ -1286,6 +1519,21 @@ ${clientSummary}
                   onSendMessage={handleJobFollowUp}
                   selectedModel={selectedModel}
                   onModelChange={setSelectedModel}
+                />
+              </div>
+            )}
+
+            {/* Cover Letter Mode */}
+            {chatMode === "cover-letter" && (
+              <div className="flex-1">
+                <CoverLetterPanel
+                  messages={coverLetterMessages}
+                  isLoading={isLoading}
+                  onGenerate={handleCoverLetterGenerate}
+                  onSendMessage={handleCoverLetterFollowUp}
+                  selectedModel={selectedModel}
+                  onModelChange={setSelectedModel}
+                  onBack={handleNewChat}
                 />
               </div>
             )}
