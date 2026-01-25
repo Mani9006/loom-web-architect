@@ -1,9 +1,17 @@
 import { useState, useRef } from "react";
-import { Upload, FileText, X, Loader2, CheckCircle } from "lucide-react";
+import { Upload, X, Loader2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+
+interface ProgressState {
+  progress: number;
+  message: string;
+  stage: string;
+  pageCount?: number;
+}
 
 interface DocumentUploadProps {
   onTextExtracted: (text: string, fileName: string) => void;
@@ -23,6 +31,7 @@ export function DocumentUpload({
   const [uploadedFile, setUploadedFile] = useState<{ name: string; path: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
+  const [progressState, setProgressState] = useState<ProgressState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -81,9 +90,12 @@ export function DocumentUpload({
       setUploadedFile({ name: file.name, path: filePath });
       setIsUploading(false);
       setIsParsing(true);
+      setProgressState({ progress: 0, message: "Starting document processing...", stage: "init" });
 
-      // Parse the document
+      // Parse the document with streaming for progress
       const { data: session } = await supabase.auth.getSession();
+      const isPdfOrImage = /\.(pdf|png|jpg|jpeg|webp)$/i.test(file.name);
+      
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-document`,
         {
@@ -92,7 +104,7 @@ export function DocumentUpload({
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.session?.access_token}`,
           },
-          body: JSON.stringify({ filePath }),
+          body: JSON.stringify({ filePath, streaming: isPdfOrImage }),
         }
       );
 
@@ -101,20 +113,70 @@ export function DocumentUpload({
         throw new Error(errorData.error || "Failed to parse document");
       }
 
-      const { text, fileName } = await response.json();
+      let extractedText = "";
+      let extractedFileName = "";
+
+      if (isPdfOrImage && response.headers.get("content-type")?.includes("text/event-stream")) {
+        // Handle SSE streaming response
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        
+        if (reader) {
+          let buffer = "";
+          
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n\n");
+            buffer = lines.pop() || "";
+            
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  
+                  if (data.type === "progress") {
+                    setProgressState({
+                      progress: data.progress,
+                      message: data.message,
+                      stage: data.stage,
+                      pageCount: data.pageCount
+                    });
+                  } else if (data.type === "result") {
+                    extractedText = data.text;
+                    extractedFileName = data.fileName;
+                  } else if (data.type === "error") {
+                    throw new Error(data.error);
+                  }
+                } catch (e) {
+                  if (e instanceof SyntaxError) continue;
+                  throw e;
+                }
+              }
+            }
+          }
+        }
+      } else {
+        // Non-streaming response
+        const result = await response.json();
+        extractedText = result.text;
+        extractedFileName = result.fileName;
+      }
       
-      if (!text || text.trim().length === 0) {
+      if (!extractedText || extractedText.trim().length === 0) {
         throw new Error("No text could be extracted from the document");
       }
 
-      onTextExtracted(text, fileName);
+      onTextExtracted(extractedText, extractedFileName);
       
       toast({
         title: "Document uploaded",
         description: `Successfully extracted text from ${file.name}`,
       });
 
-      // Clean up the file from storage after parsing (optional - keeps storage clean)
+      // Clean up the file from storage after parsing
       await supabase.storage.from("documents").remove([filePath]);
       
     } catch (error) {
@@ -128,6 +190,7 @@ export function DocumentUpload({
     } finally {
       setIsUploading(false);
       setIsParsing(false);
+      setProgressState(null);
       // Reset input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -137,6 +200,7 @@ export function DocumentUpload({
 
   const handleClear = () => {
     setUploadedFile(null);
+    setProgressState(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -145,7 +209,7 @@ export function DocumentUpload({
   const isProcessing = isUploading || isParsing || externalLoading;
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("space-y-3", className)}>
       <div className="flex items-center gap-2">
         <Button
           type="button"
@@ -163,7 +227,7 @@ export function DocumentUpload({
           ) : isParsing ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Parsing...
+              Processing...
             </>
           ) : (
             <>
@@ -197,8 +261,24 @@ export function DocumentUpload({
         />
       </div>
 
+      {/* Progress indicator for OCR processing */}
+      {isParsing && progressState && (
+        <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{progressState.message}</span>
+            <span className="font-medium">{progressState.progress}%</span>
+          </div>
+          <Progress value={progressState.progress} className="h-2" />
+          {progressState.pageCount && progressState.pageCount > 1 && (
+            <p className="text-xs text-muted-foreground">
+              Processing {progressState.pageCount} pages with AI OCR...
+            </p>
+          )}
+        </div>
+      )}
+
       <p className="text-xs text-muted-foreground">
-        Supports: PDF (including scanned), Word (.docx), Text files, Images (PNG, JPG) - Max 10MB
+        Supports: PDF (including multi-page scanned), Word (.docx), Text files, Images (PNG, JPG) - Max 10MB
       </p>
     </div>
   );
