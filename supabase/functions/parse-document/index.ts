@@ -171,7 +171,8 @@ async function ocrWithAIVision(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      // Gemini 2.5 Pro: SOTA for vision/OCR tasks (80.5% CharXiv benchmark)
+      model: "google/gemini-2.5-pro",
       messages: [
         {
           role: "system",
