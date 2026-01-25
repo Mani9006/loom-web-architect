@@ -17,8 +17,8 @@ export function DocumentUpload({
   onTextExtracted,
   isLoading: externalLoading = false,
   className,
-  accept = ".pdf,.doc,.docx,.txt,.md",
-  label = "Upload Resume",
+  accept = ".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg,.webp",
+  label = "Upload Document",
 }: DocumentUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<{ name: string; path: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -41,7 +41,7 @@ export function DocumentUpload({
     }
 
     // Validate file type
-    const validExtensions = [".pdf", ".doc", ".docx", ".txt", ".md"];
+    const validExtensions = [".pdf", ".doc", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"];
     const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
     if (!validExtensions.includes(fileExt)) {
       toast({
@@ -198,7 +198,7 @@ export function DocumentUpload({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Supported: PDF, Word (.doc, .docx), Text files (.txt, .md) - Max 10MB
+        Supports: PDF (including scanned), Word (.docx), Text files, Images (PNG, JPG) - Max 10MB
       </p>
     </div>
   );
