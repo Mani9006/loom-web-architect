@@ -6,6 +6,70 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Mem0 API helper functions
+async function searchMem0Memories(apiKey: string, userId: string, query: string): Promise<string[]> {
+  try {
+    const response = await fetch("https://api.mem0.ai/v1/memories/search/", {
+      method: "POST",
+      headers: {
+        "Authorization": `Token ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        user_id: userId,
+        limit: 10,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Mem0 search error:", response.status, await response.text());
+      return [];
+    }
+
+    const data = await response.json();
+    console.log("Mem0 search results:", data);
+    
+    // Extract memory content from results
+    if (Array.isArray(data)) {
+      return data.map((m: any) => m.memory || m.content).filter(Boolean);
+    }
+    if (data.results && Array.isArray(data.results)) {
+      return data.results.map((m: any) => m.memory || m.content).filter(Boolean);
+    }
+    return [];
+  } catch (error) {
+    console.error("Mem0 search error:", error);
+    return [];
+  }
+}
+
+async function addMem0Memory(apiKey: string, userId: string, messages: any[]): Promise<void> {
+  try {
+    const response = await fetch("https://api.mem0.ai/v1/memories/", {
+      method: "POST",
+      headers: {
+        "Authorization": `Token ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages,
+        user_id: userId,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Mem0 add error:", response.status, await response.text());
+      return;
+    }
+
+    const data = await response.json();
+    console.log("Mem0 memory added:", data);
+  } catch (error) {
+    console.error("Mem0 add error:", error);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -47,6 +111,8 @@ serve(async (req) => {
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const MEM0_API_KEY = Deno.env.get("MEM0_API_KEY");
+    
     if (!LOVABLE_API_KEY) {
       console.error("LOVABLE_API_KEY is not configured");
       return new Response(JSON.stringify({ error: "AI service not configured" }), {
@@ -55,7 +121,31 @@ serve(async (req) => {
       });
     }
 
+    // Get the latest user message for memory search
+    const latestUserMessage = messages.filter((m: any) => m.role === "user").pop();
+    const userQuery = latestUserMessage?.content || "";
+
+    // Search for relevant memories from Mem0
+    let memoryContext = "";
+    if (MEM0_API_KEY && userQuery) {
+      console.log("Searching Mem0 for relevant memories...");
+      const memories = await searchMem0Memories(MEM0_API_KEY, user.id, userQuery);
+      
+      if (memories.length > 0) {
+        memoryContext = `\n\n## User Memory Context\nThe following are relevant facts you remember about this user from previous conversations:\n${memories.map(m => `- ${m}`).join("\n")}\n\nUse this context to provide more personalized and relevant responses.`;
+        console.log("Found", memories.length, "relevant memories");
+      }
+    }
+
     console.log("Calling Lovable AI Gateway with", messages.length, "messages");
+
+    const systemPrompt = `You are a helpful, friendly AI assistant with persistent memory. You help users with a wide variety of tasks including writing, analysis, coding, math, creative projects, and general questions.
+
+Keep your responses clear, well-structured, and helpful. Use markdown formatting when appropriate for better readability.
+
+Be conversational yet professional. If you don't know something, say so honestly rather than making things up.
+
+You have memory capabilities - you can remember user preferences, past interactions, and important details they share. When users tell you about themselves, their preferences, or important information, acknowledge that you'll remember it.${memoryContext}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -68,11 +158,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a helpful, friendly AI assistant. You help users with a wide variety of tasks including writing, analysis, coding, math, creative projects, and general questions.
-
-Keep your responses clear, well-structured, and helpful. Use markdown formatting when appropriate for better readability.
-
-Be conversational yet professional. If you don't know something, say so honestly rather than making things up.`,
+            content: systemPrompt,
           },
           ...messages,
         ],
@@ -111,6 +197,26 @@ Be conversational yet professional. If you don't know something, say so honestly
     }
 
     console.log("Streaming response from AI gateway");
+
+    // Add memories to Mem0 in the background (don't block response)
+    if (MEM0_API_KEY && messages.length > 0) {
+      // Run memory addition asynchronously without blocking response
+      const addMemoryTask = async () => {
+        try {
+          // Only add the last user-assistant exchange to avoid duplicates
+          const recentMessages = messages.slice(-2).map((m: any) => ({
+            role: m.role,
+            content: m.content,
+          }));
+          await addMem0Memory(MEM0_API_KEY, user.id, recentMessages);
+        } catch (error) {
+          console.error("Background memory add error:", error);
+        }
+      };
+      
+      // Fire and forget - don't await
+      addMemoryTask();
+    }
 
     return new Response(response.body, {
       headers: {
