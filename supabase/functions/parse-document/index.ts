@@ -1,13 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Mammoth for parsing Word documents
-import mammoth from "https://esm.sh/mammoth@1.6.0";
+// Dynamic import for mammoth to avoid deployment issues
+async function parseDOCX(arrayBuffer: ArrayBuffer): Promise<string> {
+  const mammoth = await import("https://esm.sh/mammoth@1.6.0");
+  const result = await mammoth.default.extractRawText({ arrayBuffer });
+  return result.value;
+}
 
 // Helper to extract text from PDF using basic parsing
 function extractTextFromPDF(uint8Array: Uint8Array): string {
@@ -312,8 +316,7 @@ serve(async (req) => {
               });
               
               const arrayBuffer = await fileData.arrayBuffer();
-              const result = await mammoth.extractRawText({ arrayBuffer });
-              extractedText = result.value;
+              extractedText = await parseDOCX(arrayBuffer);
               
               sendSSE(controller, { 
                 type: "progress", 
@@ -423,8 +426,7 @@ serve(async (req) => {
     } else if (fileName.endsWith(".docx")) {
       try {
         const arrayBuffer = await fileData.arrayBuffer();
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        extractedText = result.value;
+        extractedText = await parseDOCX(arrayBuffer);
         console.log("Word document parsed successfully, text length:", extractedText.length);
       } catch (docError) {
         console.error("Word parsing error:", docError);
