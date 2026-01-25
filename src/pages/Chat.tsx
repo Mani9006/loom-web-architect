@@ -5,18 +5,11 @@ import { User, Session } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { ChatHeader } from "@/components/chat/ChatHeader";
-import { ChatInput } from "@/components/chat/ChatInput";
-import { ResumeForm, ResumeData } from "@/components/resume/ResumeForm";
-import { ResumeChat } from "@/components/resume/ResumeChat";
+import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
+import { ResumeChatPanel, ChatMessage } from "@/components/resume/ResumeChatPanel";
+import { ResumePreview } from "@/components/resume/ResumePreview";
 import { SidebarProvider } from "@/components/ui/sidebar";
-
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  created_at: string;
-  isThinking?: boolean;
-};
+import { ResumeData, Client, SummaryOption, ProjectOption } from "@/types/resume";
 
 type Conversation = {
   id: string;
@@ -25,19 +18,59 @@ type Conversation = {
   updated_at: string;
 };
 
+const createEmptyResumeData = (): ResumeData => ({
+  templateId: "",
+  personalInfo: {
+    fullName: "",
+    email: "",
+    phone: "",
+    location: "",
+    linkedin: "",
+    portfolio: "",
+  },
+  summary: "",
+  summaryOptions: [],
+  totalYearsExperience: 0,
+  clients: [
+    {
+      id: crypto.randomUUID(),
+      name: "",
+      industry: "",
+      location: "",
+      role: "",
+      startDate: "",
+      endDate: "",
+      isCurrent: false,
+      responsibilities: "",
+      projects: [],
+    },
+  ],
+  education: [
+    {
+      id: crypto.randomUUID(),
+      school: "",
+      degree: "",
+      field: "",
+      graduationDate: "",
+      gpa: "",
+    },
+  ],
+  certifications: [],
+  skillCategories: [],
+  targetRole: "",
+});
+
 export default function Chat() {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<{ full_name: string | null; email: string | null } | null>(null);
-  const [showResumeForm, setShowResumeForm] = useState(true);
+  const [showForm, setShowForm] = useState(true);
   const [generationPhase, setGenerationPhase] = useState<"thinking" | "generating" | null>(null);
-  const [resumeData, setResumeData] = useState<ResumeData | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [resumeData, setResumeData] = useState<ResumeData>(createEmptyResumeData());
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const navigate = useNavigate();
   const { conversationId } = useParams();
   const { toast } = useToast();
@@ -72,22 +105,14 @@ export default function Chat() {
   useEffect(() => {
     if (conversationId && user) {
       loadConversation(conversationId);
-      setShowResumeForm(false);
+      setShowForm(false);
     } else {
       setCurrentConversation(null);
-      setMessages([]);
-      setShowResumeForm(true);
-      setResumeData(null);
+      setChatMessages([]);
+      setShowForm(true);
+      setResumeData(createEmptyResumeData());
     }
   }, [conversationId, user]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -96,7 +121,6 @@ export default function Chat() {
       .select("full_name, email")
       .eq("user_id", user.id)
       .maybeSingle();
-    
     setProfile(data);
   };
 
@@ -106,7 +130,6 @@ export default function Chat() {
       .from("conversations")
       .select("*")
       .order("updated_at", { ascending: false });
-
     if (!error && data) {
       setConversations(data);
     }
@@ -121,7 +144,6 @@ export default function Chat() {
 
     if (conv) {
       setCurrentConversation(conv);
-      
       const { data: msgs } = await supabase
         .from("messages")
         .select("*")
@@ -129,14 +151,20 @@ export default function Chat() {
         .order("created_at", { ascending: true });
 
       if (msgs) {
-        setMessages(msgs as Message[]);
+        setChatMessages(
+          msgs.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            timestamp: new Date(m.created_at),
+          }))
+        );
       }
     }
   };
 
   const createNewConversation = async (title: string): Promise<string | null> => {
     if (!user) return null;
-
     const { data, error } = await supabase
       .from("conversations")
       .insert({ user_id: user.id, title })
@@ -144,14 +172,9 @@ export default function Chat() {
       .single();
 
     if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create conversation",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to create conversation", variant: "destructive" });
       return null;
     }
-
     await fetchConversations();
     return data.id;
   };
@@ -159,64 +182,117 @@ export default function Chat() {
   const handleNewChat = () => {
     navigate("/");
     setCurrentConversation(null);
-    setMessages([]);
-    setInput("");
-    setShowResumeForm(true);
-    setResumeData(null);
+    setChatMessages([]);
+    setShowForm(true);
+    setResumeData(createEmptyResumeData());
   };
 
-  const handleGenerateResume = async (data: ResumeData) => {
+  const calculateTotalExperience = (clients: Client[]): number => {
+    let totalMonths = 0;
+    const now = new Date();
+
+    clients.forEach((client) => {
+      if (!client.startDate) return;
+      const start = parseDate(client.startDate);
+      const end = client.isCurrent ? now : parseDate(client.endDate);
+      if (start && end) {
+        const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+        totalMonths += Math.max(0, months);
+      }
+    });
+
+    return Math.round(totalMonths / 12);
+  };
+
+  const parseDate = (dateStr: string): Date | null => {
+    if (!dateStr || dateStr.toLowerCase() === "present") return null;
+    // Handle formats like "Feb 2024", "Feb '24", "2024"
+    const parts = dateStr.match(/(\w+)?\s*'?(\d{2,4})/);
+    if (parts) {
+      const monthStr = parts[1];
+      let year = parseInt(parts[2]);
+      if (year < 100) year += 2000;
+      const monthMap: Record<string, number> = {
+        jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+        jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+      };
+      const month = monthStr ? monthMap[monthStr.toLowerCase().slice(0, 3)] || 0 : 0;
+      return new Date(year, month, 1);
+    }
+    return null;
+  };
+
+  const handleGenerateResume = async () => {
     if (!user || !session) return;
 
-    setResumeData(data);
-    setShowResumeForm(false);
     setIsLoading(true);
     setGenerationPhase("thinking");
+    setShowForm(false);
+
+    // Calculate total experience
+    const totalYears = calculateTotalExperience(resumeData.clients);
+    setResumeData((prev) => ({ ...prev, totalYearsExperience: totalYears }));
 
     try {
-      // Create conversation for this resume
-      const title = `Resume: ${data.personalInfo.fullName}`;
+      const title = `Resume: ${resumeData.personalInfo.fullName}`;
       const convId = await createNewConversation(title);
-      
       if (!convId) {
         setIsLoading(false);
-        setShowResumeForm(true);
+        setShowForm(true);
         return;
       }
-      
       navigate(`/c/${convId}`);
 
-      // Add initial user message
-      const userSummary = `Generate my resume:\n• Name: ${data.personalInfo.fullName}\n• Target Role: ${data.targetRole || "General"}\n• Experience: ${data.experience.length} position(s)\n• Skills: ${data.skills.join(", ") || "Not specified"}`;
-      
-      const { data: savedUserMsg, error: userMsgError } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: convId,
-          role: "user",
-          content: userSummary,
-        })
-        .select()
-        .single();
+      // Build context message
+      const clientSummary = resumeData.clients
+        .filter((c) => c.name)
+        .map((c) => `- ${c.role} at ${c.name} (${c.industry || "N/A"}) from ${c.startDate} to ${c.isCurrent ? "Present" : c.endDate}${c.responsibilities ? `: ${c.responsibilities}` : ""}`)
+        .join("\n");
 
-      if (userMsgError) throw userMsgError;
+      const userContent = `Generate my resume using the ${resumeData.templateId} template.
 
-      setMessages([savedUserMsg as Message]);
+**Target Role**: ${resumeData.targetRole || "General"}
+**Total Experience**: ${totalYears}+ years
 
-      // Create placeholder for AI response with thinking state
+**Personal Info**: ${resumeData.personalInfo.fullName}, ${resumeData.personalInfo.email}
+
+**Clients/Experience**:
+${clientSummary}
+
+**Instructions**:
+1. Generate 2 different project bullet options for EACH client/role
+2. Generate 2 summary options based on all experiences combined
+3. Calculate and include total years of experience in summaries
+4. Use strong action verbs and quantify achievements
+5. Make it ATS-friendly for the target role`;
+
+      const userMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: userContent,
+        timestamp: new Date(),
+      };
+
+      await supabase.from("messages").insert({
+        conversation_id: convId,
+        role: "user",
+        content: userContent,
+      });
+
+      setChatMessages([userMsg]);
+
+      // Add thinking placeholder
       const tempId = crypto.randomUUID();
-      setMessages((prev) => [
+      setChatMessages((prev) => [
         ...prev,
-        { id: tempId, role: "assistant", content: "", created_at: new Date().toISOString(), isThinking: true },
+        { id: tempId, role: "assistant", content: "", timestamp: new Date(), isThinking: true },
       ]);
 
-      // Simulate thinking phase
       await new Promise((resolve) => setTimeout(resolve, 1500));
       setGenerationPhase("generating");
 
       // Stream AI response
       let assistantContent = "";
-
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resume-chat`,
         {
@@ -227,23 +303,21 @@ export default function Chat() {
           },
           body: JSON.stringify({
             messages: [],
-            resumeData: data,
+            resumeData: {
+              ...resumeData,
+              totalYearsExperience: totalYears,
+            },
           }),
         }
       );
 
       if (!response.ok) {
-        if (response.status === 429) {
-          throw new Error("Rate limit exceeded. Please wait a moment and try again.");
-        }
-        if (response.status === 402) {
-          throw new Error("AI usage limit reached. Please add credits to continue.");
-        }
+        if (response.status === 429) throw new Error("Rate limit exceeded. Please wait and try again.");
+        if (response.status === 402) throw new Error("AI usage limit reached. Please add credits.");
         throw new Error("Failed to generate resume");
       }
 
-      // Update to show content is coming
-      setMessages((prev) =>
+      setChatMessages((prev) =>
         prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
       );
 
@@ -257,8 +331,8 @@ export default function Chat() {
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-
           let newlineIndex: number;
+
           while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
             const line = buffer.slice(0, newlineIndex);
             buffer = buffer.slice(newlineIndex + 1);
@@ -274,10 +348,8 @@ export default function Chat() {
               const content = parsed.choices?.[0]?.delta?.content;
               if (content) {
                 assistantContent += content;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === tempId ? { ...m, content: assistantContent } : m
-                  )
+                setChatMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
                 );
               }
             } catch {
@@ -288,22 +360,14 @@ export default function Chat() {
         }
       }
 
-      // Save assistant message
-      const { data: savedAssistantMsg } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: convId,
-          role: "assistant",
-          content: assistantContent,
-        })
-        .select()
-        .single();
+      // Parse and update resume data from response
+      parseAndUpdateResumeFromAI(assistantContent);
 
-      if (savedAssistantMsg) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? (savedAssistantMsg as Message) : m))
-        );
-      }
+      await supabase.from("messages").insert({
+        conversation_id: convId,
+        role: "assistant",
+        content: assistantContent,
+      });
 
       await fetchConversations();
     } catch (error) {
@@ -312,45 +376,51 @@ export default function Chat() {
         description: error instanceof Error ? error.message : "Failed to generate resume",
         variant: "destructive",
       });
-      setShowResumeForm(true);
+      setShowForm(true);
     } finally {
       setIsLoading(false);
       setGenerationPhase(null);
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading || !user || !session || !currentConversation) return;
+  const parseAndUpdateResumeFromAI = (content: string) => {
+    // Extract summary if present
+    const summaryMatch = content.match(/## Professional Summary\n\n([\s\S]*?)(?=\n##|$)/);
+    if (summaryMatch) {
+      setResumeData((prev) => ({
+        ...prev,
+        summary: summaryMatch[1].trim(),
+      }));
+    }
+  };
 
-    const userMessage = input.trim();
-    setInput("");
+  const handleSendMessage = async (message: string) => {
+    if (!session || !currentConversation) return;
+
     setIsLoading(true);
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+
+    await supabase.from("messages").insert({
+      conversation_id: currentConversation.id,
+      role: "user",
+      content: message,
+    });
+
+    setChatMessages((prev) => [...prev, userMsg]);
+
+    const tempId = crypto.randomUUID();
+    setChatMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
+    ]);
 
     try {
-      // Save user message
-      const { data: savedUserMsg, error: userMsgError } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: currentConversation.id,
-          role: "user",
-          content: userMessage,
-        })
-        .select()
-        .single();
-
-      if (userMsgError) throw userMsgError;
-
-      setMessages((prev) => [...prev, savedUserMsg as Message]);
-
-      // Stream AI response
       let assistantContent = "";
-      const tempId = crypto.randomUUID();
-
-      setMessages((prev) => [
-        ...prev,
-        { id: tempId, role: "assistant", content: "", created_at: new Date().toISOString() },
-      ]);
-
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resume-chat`,
         {
@@ -360,21 +430,18 @@ export default function Chat() {
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            messages: [...messages, { role: "user", content: userMessage }].map((m) => ({
+            messages: [...chatMessages, userMsg].map((m) => ({
               role: m.role,
               content: m.content,
             })),
+            currentResume: resumeData,
           }),
         }
       );
 
       if (!response.ok) {
-        if (response.status === 429) {
-          throw new Error("Rate limit exceeded. Please wait a moment and try again.");
-        }
-        if (response.status === 402) {
-          throw new Error("AI usage limit reached. Please add credits to continue.");
-        }
+        if (response.status === 429) throw new Error("Rate limit exceeded.");
+        if (response.status === 402) throw new Error("AI usage limit reached.");
         throw new Error("Failed to get AI response");
       }
 
@@ -388,8 +455,8 @@ export default function Chat() {
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-
           let newlineIndex: number;
+
           while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
             const line = buffer.slice(0, newlineIndex);
             buffer = buffer.slice(newlineIndex + 1);
@@ -405,10 +472,8 @@ export default function Chat() {
               const content = parsed.choices?.[0]?.delta?.content;
               if (content) {
                 assistantContent += content;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === tempId ? { ...m, content: assistantContent } : m
-                  )
+                setChatMessages((prev) =>
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
                 );
               }
             } catch {
@@ -419,24 +484,12 @@ export default function Chat() {
         }
       }
 
-      // Save assistant message
-      const { data: savedAssistantMsg } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: currentConversation.id,
-          role: "assistant",
-          content: assistantContent,
-        })
-        .select()
-        .single();
+      await supabase.from("messages").insert({
+        conversation_id: currentConversation.id,
+        role: "assistant",
+        content: assistantContent,
+      });
 
-      if (savedAssistantMsg) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? (savedAssistantMsg as Message) : m))
-        );
-      }
-
-      // Update conversation timestamp
       await supabase
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })
@@ -452,6 +505,34 @@ export default function Chat() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSelectSummary = (optionId: string) => {
+    setResumeData((prev) => ({
+      ...prev,
+      summaryOptions: prev.summaryOptions.map((opt) => ({
+        ...opt,
+        isSelected: opt.id === optionId,
+      })),
+      summary: prev.summaryOptions.find((opt) => opt.id === optionId)?.content || prev.summary,
+    }));
+  };
+
+  const handleSelectProject = (clientId: string, projectId: string) => {
+    setResumeData((prev) => ({
+      ...prev,
+      clients: prev.clients.map((client) =>
+        client.id === clientId
+          ? {
+              ...client,
+              projects: client.projects.map((p) => ({
+                ...p,
+                isSelected: p.id === projectId,
+              })),
+            }
+          : client
+      ),
+    }));
   };
 
   const handleDeleteConversation = async (id: string) => {
@@ -483,32 +564,37 @@ export default function Chat() {
         />
 
         <div className="flex-1 flex flex-col min-w-0">
-          <ChatHeader
-            user={user}
-            displayName={displayName}
-            onSignOut={handleSignOut}
-          />
+          <ChatHeader user={user} displayName={displayName} onSignOut={handleSignOut} />
 
-          <main className="flex-1 flex flex-col overflow-hidden">
-            {showResumeForm ? (
-              <div className="flex-1 overflow-y-auto">
-                <ResumeForm onGenerate={handleGenerateResume} isGenerating={isLoading} />
+          <main className="flex-1 flex overflow-hidden">
+            {showForm ? (
+              <div className="flex-1 relative">
+                <EnhancedResumeForm
+                  data={resumeData}
+                  onChange={setResumeData}
+                  onGenerate={handleGenerateResume}
+                  isGenerating={isLoading}
+                />
               </div>
             ) : (
               <>
-                <ResumeChat
-                  messages={messages}
-                  messagesEndRef={messagesEndRef}
-                  isGenerating={isLoading}
-                  generationPhase={generationPhase}
-                />
+                {/* Chat Panel - Left */}
+                <div className="w-[400px] border-r border-border flex flex-col">
+                  <ResumeChatPanel
+                    messages={chatMessages}
+                    isLoading={isLoading}
+                    generationPhase={generationPhase}
+                    onSendMessage={handleSendMessage}
+                    onSelectSummary={handleSelectSummary}
+                    onSelectProject={handleSelectProject}
+                    resumeData={resumeData}
+                  />
+                </div>
 
-                <ChatInput
-                  input={input}
-                  isLoading={isLoading}
-                  onInputChange={setInput}
-                  onSend={handleSend}
-                />
+                {/* Resume Preview - Right */}
+                <div className="flex-1 bg-muted/30">
+                  <ResumePreview data={resumeData} isGenerating={isLoading} />
+                </div>
               </>
             )}
           </main>
