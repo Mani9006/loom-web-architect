@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, User, Brain, FileText, Check } from "lucide-react";
+import { Send, Sparkles, User, Brain, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,7 +14,7 @@ export type ProjectOptionsData = {
     id: string;
     title: string;
     bullets: string[];
-    isSelected?: boolean;
+    isSelected: boolean;
   }>;
 };
 
@@ -22,7 +22,7 @@ export type SummaryOptionsData = {
   options: Array<{
     id: string;
     content: string;
-    isSelected?: boolean;
+    isSelected: boolean;
   }>;
 };
 
@@ -32,10 +32,6 @@ export type ChatMessage = {
   content: string;
   timestamp: Date;
   isThinking?: boolean;
-  inlineOptions?: {
-    type: "project" | "summary";
-    data: ProjectOptionsData | SummaryOptionsData;
-  };
 };
 
 interface ResumeChatPanelProps {
@@ -43,8 +39,6 @@ interface ResumeChatPanelProps {
   isLoading: boolean;
   generationPhase?: "thinking" | "generating" | null;
   onSendMessage: (message: string) => void;
-  onSelectSummary?: (optionId: string) => void;
-  onSelectProject?: (clientId: string, optionId: string) => void;
 }
 
 export function ResumeChatPanel({
@@ -52,16 +46,17 @@ export function ResumeChatPanel({
   isLoading,
   generationPhase,
   onSendMessage,
-  onSelectSummary,
-  onSelectProject,
 }: ResumeChatPanelProps) {
   const [input, setInput] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    // Scroll to bottom of messages
+    if (scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
     }
   }, [messages]);
 
@@ -80,10 +75,10 @@ export function ResumeChatPanel({
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Messages */}
-      <ScrollArea className="flex-1 px-4 py-4" ref={scrollRef}>
-        <div className="space-y-4">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Messages - Scrollable */}
+      <ScrollArea className="flex-1" ref={scrollAreaRef}>
+        <div className="px-4 py-4 space-y-4">
           {messages.length === 0 && (
             <div className="text-center py-12">
               <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4">
@@ -112,7 +107,7 @@ export function ResumeChatPanel({
 
               <div
                 className={cn(
-                  "max-w-[80%] rounded-xl px-3 py-2",
+                  "max-w-[85%] rounded-xl px-3 py-2",
                   message.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-secondary text-secondary-foreground"
@@ -137,26 +132,10 @@ export function ResumeChatPanel({
                   <ThinkingIndicator phase={generationPhase} />
                 ) : (
                   <div className="flex items-center gap-1.5 py-1">
-                    <span className="w-2 h-2 rounded-full bg-muted-foreground thinking-dot" />
-                    <span className="w-2 h-2 rounded-full bg-muted-foreground thinking-dot" />
-                    <span className="w-2 h-2 rounded-full bg-muted-foreground thinking-dot" />
+                    <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "0ms" }} />
+                    <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "150ms" }} />
+                    <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "300ms" }} />
                   </div>
-                )}
-
-                {/* Inline Project Options */}
-                {message.inlineOptions?.type === "project" && (
-                  <InlineProjectOptions
-                    data={message.inlineOptions.data as ProjectOptionsData}
-                    onSelect={onSelectProject}
-                  />
-                )}
-
-                {/* Inline Summary Options */}
-                {message.inlineOptions?.type === "summary" && (
-                  <InlineSummaryOptions
-                    data={message.inlineOptions.data as SummaryOptionsData}
-                    onSelect={onSelectSummary}
-                  />
                 )}
               </div>
 
@@ -170,11 +149,10 @@ export function ResumeChatPanel({
         </div>
       </ScrollArea>
 
-      {/* Input */}
-      <div className="p-4 border-t border-border">
+      {/* Input - Fixed at bottom */}
+      <div className="shrink-0 p-4 border-t border-border bg-background">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Textarea
-            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -202,89 +180,14 @@ export function ResumeChatPanel({
             <button
               key={suggestion}
               onClick={() => setInput(suggestion)}
-              className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-accent transition-colors"
+              disabled={isLoading}
+              className="text-xs px-2 py-1 rounded-full bg-secondary hover:bg-accent transition-colors disabled:opacity-50"
             >
               {suggestion}
             </button>
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-interface InlineProjectOptionsProps {
-  data: ProjectOptionsData;
-  onSelect?: (clientId: string, optionId: string) => void;
-}
-
-function InlineProjectOptions({ data, onSelect }: InlineProjectOptionsProps) {
-  return (
-    <div className="mt-3 space-y-2 border-t border-border pt-3">
-      <p className="text-xs font-medium text-muted-foreground mb-2">
-        Choose project bullets for <span className="text-foreground">{data.clientName}</span> ({data.role}):
-      </p>
-      {data.options.map((option, idx) => (
-        <button
-          key={option.id}
-          onClick={() => onSelect?.(data.clientId, option.id)}
-          className={cn(
-            "w-full text-left p-3 rounded-lg border text-xs transition-all",
-            option.isSelected
-              ? "border-primary bg-primary/10"
-              : "border-border hover:border-primary/50 hover:bg-accent/50"
-          )}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-semibold">{option.title || `Option ${idx + 1}`}</span>
-            {option.isSelected && <Check className="h-4 w-4 text-primary" />}
-          </div>
-          <ul className="list-disc pl-4 space-y-1 text-muted-foreground">
-            {option.bullets.slice(0, 3).map((bullet, i) => (
-              <li key={i} className="line-clamp-2">{bullet}</li>
-            ))}
-            {option.bullets.length > 3 && (
-              <li className="text-muted-foreground italic">+{option.bullets.length - 3} more bullets...</li>
-            )}
-          </ul>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-interface InlineSummaryOptionsProps {
-  data: SummaryOptionsData;
-  onSelect?: (optionId: string) => void;
-}
-
-function InlineSummaryOptions({ data, onSelect }: InlineSummaryOptionsProps) {
-  return (
-    <div className="mt-3 space-y-2 border-t border-border pt-3">
-      <p className="text-xs font-medium text-muted-foreground mb-2">Choose a professional summary:</p>
-      {data.options.map((option, idx) => (
-        <button
-          key={option.id}
-          onClick={() => onSelect?.(option.id)}
-          className={cn(
-            "w-full text-left p-3 rounded-lg border text-xs transition-all",
-            option.isSelected
-              ? "border-primary bg-primary/10"
-              : "border-border hover:border-primary/50 hover:bg-accent/50"
-          )}
-        >
-          <div className="flex items-start gap-2">
-            <span className="font-semibold shrink-0">Option {idx + 1}:</span>
-            <span className="line-clamp-4">{option.content}</span>
-          </div>
-          {option.isSelected && (
-            <div className="flex items-center gap-1 mt-2 text-primary">
-              <Check className="h-3 w-3" />
-              <span className="text-xs">Selected</span>
-            </div>
-          )}
-        </button>
-      ))}
     </div>
   );
 }
@@ -301,7 +204,7 @@ function ThinkingIndicator({ phase }: { phase?: "thinking" | "generating" | null
       </div>
       <div>
         <span className="text-xs font-medium">
-          {phase === "thinking" ? "Analyzing..." : "Generating..."}
+          {phase === "thinking" ? "Analyzing your experience..." : "Generating resume content..."}
         </span>
       </div>
     </div>
