@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCoverLetterVersions } from "./use-cover-letter-versions";
 
 export interface CoverLetter {
   id: string;
@@ -28,6 +29,7 @@ export function useCoverLetters() {
   const [coverLetters, setCoverLetters] = useState<CoverLetter[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const { saveVersion } = useCoverLetterVersions();
 
   const fetchCoverLetters = useCallback(async () => {
     setIsLoading(true);
@@ -102,6 +104,18 @@ export function useCoverLetters() {
 
   const updateCoverLetter = useCallback(async (id: string, input: Partial<SaveCoverLetterInput>): Promise<boolean> => {
     try {
+      // First, get the current version to save to history
+      const { data: currentLetter } = await supabase
+        .from("cover_letters")
+        .select("title, content")
+        .eq("id", id)
+        .maybeSingle();
+
+      // Save current version to history before updating
+      if (currentLetter && (input.title !== undefined || input.content !== undefined)) {
+        await saveVersion(id, currentLetter.title, currentLetter.content);
+      }
+
       const updateData: Record<string, unknown> = {};
       if (input.title !== undefined) updateData.title = input.title;
       if (input.content !== undefined) updateData.content = input.content;
@@ -133,7 +147,7 @@ export function useCoverLetters() {
       });
       return false;
     }
-  }, [toast, fetchCoverLetters]);
+  }, [toast, fetchCoverLetters, saveVersion]);
 
   const deleteCoverLetter = useCallback(async (id: string): Promise<boolean> => {
     try {
