@@ -6,9 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// PDF.js for parsing PDFs
-import * as pdfjs from "https://esm.sh/pdfjs-dist@4.0.379/build/pdf.mjs";
-
 // Mammoth for parsing Word documents
 import mammoth from "https://esm.sh/mammoth@1.6.0";
 
@@ -72,36 +69,100 @@ serve(async (req) => {
     console.log("Processing file:", fileName);
 
     if (fileName.endsWith(".pdf")) {
-      // Parse PDF
+      // Parse PDF using a simple text extraction approach
       try {
         const arrayBuffer = await fileData.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
         
-        const loadingTask = pdfjs.getDocument({ data: uint8Array });
-        const pdf = await loadingTask.promise;
+        // Convert to string and try to extract readable text
+        // This is a simplified approach - extracts text between stream markers
+        const textDecoder = new TextDecoder('utf-8', { fatal: false });
+        const pdfString = textDecoder.decode(uint8Array);
         
+        // Extract text content from PDF streams
         const textParts: string[] = [];
         
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          const pageText = textContent.items
-            .map((item: any) => item.str)
-            .join(" ");
-          textParts.push(pageText);
+        // Method 1: Look for text between parentheses (common PDF text encoding)
+        const textMatches = pdfString.match(/\(([^)]+)\)/g);
+        if (textMatches) {
+          for (const match of textMatches) {
+            const text = match.slice(1, -1);
+            // Filter out non-printable or encoded content
+            if (text.length > 0 && /^[\x20-\x7E\s]+$/.test(text)) {
+              textParts.push(text);
+            }
+          }
         }
         
-        extractedText = textParts.join("\n\n");
+        // Method 2: Look for BT...ET text blocks with Tj/TJ operators
+        const btBlocks = pdfString.match(/BT[\s\S]*?ET/g);
+        if (btBlocks) {
+          for (const block of btBlocks) {
+            // Extract text from Tj operators
+            const tjMatches = block.match(/\(([^)]*)\)\s*Tj/g);
+            if (tjMatches) {
+              for (const tj of tjMatches) {
+                const text = tj.match(/\(([^)]*)\)/)?.[1];
+                if (text && text.length > 0 && /^[\x20-\x7E\s]+$/.test(text)) {
+                  textParts.push(text);
+                }
+              }
+            }
+            // Extract text from TJ arrays
+            const tjArrayMatches = block.match(/\[(.*?)\]\s*TJ/g);
+            if (tjArrayMatches) {
+              for (const tja of tjArrayMatches) {
+                const innerTexts = tja.match(/\(([^)]*)\)/g);
+                if (innerTexts) {
+                  for (const inner of innerTexts) {
+                    const text = inner.slice(1, -1);
+                    if (text && text.length > 0 && /^[\x20-\x7E\s]+$/.test(text)) {
+                      textParts.push(text);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (textParts.length > 0) {
+          extractedText = textParts.join(" ");
+        } else {
+          // Fallback: try to find any readable ASCII text
+          const readableText = pdfString
+            .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          
+          // Extract likely content sections (longer sequences of readable text)
+          const sentences = readableText.split(/\s{2,}/).filter(s => s.length > 10);
+          extractedText = sentences.join(" ");
+        }
+
+        // If we still have very little text, it might be a scanned PDF
+        if (extractedText.length < 100) {
+          console.log("PDF appears to have minimal extractable text (may be scanned/image-based)");
+          return new Response(JSON.stringify({ 
+            error: "This PDF appears to be scanned or image-based. Please use a text-based PDF or paste your resume content directly." 
+          }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
         console.log("PDF parsed successfully, text length:", extractedText.length);
       } catch (pdfError) {
         console.error("PDF parsing error:", pdfError);
-        return new Response(JSON.stringify({ error: "Failed to parse PDF" }), {
+        return new Response(JSON.stringify({ 
+          error: "Failed to parse PDF. Please try pasting your resume content directly or use a Word document." 
+        }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-    } else if (fileName.endsWith(".docx") || fileName.endsWith(".doc")) {
-      // Parse Word document
+    } else if (fileName.endsWith(".docx")) {
+      // Parse Word document (.docx)
       try {
         const arrayBuffer = await fileData.arrayBuffer();
         const result = await mammoth.extractRawText({ arrayBuffer });
@@ -114,12 +175,20 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    } else if (fileName.endsWith(".doc")) {
+      // .doc files are binary and harder to parse without native libraries
+      return new Response(JSON.stringify({ 
+        error: "Legacy .doc format is not supported. Please save as .docx or paste your resume content directly." 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     } else if (fileName.endsWith(".txt") || fileName.endsWith(".md")) {
       // Plain text files
       extractedText = await fileData.text();
       console.log("Text file read successfully, length:", extractedText.length);
     } else {
-      return new Response(JSON.stringify({ error: "Unsupported file type. Please upload PDF, DOCX, DOC, TXT, or MD files." }), {
+      return new Response(JSON.stringify({ error: "Unsupported file type. Please upload PDF, DOCX, TXT, or MD files." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -130,6 +199,15 @@ serve(async (req) => {
       .replace(/\s+/g, " ")
       .replace(/\n\s*\n/g, "\n\n")
       .trim();
+
+    if (!extractedText || extractedText.length < 50) {
+      return new Response(JSON.stringify({ 
+        error: "Could not extract enough text from the document. Please paste your resume content directly." 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     return new Response(JSON.stringify({ 
       text: extractedText,
