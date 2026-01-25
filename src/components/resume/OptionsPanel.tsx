@@ -1,6 +1,5 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ProjectOptionsData, SummaryOptionsData } from "./ResumeChatPanel";
 
 interface OptionsPanelProps {
@@ -21,7 +20,7 @@ export function OptionsPanel({
   if (!hasOptions) return null;
 
   return (
-    <div className="border-t border-border bg-background p-4 space-y-4 max-h-[300px] overflow-y-auto">
+    <div className="bg-background p-4 space-y-4">
       {/* Summary Options */}
       {summaryOptions && summaryOptions.options.length > 0 && (
         <div className="space-y-2">
