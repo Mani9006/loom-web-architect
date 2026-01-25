@@ -48,58 +48,70 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
             messages: [
               {
                 role: "system",
-                content: `You are a resume parser. Extract structured information from the resume text and return ONLY a valid JSON object with this exact structure (no markdown, no code blocks, just raw JSON):
+                content: `You are an expert resume parser. Your task is to extract ALL structured information from the resume text.
+
+IMPORTANT RULES:
+1. Extract EVERY piece of information you can find
+2. For contact info: Look for email patterns, phone numbers (various formats), city/state locations, LinkedIn URLs
+3. For experience: Extract EACH job with company name, job title, dates, and bullet points/responsibilities
+4. For education: Extract school name, degree type (BS, MS, MBA, etc.), field of study, graduation date, GPA
+5. For skills: Group skills into logical categories (Programming Languages, Frameworks, Cloud, Tools, etc.)
+6. For certifications: Extract name, issuing organization, and date
+
+Return ONLY a valid JSON object with NO markdown formatting, NO code blocks, just raw JSON:
 {
   "personalInfo": {
-    "fullName": "string",
-    "email": "string",
-    "phone": "string",
-    "location": "string",
-    "linkedin": "string",
-    "portfolio": "string"
+    "fullName": "extracted full name",
+    "email": "email@example.com",
+    "phone": "+1 xxx-xxx-xxxx",
+    "location": "City, State",
+    "linkedin": "linkedin URL or profile",
+    "portfolio": "website URL if any",
+    "title": "current or target job title"
   },
   "clients": [
     {
-      "name": "company name",
-      "industry": "industry if mentioned",
-      "location": "location if mentioned",
-      "role": "job title",
-      "startDate": "start date",
-      "endDate": "end date or Present",
-      "isCurrent": boolean,
-      "responsibilities": "brief description of work"
+      "name": "Company Name",
+      "industry": "Industry if mentioned",
+      "location": "Job location if mentioned",
+      "role": "Job Title",
+      "startDate": "Month Year",
+      "endDate": "Month Year or Present",
+      "isCurrent": true/false,
+      "responsibilities": "Combined bullet points as paragraph or key achievements"
     }
   ],
   "education": [
     {
-      "school": "school name",
-      "degree": "degree type",
-      "field": "field of study",
-      "graduationDate": "graduation date",
-      "gpa": "GPA if mentioned"
+      "school": "University Name",
+      "degree": "Bachelor of Science/Master of Science/etc",
+      "field": "Field of Study (e.g., Computer Science)",
+      "graduationDate": "Month Year or just Year",
+      "gpa": "GPA if mentioned (e.g., 3.8)"
     }
   ],
   "certifications": [
     {
-      "name": "certification name",
-      "issuer": "issuing organization",
-      "date": "date obtained"
+      "name": "Certification Full Name",
+      "issuer": "Issuing Organization (AWS, Google, Microsoft, etc.)",
+      "date": "Date obtained"
     }
   ],
   "skillCategories": [
     {
-      "category": "category name like Programming Languages, Frameworks, etc.",
-      "skills": ["skill1", "skill2"]
+      "category": "Category Name",
+      "skills": ["skill1", "skill2", "skill3"]
     }
   ],
-  "targetRole": "inferred target role based on experience"
+  "summary": "Extract any professional summary or objective statement if present",
+  "targetRole": "Inferred target role based on most recent experience and skills"
 }
 
-Extract as much information as possible. For missing fields, use empty strings. Return ONLY the JSON object.`
+CRITICAL: Parse ALL experience entries, ALL education entries, ALL certifications. Do not skip any. For missing fields, use empty strings "". Return ONLY valid JSON.`
               },
               {
                 role: "user",
-                content: `Parse this resume:\n\n${text}`
+                content: `Parse this resume and extract ALL information:\n\n${text}`
               }
             ],
           }),
@@ -156,8 +168,9 @@ Extract as much information as possible. For missing fields, use empty strings. 
           location: parsedData.personalInfo?.location || data.personalInfo.location,
           linkedin: parsedData.personalInfo?.linkedin || data.personalInfo.linkedin,
           portfolio: parsedData.personalInfo?.portfolio || data.personalInfo.portfolio,
+          title: parsedData.personalInfo?.title || data.personalInfo.title,
         },
-        targetRole: parsedData.targetRole || data.targetRole,
+        targetRole: parsedData.targetRole || parsedData.personalInfo?.title || data.targetRole,
         clients: parsedData.clients?.length > 0 
           ? parsedData.clients.map((c: any) => ({
               id: crypto.randomUUID(),
@@ -167,7 +180,7 @@ Extract as much information as possible. For missing fields, use empty strings. 
               role: c.role || "",
               startDate: c.startDate || "",
               endDate: c.endDate || "",
-              isCurrent: c.isCurrent || c.endDate?.toLowerCase() === "present",
+              isCurrent: c.isCurrent || c.endDate?.toLowerCase()?.includes("present") || false,
               responsibilities: c.responsibilities || "",
               projects: [],
             }))
@@ -193,16 +206,24 @@ Extract as much information as possible. For missing fields, use empty strings. 
         skillCategories: parsedData.skillCategories?.length > 0
           ? parsedData.skillCategories.map((s: any) => ({
               category: s.category || "",
-              skills: s.skills || [],
+              skills: Array.isArray(s.skills) ? s.skills : [],
             }))
           : data.skillCategories,
-        summary: data.summary,
+        summary: parsedData.summary || data.summary,
         summaryOptions: data.summaryOptions,
         totalYearsExperience: data.totalYearsExperience,
         projects: data.projects,
       };
 
       onChange(newData);
+      
+      console.log("Resume parsed successfully:", {
+        personalInfo: newData.personalInfo,
+        clients: newData.clients.length,
+        education: newData.education.length,
+        certifications: newData.certifications.length,
+        skillCategories: newData.skillCategories.length,
+      });
 
       toast({
         title: "Resume imported!",
