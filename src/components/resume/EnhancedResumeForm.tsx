@@ -5,10 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, X, Sparkles, Loader2, FileText, Briefcase, GraduationCap, Award, Wrench } from "lucide-react";
+import { Plus, X, Sparkles, Loader2, FileText, Briefcase, GraduationCap, Award, Wrench, Upload } from "lucide-react";
 import { ResumeData, Client, Education, Certification, SkillCategory } from "@/types/resume";
 import { TemplateSelector } from "./TemplateSelector";
-
+import { DocumentUpload } from "@/components/shared/DocumentUpload";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 interface EnhancedResumeFormProps {
   data: ResumeData;
   onChange: (data: ResumeData) => void;
@@ -20,6 +22,204 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
   const [showTemplateSelector, setShowTemplateSelector] = useState(!data.templateId);
   const [skillInput, setSkillInput] = useState("");
   const [currentSkillCategory, setCurrentSkillCategory] = useState("");
+  const [isParsingResume, setIsParsingResume] = useState(false);
+  const { toast } = useToast();
+
+  // Handle imported resume text - parse it with AI to extract structured data
+  const handleResumeImported = async (text: string, fileName: string) => {
+    setIsParsingResume(true);
+    
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session) {
+        throw new Error("Not authenticated");
+      }
+
+      // Call AI to parse the resume text into structured data
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.session.access_token}`,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content: `You are a resume parser. Extract structured information from the resume text and return ONLY a valid JSON object with this exact structure (no markdown, no code blocks, just raw JSON):
+{
+  "personalInfo": {
+    "fullName": "string",
+    "email": "string",
+    "phone": "string",
+    "location": "string",
+    "linkedin": "string",
+    "portfolio": "string"
+  },
+  "clients": [
+    {
+      "name": "company name",
+      "industry": "industry if mentioned",
+      "location": "location if mentioned",
+      "role": "job title",
+      "startDate": "start date",
+      "endDate": "end date or Present",
+      "isCurrent": boolean,
+      "responsibilities": "brief description of work"
+    }
+  ],
+  "education": [
+    {
+      "school": "school name",
+      "degree": "degree type",
+      "field": "field of study",
+      "graduationDate": "graduation date",
+      "gpa": "GPA if mentioned"
+    }
+  ],
+  "certifications": [
+    {
+      "name": "certification name",
+      "issuer": "issuing organization",
+      "date": "date obtained"
+    }
+  ],
+  "skillCategories": [
+    {
+      "category": "category name like Programming Languages, Frameworks, etc.",
+      "skills": ["skill1", "skill2"]
+    }
+  ],
+  "targetRole": "inferred target role based on experience"
+}
+
+Extract as much information as possible. For missing fields, use empty strings. Return ONLY the JSON object.`
+              },
+              {
+                role: "user",
+                content: `Parse this resume:\n\n${text}`
+              }
+            ],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to parse resume");
+      }
+
+      // Read the streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ") && line !== "data: [DONE]") {
+              try {
+                const parsed = JSON.parse(line.slice(6));
+                const content = parsed.choices?.[0]?.delta?.content;
+                if (content) fullContent += content;
+              } catch {
+                // Ignore parse errors for incomplete chunks
+              }
+            }
+          }
+        }
+      }
+
+      // Parse the JSON from the response
+      const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("Could not extract structured data from resume");
+      }
+
+      const parsedData = JSON.parse(jsonMatch[0]);
+
+      // Update the form with parsed data
+      const newData: ResumeData = {
+        ...data,
+        templateId: data.templateId || "professional",
+        personalInfo: {
+          fullName: parsedData.personalInfo?.fullName || data.personalInfo.fullName,
+          email: parsedData.personalInfo?.email || data.personalInfo.email,
+          phone: parsedData.personalInfo?.phone || data.personalInfo.phone,
+          location: parsedData.personalInfo?.location || data.personalInfo.location,
+          linkedin: parsedData.personalInfo?.linkedin || data.personalInfo.linkedin,
+          portfolio: parsedData.personalInfo?.portfolio || data.personalInfo.portfolio,
+        },
+        targetRole: parsedData.targetRole || data.targetRole,
+        clients: parsedData.clients?.length > 0 
+          ? parsedData.clients.map((c: any) => ({
+              id: crypto.randomUUID(),
+              name: c.name || "",
+              industry: c.industry || "",
+              location: c.location || "",
+              role: c.role || "",
+              startDate: c.startDate || "",
+              endDate: c.endDate || "",
+              isCurrent: c.isCurrent || c.endDate?.toLowerCase() === "present",
+              responsibilities: c.responsibilities || "",
+              projects: [],
+            }))
+          : data.clients,
+        education: parsedData.education?.length > 0
+          ? parsedData.education.map((e: any) => ({
+              id: crypto.randomUUID(),
+              school: e.school || "",
+              degree: e.degree || "",
+              field: e.field || "",
+              graduationDate: e.graduationDate || "",
+              gpa: e.gpa || "",
+            }))
+          : data.education,
+        certifications: parsedData.certifications?.length > 0
+          ? parsedData.certifications.map((c: any) => ({
+              id: crypto.randomUUID(),
+              name: c.name || "",
+              issuer: c.issuer || "",
+              date: c.date || "",
+            }))
+          : data.certifications,
+        skillCategories: parsedData.skillCategories?.length > 0
+          ? parsedData.skillCategories.map((s: any) => ({
+              category: s.category || "",
+              skills: s.skills || [],
+            }))
+          : data.skillCategories,
+        summary: data.summary,
+        summaryOptions: data.summaryOptions,
+        totalYearsExperience: data.totalYearsExperience,
+        projects: data.projects,
+      };
+
+      onChange(newData);
+
+      toast({
+        title: "Resume imported!",
+        description: `Successfully extracted data from ${fileName}. Review and edit as needed.`,
+      });
+
+    } catch (error) {
+      console.error("Resume parsing error:", error);
+      toast({
+        title: "Import failed",
+        description: error instanceof Error ? error.message : "Failed to parse resume",
+        variant: "destructive",
+      });
+    } finally {
+      setIsParsingResume(false);
+    }
+  };
 
   const updatePersonalInfo = (field: keyof ResumeData["personalInfo"], value: string) => {
     onChange({
@@ -159,6 +359,25 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
 
       <ScrollArea className="h-full">
         <div className="p-4 space-y-4 pb-24">
+          {/* Import Existing Resume */}
+          <Card className="border-border bg-gradient-to-br from-primary/5 to-primary/10">
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Upload className="h-4 w-4" /> Import Existing Resume
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-xs text-muted-foreground mb-3">
+                Upload your PDF or Word resume and AI will auto-fill the form
+              </p>
+              <DocumentUpload
+                onTextExtracted={handleResumeImported}
+                isLoading={isParsingResume}
+                label={isParsingResume ? "Parsing resume..." : "Upload Resume (PDF/Word)"}
+              />
+            </CardContent>
+          </Card>
+
           {/* Template Selection Button */}
           <Button
             type="button"
