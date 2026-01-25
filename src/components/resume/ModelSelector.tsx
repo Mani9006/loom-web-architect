@@ -22,31 +22,43 @@ export const AI_MODELS: AIModel[] = [
     provider: "gemini",
     description: "Most capable Gemini",
   },
-  // OpenAI models - prioritize less tokens/cheaper models
+  // OpenAI models
   {
-    id: "gpt-4o-mini",
-    name: "GPT-4o Mini",
+    id: "gpt-5.2-chat-latest",
+    name: "GPT-5.2 Chat",
     provider: "openai",
-    description: "Fast & affordable",
+    description: "Latest & most capable",
   },
   {
-    id: "gpt-3.5-turbo",
-    name: "GPT-3.5 Turbo",
+    id: "gpt-4o",
+    name: "GPT-4o",
     provider: "openai",
-    description: "Fastest & cheapest",
+    description: "Fast multimodal",
   },
-  // Anthropic Claude models - prioritize less tokens/cheaper models
   {
-    id: "claude-haiku",
-    name: "Claude Haiku",
+    id: "gpt-4o-mini-search-preview",
+    name: "GPT-4o Mini Search",
+    provider: "openai",
+    description: "Search preview",
+  },
+  // Anthropic Claude models
+  {
+    id: "claude-haiku-4",
+    name: "Claude Haiku 4.x",
     provider: "anthropic",
     description: "Fast & efficient",
   },
   {
-    id: "claude-sonnet",
-    name: "Claude Sonnet",
+    id: "claude-opus-4.5",
+    name: "Claude Opus 4.5",
     provider: "anthropic",
-    description: "Balanced & capable",
+    description: "Most capable",
+  },
+  {
+    id: "claude-haiku-3",
+    name: "Claude Haiku 3",
+    provider: "anthropic",
+    description: "Legacy fast model",
   },
 ];
 
