@@ -247,6 +247,27 @@ export default function Chat() {
     setResumeData(createEmptyResumeData());
   };
 
+  const handleRenameConversation = async (id: string, newTitle: string) => {
+    const { error } = await supabase
+      .from("conversations")
+      .update({ title: newTitle })
+      .eq("id", id);
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to rename conversation", variant: "destructive" });
+      return;
+    }
+    
+    // Update local state
+    setConversations((prev) =>
+      prev.map((conv) => (conv.id === id ? { ...conv, title: newTitle } : conv))
+    );
+    
+    if (currentConversation?.id === id) {
+      setCurrentConversation((prev) => prev ? { ...prev, title: newTitle } : null);
+    }
+  };
+
   const handleStartResume = () => {
     setChatMode("resume-form");
   };
@@ -1771,6 +1792,7 @@ ${clientSummary}
           onNewChat={handleNewChat}
           onSelectConversation={(id) => navigate(`/c/${id}`)}
           onDeleteConversation={handleDeleteConversation}
+          onRenameConversation={handleRenameConversation}
         />
 
         <div className="flex-1 flex flex-col min-w-0">

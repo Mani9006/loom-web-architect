@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { PenSquare, MessageSquare, Trash2, Settings } from "lucide-react";
+import { PenSquare, MessageSquare, Trash2, Settings, Search, Check, X } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -15,6 +15,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ interface ChatSidebarProps {
   onNewChat: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
+  onRenameConversation?: (id: string, newTitle: string) => void;
 }
 
 export function ChatSidebar({
@@ -43,10 +45,23 @@ export function ChatSidebar({
   onNewChat,
   onSelectConversation,
   onDeleteConversation,
+  onRenameConversation,
 }: ChatSidebarProps) {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+
+  // Filter conversations based on search query
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery.trim()) return conversations;
+    const query = searchQuery.toLowerCase();
+    return conversations.filter((conv) =>
+      conv.title.toLowerCase().includes(query)
+    );
+  }, [conversations, searchQuery]);
 
   // Group conversations by date like ChatGPT
   const groupedConversations = useMemo(() => {
@@ -65,7 +80,7 @@ export function ChatSidebar({
       older: [],
     };
 
-    conversations.forEach((conv) => {
+    filteredConversations.forEach((conv) => {
       const date = new Date(conv.updated_at);
       if (isToday(date)) {
         groups.today.push(conv);
@@ -85,7 +100,33 @@ export function ChatSidebar({
     });
 
     return groups;
-  }, [conversations]);
+  }, [filteredConversations]);
+
+  const handleStartEditing = (conv: Conversation) => {
+    setEditingId(conv.id);
+    setEditingTitle(conv.title);
+  };
+
+  const handleSaveEdit = () => {
+    if (editingId && editingTitle.trim() && onRenameConversation) {
+      onRenameConversation(editingId, editingTitle.trim());
+    }
+    setEditingId(null);
+    setEditingTitle("");
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditingTitle("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSaveEdit();
+    } else if (e.key === "Escape") {
+      handleCancelEdit();
+    }
+  };
 
   const renderConversationGroup = (
     label: string,
@@ -104,38 +145,74 @@ export function ChatSidebar({
           <SidebarMenu>
             {convs.map((conv) => (
               <SidebarMenuItem key={conv.id}>
-                <SidebarMenuButton
-                  onClick={() => onSelectConversation(conv.id)}
-                  isActive={conv.id === currentConversationId}
-                  className="group justify-between"
-                  tooltip={isCollapsed ? conv.title : undefined}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <MessageSquare className="w-4 h-4 shrink-0" />
-                    {!isCollapsed && (
-                      <span className="truncate">{conv.title}</span>
-                    )}
+                {editingId === conv.id ? (
+                  <div className="flex items-center gap-1 px-2 py-1">
+                    <Input
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      className="h-7 text-sm"
+                      autoFocus
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={handleSaveEdit}
+                    >
+                      <Check className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={handleCancelEdit}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
                   </div>
-                  {!isCollapsed && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
+                ) : (
+                  <SidebarMenuButton
+                    onClick={() => onSelectConversation(conv.id)}
+                    isActive={conv.id === currentConversationId}
+                    className="group justify-between"
+                    tooltip={isCollapsed ? conv.title : undefined}
+                  >
+                    <div
+                      className="flex items-center gap-2 min-w-0"
+                      onDoubleClick={(e) => {
                         e.stopPropagation();
-                        onDeleteConversation(conv.id);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.stopPropagation();
-                          onDeleteConversation(conv.id);
+                        if (onRenameConversation) {
+                          handleStartEditing(conv);
                         }
                       }}
-                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-sidebar-accent rounded transition-opacity cursor-pointer"
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                    </span>
-                  )}
-                </SidebarMenuButton>
+                      <MessageSquare className="w-4 h-4 shrink-0" />
+                      {!isCollapsed && (
+                        <span className="truncate">{conv.title}</span>
+                      )}
+                    </div>
+                    {!isCollapsed && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteConversation(conv.id);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.stopPropagation();
+                            onDeleteConversation(conv.id);
+                          }
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-sidebar-accent rounded transition-opacity cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                      </span>
+                    )}
+                  </SidebarMenuButton>
+                )}
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
@@ -174,6 +251,20 @@ export function ChatSidebar({
             {!isCollapsed && "New chat"}
           </Button>
         </div>
+
+        {!isCollapsed && (
+          <div className="px-3 mb-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-9 bg-sidebar-accent border-sidebar-border text-sidebar-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+          </div>
+        )}
 
         <SidebarContent className="px-2 flex-1 overflow-hidden">
           <ScrollArea className="h-full">
