@@ -8,8 +8,9 @@ import { ChatHeader } from "@/components/chat/ChatHeader";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
 import { ResumeChatPanel, ChatMessage, ProjectOptionsData, SummaryOptionsData } from "@/components/resume/ResumeChatPanel";
 import { ResumePreview } from "@/components/resume/ResumePreview";
+import { OptionsPanel } from "@/components/resume/OptionsPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { ResumeData, Client, SummaryOption, ProjectOption } from "@/types/resume";
+import { ResumeData, Client } from "@/types/resume";
 
 type Conversation = {
   id: string;
@@ -71,6 +72,8 @@ export default function Chat() {
   const [generationPhase, setGenerationPhase] = useState<"thinking" | "generating" | null>(null);
   const [resumeData, setResumeData] = useState<ResumeData>(createEmptyResumeData());
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [projectOptions, setProjectOptions] = useState<ProjectOptionsData[]>([]);
+  const [summaryOptions, setSummaryOptions] = useState<SummaryOptionsData | null>(null);
   const navigate = useNavigate();
   const { conversationId } = useParams();
   const { toast } = useToast();
@@ -383,7 +386,7 @@ ${clientSummary}
     }
   };
 
-  const parseAndUpdateResumeFromAI = (content: string, tempMsgId?: string) => {
+  const parseAndUpdateResumeFromAI = (content: string) => {
     // Extract summary options
     const summaryMatch = content.match(/## Professional Summary[\s\S]*?\*\*Option 1:\*\*\s*([\s\S]*?)\*\*Option 2:\*\*\s*([\s\S]*?)(?=\n##|$)/);
     
@@ -391,38 +394,26 @@ ${clientSummary}
       const option1 = summaryMatch[1].trim();
       const option2 = summaryMatch[2].trim();
       
-      const summaryOptions = [
-        { id: crypto.randomUUID(), content: option1, isSelected: false },
-        { id: crypto.randomUUID(), content: option2, isSelected: false },
-      ];
+      const newSummaryOptions: SummaryOptionsData = {
+        options: [
+          { id: crypto.randomUUID(), content: option1, isSelected: true },
+          { id: crypto.randomUUID(), content: option2, isSelected: false },
+        ],
+      };
       
+      setSummaryOptions(newSummaryOptions);
       setResumeData((prev) => ({
         ...prev,
-        summaryOptions,
-        summary: option1, // Default to first option
+        summaryOptions: newSummaryOptions.options,
+        summary: option1,
       }));
-
-      // Add inline summary options to chat
-      const summaryMsgId = crypto.randomUUID();
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: summaryMsgId,
-          role: "assistant",
-          content: "I've generated 2 summary options based on your combined experience. Please select one:",
-          timestamp: new Date(),
-          inlineOptions: {
-            type: "summary",
-            data: { options: summaryOptions },
-          },
-        },
-      ]);
     }
 
     // Extract project options for each client
     const experienceSection = content.match(/## Experience([\s\S]*?)(?=\n## Education|$)/);
     if (experienceSection) {
       const clientSections = experienceSection[1].split(/### /).filter(Boolean);
+      const newProjectOptions: ProjectOptionsData[] = [];
       
       clientSections.forEach((section) => {
         // Parse role and client name from "Role | Client Name"
@@ -456,53 +447,31 @@ ${clientSummary}
           const bullets1 = extractBullets(option1Match[1]);
           const bullets2 = extractBullets(option2Match[1]);
           
-          const projectOptions = [
-            {
-              id: crypto.randomUUID(),
-              title: "Option 1",
-              bullets: bullets1,
-              isSelected: false,
-            },
-            {
-              id: crypto.randomUUID(),
-              title: "Option 2",
-              bullets: bullets2,
-              isSelected: false,
-            },
-          ];
+          const clientProjectOptions: ProjectOptionsData = {
+            clientId: matchingClient.id,
+            clientName,
+            role,
+            options: [
+              { id: crypto.randomUUID(), title: "Option 1", bullets: bullets1, isSelected: true },
+              { id: crypto.randomUUID(), title: "Option 2", bullets: bullets2, isSelected: false },
+            ],
+          };
           
-          // Update client with project options
+          newProjectOptions.push(clientProjectOptions);
+          
+          // Update client with project options - select first by default
           setResumeData((prev) => ({
             ...prev,
             clients: prev.clients.map((c) =>
               c.id === matchingClient.id
-                ? { ...c, projects: projectOptions }
+                ? { ...c, projects: clientProjectOptions.options }
                 : c
             ),
           }));
-          
-          // Add inline project options to chat
-          const projectMsgId = crypto.randomUUID();
-          setChatMessages((prev) => [
-            ...prev,
-            {
-              id: projectMsgId,
-              role: "assistant",
-              content: `Choose responsibility bullets for **${clientName}** (${role}):`,
-              timestamp: new Date(),
-              inlineOptions: {
-                type: "project",
-                data: {
-                  clientId: matchingClient.id,
-                  clientName,
-                  role,
-                  options: projectOptions,
-                },
-              },
-            },
-          ]);
         }
       });
+      
+      setProjectOptions(newProjectOptions);
     }
   };
 
@@ -621,40 +590,27 @@ ${clientSummary}
 
   const handleSelectSummary = (optionId: string) => {
     // Update resume data
+    const selectedOption = summaryOptions?.options.find(opt => opt.id === optionId);
     setResumeData((prev) => ({
       ...prev,
       summaryOptions: prev.summaryOptions.map((opt) => ({
         ...opt,
         isSelected: opt.id === optionId,
       })),
-      summary: prev.summaryOptions.find((opt) => opt.id === optionId)?.content || prev.summary,
+      summary: selectedOption?.content || prev.summary,
     }));
 
-    // Update inline options in chat messages
-    setChatMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.inlineOptions?.type === "summary") {
-          const data = msg.inlineOptions.data as SummaryOptionsData;
-          return {
-            ...msg,
-            inlineOptions: {
-              ...msg.inlineOptions,
-              data: {
-                ...data,
-                options: data.options.map((opt) => ({
-                  ...opt,
-                  isSelected: opt.id === optionId,
-                })),
-              },
-            },
-          };
-        }
-        return msg;
-      })
-    );
+    // Update options panel state
+    setSummaryOptions((prev) => prev ? {
+      ...prev,
+      options: prev.options.map((opt) => ({
+        ...opt,
+        isSelected: opt.id === optionId,
+      })),
+    } : null);
   };
 
-  const handleSelectProject = (clientId: string, projectId: string) => {
+  const handleSelectProject = (clientId: string, optionId: string) => {
     // Update resume data
     setResumeData((prev) => ({
       ...prev,
@@ -664,36 +620,26 @@ ${clientSummary}
               ...client,
               projects: client.projects.map((p) => ({
                 ...p,
-                isSelected: p.id === projectId,
+                isSelected: p.id === optionId,
               })),
             }
           : client
       ),
     }));
 
-    // Update inline options in chat messages
-    setChatMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.inlineOptions?.type === "project") {
-          const data = msg.inlineOptions.data as ProjectOptionsData;
-          if (data.clientId === clientId) {
-            return {
-              ...msg,
-              inlineOptions: {
-                ...msg.inlineOptions,
-                data: {
-                  ...data,
-                  options: data.options.map((opt) => ({
-                    ...opt,
-                    isSelected: opt.id === projectId,
-                  })),
-                },
-              },
-            };
-          }
-        }
-        return msg;
-      })
+    // Update options panel state
+    setProjectOptions((prev) =>
+      prev.map((clientData) =>
+        clientData.clientId === clientId
+          ? {
+              ...clientData,
+              options: clientData.options.map((opt) => ({
+                ...opt,
+                isSelected: opt.id === optionId,
+              })),
+            }
+          : clientData
+      )
     );
   };
 
@@ -741,19 +687,30 @@ ${clientSummary}
             ) : (
               <>
                 {/* Chat Panel - Left */}
-                <div className="w-[400px] border-r border-border flex flex-col">
-                  <ResumeChatPanel
-                    messages={chatMessages}
-                    isLoading={isLoading}
-                    generationPhase={generationPhase}
-                    onSendMessage={handleSendMessage}
-                    onSelectSummary={handleSelectSummary}
-                    onSelectProject={handleSelectProject}
-                  />
+                <div className="w-[400px] border-r border-border flex flex-col overflow-hidden">
+                  {/* Chat messages - scrollable */}
+                  <div className="flex-1 overflow-hidden">
+                    <ResumeChatPanel
+                      messages={chatMessages}
+                      isLoading={isLoading}
+                      generationPhase={generationPhase}
+                      onSendMessage={handleSendMessage}
+                    />
+                  </div>
+                  
+                  {/* Options Panel - fixed at bottom, scrollable if needed */}
+                  {(projectOptions.length > 0 || summaryOptions) && (
+                    <OptionsPanel
+                      projectOptions={projectOptions}
+                      summaryOptions={summaryOptions}
+                      onSelectProject={handleSelectProject}
+                      onSelectSummary={handleSelectSummary}
+                    />
+                  )}
                 </div>
 
-                {/* Resume Preview - Right */}
-                <div className="flex-1 bg-muted/30">
+                {/* Resume Preview - Right - Fixed with internal scroll */}
+                <div className="flex-1 bg-muted/30 overflow-hidden">
                   <ResumePreview data={resumeData} isGenerating={isLoading} />
                 </div>
               </>
