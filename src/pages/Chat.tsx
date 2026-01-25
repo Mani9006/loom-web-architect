@@ -59,6 +59,7 @@ const createEmptyResumeData = (): ResumeData => ({
   ],
   certifications: [],
   skillCategories: [],
+  projects: [],
   targetRole: "",
 });
 

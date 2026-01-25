@@ -1,5 +1,6 @@
 export interface PersonalInfo {
   fullName: string;
+  title?: string; // e.g., "Senior Data Scientist"
   email: string;
   phone: string;
   location: string;
@@ -35,6 +36,7 @@ export interface Education {
   field: string;
   graduationDate: string;
   gpa?: string;
+  location?: string;
 }
 
 export interface Certification {
@@ -42,11 +44,20 @@ export interface Certification {
   name: string;
   issuer: string;
   date: string;
+  link?: string;
 }
 
 export interface SkillCategory {
   category: string;
   skills: string[];
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  organization?: string;
+  date: string;
+  bullets: string[];
 }
 
 export interface SummaryOption {
@@ -65,6 +76,7 @@ export interface ResumeData {
   education: Education[];
   certifications: Certification[];
   skillCategories: SkillCategory[];
+  projects: Project[];
   targetRole?: string;
 }
 

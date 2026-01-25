@@ -7,128 +7,241 @@ interface ResumePreviewProps {
 }
 
 export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
-  const isCreativeTemplate = data.templateId === "creative";
-
   return (
-    <div className="h-full overflow-hidden p-6">
-      <div className="bg-white text-black rounded-lg shadow-xl max-w-[800px] mx-auto relative">
-        {/* Resume Content - Mimics actual resume layout */}
-        <div className="p-8 space-y-6 text-sm leading-relaxed" style={{ fontFamily: "'Times New Roman', serif" }}>
-          {/* Header */}
-          <header className="text-center border-b border-gray-300 pb-4">
-            <h1 className="text-2xl font-bold tracking-wide uppercase">{data.personalInfo.fullName || "Your Name"}</h1>
-            <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mt-2 text-gray-600 text-xs">
-              {data.personalInfo.phone && <span>📞 {data.personalInfo.phone}</span>}
-              {data.personalInfo.email && <span>✉️ {data.personalInfo.email}</span>}
-              {data.personalInfo.linkedin && <span>🔗 {data.personalInfo.linkedin}</span>}
-              {data.personalInfo.location && <span>📍 {data.personalInfo.location}</span>}
+    <div className="h-full overflow-auto p-4">
+      <div 
+        className="bg-white text-black shadow-xl mx-auto relative"
+        style={{ 
+          width: "8.5in",
+          minHeight: "11in",
+          padding: "1.8cm 2cm 2cm 2cm",
+          fontFamily: "'Charter', 'Georgia', serif",
+          fontSize: "10pt",
+          lineHeight: "1.4",
+        }}
+      >
+        {/* Header - Centered */}
+        <header className="text-center pb-3 border-b border-black mb-4">
+          <h1 
+            className="font-bold tracking-wide"
+            style={{ fontSize: "19pt" }}
+          >
+            {data.personalInfo.fullName || "Your Name"}
+          </h1>
+          
+          {data.personalInfo.title && (
+            <p className="mt-1 font-bold" style={{ fontSize: "11.5pt" }}>
+              {data.personalInfo.title}
+            </p>
+          )}
+          
+          <div className="flex flex-wrap justify-center items-center gap-x-2 mt-2 text-sm">
+            {data.personalInfo.location && (
+              <>
+                <span>📍 {data.personalInfo.location}</span>
+                <span className="text-gray-400">|</span>
+              </>
+            )}
+            {data.personalInfo.email && (
+              <>
+                <a href={`mailto:${data.personalInfo.email}`} className="text-black hover:underline">
+                  ✉️ {data.personalInfo.email}
+                </a>
+                <span className="text-gray-400">|</span>
+              </>
+            )}
+            {data.personalInfo.phone && (
+              <>
+                <span>📞 {data.personalInfo.phone}</span>
+                {data.personalInfo.linkedin && <span className="text-gray-400">|</span>}
+              </>
+            )}
+            {data.personalInfo.linkedin && (
+              <a 
+                href={data.personalInfo.linkedin.startsWith("http") ? data.personalInfo.linkedin : `https://${data.personalInfo.linkedin}`}
+                className="text-black hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                🔗 LinkedIn
+              </a>
+            )}
+          </div>
+        </header>
+
+        {/* Summary Section */}
+        {data.summary && (
+          <section className="mb-4">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
+              SUMMARY
+            </h2>
+            <p className="text-justify leading-relaxed" style={{ fontSize: "10pt" }}>
+              {data.summary}
+            </p>
+          </section>
+        )}
+
+        {/* Experience Section */}
+        {data.clients.length > 0 && data.clients.some(c => c.name) && (
+          <section className="mb-4">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">
+              EXPERIENCE
+            </h2>
+            <div className="space-y-4">
+              {data.clients.filter(c => c.name).map((client) => {
+                const selectedProject = client.projects.find(p => p.isSelected);
+                return (
+                  <div key={client.id}>
+                    {/* Role and Dates on same line */}
+                    <div className="flex justify-between items-baseline">
+                      <span className="font-bold" style={{ fontSize: "10pt" }}>
+                        {client.role || "Role"}
+                      </span>
+                      <span className="text-sm">
+                        {client.startDate || "Start"} -- {client.isCurrent ? "Present" : client.endDate || "End"}
+                      </span>
+                    </div>
+                    
+                    {/* Company and Location */}
+                    <div className="flex justify-between items-baseline">
+                      <span className="italic" style={{ fontSize: "10pt" }}>
+                        {client.name}
+                      </span>
+                      {client.location && (
+                        <span className="text-sm">{client.location}</span>
+                      )}
+                    </div>
+                    
+                    {/* Bullet Points */}
+                    {selectedProject && selectedProject.bullets.length > 0 && (
+                      <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
+                        {selectedProject.bullets.map((bullet, idx) => (
+                          <li key={idx} className="pl-1">{bullet}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {!selectedProject && client.responsibilities && (
+                      <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
+                        {client.responsibilities.split('\n').filter(Boolean).map((line, idx) => (
+                          <li key={idx} className="pl-1">{line.replace(/^[-•]\s*/, '')}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          </header>
+          </section>
+        )}
 
-          {/* Summary - Only for professional template */}
-          {!isCreativeTemplate && data.summary && (
-            <section>
-              <h2 className="text-sm font-bold uppercase tracking-wider border-b border-gray-300 pb-1 mb-2">Summary</h2>
-              <p className="text-gray-700 text-xs leading-relaxed">{data.summary}</p>
-              {data.totalYearsExperience > 0 && (
-                <p className="text-gray-600 text-xs mt-1 italic">
-                  Total Experience: {data.totalYearsExperience}+ years
-                </p>
-              )}
-            </section>
-          )}
-
-          {/* Experience */}
-          {data.clients.length > 0 && data.clients.some(c => c.name) && (
-            <section>
-              <h2 className="text-sm font-bold uppercase tracking-wider border-b border-gray-300 pb-1 mb-3">Experience</h2>
-              <div className="space-y-4">
-                {data.clients.filter(c => c.name).map((client) => {
-                  const selectedProject = client.projects.find(p => p.isSelected);
-                  return (
-                    <div key={client.id}>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-bold text-xs">{client.role || "Role"}</h3>
-                          <p className="text-gray-600 text-xs">{client.name}{client.location && `, ${client.location}`}</p>
-                        </div>
-                        <span className="text-gray-500 text-xs whitespace-nowrap">
-                          {client.startDate || "Start"} – {client.isCurrent ? "Present" : client.endDate || "End"}
-                        </span>
-                      </div>
-                      {selectedProject && selectedProject.bullets.length > 0 && (
-                        <ul className="mt-2 space-y-1 list-disc list-inside text-xs text-gray-700">
-                          {selectedProject.bullets.map((bullet, idx) => (
-                            <li key={idx}>{bullet}</li>
-                          ))}
-                        </ul>
-                      )}
-                      {!selectedProject && client.responsibilities && (
-                        <p className="mt-1 text-xs text-gray-600 italic">
-                          {client.responsibilities}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* Education */}
-          {data.education.length > 0 && data.education.some(e => e.school) && (
-            <section>
-              <h2 className="text-sm font-bold uppercase tracking-wider border-b border-gray-300 pb-1 mb-3">Education</h2>
-              <div className="space-y-2">
-                {data.education.filter(e => e.school).map((edu) => (
-                  <div key={edu.id} className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-bold text-xs">
-                        {edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree"}
-                      </h3>
-                      <p className="text-gray-600 text-xs">{edu.school}</p>
-                    </div>
-                    <span className="text-gray-500 text-xs">{edu.graduationDate}</span>
+        {/* Education Section */}
+        {data.education.length > 0 && data.education.some(e => e.school) && (
+          <section className="mb-4">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
+              EDUCATION
+            </h2>
+            <div className="space-y-2">
+              {data.education.filter(e => e.school).map((edu) => (
+                <div key={edu.id}>
+                  <div className="flex justify-between items-baseline">
+                    <span style={{ fontSize: "10pt" }}>
+                      <span className="font-bold">
+                        {edu.degree && edu.field 
+                          ? `${edu.degree} in ${edu.field}` 
+                          : edu.degree || edu.field || "Degree"}
+                      </span>
+                      {edu.school && <span>, {edu.school}</span>}
+                      {edu.gpa && <span> (GPA: {edu.gpa})</span>}
+                    </span>
+                    <span className="text-sm">{edu.graduationDate}</span>
                   </div>
-                ))}
-              </div>
-            </section>
-          )}
+                  {edu.location && (
+                    <div className="text-right text-sm">{edu.location}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
-          {/* Certifications - Only for professional template */}
-          {!isCreativeTemplate && data.certifications.length > 0 && data.certifications.some(c => c.name) && (
-            <section>
-              <h2 className="text-sm font-bold uppercase tracking-wider border-b border-gray-300 pb-1 mb-2">Certifications</h2>
-              <ul className="space-y-1 text-xs">
+        {/* Certifications Section */}
+        {data.certifications.length > 0 && data.certifications.some(c => c.name) && (
+          <section className="mb-4">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
+              CERTIFICATIONS
+            </h2>
+            <table className="w-full" style={{ fontSize: "10pt" }}>
+              <tbody>
                 {data.certifications.filter(c => c.name).map((cert) => (
-                  <li key={cert.id} className="flex justify-between">
-                    <span>{cert.name} – {cert.issuer}</span>
-                    <span className="text-gray-500">{cert.date}</span>
-                  </li>
+                  <tr key={cert.id}>
+                    <td className="py-0.5">
+                      {cert.link ? (
+                        <a href={cert.link} className="text-blue-600 font-bold hover:underline" target="_blank" rel="noopener noreferrer">
+                          {cert.name}
+                        </a>
+                      ) : (
+                        <span className="text-blue-600 font-bold">{cert.name}</span>
+                      )}
+                      {cert.issuer && <span>, {cert.issuer}</span>}
+                    </td>
+                    <td className="text-right py-0.5">{cert.date}</td>
+                  </tr>
                 ))}
-              </ul>
-            </section>
-          )}
+              </tbody>
+            </table>
+          </section>
+        )}
 
-          {/* Skills */}
-          {data.skillCategories.length > 0 && data.skillCategories.some(sc => sc.skills.length > 0) && (
-            <section>
-              <h2 className="text-sm font-bold uppercase tracking-wider border-b border-gray-300 pb-1 mb-2">Skills</h2>
-              <div className="space-y-1 text-xs">
-                {data.skillCategories.filter(sc => sc.skills.length > 0).map((sc, idx) => (
-                  <div key={idx}>
-                    <span className="font-semibold">{sc.category}: </span>
-                    <span className="text-gray-700">{sc.skills.join(", ")}</span>
+        {/* Skills Section */}
+        {data.skillCategories.length > 0 && data.skillCategories.some(sc => sc.skills.length > 0) && (
+          <section className="mb-4">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
+              SKILLS
+            </h2>
+            <div className="space-y-1" style={{ fontSize: "10pt" }}>
+              {data.skillCategories.filter(sc => sc.skills.length > 0).map((sc, idx) => (
+                <p key={idx}>
+                  <span className="font-bold">{sc.category}:</span>{" "}
+                  <span>{sc.skills.join(", ")}</span>
+                </p>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Projects Section */}
+        {data.projects && data.projects.length > 0 && data.projects.some(p => p.name) && (
+          <section className="mb-4">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">
+              PROJECTS
+            </h2>
+            <div className="space-y-3">
+              {data.projects.filter(p => p.name).map((project) => (
+                <div key={project.id}>
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-bold" style={{ fontSize: "10pt" }}>
+                      {project.name}
+                    </span>
+                    {project.date && (
+                      <span className="italic text-sm">{project.organization && `${project.organization} — `}{project.date}</span>
+                    )}
                   </div>
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
+                  {project.bullets.length > 0 && (
+                    <ul className="mt-1 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
+                      {project.bullets.map((bullet, idx) => (
+                        <li key={idx} className="pl-1">{bullet}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Generating Overlay */}
         {isGenerating && (
-          <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
+          <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
             <div className="flex flex-col items-center gap-2">
               <Loader2 className="w-8 h-8 text-primary animate-spin" />
               <span className="text-sm text-gray-600">Generating content...</span>
