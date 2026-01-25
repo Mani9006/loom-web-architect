@@ -1,88 +1,74 @@
-import { useRef } from "react";
+import { useEffect, useState } from "react";
 import { ResumeData } from "@/types/resume";
-import { Loader2, FileDown, FileText, Printer } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useResumeExport } from "@/hooks/use-resume-export";
 
-interface ResumePreviewProps {
-  data: ResumeData;
-  isGenerating?: boolean;
-}
+export default function PrintResume() {
+  const [data, setData] = useState<ResumeData | null>(null);
 
-export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
-  const resumeRef = useRef<HTMLDivElement>(null);
-  const { exportToPDF, exportToWord, isExporting } = useResumeExport();
-
-  // Check if we have substantial content (for multi-page indication)
-  const hasSubstantialContent = 
-    data.clients.filter(c => c.name).length >= 2 ||
-    (data.clients.filter(c => c.name).length >= 1 && data.skillCategories.length >= 3);
-
-  const fileName = data.personalInfo.fullName 
-    ? `${data.personalInfo.fullName.replace(/\s+/g, '_')}_Resume`
-    : "Resume";
-
-  const handleExportPDF = () => {
-    if (resumeRef.current) {
-      exportToPDF(resumeRef.current, fileName);
+  useEffect(() => {
+    // Get resume data from localStorage (passed from main app)
+    const storedData = localStorage.getItem("printResumeData");
+    if (storedData) {
+      setData(JSON.parse(storedData));
+      // Clean up after reading
+      localStorage.removeItem("printResumeData");
     }
-  };
 
-  const handleExportWord = () => {
-    exportToWord(data, fileName);
-  };
+    // Auto-trigger print dialog after a short delay
+    const timer = setTimeout(() => {
+      window.print();
+    }, 500);
 
-  const handlePrintView = () => {
-    // Store resume data in localStorage for the print page to access
-    localStorage.setItem("printResumeData", JSON.stringify(data));
-    // Open print view in new tab
-    window.open("/print-resume", "_blank");
-  };
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Loading resume...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full overflow-auto p-4 bg-muted/30">
-      {/* Export Buttons */}
-      <div className="flex justify-center gap-2 mb-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExportPDF}
-          disabled={isExporting || isGenerating}
-          className="gap-2"
-        >
-          {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-          Export PDF
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExportWord}
-          disabled={isExporting || isGenerating}
-          className="gap-2"
-        >
-          {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-          Export Word
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handlePrintView}
-          disabled={isGenerating}
-          className="gap-2"
-        >
-          <Printer className="h-4 w-4" />
-          Print View
-        </Button>
+    <>
+      {/* Print-specific styles */}
+      <style>{`
+        @media print {
+          @page {
+            size: letter;
+            margin: 0.5in;
+          }
+          body {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+        @media screen {
+          .print-container {
+            max-width: 8.5in;
+            margin: 0 auto;
+            padding: 1in;
+            background: white;
+            min-height: 100vh;
+          }
+        }
+      `}</style>
+
+      {/* Print instructions (hidden when printing) */}
+      <div className="no-print bg-muted p-4 text-center border-b">
+        <p className="text-sm text-muted-foreground">
+          Press <kbd className="px-2 py-1 bg-background rounded border">Ctrl+P</kbd> or <kbd className="px-2 py-1 bg-background rounded border">⌘+P</kbd> to print. 
+          Close this tab when done.
+        </p>
       </div>
 
       {/* Resume Document */}
       <div 
-        ref={resumeRef}
-        className="bg-white text-black shadow-xl mx-auto relative mb-8"
+        className="print-container bg-white text-black"
         style={{ 
-          width: "8.5in",
-          minHeight: "11in",
-          padding: "1.8cm 2cm 2cm 2cm",
           fontFamily: "'Charter', 'Georgia', serif",
           fontSize: "10pt",
           lineHeight: "1.4",
@@ -106,33 +92,24 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
           <div className="flex flex-wrap justify-center items-center gap-x-2 mt-2 text-sm">
             {data.personalInfo.location && (
               <>
-                <span>📍 {data.personalInfo.location}</span>
-                <span className="text-muted-foreground">|</span>
+                <span>{data.personalInfo.location}</span>
+                <span>|</span>
               </>
             )}
             {data.personalInfo.email && (
               <>
-                <a href={`mailto:${data.personalInfo.email}`} className="text-black hover:underline">
-                  ✉️ {data.personalInfo.email}
-                </a>
-                <span className="text-muted-foreground">|</span>
+                <span>{data.personalInfo.email}</span>
+                <span>|</span>
               </>
             )}
             {data.personalInfo.phone && (
               <>
-                <span>📞 {data.personalInfo.phone}</span>
-                {data.personalInfo.linkedin && <span className="text-muted-foreground">|</span>}
+                <span>{data.personalInfo.phone}</span>
+                {data.personalInfo.linkedin && <span>|</span>}
               </>
             )}
             {data.personalInfo.linkedin && (
-              <a 
-                href={data.personalInfo.linkedin.startsWith("http") ? data.personalInfo.linkedin : `https://${data.personalInfo.linkedin}`}
-                className="text-black hover:underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                🔗 LinkedIn
-              </a>
+              <span>LinkedIn</span>
             )}
           </div>
         </header>
@@ -160,7 +137,6 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
                 const selectedProject = client.projects.find(p => p.isSelected);
                 return (
                   <div key={client.id}>
-                    {/* Role and Dates on same line */}
                     <div className="flex justify-between items-baseline">
                       <span className="font-bold" style={{ fontSize: "10pt" }}>
                         {client.role || "Role"}
@@ -170,7 +146,6 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
                       </span>
                     </div>
                     
-                    {/* Company and Location */}
                     <div className="flex justify-between items-baseline">
                       <span className="italic" style={{ fontSize: "10pt" }}>
                         {client.name}
@@ -180,7 +155,6 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
                       )}
                     </div>
                     
-                    {/* Bullet Points */}
                     {selectedProject && selectedProject.bullets.length > 0 && (
                       <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
                         {selectedProject.bullets.map((bullet, idx) => (
@@ -243,13 +217,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
                 {data.certifications.filter(c => c.name).map((cert) => (
                   <tr key={cert.id}>
                     <td className="py-0.5">
-                      {cert.link ? (
-                        <a href={cert.link} className="text-primary font-bold hover:underline" target="_blank" rel="noopener noreferrer">
-                          {cert.name}
-                        </a>
-                      ) : (
-                        <span className="text-primary font-bold">{cert.name}</span>
-                      )}
+                      <span className="font-bold">{cert.name}</span>
                       {cert.issuer && <span>, {cert.issuer}</span>}
                     </td>
                     <td className="text-right py-0.5">{cert.date}</td>
@@ -306,24 +274,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
             </div>
           </section>
         )}
-
-        {/* Generating Overlay */}
-        {isGenerating && (
-          <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-2">
-              <Loader2 className="w-8 h-8 text-primary animate-spin" />
-              <span className="text-sm text-muted-foreground">Generating content...</span>
-            </div>
-          </div>
-        )}
       </div>
-
-      {/* Page indicator */}
-      {hasSubstantialContent && (
-        <div className="text-center text-xs text-muted-foreground pb-4">
-          ↑ Scroll up to see full resume
-        </div>
-      )}
-    </div>
+    </>
   );
 }
