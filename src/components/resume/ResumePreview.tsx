@@ -1,5 +1,8 @@
+import { useRef } from "react";
 import { ResumeData } from "@/types/resume";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileDown, FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useResumeExport } from "@/hooks/use-resume-export";
 
 interface ResumePreviewProps {
   data: ResumeData;
@@ -7,15 +10,57 @@ interface ResumePreviewProps {
 }
 
 export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
+  const resumeRef = useRef<HTMLDivElement>(null);
+  const { exportToPDF, exportToWord, isExporting } = useResumeExport();
+
   // Check if we have substantial content (for multi-page indication)
   const hasSubstantialContent = 
     data.clients.filter(c => c.name).length >= 2 ||
     (data.clients.filter(c => c.name).length >= 1 && data.skillCategories.length >= 3);
 
+  const fileName = data.personalInfo.fullName 
+    ? `${data.personalInfo.fullName.replace(/\s+/g, '_')}_Resume`
+    : "Resume";
+
+  const handleExportPDF = () => {
+    if (resumeRef.current) {
+      exportToPDF(resumeRef.current, fileName);
+    }
+  };
+
+  const handleExportWord = () => {
+    exportToWord(data, fileName);
+  };
+
   return (
     <div className="h-full overflow-auto p-4 bg-muted/30">
+      {/* Export Buttons */}
+      <div className="flex justify-center gap-2 mb-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportPDF}
+          disabled={isExporting || isGenerating}
+          className="gap-2"
+        >
+          {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+          Export PDF
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportWord}
+          disabled={isExporting || isGenerating}
+          className="gap-2"
+        >
+          {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+          Export Word
+        </Button>
+      </div>
+
       {/* Resume Document */}
       <div 
+        ref={resumeRef}
         className="bg-white text-black shadow-xl mx-auto relative mb-8"
         style={{ 
           width: "8.5in",
