@@ -78,13 +78,21 @@ serve(async (req) => {
     if (action === "count") {
       console.log("Getting memory count for user:", user.id);
       
-      // Get all memories for this user to count them
-      const response = await fetch(`https://api.mem0.ai/v1/memories/?user_id=${encodeURIComponent(user.id)}`, {
-        method: "GET",
+      // Get all memories using v2 API with filters
+      const response = await fetch("https://api.mem0.ai/v1/memories/search/", {
+        method: "POST",
         headers: {
           "Authorization": `Token ${MEM0_API_KEY}`,
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          query: "*",
+          version: "v2",
+          filters: {
+            OR: [{ user_id: user.id }]
+          },
+          limit: 100,
+        }),
       });
 
       if (!response.ok) {
@@ -96,7 +104,8 @@ serve(async (req) => {
       }
 
       const data = await response.json();
-      const count = Array.isArray(data) ? data.length : (data.results?.length || 0);
+      const memories = Array.isArray(data) ? data : (data.results || data.memories || []);
+      const count = memories.length;
       
       console.log("Memory count:", count);
       return new Response(JSON.stringify({ count }), {
