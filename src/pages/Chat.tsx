@@ -411,6 +411,7 @@ export default function Chat() {
               role: m.role,
               content: m.content,
             })),
+            mode: "general",
           }),
         }
       );
@@ -419,11 +420,8 @@ export default function Chat() {
         throw new Error("Failed to get response");
       }
 
-      // Check if memory was used
-      const usedMemory = response.headers.get("X-Used-Memory") === "true";
-
       setGeneralMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false, usedMemory } : m))
+        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
       );
 
       const reader = response.body?.getReader();
@@ -454,7 +452,7 @@ export default function Chat() {
               if (content) {
                 assistantContent += content;
                 setGeneralMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent, usedMemory } : m))
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
                 );
               }
             } catch {
