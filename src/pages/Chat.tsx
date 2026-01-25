@@ -16,6 +16,7 @@ import { ResumeChatPanel, ChatMessage, ProjectOptionsData, SummaryOptionsData } 
 import { ResumePreview } from "@/components/resume/ResumePreview";
 import { OptionsPanel } from "@/components/resume/OptionsPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import { ResumeData, Client } from "@/types/resume";
 
 type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-check" | "job-search" | "cover-letter" | "interview-prep";
@@ -1821,12 +1822,86 @@ ${clientSummary}
     );
   };
 
+  // Store deleted conversation for undo
+  const [deletedConversation, setDeletedConversation] = useState<{
+    id: string;
+    data: any;
+    messages: any[];
+  } | null>(null);
+
   const handleDeleteConversation = async (id: string) => {
+    // First, get the conversation and messages for undo
+    const { data: convData } = await supabase
+      .from("conversations")
+      .select("*")
+      .eq("id", id)
+      .single();
+    
+    const { data: messagesData } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", id);
+
+    // Store for undo
+    setDeletedConversation({
+      id,
+      data: convData,
+      messages: messagesData || [],
+    });
+
+    // Delete messages first, then conversation
+    await supabase.from("messages").delete().eq("conversation_id", id);
     await supabase.from("conversations").delete().eq("id", id);
     await fetchConversations();
+    
     if (currentConversation?.id === id) {
       navigate("/");
     }
+
+    // Show toast with undo option
+    toast({
+      title: "Conversation deleted",
+      description: convData?.title || "Conversation",
+      action: (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+            if (convData) {
+              // Restore conversation
+              await supabase.from("conversations").insert(convData);
+              // Restore messages
+              if (messagesData && messagesData.length > 0) {
+                await supabase.from("messages").insert(messagesData);
+              }
+              await fetchConversations();
+              setDeletedConversation(null);
+              toast({
+                title: "Conversation restored",
+                description: convData.title,
+              });
+            }
+          }}
+        >
+          Undo
+        </Button>
+      ),
+    });
+  };
+
+  const handleClearAllConversations = async () => {
+    // Delete all messages first
+    for (const conv of conversations) {
+      await supabase.from("messages").delete().eq("conversation_id", conv.id);
+    }
+    // Delete all conversations
+    await supabase.from("conversations").delete().eq("user_id", user?.id);
+    await fetchConversations();
+    navigate("/");
+    toast({
+      title: "All conversations cleared",
+      description: `${conversations.length} conversations deleted`,
+    });
   };
 
   const handleSignOut = async () => {
@@ -1858,6 +1933,7 @@ ${clientSummary}
           onCreateFolder={handleCreateFolder}
           onDeleteFolder={handleDeleteFolder}
           onMoveToFolder={handleMoveToFolder}
+          onClearAllConversations={handleClearAllConversations}
         />
 
         <div className="flex-1 flex flex-col min-w-0">

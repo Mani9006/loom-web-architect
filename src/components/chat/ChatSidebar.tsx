@@ -73,6 +73,7 @@ interface ChatSidebarProps {
   onCreateFolder?: (name: string, color: string) => void;
   onDeleteFolder?: (id: string) => void;
   onMoveToFolder?: (conversationId: string, folderId: string | null) => void;
+  onClearAllConversations?: () => void;
 }
 
 const FOLDER_COLORS = [
@@ -100,6 +101,7 @@ export function ChatSidebar({
   onCreateFolder,
   onDeleteFolder,
   onMoveToFolder,
+  onClearAllConversations,
 }: ChatSidebarProps) {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -539,7 +541,12 @@ export function ChatSidebar({
         </SidebarFooter>
       </Sidebar>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDialog 
+        open={settingsOpen} 
+        onOpenChange={setSettingsOpen}
+        onClearAllConversations={onClearAllConversations}
+        conversationCount={conversations.length}
+      />
 
       {/* New Folder Dialog */}
       <Dialog open={newFolderDialogOpen} onOpenChange={setNewFolderDialogOpen}>
