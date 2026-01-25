@@ -13,6 +13,46 @@ import { ResumeFormSkeleton } from "./ResumeFormSkeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+// Helper to format responsibilities as bullet points
+function formatResponsibilitiesAsBullets(responsibilities: string | string[]): string {
+  if (!responsibilities) return "";
+  
+  // If already an array, join with bullet format
+  if (Array.isArray(responsibilities)) {
+    return responsibilities
+      .filter(r => r && r.trim())
+      .map(r => `• ${r.trim().replace(/^[•\-\*]\s*/, '')}`)
+      .join('\n');
+  }
+  
+  const text = String(responsibilities);
+  
+  // If already has bullet format, clean it up
+  if (text.includes('•') || text.includes('\n')) {
+    return text
+      .split(/\n|(?=•)/)
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map(line => line.startsWith('•') ? line : `• ${line.replace(/^[\-\*]\s*/, '')}`)
+      .join('\n');
+  }
+  
+  // If it's a paragraph or semi-colon separated, split intelligently
+  const separators = /[;.](?=\s*[A-Z])|(?<=\w)\s+(?=[A-Z][a-z]+ed\s|[A-Z][a-z]+ing\s|Developed|Created|Implemented|Managed|Led|Built|Designed|Optimized|Reduced|Increased|Improved|Achieved|Delivered|Coordinated|Analyzed|Established)/;
+  
+  const bullets = text
+    .split(separators)
+    .map(s => s.trim())
+    .filter(s => s.length > 10); // Filter out too-short fragments
+  
+  if (bullets.length > 1) {
+    return bullets.map(b => `• ${b.replace(/^[•\-\*]\s*/, '').replace(/[.;]$/, '')}`).join('\n');
+  }
+  
+  // Fallback: return as single bullet if meaningful
+  return text.length > 10 ? `• ${text.replace(/^[•\-\*]\s*/, '')}` : text;
+}
+
 // Robust JSON parser that handles common AI response issues
 function parseAIResponse(content: string): Record<string, any> | null {
   console.log("Parsing AI response, length:", content.length);
@@ -210,65 +250,88 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
             messages: [
               {
                 role: "system",
-                content: `You are a JSON-only resume parser. Extract structured data from resumes.
+                content: `You are an expert resume parser that handles even poorly formatted or OCR-extracted documents.
 
-OUTPUT FORMAT: Return ONLY valid JSON. No markdown, no code blocks, no explanations.
+YOUR TASK: Analyze the provided text (which may be imperfect due to OCR) and extract structured resume data.
+
+INTELLIGENCE REQUIRED:
+- The text may have OCR errors, merged words, or missing spaces - use context to fix them
+- Names might be split across lines or merged with other text - intelligently separate them
+- Skills may be scattered throughout - collect ALL of them
+- Experience bullets may not have proper formatting - identify and extract them anyway
+- Dates may be in various formats - normalize them
+
+OUTPUT: Return ONLY valid JSON (no markdown, no backticks, no explanations).
 
 SCHEMA:
 {
   "personalInfo": {
-    "fullName": "First Last",
-    "email": "email@domain.com",
-    "phone": "+1 XXX-XXX-XXXX",
-    "location": "City, State",
-    "linkedin": "",
-    "portfolio": "",
-    "title": "Job Title"
+    "fullName": "First Last (ONLY the name, never email/phone)",
+    "email": "email@domain.com (must contain @)",
+    "phone": "phone number",
+    "location": "City, State/Country",
+    "linkedin": "LinkedIn URL if found",
+    "portfolio": "Portfolio/website URL if found",
+    "title": "Current/Target Job Title"
   },
   "clients": [
     {
-      "name": "Company Name",
-      "industry": "",
-      "location": "City, State",
-      "role": "Job Title",
+      "name": "Company/Organization Name",
+      "industry": "Industry if identifiable",
+      "location": "Company location",
+      "role": "Job Title held",
       "startDate": "Mon YYYY",
       "endDate": "Mon YYYY or Present",
-      "isCurrent": false,
-      "responsibilities": "Bullet points combined into paragraph"
+      "isCurrent": true/false,
+      "responsibilities": "• First bullet point achievement\\n• Second bullet point\\n• Third bullet point (MUST be bullet format with • prefix and \\n between)"
     }
   ],
   "education": [
     {
-      "school": "University Name",
-      "degree": "Bachelor of Science",
-      "field": "Computer Science",
-      "graduationDate": "YYYY",
-      "gpa": ""
+      "school": "Institution Name",
+      "degree": "Degree Type (Bachelor's, Master's, etc.)",
+      "field": "Major/Field of Study",
+      "graduationDate": "YYYY or Mon YYYY",
+      "gpa": "GPA if mentioned"
     }
   ],
-  "certifications": [],
+  "certifications": [
+    {
+      "name": "Certification Name",
+      "issuer": "Issuing Organization",
+      "date": "Date obtained"
+    }
+  ],
   "skillCategories": [
     {
-      "category": "Category Name",
-      "skills": ["skill1", "skill2"]
+      "category": "Programming Languages",
+      "skills": ["Python", "Java", "SQL"]
+    },
+    {
+      "category": "Tools & Technologies", 
+      "skills": ["Docker", "Kubernetes", "AWS"]
+    },
+    {
+      "category": "Frameworks",
+      "skills": ["React", "Django", "Spark"]
     }
   ],
-  "summary": "Professional summary text",
-  "targetRole": "Target job title"
+  "summary": "Professional summary/objective if found",
+  "targetRole": "Job title from header or most recent role"
 }
 
-RULES:
-1. fullName = ONLY the person's name (e.g., "Manikanta R"), NOT email
-2. email = ONLY valid email address (contains @)
-3. Extract ALL skills and group them by category
-4. Extract ALL work experience entries
-5. Use empty string "" for missing fields, NOT null
-6. isCurrent = true only if endDate contains "Present"
-7. Respond with ONLY the JSON object, nothing else`
+CRITICAL RULES:
+1. fullName = Extract ONLY the person's name. Look at the document header. Never include email domains, phone numbers, or other text.
+2. email = Must contain @ symbol. Extract the complete email address only.
+3. responsibilities = MUST be formatted as bullet points with "• " prefix and "\\n" between bullets. Convert any format (dashes, numbers, paragraphs) to this standard bullet format.
+4. skillCategories = REQUIRED. Scan the ENTIRE document for skills. Group them intelligently (languages, tools, cloud, databases, etc.). If no explicit skills section, infer from experience descriptions.
+5. Use "" (empty string) for missing fields, never null or undefined.
+6. isCurrent = true ONLY if endDate is "Present" or similar.
+7. Return ONLY the JSON object - no other text before or after.`
               },
               {
                 role: "user",
-                content: `Extract resume data as JSON:\n\n${text}`
+                content: `Parse this resume text (may contain OCR imperfections - use intelligence to extract correctly):\n\n${text}`
               }
             ],
             model: "google/gemini-2.5-flash",
@@ -338,7 +401,7 @@ RULES:
               startDate: c.startDate || "",
               endDate: c.endDate || "",
               isCurrent: c.isCurrent || c.endDate?.toLowerCase()?.includes("present") || false,
-              responsibilities: c.responsibilities || "",
+              responsibilities: formatResponsibilitiesAsBullets(c.responsibilities),
               projects: [],
             }))
           : data.clients,
