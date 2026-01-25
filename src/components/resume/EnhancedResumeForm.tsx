@@ -15,47 +15,86 @@ import { useToast } from "@/hooks/use-toast";
 
 // Robust JSON parser that handles common AI response issues
 function parseAIResponse(content: string): Record<string, any> | null {
+  console.log("Parsing AI response, length:", content.length);
+  
   // Remove markdown code blocks if present
   let cleaned = content
     .replace(/```json\s*/gi, '')
     .replace(/```\s*/g, '')
     .trim();
   
-  // Try to extract JSON object
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    console.error("No JSON object found in response:", content.substring(0, 200));
+  // Try to extract JSON object - find the outermost balanced braces
+  let braceCount = 0;
+  let startIdx = -1;
+  let endIdx = -1;
+  
+  for (let i = 0; i < cleaned.length; i++) {
+    if (cleaned[i] === '{') {
+      if (startIdx === -1) startIdx = i;
+      braceCount++;
+    } else if (cleaned[i] === '}') {
+      braceCount--;
+      if (braceCount === 0 && startIdx !== -1) {
+        endIdx = i + 1;
+        break;
+      }
+    }
+  }
+  
+  if (startIdx === -1 || endIdx === -1) {
+    console.error("No balanced JSON object found");
     return null;
   }
   
-  let jsonString = jsonMatch[0];
+  let jsonString = cleaned.substring(startIdx, endIdx);
   
   // Attempt 1: Direct parse
   try {
-    return JSON.parse(jsonString);
+    const result = JSON.parse(jsonString);
+    console.log("Direct parse successful");
+    return result;
   } catch (e1) {
-    console.log("Direct parse failed, attempting cleanup...");
+    console.log("Direct parse failed:", (e1 as Error).message);
   }
   
-  // Attempt 2: Fix common issues
+  // Attempt 2: Fix common JSON issues
   try {
-    // Replace problematic characters
-    jsonString = jsonString
-      // Fix unescaped newlines in strings
-      .replace(/(?<!\\)\n/g, '\\n')
-      // Fix unescaped tabs
-      .replace(/(?<!\\)\t/g, '\\t')
-      // Fix trailing commas before closing brackets
-      .replace(/,\s*([}\]])/g, '$1')
-      // Fix single quotes (convert to double)
-      .replace(/'/g, '"');
+    let fixed = jsonString
+      // Remove any control characters
+      .replace(/[\x00-\x1F\x7F]/g, ' ')
+      // Fix trailing commas
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Ensure proper boolean format
+      .replace(/:\s*true\s*([,}])/gi, ': true$1')
+      .replace(/:\s*false\s*([,}])/gi, ': false$1');
     
-    return JSON.parse(jsonString);
+    const result = JSON.parse(fixed);
+    console.log("Fixed parse successful");
+    return result;
   } catch (e2) {
-    console.log("Cleanup parse failed, attempting regex extraction...");
+    console.log("Fixed parse failed:", (e2 as Error).message);
   }
   
-  // Attempt 3: Try to extract fields manually and rebuild
+  // Attempt 3: More aggressive cleanup - handle unescaped quotes in strings
+  try {
+    // This regex-based approach handles common JSON issues
+    let aggressive = jsonString
+      .replace(/[\x00-\x1F\x7F]/g, ' ')
+      .replace(/,(\s*[}\]])/g, '$1');
+    
+    // Try to fix unbalanced quotes by escaping them
+    // Replace problematic patterns
+    aggressive = aggressive.replace(/([^\\])\\([^"\\nrtbfu])/g, '$1\\\\$2');
+    
+    const result = JSON.parse(aggressive);
+    console.log("Aggressive parse successful");
+    return result;
+  } catch (e3) {
+    console.log("Aggressive parse failed:", (e3 as Error).message);
+  }
+  
+  // Attempt 4: Extract key fields with very targeted regex
+  console.log("Attempting targeted field extraction...");
   try {
     const result: Record<string, any> = {
       personalInfo: { fullName: '', email: '', phone: '', location: '', linkedin: '', portfolio: '', title: '' },
@@ -67,76 +106,71 @@ function parseAIResponse(content: string): Record<string, any> | null {
       targetRole: ''
     };
     
-    // Extract personal info fields
-    const nameMatch = content.match(/"fullName"\s*:\s*"([^"]*?)"/);
-    if (nameMatch) result.personalInfo.fullName = nameMatch[1];
+    // Use non-greedy matching with explicit delimiters
+    // For strings ending with comma or closing brace
+    const extractField = (pattern: RegExp): string => {
+      const match = content.match(pattern);
+      return match ? match[1].trim() : '';
+    };
     
-    const emailMatch = content.match(/"email"\s*:\s*"([^"]*?)"/);
-    if (emailMatch) result.personalInfo.email = emailMatch[1];
+    // Extract personalInfo fields - look for value followed by quote-comma or quote-}
+    result.personalInfo.fullName = extractField(/"fullName"\s*:\s*"([^"]+)"/);
+    result.personalInfo.email = extractField(/"email"\s*:\s*"([^"]+)"/);
+    result.personalInfo.phone = extractField(/"phone"\s*:\s*"([^"]+)"/);
+    result.personalInfo.location = extractField(/"location"\s*:\s*"([^"]+)"/);
+    result.personalInfo.linkedin = extractField(/"linkedin"\s*:\s*"([^"]*)"/);
+    result.personalInfo.portfolio = extractField(/"portfolio"\s*:\s*"([^"]*)"/);
+    result.personalInfo.title = extractField(/"title"\s*:\s*"([^"]+)"/);
     
-    const phoneMatch = content.match(/"phone"\s*:\s*"([^"]*?)"/);
-    if (phoneMatch) result.personalInfo.phone = phoneMatch[1];
+    // Extract simple string fields
+    result.targetRole = extractField(/"targetRole"\s*:\s*"([^"]+)"/);
     
-    const locationMatch = content.match(/"location"\s*:\s*"([^"]*?)"/);
-    if (locationMatch) result.personalInfo.location = locationMatch[1];
-    
-    const linkedinMatch = content.match(/"linkedin"\s*:\s*"([^"]*?)"/);
-    if (linkedinMatch) result.personalInfo.linkedin = linkedinMatch[1];
-    
-    const titleMatch = content.match(/"title"\s*:\s*"([^"]*?)"/);
-    if (titleMatch) result.personalInfo.title = titleMatch[1];
-    
-    // Extract summary (may contain special chars)
-    const summaryMatch = content.match(/"summary"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/);
-    if (summaryMatch) result.summary = summaryMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"');
-    
-    const targetMatch = content.match(/"targetRole"\s*:\s*"([^"]*?)"/);
-    if (targetMatch) result.targetRole = targetMatch[1];
-    
-    // Try to parse arrays using a more lenient approach
-    const clientsMatch = content.match(/"clients"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"education"|\s*,\s*"skillCategories"|\s*})/);
-    if (clientsMatch) {
-      try {
-        // Clean and parse the clients array
-        const clientsStr = clientsMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ');
-        result.clients = JSON.parse(clientsStr);
-      } catch { /* Use empty array */ }
+    // Extract summary - may span multiple lines
+    const summaryMatch = content.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (summaryMatch) {
+      result.summary = summaryMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').trim();
     }
     
-    const educationMatch = content.match(/"education"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"certifications"|\s*,\s*"skillCategories"|\s*})/);
-    if (educationMatch) {
-      try {
-        const eduStr = educationMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ');
-        result.education = JSON.parse(eduStr);
-      } catch { /* Use empty array */ }
-    }
+    // Extract arrays - try to find and parse them individually
+    const extractArray = (key: string): any[] => {
+      // Find the array for this key
+      const regex = new RegExp(`"${key}"\\s*:\\s*\\[([\\s\\S]*?)\\](?=\\s*,\\s*"|\\s*})`, 'i');
+      const match = content.match(regex);
+      if (match) {
+        try {
+          return JSON.parse('[' + match[1] + ']');
+        } catch {
+          console.log(`Failed to parse ${key} array`);
+        }
+      }
+      return [];
+    };
     
-    const certsMatch = content.match(/"certifications"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"skillCategories"|\s*,\s*"summary"|\s*})/);
-    if (certsMatch) {
-      try {
-        const certsStr = certsMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ');
-        result.certifications = JSON.parse(certsStr);
-      } catch { /* Use empty array */ }
-    }
+    result.clients = extractArray('clients');
+    result.education = extractArray('education');
+    result.certifications = extractArray('certifications');
+    result.skillCategories = extractArray('skillCategories');
     
-    const skillsMatch = content.match(/"skillCategories"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"summary"|\s*,\s*"targetRole"|\s*})/);
-    if (skillsMatch) {
-      try {
-        const skillsStr = skillsMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ');
-        result.skillCategories = JSON.parse(skillsStr);
-      } catch { /* Use empty array */ }
-    }
+    // Validate we got meaningful data
+    const hasData = result.personalInfo.fullName || 
+                    result.personalInfo.email || 
+                    result.clients.length > 0 ||
+                    result.skillCategories.length > 0;
     
-    // Check if we extracted anything useful
-    if (result.personalInfo.fullName || result.personalInfo.email || result.clients.length > 0) {
-      console.log("Regex extraction successful:", result);
+    if (hasData) {
+      console.log("Targeted extraction successful:", {
+        name: result.personalInfo.fullName,
+        email: result.personalInfo.email,
+        clients: result.clients.length,
+        skills: result.skillCategories.length
+      });
       return result;
     }
-  } catch (e3) {
-    console.error("Regex extraction failed:", e3);
+  } catch (e4) {
+    console.error("Targeted extraction failed:", e4);
   }
   
-  console.error("All parsing attempts failed for content:", content.substring(0, 500));
+  console.error("All parsing attempts failed");
   return null;
 }
 interface EnhancedResumeFormProps {
@@ -176,72 +210,68 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
             messages: [
               {
                 role: "system",
-                content: `You are an expert resume parser. Your task is to extract ALL structured information from the resume text.
+                content: `You are a JSON-only resume parser. Extract structured data from resumes.
 
-IMPORTANT RULES:
-1. Extract EVERY piece of information you can find
-2. For contact info: Look for email patterns, phone numbers (various formats), city/state locations, LinkedIn URLs
-3. For experience: Extract EACH job with company name, job title, dates, and bullet points/responsibilities
-4. For education: Extract school name, degree type (BS, MS, MBA, etc.), field of study, graduation date, GPA
-5. For skills: Group skills into logical categories (Programming Languages, Frameworks, Cloud, Tools, etc.)
-6. For certifications: Extract name, issuing organization, and date
+OUTPUT FORMAT: Return ONLY valid JSON. No markdown, no code blocks, no explanations.
 
-Return ONLY a valid JSON object with NO markdown formatting, NO code blocks, just raw JSON:
+SCHEMA:
 {
   "personalInfo": {
-    "fullName": "extracted full name",
-    "email": "email@example.com",
-    "phone": "+1 xxx-xxx-xxxx",
+    "fullName": "First Last",
+    "email": "email@domain.com",
+    "phone": "+1 XXX-XXX-XXXX",
     "location": "City, State",
-    "linkedin": "linkedin URL or profile",
-    "portfolio": "website URL if any",
-    "title": "current or target job title"
+    "linkedin": "",
+    "portfolio": "",
+    "title": "Job Title"
   },
   "clients": [
     {
       "name": "Company Name",
-      "industry": "Industry if mentioned",
-      "location": "Job location if mentioned",
+      "industry": "",
+      "location": "City, State",
       "role": "Job Title",
-      "startDate": "Month Year",
-      "endDate": "Month Year or Present",
-      "isCurrent": true/false,
-      "responsibilities": "Combined bullet points as paragraph or key achievements"
+      "startDate": "Mon YYYY",
+      "endDate": "Mon YYYY or Present",
+      "isCurrent": false,
+      "responsibilities": "Bullet points combined into paragraph"
     }
   ],
   "education": [
     {
       "school": "University Name",
-      "degree": "Bachelor of Science/Master of Science/etc",
-      "field": "Field of Study (e.g., Computer Science)",
-      "graduationDate": "Month Year or just Year",
-      "gpa": "GPA if mentioned (e.g., 3.8)"
+      "degree": "Bachelor of Science",
+      "field": "Computer Science",
+      "graduationDate": "YYYY",
+      "gpa": ""
     }
   ],
-  "certifications": [
-    {
-      "name": "Certification Full Name",
-      "issuer": "Issuing Organization (AWS, Google, Microsoft, etc.)",
-      "date": "Date obtained"
-    }
-  ],
+  "certifications": [],
   "skillCategories": [
     {
       "category": "Category Name",
-      "skills": ["skill1", "skill2", "skill3"]
+      "skills": ["skill1", "skill2"]
     }
   ],
-  "summary": "Extract any professional summary or objective statement if present",
-  "targetRole": "Inferred target role based on most recent experience and skills"
+  "summary": "Professional summary text",
+  "targetRole": "Target job title"
 }
 
-CRITICAL: Parse ALL experience entries, ALL education entries, ALL certifications. Do not skip any. For missing fields, use empty strings "". Return ONLY valid JSON.`
+RULES:
+1. fullName = ONLY the person's name (e.g., "Manikanta R"), NOT email
+2. email = ONLY valid email address (contains @)
+3. Extract ALL skills and group them by category
+4. Extract ALL work experience entries
+5. Use empty string "" for missing fields, NOT null
+6. isCurrent = true only if endDate contains "Present"
+7. Respond with ONLY the JSON object, nothing else`
               },
               {
                 role: "user",
-                content: `Parse this resume and extract ALL information:\n\n${text}`
+                content: `Extract resume data as JSON:\n\n${text}`
               }
             ],
+            model: "google/gemini-2.5-flash",
           }),
         }
       );
