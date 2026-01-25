@@ -14,10 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      conversation_folders: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           chat_mode: string
           created_at: string
+          folder_id: string | null
           id: string
           title: string | null
           updated_at: string
@@ -26,6 +54,7 @@ export type Database = {
         Insert: {
           chat_mode?: string
           created_at?: string
+          folder_id?: string | null
           id?: string
           title?: string | null
           updated_at?: string
@@ -34,12 +63,21 @@ export type Database = {
         Update: {
           chat_mode?: string
           created_at?: string
+          folder_id?: string | null
           id?: string
           title?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversations_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_folders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cover_letter_versions: {
         Row: {

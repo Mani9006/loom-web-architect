@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User, Session } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
-import { ChatSidebar } from "@/components/chat/ChatSidebar";
+import { ChatSidebar, ConversationFolder } from "@/components/chat/ChatSidebar";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatWelcome } from "@/components/chat/ChatWelcome";
 import { GeneralChatPanel, GeneralChatMessage } from "@/components/chat/GeneralChatPanel";
@@ -24,6 +24,7 @@ type Conversation = {
   id: string;
   title: string;
   chat_mode: string;
+  folder_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -75,6 +76,7 @@ export default function Chat() {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [folders, setFolders] = useState<ConversationFolder[]>([]);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<{ full_name: string | null; email: string | null } | null>(null);
@@ -118,6 +120,7 @@ export default function Chat() {
     if (user) {
       fetchProfile();
       fetchConversations();
+      fetchFolders();
     }
   }, [user]);
 
@@ -153,7 +156,18 @@ export default function Chat() {
       .select("*")
       .order("updated_at", { ascending: false });
     if (!error && data) {
-      setConversations(data);
+      setConversations(data as Conversation[]);
+    }
+  };
+
+  const fetchFolders = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from("conversation_folders")
+      .select("id, name, color")
+      .order("created_at", { ascending: true });
+    if (!error && data) {
+      setFolders(data);
     }
   };
 
@@ -266,6 +280,52 @@ export default function Chat() {
     if (currentConversation?.id === id) {
       setCurrentConversation((prev) => prev ? { ...prev, title: newTitle } : null);
     }
+  };
+
+  const handleCreateFolder = async (name: string, color: string) => {
+    if (!user) return;
+    const { error } = await supabase
+      .from("conversation_folders")
+      .insert({ user_id: user.id, name, color });
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to create folder", variant: "destructive" });
+      return;
+    }
+    
+    await fetchFolders();
+  };
+
+  const handleDeleteFolder = async (id: string) => {
+    const { error } = await supabase
+      .from("conversation_folders")
+      .delete()
+      .eq("id", id);
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to delete folder", variant: "destructive" });
+      return;
+    }
+    
+    await fetchFolders();
+    await fetchConversations(); // Refresh conversations as folder_id is set to null
+  };
+
+  const handleMoveToFolder = async (conversationId: string, folderId: string | null) => {
+    const { error } = await supabase
+      .from("conversations")
+      .update({ folder_id: folderId })
+      .eq("id", conversationId);
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to move conversation", variant: "destructive" });
+      return;
+    }
+    
+    // Update local state
+    setConversations((prev) =>
+      prev.map((conv) => (conv.id === conversationId ? { ...conv, folder_id: folderId } : conv))
+    );
   };
 
   const handleStartResume = () => {
@@ -1789,10 +1849,14 @@ ${clientSummary}
         <ChatSidebar
           conversations={conversations}
           currentConversationId={currentConversation?.id}
+          folders={folders}
           onNewChat={handleNewChat}
           onSelectConversation={(id) => navigate(`/c/${id}`)}
           onDeleteConversation={handleDeleteConversation}
           onRenameConversation={handleRenameConversation}
+          onCreateFolder={handleCreateFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onMoveToFolder={handleMoveToFolder}
         />
 
         <div className="flex-1 flex flex-col min-w-0">
