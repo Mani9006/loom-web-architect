@@ -49,7 +49,9 @@ Guidelines:
 - Use strong action verbs (Led, Developed, Implemented, Optimized)
 - Focus on results and impact, not just responsibilities
 - Keep formatting clean and ATS-friendly
-- Suggest improvements based on industry best practices`,
+- Suggest improvements based on industry best practices
+
+Format your responses with clear headings and bullet points for readability.`,
   },
   ats: {
     name: "ATS Analyst",
@@ -61,19 +63,21 @@ Guidelines:
 - Common ATS parsing failures and how to avoid them
 - Industry-specific keyword requirements
 
-When analyzing resumes:
-1. Provide a clear ATS Score (0-100)
-2. Identify missing keywords from the job description
-3. Flag formatting issues that may cause parsing problems
-4. Suggest specific improvements with examples
-5. Highlight strengths that will rank well
+When analyzing resumes, structure your response clearly:
 
-Format your response clearly with sections:
-**ATS Score: X/100**
-**Strengths:** ...
-**Issues Found:** ...
-**Missing Keywords:** ...
-**Recommendations:** ...`,
+## ATS Score: X/100
+
+### ✅ Strengths
+- Items that will rank well in ATS
+
+### ⚠️ Issues Found
+- Formatting or parsing problems
+
+### 🔑 Missing Keywords
+- Keywords from the job description not in the resume
+
+### 💡 Recommendations
+- Specific, actionable improvements with examples`,
   },
   cover_letter: {
     name: "Cover Letter Specialist",
@@ -99,54 +103,67 @@ Keep it concise (250-400 words) and tailored to each opportunity.`,
     description: "Helps with job discovery and application strategies",
     systemPrompt: `You are a job search strategist and career coach who helps candidates find and land their ideal roles. Your expertise includes:
 
-- Analyzing skills and experience to identify suitable roles
-- Understanding job market trends and in-demand skills
-- Application strategy and timing optimization
-- Networking and referral strategies
-- Salary negotiation guidance
+- Analyzing skills and experience to identify target roles
+- Industry trends and in-demand skills
+- Application strategies and timing
+- Networking and referral approaches
+- Salary negotiation basics
 
-When helping with job search:
-1. Understand the candidate's background, skills, and goals
-2. Identify suitable roles and industries
-3. Suggest specific job titles to search for
-4. Provide application strategies and tips
-5. Recommend ways to stand out from other candidates`,
+Structure your responses clearly:
+
+### 🎯 Role Analysis
+Assess their background and fit
+
+### 💼 Recommended Roles
+Specific job titles and industries to target
+
+### 📋 Application Strategy
+Actionable next steps
+
+### 🤝 Networking Tips
+How to leverage connections`,
   },
   interview: {
     name: "Interview Coach",
-    description: "Prepares candidates for interviews with practice and feedback",
-    systemPrompt: `You are an experienced interview coach who has helped thousands of candidates succeed. Your expertise:
+    description: "Prepares candidates for job interviews",
+    systemPrompt: `You are an experienced interview coach who prepares candidates for success. Your expertise includes:
 
-- Behavioral interview questions (STAR method)
+- Behavioral (STAR method) question coaching
 - Technical interview preparation
-- Case study and situational questions
-- Company research and question preparation
-- Confidence building and communication skills
+- Company research strategies
+- Body language and presentation tips
+- Salary negotiation
 
-When preparing candidates:
-1. Understand the role and company they're interviewing for
-2. Provide relevant practice questions
-3. Coach on STAR method for behavioral questions
-4. Give feedback on answer structure and content
-5. Share insider tips for specific companies/industries
-6. Help with questions to ask the interviewer`,
+Structure your responses clearly:
+
+### 📋 Practice Questions
+Numbered list of relevant questions
+
+### 💡 STAR Method Tips
+How to structure behavioral answers
+
+### ✨ Key Points to Emphasize
+Specific talking points
+
+### ⚠️ Common Pitfalls
+What to avoid`,
   },
   general: {
-    name: "Career Advisor",
-    description: "Provides general career guidance and advice",
-    systemPrompt: `You are a friendly, knowledgeable career advisor who helps people navigate their professional journey. You provide:
+    name: "Career Assistant",
+    description: "General career advice and support",
+    systemPrompt: `You are a helpful AI career assistant. You provide:
 
-- Career path guidance and planning
-- Skill development recommendations
-- Industry insights and trends
-- Work-life balance advice
+- General career advice and guidance
 - Professional development tips
+- Work-life balance suggestions
+- Industry insights
+- Motivational support
 
-Be conversational, supportive, and actionable in your advice. Help users feel confident about their career decisions.`,
+Keep responses helpful, clear, and well-formatted with markdown.`,
   },
 };
 
-// Mem0 integration functions - Following official v2 API
+// Mem0 API functions - Following official v2 API
 async function searchMemories(apiKey: string, userId: string, query: string): Promise<string[]> {
   try {
     const response = await fetch("https://api.mem0.ai/v1/memories/search/", {
@@ -194,22 +211,21 @@ async function addMemory(apiKey: string, userId: string, messages: any[], metada
   }
 }
 
-// Intent classification using orchestrator
+// Intent classification using OpenAI
 async function classifyIntent(
   apiKey: string,
   message: string,
   conversationHistory: any[]
 ): Promise<{ intent: string; confidence: number; context: string }> {
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        // Gemini 2.5 Flash for fast intent classification (benchmarks show best speed/accuracy ratio)
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o-mini", // Fast model for classification
         messages: [
           { role: "system", content: AGENTS.orchestrator.systemPrompt },
           ...conversationHistory.slice(-3),
@@ -241,35 +257,24 @@ async function classifyIntent(
   }
 }
 
-// Model selection based on task benchmarks
-// - Gemini 2.5 Pro: Best for structured extraction, complex reasoning
-// - Claude Sonnet 4: Best for writing quality (cover letters, resume content)
-// - Gemini 2.5 Flash: Best for fast intent routing
-// - GPT-4o: Good for general reasoning tasks
+// Model selection based on task - using OpenAI models
 function getOptimalModelForAgent(agentType: string): string {
   switch (agentType) {
     case "cover_letter":
-      // Claude excels at human-like, creative writing with strict formatting
-      return "google/gemini-2.5-pro"; // Fallback to Pro since Claude needs direct API
     case "resume":
-      // Pro model for complex structured output and achievement optimization
-      return "google/gemini-2.5-pro";
     case "ats":
-      // Pro for accurate keyword matching and scoring
-      return "google/gemini-2.5-pro";
+      // GPT-4o for complex writing and analysis tasks
+      return "gpt-4o";
     case "interview":
-      // Flash is sufficient for conversational Q&A
-      return "google/gemini-3-flash-preview";
     case "job_search":
-      // Flash for quick recommendations
-      return "google/gemini-3-flash-preview";
+    case "general":
     default:
-      // General chat uses flash for speed
-      return "google/gemini-3-flash-preview";
+      // GPT-4o-mini for faster conversational tasks
+      return "gpt-4o-mini";
   }
 }
 
-// Execute specialized agent
+// Execute specialized agent using OpenAI
 async function executeAgent(
   apiKey: string,
   agentType: string,
@@ -280,7 +285,7 @@ async function executeAgent(
   const agent = AGENTS[agentType as keyof typeof AGENTS] || AGENTS.general;
   const optimalModel = getOptimalModelForAgent(agentType);
   
-  console.log(`[Agent] Executing ${agentType} with model: ${optimalModel}`);
+  console.log(`[Agent] Executing ${agentType} with OpenAI model: ${optimalModel}`);
   
   const systemPrompt = `${agent.systemPrompt}
 
@@ -288,7 +293,7 @@ ${memoryContext ? `## User Context (from previous interactions)\n${memoryContext
 
 Keep responses clear, well-structured, and actionable. Use markdown formatting for readability.`;
 
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -344,10 +349,11 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const MEM0_API_KEY = Deno.env.get("MEM0_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
+    if (!OPENAI_API_KEY) {
+      console.error("OPENAI_API_KEY is not configured");
       return new Response(JSON.stringify({ error: "AI service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -361,7 +367,7 @@ serve(async (req) => {
     const [intentResult, memories] = await Promise.all([
       agentHint 
         ? Promise.resolve({ intent: agentHint, confidence: 1.0, context: "hint provided" })
-        : classifyIntent(LOVABLE_API_KEY, userQuery, messages),
+        : classifyIntent(OPENAI_API_KEY, userQuery, messages),
       MEM0_API_KEY ? searchMemories(MEM0_API_KEY, user.id, userQuery) : Promise.resolve([]),
     ]);
 
@@ -373,7 +379,7 @@ serve(async (req) => {
 
     // Execute the appropriate agent
     const response = await executeAgent(
-      LOVABLE_API_KEY,
+      OPENAI_API_KEY,
       intentResult.intent,
       messages,
       memoryContext,
@@ -382,18 +388,11 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Agent error:", response.status, errorText);
+      console.error("OpenAI API error:", response.status, errorText);
 
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
           status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI usage limit reached. Please add credits." }), {
-          status: 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
