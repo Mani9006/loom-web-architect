@@ -56,19 +56,8 @@ export default function Chat() {
   const { toast } = useToast();
 
   // Resume parser for live preview updates
-  const handleResumeUpdate = useCallback((updates: Partial<ResumeData>) => {
+  const handleResumeUpdate = useCallback((updates: Partial<ResumeJSON>) => {
     setResumeData((prev) => ({ ...prev, ...updates }));
-    
-    // Also update options panel if summary options changed
-    if (updates.summaryOptions) {
-      setSummaryOptions({
-        options: updates.summaryOptions.map(opt => ({
-          id: opt.id,
-          content: opt.content,
-          isSelected: opt.isSelected,
-        })),
-      });
-    }
   }, []);
 
   const { parseIncremental, parseComplete, reset: resetParser } = useResumeParser(
@@ -128,7 +117,7 @@ export default function Chat() {
       setAtsMessages([]);
       setJobMessages([]);
       setChatMode("welcome");
-      setResumeData(createEmptyResumeData());
+      setResumeData(createEmptyResumeJSON());
     }
   }, [conversationId, user]);
 
@@ -251,7 +240,7 @@ export default function Chat() {
     setCoverLetterMessages([]);
     setInterviewMessages([]);
     setChatMode("welcome");
-    setResumeData(createEmptyResumeData());
+    setResumeData(createEmptyResumeJSON());
   };
 
   const handleRenameConversation = async (id: string, newTitle: string) => {
@@ -1359,14 +1348,14 @@ Format with clear headers and bullet points. Be specific to the role and company
     }
   };
 
-  const calculateTotalExperience = (clients: Client[]): number => {
+  const calculateTotalExperience = (experience: ResumeJSON["experience"]): number => {
     let totalMonths = 0;
     const now = new Date();
 
-    clients.forEach((client) => {
-      if (!client.startDate) return;
-      const start = parseDate(client.startDate);
-      const end = client.isCurrent ? now : parseDate(client.endDate);
+    experience.forEach((exp) => {
+      if (!exp.start_date) return;
+      const start = parseDate(exp.start_date);
+      const end = exp.end_date?.toLowerCase() === "present" ? now : parseDate(exp.end_date);
       if (start && end) {
         const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
         totalMonths += Math.max(0, months);
@@ -1403,11 +1392,10 @@ Format with clear headers and bullet points. Be specific to the role and company
     resetParser(); // Reset parser state for new generation
 
     // Calculate total experience
-    const totalYears = calculateTotalExperience(resumeData.clients);
-    setResumeData((prev) => ({ ...prev, totalYearsExperience: totalYears }));
+    const totalYears = calculateTotalExperience(resumeData.experience);
 
     try {
-      const title = `Resume: ${resumeData.personalInfo.fullName}`;
+      const title = `Resume: ${resumeData.header.name || "Untitled"}`;
       const convId = await createNewConversation(title);
       if (!convId) {
         setIsLoading(false);
@@ -1416,28 +1404,26 @@ Format with clear headers and bullet points. Be specific to the role and company
       }
       navigate(`/c/${convId}`);
 
-      // Build context message
-      const clientSummary = resumeData.clients
-        .filter((c) => c.name)
-        .map((c) => `- ${c.role} at ${c.name} (${c.industry || "N/A"}) from ${c.startDate} to ${c.isCurrent ? "Present" : c.endDate}${c.responsibilities ? `: ${c.responsibilities}` : ""}`)
+      // Build context message from experience
+      const experienceSummary = resumeData.experience
+        .filter((exp) => exp.company_or_client)
+        .map((exp) => `- ${exp.role} at ${exp.company_or_client} from ${exp.start_date} to ${exp.end_date || "Present"}`)
         .join("\n");
 
-      const userContent = `Generate my resume using the ${resumeData.templateId} template.
+      const userContent = `Generate my resume using the Professional template.
 
-**Target Role**: ${resumeData.targetRole || "General"}
 **Total Experience**: ${totalYears}+ years
 
-**Personal Info**: ${resumeData.personalInfo.fullName}, ${resumeData.personalInfo.email}
+**Personal Info**: ${resumeData.header.name}, ${resumeData.header.email}
 
-**Clients/Experience**:
-${clientSummary}
+**Experience**:
+${experienceSummary}
 
 **Instructions**:
-1. Generate 2 different project bullet options for EACH client/role
-2. Generate 2 summary options based on all experiences combined
-3. Calculate and include total years of experience in summaries
-4. Use strong action verbs and quantify achievements
-5. Make it ATS-friendly for the target role`;
+1. Improve bullet points for each role with strong action verbs
+2. Generate a compelling professional summary
+3. Make it ATS-friendly
+4. Quantify achievements where possible`;
 
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -1590,24 +1576,24 @@ ${clientSummary}
       const newProjectOptions: ProjectOptionsData[] = [];
       
       clientSections.forEach((section) => {
-        // Parse role and client name from "Role | Client Name"
+        // Parse role and company from "Role | Company Name"
         const headerMatch = section.match(/^([^|]+)\s*\|\s*([^\n]+)/);
         if (!headerMatch) return;
         
         const role = headerMatch[1].trim();
-        const clientName = headerMatch[2].trim();
+        const companyName = headerMatch[2].trim();
         
-        // Find matching client in resumeData
-        const matchingClient = resumeData.clients.find(
-          (c) => c.name.toLowerCase() === clientName.toLowerCase() || 
-                 c.role.toLowerCase() === role.toLowerCase()
+        // Find matching experience in resumeData
+        const matchingExp = resumeData.experience.find(
+          (exp) => exp.company_or_client.toLowerCase() === companyName.toLowerCase() || 
+                   exp.role.toLowerCase() === role.toLowerCase()
         );
         
-        if (!matchingClient) return;
+        if (!matchingExp) return;
         
-        // Extract Project Option 1 and Option 2
-        const option1Match = section.match(/\*\*Project Option 1[^*]*\*\*\s*([\s\S]*?)(?=\*\*Project Option 2|$)/);
-        const option2Match = section.match(/\*\*Project Option 2[^*]*\*\*\s*([\s\S]*?)(?=\n###|\n##|$)/);
+        // Extract bullet options
+        const option1Match = section.match(/\*\*(?:Project )?Option 1[^*]*\*\*\s*([\s\S]*?)(?=\*\*(?:Project )?Option 2|$)/);
+        const option2Match = section.match(/\*\*(?:Project )?Option 2[^*]*\*\*\s*([\s\S]*?)(?=\n###|\n##|$)/);
         
         if (option1Match && option2Match) {
           const extractBullets = (text: string): string[] => {
@@ -1621,9 +1607,9 @@ ${clientSummary}
           const bullets1 = extractBullets(option1Match[1]);
           const bullets2 = extractBullets(option2Match[1]);
           
-          const clientProjectOptions: ProjectOptionsData = {
-            clientId: matchingClient.id,
-            clientName,
+          const expProjectOptions: ProjectOptionsData = {
+            clientId: matchingExp.id,
+            clientName: companyName,
             role,
             options: [
               { id: crypto.randomUUID(), title: "Option 1", bullets: bullets1, isSelected: true },
@@ -1631,17 +1617,7 @@ ${clientSummary}
             ],
           };
           
-          newProjectOptions.push(clientProjectOptions);
-          
-          // Update client with project options - select first by default
-          setResumeData((prev) => ({
-            ...prev,
-            clients: prev.clients.map((c) =>
-              c.id === matchingClient.id
-                ? { ...c, projects: clientProjectOptions.options }
-                : c
-            ),
-          }));
+          newProjectOptions.push(expProjectOptions);
         }
       });
       
@@ -1769,16 +1745,14 @@ ${clientSummary}
   };
 
   const handleSelectSummary = (optionId: string) => {
-    // Update resume data
+    // Update resume data with selected summary
     const selectedOption = summaryOptions?.options.find(opt => opt.id === optionId);
-    setResumeData((prev) => ({
-      ...prev,
-      summaryOptions: prev.summaryOptions.map((opt) => ({
-        ...opt,
-        isSelected: opt.id === optionId,
-      })),
-      summary: selectedOption?.content || prev.summary,
-    }));
+    if (selectedOption) {
+      setResumeData((prev) => ({
+        ...prev,
+        summary: selectedOption.content,
+      }));
+    }
 
     // Update options panel state
     setSummaryOptions((prev) => prev ? {
@@ -1790,35 +1764,34 @@ ${clientSummary}
     } : null);
   };
 
-  const handleSelectProject = (clientId: string, optionId: string) => {
-    // Update resume data
-    setResumeData((prev) => ({
-      ...prev,
-      clients: prev.clients.map((client) =>
-        client.id === clientId
-          ? {
-              ...client,
-              projects: client.projects.map((p) => ({
-                ...p,
-                isSelected: p.id === optionId,
-              })),
-            }
-          : client
-      ),
-    }));
+  const handleSelectProject = (experienceId: string, optionId: string) => {
+    // Find the selected option and update the experience bullets
+    const projectOpt = projectOptions.find(p => p.clientId === experienceId);
+    const selectedOption = projectOpt?.options.find(o => o.id === optionId);
+    
+    if (selectedOption) {
+      setResumeData((prev) => ({
+        ...prev,
+        experience: prev.experience.map((exp) =>
+          exp.id === experienceId
+            ? { ...exp, bullets: selectedOption.bullets }
+            : exp
+        ),
+      }));
+    }
 
     // Update options panel state
     setProjectOptions((prev) =>
-      prev.map((clientData) =>
-        clientData.clientId === clientId
+      prev.map((expData) =>
+        expData.clientId === experienceId
           ? {
-              ...clientData,
-              options: clientData.options.map((opt) => ({
+              ...expData,
+              options: expData.options.map((opt) => ({
                 ...opt,
                 isSelected: opt.id === optionId,
               })),
             }
-          : clientData
+          : expData
       )
     );
   };
