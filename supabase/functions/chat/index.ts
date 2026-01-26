@@ -138,7 +138,7 @@ serve(async (req) => {
       });
     }
 
-    const { messages, mode } = await req.json();
+    const { messages, mode, model: requestedModel } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Messages are required" }), {
@@ -199,8 +199,9 @@ serve(async (req) => {
       general: "google/gemini-3-flash-preview",
     };
     
-    const selectedModel = modelForMode[chatMode] || "google/gemini-3-flash-preview";
-    console.log(`[Chat] Using model: ${selectedModel} for mode: ${chatMode}`);
+    // Allow explicit model override from request, otherwise use mode-based selection
+    const selectedModel = requestedModel || modelForMode[chatMode] || "google/gemini-3-flash-preview";
+    console.log(`[Chat] Using model: ${selectedModel} for mode: ${chatMode}${requestedModel ? ' (override)' : ''}`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
