@@ -141,7 +141,7 @@ export function useResumeParser(
     // ===== SKILLS PARSING =====
     const skillsSection = content.match(/## (?:SKILLS|Skills)([\s\S]*?)(?=\n## (?:PROJECTS|Projects)|$)/i);
     if (skillsSection) {
-      const skillLines = skillsSection[1].split('\n').filter(Boolean);
+      const skillLines = skillsSection[1].split('\n').filter(line => line.trim());
       const skills: ResumeJSON['skills'] = {
         generative_ai: [],
         nlp: [],
@@ -154,17 +154,87 @@ export function useResumeParser(
       };
       
       skillLines.forEach(line => {
-        const match = line.match(/\*\*([^*:]+):\*\*\s*(.+)/);
+        // Match format: **Category Name:** skill1, skill2, skill3
+        // Also handle: **Category Name**: skill1, skill2 (without bold colon)
+        const match = line.match(/\*\*([^*:]+?)(?::\*\*|\*\*:)\s*(.+)/);
         if (match) {
-          const category = match[1].trim().toLowerCase().replace(/\s+/g, '_').replace(/&/g, '');
+          const rawCategory = match[1].trim();
           const skillList = match[2].split(',').map(s => s.trim()).filter(Boolean);
+          
+          // Map common category names to our schema keys
+          const categoryMap: Record<string, string> = {
+            'generative ai': 'generative_ai',
+            'natural language processing': 'nlp',
+            'nlp': 'nlp',
+            'machine learning': 'machine_learning',
+            'ml': 'machine_learning',
+            'programming languages': 'programming_languages',
+            'programming': 'programming_languages',
+            'data engineering & etl': 'data_engineering_etl',
+            'data engineering': 'data_engineering_etl',
+            'etl': 'data_engineering_etl',
+            'visualization & dashboards': 'visualization',
+            'visualization': 'visualization',
+            'dashboards': 'visualization',
+            'cloud & mlops platforms': 'cloud_mlops',
+            'cloud & mlops': 'cloud_mlops',
+            'cloud': 'cloud_mlops',
+            'mlops': 'cloud_mlops',
+            'collaboration & other tools': 'collaboration_tools',
+            'collaboration tools': 'collaboration_tools',
+            'collaboration': 'collaboration_tools',
+            'tools': 'collaboration_tools',
+          };
+          
+          const normalizedCategory = rawCategory.toLowerCase();
+          const schemaKey = categoryMap[normalizedCategory] || normalizedCategory.replace(/\s+/g, '_').replace(/&/g, '');
+          
           if (skillList.length > 0) {
-            skills[category] = skillList;
+            skills[schemaKey] = skillList;
           }
         }
       });
       
       updates.skills = skills;
+    }
+    
+    // ===== PROJECTS PARSING =====
+    const projectsSection = content.match(/## (?:PROJECTS|Projects)([\s\S]*?)(?=\n## |$)/i);
+    if (projectsSection) {
+      const projText = projectsSection[1];
+      // Split by project entries (bold title lines)
+      const projectBlocks = projText.split(/(?=\n\*\*[A-Z])/i);
+      
+      const projects: ResumeJSON['projects'] = [];
+      
+      projectBlocks.forEach(block => {
+        if (!block.trim()) return;
+        
+        // Match format: **Project Title** University/Organization — Date
+        // Also: **Project Title** Organization | Date
+        const titleMatch = block.match(/\*\*([^*]+)\*\*\s*(?:([^—|\n]+)(?:—|-|–|\|)\s*([A-Za-z']+\s*\d{2,4})?)?/);
+        
+        if (!titleMatch) return;
+        
+        // Extract bullets
+        const bullets = block
+          .split('\n')
+          .filter(line => line.trim().match(/^[-•●]\s*/))
+          .map(line => line.replace(/^[-•●]\s*/, '').trim())
+          .filter(Boolean);
+        
+        projects.push({
+          id: crypto.randomUUID(),
+          title: titleMatch[1]?.trim() || '',
+          organization: titleMatch[2]?.trim() || '',
+          date: titleMatch[3]?.trim() || '',
+          bullets,
+        });
+      });
+      
+      if (projects.length > 0) {
+        updates.projects = projects;
+      }
     }
     
     // ===== EDUCATION PARSING =====
