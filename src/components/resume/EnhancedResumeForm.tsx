@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, X, Sparkles, Loader2, FileText, Briefcase, GraduationCap, Award, Wrench, Upload } from "lucide-react";
-import { ResumeData, Client, Education, Certification, SkillCategory } from "@/types/resume";
+import { ResumeJSON, ExperienceEntry, EducationEntry, CertificationEntry, SKILL_CATEGORY_LABELS, DEFAULT_SKILL_CATEGORIES, createEmptyResumeJSON } from "@/types/resume";
 import { TemplateSelector } from "./TemplateSelector";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ResumeFormSkeleton } from "./ResumeFormSkeleton";
@@ -14,43 +14,25 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 // Helper to format responsibilities as bullet points
-function formatResponsibilitiesAsBullets(responsibilities: string | string[]): string {
-  if (!responsibilities) return "";
+function formatResponsibilitiesAsBullets(responsibilities: string | string[]): string[] {
+  if (!responsibilities) return [];
   
-  // If already an array, join with bullet format
+  // If already an array, clean it
   if (Array.isArray(responsibilities)) {
     return responsibilities
       .filter(r => r && r.trim())
-      .map(r => `• ${r.trim().replace(/^[•\-\*]\s*/, '')}`)
-      .join('\n');
+      .map(r => r.trim().replace(/^[•\-\*]\s*/, ''));
   }
   
   const text = String(responsibilities);
   
-  // If already has bullet format, clean it up
-  if (text.includes('•') || text.includes('\n')) {
-    return text
-      .split(/\n|(?=•)/)
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .map(line => line.startsWith('•') ? line : `• ${line.replace(/^[\-\*]\s*/, '')}`)
-      .join('\n');
-  }
-  
-  // If it's a paragraph or semi-colon separated, split intelligently
-  const separators = /[;.](?=\s*[A-Z])|(?<=\w)\s+(?=[A-Z][a-z]+ed\s|[A-Z][a-z]+ing\s|Developed|Created|Implemented|Managed|Led|Built|Designed|Optimized|Reduced|Increased|Improved|Achieved|Delivered|Coordinated|Analyzed|Established)/;
-  
-  const bullets = text
-    .split(separators)
-    .map(s => s.trim())
-    .filter(s => s.length > 10); // Filter out too-short fragments
-  
-  if (bullets.length > 1) {
-    return bullets.map(b => `• ${b.replace(/^[•\-\*]\s*/, '').replace(/[.;]$/, '')}`).join('\n');
-  }
-  
-  // Fallback: return as single bullet if meaningful
-  return text.length > 10 ? `• ${text.replace(/^[•\-\*]\s*/, '')}` : text;
+  // Split by newlines or bullet characters
+  return text
+    .split(/\n|(?=•)|(?=-)/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => line.replace(/^[•\-\*]\s*/, ''))
+    .filter(line => line.length > 5);
 }
 
 // Robust JSON parser that handles common AI response issues
@@ -122,11 +104,8 @@ function parseAIResponse(content: string): Record<string, any> | null {
   // Attempt 2: Fix common JSON issues
   try {
     let fixed = jsonString
-      // Remove any control characters
       .replace(/[\x00-\x1F\x7F]/g, ' ')
-      // Fix trailing commas
       .replace(/,(\s*[}\]])/g, '$1')
-      // Ensure proper boolean format
       .replace(/:\s*true\s*([,}])/gi, ': true$1')
       .replace(/:\s*false\s*([,}])/gi, ': false$1');
     
@@ -137,15 +116,12 @@ function parseAIResponse(content: string): Record<string, any> | null {
     console.log("Fixed parse failed:", (e2 as Error).message);
   }
   
-  // Attempt 3: More aggressive cleanup - handle unescaped quotes in strings
+  // Attempt 3: More aggressive cleanup
   try {
-    // This regex-based approach handles common JSON issues
     let aggressive = jsonString
       .replace(/[\x00-\x1F\x7F]/g, ' ')
       .replace(/,(\s*[}\]])/g, '$1');
     
-    // Try to fix unbalanced quotes by escaping them
-    // Replace problematic patterns
     aggressive = aggressive.replace(/([^\\])\\([^"\\nrtbfu])/g, '$1\\\\$2');
     
     const result = JSON.parse(aggressive);
@@ -155,47 +131,39 @@ function parseAIResponse(content: string): Record<string, any> | null {
     console.log("Aggressive parse failed:", (e3 as Error).message);
   }
   
-  // Attempt 4: Extract key fields with very targeted regex
+  // Attempt 4: Extract key fields with regex
   console.log("Attempting targeted field extraction...");
   try {
     const result: Record<string, any> = {
-      personalInfo: { fullName: '', email: '', phone: '', location: '', linkedin: '', portfolio: '', title: '' },
-      clients: [],
+      header: { name: '', title: '', email: '', phone: '', location: '', linkedin: '' },
+      experience: [],
       education: [],
       certifications: [],
-      skillCategories: [],
+      skills: {},
       summary: '',
-      targetRole: ''
     };
     
-    // Use non-greedy matching with explicit delimiters
-    // For strings ending with comma or closing brace
     const extractField = (pattern: RegExp): string => {
       const match = content.match(pattern);
       return match ? match[1].trim() : '';
     };
     
-    // Extract personalInfo fields - look for value followed by quote-comma or quote-}
-    result.personalInfo.fullName = extractField(/"fullName"\s*:\s*"([^"]+)"/);
-    result.personalInfo.email = extractField(/"email"\s*:\s*"([^"]+)"/);
-    result.personalInfo.phone = extractField(/"phone"\s*:\s*"([^"]+)"/);
-    result.personalInfo.location = extractField(/"location"\s*:\s*"([^"]+)"/);
-    result.personalInfo.linkedin = extractField(/"linkedin"\s*:\s*"([^"]*)"/);
-    result.personalInfo.portfolio = extractField(/"portfolio"\s*:\s*"([^"]*)"/);
-    result.personalInfo.title = extractField(/"title"\s*:\s*"([^"]+)"/);
+    // Extract header fields
+    result.header.name = extractField(/"name"\s*:\s*"([^"]+)"/);
+    result.header.email = extractField(/"email"\s*:\s*"([^"]+)"/);
+    result.header.phone = extractField(/"phone"\s*:\s*"([^"]+)"/);
+    result.header.location = extractField(/"location"\s*:\s*"([^"]+)"/);
+    result.header.linkedin = extractField(/"linkedin"\s*:\s*"([^"]*)"/);
+    result.header.title = extractField(/"title"\s*:\s*"([^"]+)"/);
     
-    // Extract simple string fields
-    result.targetRole = extractField(/"targetRole"\s*:\s*"([^"]+)"/);
-    
-    // Extract summary - may span multiple lines
+    // Extract summary
     const summaryMatch = content.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (summaryMatch) {
       result.summary = summaryMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').trim();
     }
     
-    // Extract arrays - try to find and parse them individually
+    // Extract arrays
     const extractArray = (key: string): any[] => {
-      // Find the array for this key
       const regex = new RegExp(`"${key}"\\s*:\\s*\\[([\\s\\S]*?)\\](?=\\s*,\\s*"|\\s*})`, 'i');
       const match = content.match(regex);
       if (match) {
@@ -208,23 +176,30 @@ function parseAIResponse(content: string): Record<string, any> | null {
       return [];
     };
     
-    result.clients = extractArray('clients');
+    result.experience = extractArray('experience');
     result.education = extractArray('education');
     result.certifications = extractArray('certifications');
-    result.skillCategories = extractArray('skillCategories');
     
-    // Validate we got meaningful data
-    const hasData = result.personalInfo.fullName || 
-                    result.personalInfo.email || 
-                    result.clients.length > 0 ||
-                    result.skillCategories.length > 0;
+    // Extract skills object
+    const skillsMatch = content.match(/"skills"\s*:\s*(\{[\s\S]*?\})(?=\s*,\s*"|$)/);
+    if (skillsMatch) {
+      try {
+        result.skills = JSON.parse(skillsMatch[1]);
+      } catch {
+        console.log("Failed to parse skills object");
+      }
+    }
+    
+    const hasData = result.header.name || 
+                    result.header.email || 
+                    result.experience.length > 0 ||
+                    Object.keys(result.skills).length > 0;
     
     if (hasData) {
       console.log("Targeted extraction successful:", {
-        name: result.personalInfo.fullName,
-        email: result.personalInfo.email,
-        clients: result.clients.length,
-        skills: result.skillCategories.length
+        name: result.header.name,
+        email: result.header.email,
+        experience: result.experience.length,
       });
       return result;
     }
@@ -235,15 +210,17 @@ function parseAIResponse(content: string): Record<string, any> | null {
   console.error("All parsing attempts failed");
   return null;
 }
+
 interface EnhancedResumeFormProps {
-  data: ResumeData;
-  onChange: (data: ResumeData) => void;
+  data: ResumeJSON;
+  onChange: (data: ResumeJSON) => void;
   onGenerate: () => void;
   isGenerating: boolean;
 }
 
 export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }: EnhancedResumeFormProps) {
-  const [showTemplateSelector, setShowTemplateSelector] = useState(!data.templateId);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState("professional");
   const [skillInput, setSkillInput] = useState("");
   const [currentSkillCategory, setCurrentSkillCategory] = useState("");
   const [isParsingResume, setIsParsingResume] = useState(false);
@@ -272,49 +249,39 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
             messages: [
               {
                 role: "system",
-                content: `You are an expert resume parser that handles even poorly formatted or OCR-extracted documents.
-
-YOUR TASK: Analyze the provided text (which may be imperfect due to OCR) and extract structured resume data.
-
-INTELLIGENCE REQUIRED:
-- The text may have OCR errors, merged words, or missing spaces - use context to fix them
-- Names might be split across lines or merged with other text - intelligently separate them
-- Skills may be scattered throughout - collect ALL of them
-- Experience bullets may not have proper formatting - identify and extract them anyway
-- Dates may be in various formats - normalize them
+                content: `You are an expert resume parser. Extract structured resume data from the provided text.
 
 OUTPUT: Return ONLY valid JSON (no markdown, no backticks, no explanations).
 
 SCHEMA:
 {
-  "personalInfo": {
-    "fullName": "First Last (ONLY the name, never email/phone)",
-    "email": "email@domain.com (must contain @)",
+  "header": {
+    "name": "Full Name",
+    "title": "Job Title",
+    "location": "City, State",
+    "email": "email@domain.com",
     "phone": "phone number",
-    "location": "City, State/Country",
-    "linkedin": "LinkedIn URL if found",
-    "portfolio": "Portfolio/website URL if found",
-    "title": "Current/Target Job Title"
+    "linkedin": "LinkedIn URL"
   },
-  "clients": [
+  "summary": "Professional summary text",
+  "experience": [
     {
-      "name": "Company/Organization Name",
-      "industry": "Industry if identifiable",
-      "location": "Company location",
-      "role": "Job Title held",
-      "startDate": "Mon YYYY",
-      "endDate": "Mon YYYY or Present",
-      "isCurrent": true/false,
-      "responsibilities": "• First bullet point achievement\\n• Second bullet point\\n• Third bullet point (MUST be bullet format with • prefix and \\n between)"
+      "role": "Job Title",
+      "company_or_client": "Company Name",
+      "start_date": "Mon YYYY",
+      "end_date": "Mon YYYY or Present",
+      "location": "City, State",
+      "bullets": ["Achievement 1", "Achievement 2", "Achievement 3"]
     }
   ],
   "education": [
     {
-      "school": "Institution Name",
-      "degree": "Degree Type (Bachelor's, Master's, etc.)",
-      "field": "Major/Field of Study",
-      "graduationDate": "YYYY or Mon YYYY",
-      "gpa": "GPA if mentioned"
+      "degree": "Degree Type",
+      "field": "Field of Study",
+      "institution": "School Name",
+      "gpa": "GPA if mentioned",
+      "graduation_date": "YYYY or Mon YYYY",
+      "location": "City, State"
     }
   ],
   "certifications": [
@@ -324,39 +291,38 @@ SCHEMA:
       "date": "Date obtained"
     }
   ],
-  "skillCategories": [
+  "skills": {
+    "programming_languages": ["Python", "Java"],
+    "data_engineering_etl": ["Spark", "Airflow"],
+    "cloud_mlops": ["AWS", "Azure"],
+    "visualization": ["Tableau", "PowerBI"],
+    "machine_learning": ["TensorFlow", "PyTorch"],
+    "nlp": ["BERT", "GPT"],
+    "generative_ai": ["LangChain", "RAG"],
+    "collaboration_tools": ["Jira", "Git"]
+  },
+  "projects": [
     {
-      "category": "Programming Languages",
-      "skills": ["Python", "Java", "SQL"]
-    },
-    {
-      "category": "Tools & Technologies", 
-      "skills": ["Docker", "Kubernetes", "AWS"]
-    },
-    {
-      "category": "Frameworks",
-      "skills": ["React", "Django", "Spark"]
+      "title": "Project Name",
+      "organization": "Organization",
+      "date": "Date",
+      "bullets": ["Description 1", "Description 2"]
     }
-  ],
-  "summary": "Professional summary/objective if found",
-  "targetRole": "Job title from header or most recent role"
+  ]
 }
 
-CRITICAL RULES:
-1. fullName = Extract ONLY the person's name. Look at the document header. Never include email domains, phone numbers, or other text.
-2. email = Must contain @ symbol. Extract the complete email address only.
-3. responsibilities = MUST be formatted as bullet points with "• " prefix and "\\n" between bullets. Convert any format (dashes, numbers, paragraphs) to this standard bullet format.
-4. skillCategories = REQUIRED. Scan the ENTIRE document for skills. Group them intelligently (languages, tools, cloud, databases, etc.). If no explicit skills section, infer from experience descriptions.
-5. Use "" (empty string) for missing fields, never null or undefined.
-6. isCurrent = true ONLY if endDate is "Present" or similar.
-7. Return ONLY the JSON object - no other text before or after.`
+RULES:
+1. Extract ONLY the person's name in header.name
+2. bullets must be an array of strings, not a single string
+3. skills must be an object with category keys and array values
+4. Use empty string "" for missing fields, never null
+5. Return ONLY the JSON object`
               },
               {
                 role: "user",
-                content: `Parse this resume text (may contain OCR imperfections - use intelligence to extract correctly):\n\n${text}`
+                content: `Parse this resume:\n\n${text}`
               }
             ],
-            // Gemini 2.5 Pro: Best for structured data extraction from messy OCR (SOTA on derendering benchmarks)
             model: "google/gemini-2.5-pro",
           }),
         }
@@ -383,7 +349,6 @@ CRITICAL RULES:
             if (line.startsWith("data: ") && line !== "data: [DONE]") {
               try {
                 const parsed = JSON.parse(line.slice(6));
-                // Handle different response formats from AI gateway
                 const content = parsed.choices?.[0]?.delta?.content || 
                                parsed.choices?.[0]?.message?.content ||
                                parsed.content ||
@@ -398,51 +363,45 @@ CRITICAL RULES:
       }
 
       console.log("Full AI response received, length:", fullContent.length);
-      console.log("Response content preview:", fullContent.substring(0, 300));
 
-      // Parse the JSON from the response with robust error handling
+      // Parse the JSON from the response
       const parsedData = parseAIResponse(fullContent);
       
       if (!parsedData) {
         throw new Error("Could not extract structured data from resume. Please try again.");
       }
 
-      // Update the form with parsed data
-      const newData: ResumeData = {
-        ...data,
-        templateId: data.templateId || "professional",
-        personalInfo: {
-          fullName: parsedData.personalInfo?.fullName || data.personalInfo.fullName,
-          email: parsedData.personalInfo?.email || data.personalInfo.email,
-          phone: parsedData.personalInfo?.phone || data.personalInfo.phone,
-          location: parsedData.personalInfo?.location || data.personalInfo.location,
-          linkedin: parsedData.personalInfo?.linkedin || data.personalInfo.linkedin,
-          portfolio: parsedData.personalInfo?.portfolio || data.personalInfo.portfolio,
-          title: parsedData.personalInfo?.title || data.personalInfo.title,
+      // Map parsed data to ResumeJSON structure
+      const newData: ResumeJSON = {
+        header: {
+          name: parsedData.header?.name || data.header.name,
+          title: parsedData.header?.title || data.header.title,
+          email: parsedData.header?.email || data.header.email,
+          phone: parsedData.header?.phone || data.header.phone,
+          location: parsedData.header?.location || data.header.location,
+          linkedin: parsedData.header?.linkedin || data.header.linkedin,
         },
-        targetRole: parsedData.targetRole || parsedData.personalInfo?.title || data.targetRole,
-        clients: parsedData.clients?.length > 0 
-          ? parsedData.clients.map((c: any) => ({
+        summary: parsedData.summary || data.summary,
+        experience: parsedData.experience?.length > 0 
+          ? parsedData.experience.map((e: any) => ({
               id: crypto.randomUUID(),
-              name: c.name || "",
-              industry: c.industry || "",
-              location: c.location || "",
-              role: c.role || "",
-              startDate: c.startDate || "",
-              endDate: c.endDate || "",
-              isCurrent: c.isCurrent || c.endDate?.toLowerCase()?.includes("present") || false,
-              responsibilities: formatResponsibilitiesAsBullets(c.responsibilities),
-              projects: [],
+              role: e.role || "",
+              company_or_client: e.company_or_client || "",
+              start_date: e.start_date || "",
+              end_date: e.end_date || "",
+              location: e.location || "",
+              bullets: Array.isArray(e.bullets) ? e.bullets : formatResponsibilitiesAsBullets(e.bullets || ""),
             }))
-          : data.clients,
+          : data.experience,
         education: parsedData.education?.length > 0
           ? parsedData.education.map((e: any) => ({
               id: crypto.randomUUID(),
-              school: e.school || "",
               degree: e.degree || "",
               field: e.field || "",
-              graduationDate: e.graduationDate || "",
+              institution: e.institution || "",
               gpa: e.gpa || "",
+              graduation_date: e.graduation_date || "",
+              location: e.location || "",
             }))
           : data.education,
         certifications: parsedData.certifications?.length > 0
@@ -453,28 +412,23 @@ CRITICAL RULES:
               date: c.date || "",
             }))
           : data.certifications,
-        skillCategories: parsedData.skillCategories?.length > 0
-          ? parsedData.skillCategories.map((s: any) => ({
-              category: s.category || "",
-              skills: Array.isArray(s.skills) ? s.skills : [],
+        skills: {
+          ...data.skills,
+          ...parsedData.skills,
+        },
+        projects: parsedData.projects?.length > 0
+          ? parsedData.projects.map((p: any) => ({
+              id: crypto.randomUUID(),
+              title: p.title || "",
+              organization: p.organization || "",
+              date: p.date || "",
+              bullets: Array.isArray(p.bullets) ? p.bullets : [],
             }))
-          : data.skillCategories,
-        summary: parsedData.summary || data.summary,
-        summaryOptions: data.summaryOptions,
-        totalYearsExperience: data.totalYearsExperience,
-        projects: data.projects,
+          : data.projects,
       };
 
       onChange(newData);
       
-      console.log("Resume parsed successfully:", {
-        personalInfo: newData.personalInfo,
-        clients: newData.clients.length,
-        education: newData.education.length,
-        certifications: newData.certifications.length,
-        skillCategories: newData.skillCategories.length,
-      });
-
       toast({
         title: "Resume imported!",
         description: `Successfully extracted data from ${fileName}. Review and edit as needed.`,
@@ -492,50 +446,48 @@ CRITICAL RULES:
     }
   };
 
-  const updatePersonalInfo = (field: keyof ResumeData["personalInfo"], value: string) => {
+  const updateHeader = (field: keyof ResumeJSON["header"], value: string) => {
     onChange({
       ...data,
-      personalInfo: { ...data.personalInfo, [field]: value },
+      header: { ...data.header, [field]: value },
     });
   };
 
-  const addClient = () => {
-    const newClient: Client = {
+  const addExperience = () => {
+    const newExp: ExperienceEntry = {
       id: crypto.randomUUID(),
-      name: "",
-      industry: "",
-      location: "",
       role: "",
-      startDate: "",
-      endDate: "",
-      isCurrent: false,
-      responsibilities: "",
-      projects: [],
+      company_or_client: "",
+      start_date: "",
+      end_date: "",
+      location: "",
+      bullets: [],
     };
-    onChange({ ...data, clients: [...data.clients, newClient] });
+    onChange({ ...data, experience: [...data.experience, newExp] });
   };
 
-  const removeClient = (id: string) => {
-    onChange({ ...data, clients: data.clients.filter((c) => c.id !== id) });
+  const removeExperience = (id: string) => {
+    onChange({ ...data, experience: data.experience.filter((e) => e.id !== id) });
   };
 
-  const updateClient = (id: string, field: keyof Client, value: any) => {
+  const updateExperience = (id: string, field: keyof ExperienceEntry, value: any) => {
     onChange({
       ...data,
-      clients: data.clients.map((c) =>
-        c.id === id ? { ...c, [field]: value } : c
+      experience: data.experience.map((e) =>
+        e.id === id ? { ...e, [field]: value } : e
       ),
     });
   };
 
   const addEducation = () => {
-    const newEdu: Education = {
+    const newEdu: EducationEntry = {
       id: crypto.randomUUID(),
-      school: "",
       degree: "",
       field: "",
-      graduationDate: "",
+      institution: "",
       gpa: "",
+      graduation_date: "",
+      location: "",
     };
     onChange({ ...data, education: [...data.education, newEdu] });
   };
@@ -544,7 +496,7 @@ CRITICAL RULES:
     onChange({ ...data, education: data.education.filter((e) => e.id !== id) });
   };
 
-  const updateEducation = (id: string, field: keyof Education, value: string) => {
+  const updateEducation = (id: string, field: keyof EducationEntry, value: string) => {
     onChange({
       ...data,
       education: data.education.map((e) =>
@@ -554,7 +506,7 @@ CRITICAL RULES:
   };
 
   const addCertification = () => {
-    const newCert: Certification = {
+    const newCert: CertificationEntry = {
       id: crypto.randomUUID(),
       name: "",
       issuer: "",
@@ -567,7 +519,7 @@ CRITICAL RULES:
     onChange({ ...data, certifications: data.certifications.filter((c) => c.id !== id) });
   };
 
-  const updateCertification = (id: string, field: keyof Certification, value: string) => {
+  const updateCertification = (id: string, field: keyof CertificationEntry, value: string) => {
     onChange({
       ...data,
       certifications: data.certifications.map((c) =>
@@ -576,48 +528,44 @@ CRITICAL RULES:
     });
   };
 
-  const addSkillCategory = () => {
-    if (!currentSkillCategory.trim()) return;
-    const newCategory: SkillCategory = {
-      category: currentSkillCategory.trim(),
-      skills: [],
-    };
-    onChange({ ...data, skillCategories: [...data.skillCategories, newCategory] });
-    setCurrentSkillCategory("");
-  };
-
-  const removeSkillCategory = (index: number) => {
-    onChange({
-      ...data,
-      skillCategories: data.skillCategories.filter((_, i) => i !== index),
-    });
-  };
-
-  const addSkillToCategory = (categoryIndex: number, skill: string) => {
+  const addSkillToCategory = (category: string, skill: string) => {
     if (!skill.trim()) return;
-    const updated = [...data.skillCategories];
-    if (!updated[categoryIndex].skills.includes(skill.trim())) {
-      updated[categoryIndex].skills.push(skill.trim());
-      onChange({ ...data, skillCategories: updated });
+    const currentSkills = data.skills[category] || [];
+    if (!currentSkills.includes(skill.trim())) {
+      onChange({
+        ...data,
+        skills: {
+          ...data.skills,
+          [category]: [...currentSkills, skill.trim()],
+        },
+      });
     }
   };
 
-  const removeSkillFromCategory = (categoryIndex: number, skill: string) => {
-    const updated = [...data.skillCategories];
-    updated[categoryIndex].skills = updated[categoryIndex].skills.filter((s) => s !== skill);
-    onChange({ ...data, skillCategories: updated });
+  const removeSkillFromCategory = (category: string, skill: string) => {
+    onChange({
+      ...data,
+      skills: {
+        ...data.skills,
+        [category]: (data.skills[category] || []).filter((s) => s !== skill),
+      },
+    });
   };
 
   const handleTemplateSelect = (templateId: string) => {
-    onChange({ ...data, templateId });
+    setSelectedTemplate(templateId);
     setShowTemplateSelector(false);
   };
 
   const isFormValid =
-    data.templateId &&
-    data.personalInfo.fullName.trim() &&
-    data.personalInfo.email.trim() &&
-    data.clients.some((c) => c.name.trim() && c.role.trim());
+    data.header.name.trim() &&
+    data.header.email.trim() &&
+    data.experience.some((e) => e.company_or_client.trim() && e.role.trim());
+
+  // Get non-empty skill categories for display
+  const activeSkillCategories = DEFAULT_SKILL_CATEGORIES.filter(
+    cat => (data.skills[cat] || []).length > 0
+  );
 
   return (
     <>
@@ -625,7 +573,7 @@ CRITICAL RULES:
         isOpen={showTemplateSelector}
         onClose={() => setShowTemplateSelector(false)}
         onSelect={handleTemplateSelect}
-        selectedTemplateId={data.templateId}
+        selectedTemplateId={selectedTemplate}
       />
 
       <ScrollArea className="h-full">
@@ -660,7 +608,7 @@ CRITICAL RULES:
             </div>
           )}
 
-          {/* Hide form fields while parsing, show when done */}
+          {/* Hide form fields while parsing */}
           <div className={isParsingResume ? "opacity-0 h-0 overflow-hidden" : "space-y-4 animate-fade-in"}>
             {/* Template Selection Button */}
             <Button
@@ -670,282 +618,253 @@ CRITICAL RULES:
               className="w-full justify-start gap-2 h-12"
             >
               <FileText className="h-4 w-4" />
-              {data.templateId
-                ? `Template: ${data.templateId === "creative" ? "Creative" : "Professional"}`
-                : "Choose Template"}
+              Template: {selectedTemplate === "creative" ? "Creative" : "Professional"}
               <span className="ml-auto text-muted-foreground">Change →</span>
             </Button>
 
-            {/* Target Role */}
+            {/* Personal Information / Header */}
             <Card className="border-border">
               <CardHeader className="py-3">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  🎯 Target Role
+                  👤 Personal Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Full Name *</Label>
+                    <Input
+                      placeholder="John Doe"
+                      value={data.header.name}
+                      onChange={(e) => updateHeader("name", e.target.value)}
+                      className="bg-background h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Job Title</Label>
+                    <Input
+                      placeholder="Data Engineer"
+                      value={data.header.title}
+                      onChange={(e) => updateHeader("title", e.target.value)}
+                      className="bg-background h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Email *</Label>
+                    <Input
+                      type="email"
+                      placeholder="john@email.com"
+                      value={data.header.email}
+                      onChange={(e) => updateHeader("email", e.target.value)}
+                      className="bg-background h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Phone</Label>
+                    <Input
+                      placeholder="+1 555-123-4567"
+                      value={data.header.phone}
+                      onChange={(e) => updateHeader("phone", e.target.value)}
+                      className="bg-background h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Location</Label>
+                    <Input
+                      placeholder="Dallas, TX"
+                      value={data.header.location}
+                      onChange={(e) => updateHeader("location", e.target.value)}
+                      className="bg-background h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">LinkedIn</Label>
+                    <Input
+                      placeholder="linkedin.com/in/johndoe"
+                      value={data.header.linkedin}
+                      onChange={(e) => updateHeader("linkedin", e.target.value)}
+                      className="bg-background h-9 text-sm"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Summary */}
+            <Card className="border-border">
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  📝 Summary
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <Input
-                  placeholder="e.g., Senior ML Engineer, Data Scientist"
-                  value={data.targetRole}
-                  onChange={(e) => onChange({ ...data, targetRole: e.target.value })}
-                  className="bg-background"
+                <Textarea
+                  placeholder="Brief professional summary highlighting your experience and skills..."
+                  value={data.summary}
+                  onChange={(e) => onChange({ ...data, summary: e.target.value })}
+                  className="bg-background text-sm min-h-[80px]"
                 />
               </CardContent>
             </Card>
 
-          {/* Personal Information */}
-          <Card className="border-border">
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                👤 Personal Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Full Name *</Label>
-                  <Input
-                    placeholder="John Doe"
-                    value={data.personalInfo.fullName}
-                    onChange={(e) => updatePersonalInfo("fullName", e.target.value)}
-                    className="bg-background h-9 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Email *</Label>
-                  <Input
-                    type="email"
-                    placeholder="john@email.com"
-                    value={data.personalInfo.email}
-                    onChange={(e) => updatePersonalInfo("email", e.target.value)}
-                    className="bg-background h-9 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Phone</Label>
-                  <Input
-                    placeholder="+1 555-123-4567"
-                    value={data.personalInfo.phone}
-                    onChange={(e) => updatePersonalInfo("phone", e.target.value)}
-                    className="bg-background h-9 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Location</Label>
-                  <Input
-                    placeholder="Dallas, TX"
-                    value={data.personalInfo.location}
-                    onChange={(e) => updatePersonalInfo("location", e.target.value)}
-                    className="bg-background h-9 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">LinkedIn</Label>
-                  <Input
-                    placeholder="linkedin.com/in/johndoe"
-                    value={data.personalInfo.linkedin}
-                    onChange={(e) => updatePersonalInfo("linkedin", e.target.value)}
-                    className="bg-background h-9 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Portfolio</Label>
-                  <Input
-                    placeholder="johndoe.com"
-                    value={data.personalInfo.portfolio}
-                    onChange={(e) => updatePersonalInfo("portfolio", e.target.value)}
-                    className="bg-background h-9 text-sm"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            {/* Experience */}
+            <Card className="border-border">
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Briefcase className="h-4 w-4" /> Experience
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={addExperience} className="h-7 text-xs gap-1">
+                    <Plus className="h-3 w-3" /> Add
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-4">
+                {data.experience.map((exp, index) => (
+                  <div key={exp.id} className="p-3 bg-muted/50 rounded-lg space-y-3 relative">
+                    {data.experience.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeExperience(exp.id)}
+                        className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                    <p className="text-xs font-medium text-muted-foreground">Experience {index + 1}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Company/Client *</Label>
+                        <Input
+                          placeholder="Company Inc."
+                          value={exp.company_or_client}
+                          onChange={(e) => updateExperience(exp.id, "company_or_client", e.target.value)}
+                          className="bg-background h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Role *</Label>
+                        <Input
+                          placeholder="Data Engineer"
+                          value={exp.role}
+                          onChange={(e) => updateExperience(exp.id, "role", e.target.value)}
+                          className="bg-background h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Start Date</Label>
+                        <Input
+                          placeholder="Feb 2024"
+                          value={exp.start_date}
+                          onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)}
+                          className="bg-background h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">End Date</Label>
+                        <Input
+                          placeholder="Present"
+                          value={exp.end_date}
+                          onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)}
+                          className="bg-background h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1 col-span-2">
+                        <Label className="text-xs">Location</Label>
+                        <Input
+                          placeholder="Dallas, TX"
+                          value={exp.location}
+                          onChange={(e) => updateExperience(exp.id, "location", e.target.value)}
+                          className="bg-background h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Bullet Points (one per line)</Label>
+                      <Textarea
+                        placeholder="• Designed ETL pipelines using Python and SQL&#10;• Led data migration efforts&#10;• Developed automated quality checks"
+                        value={exp.bullets.join('\n')}
+                        onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split('\n').filter(b => b.trim()))}
+                        className="bg-background text-sm min-h-[80px]"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
 
-          {/* Clients/Experience */}
-          <Card className="border-border">
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Briefcase className="h-4 w-4" /> Clients / Experience
-                </span>
-                <Button type="button" variant="outline" size="sm" onClick={addClient} className="h-7 text-xs gap-1">
-                  <Plus className="h-3 w-3" /> Add Client
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-4">
-              {data.clients.map((client, index) => (
-                <div key={client.id} className="p-3 bg-muted/50 rounded-lg space-y-3 relative">
-                  {data.clients.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeClient(client.id)}
-                      className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  )}
-                  <p className="text-xs font-medium text-muted-foreground">Client {index + 1}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Client Name *</Label>
-                      <Input
-                        placeholder="Company Inc."
-                        value={client.name}
-                        onChange={(e) => updateClient(client.id, "name", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Industry</Label>
-                      <Input
-                        placeholder="Banking, Retail, Tech..."
-                        value={client.industry}
-                        onChange={(e) => updateClient(client.id, "industry", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Your Role *</Label>
-                      <Input
-                        placeholder="ML Engineer"
-                        value={client.role}
-                        onChange={(e) => updateClient(client.id, "role", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Location</Label>
-                      <Input
-                        placeholder="Dallas, TX"
-                        value={client.location}
-                        onChange={(e) => updateClient(client.id, "location", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Start Date</Label>
-                      <Input
-                        placeholder="Feb 2024"
-                        value={client.startDate}
-                        onChange={(e) => updateClient(client.id, "startDate", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">End Date</Label>
-                      <Input
-                        placeholder="Present"
-                        value={client.endDate}
-                        onChange={(e) => updateClient(client.id, "endDate", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                        disabled={client.isCurrent}
-                      />
+            {/* Education */}
+            <Card className="border-border">
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4" /> Education
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={addEducation} className="h-7 text-xs gap-1">
+                    <Plus className="h-3 w-3" /> Add
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-3">
+                {data.education.map((edu, index) => (
+                  <div key={edu.id} className="p-3 bg-muted/50 rounded-lg space-y-2 relative">
+                    {data.education.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeEducation(edu.id)}
+                        className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Institution</Label>
+                        <Input
+                          placeholder="University of..."
+                          value={edu.institution}
+                          onChange={(e) => updateEducation(edu.id, "institution", e.target.value)}
+                          className="bg-background h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Degree</Label>
+                        <Input
+                          placeholder="Master's, Bachelor's"
+                          value={edu.degree}
+                          onChange={(e) => updateEducation(edu.id, "degree", e.target.value)}
+                          className="bg-background h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Field</Label>
+                        <Input
+                          placeholder="Computer Science"
+                          value={edu.field}
+                          onChange={(e) => updateEducation(edu.id, "field", e.target.value)}
+                          className="bg-background h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Graduation Date</Label>
+                        <Input
+                          placeholder="May 2023"
+                          value={edu.graduation_date}
+                          onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)}
+                          className="bg-background h-8 text-sm"
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id={`current-${client.id}`}
-                      checked={client.isCurrent}
-                      onChange={(e) => {
-                        updateClient(client.id, "isCurrent", e.target.checked);
-                        if (e.target.checked) updateClient(client.id, "endDate", "Present");
-                      }}
-                      className="h-3 w-3"
-                    />
-                    <Label htmlFor={`current-${client.id}`} className="text-xs">Currently working here</Label>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Key Responsibilities (optional)</Label>
-                    <Textarea
-                      placeholder="Briefly describe your work. AI will generate project bullets from this."
-                      value={client.responsibilities}
-                      onChange={(e) => updateClient(client.id, "responsibilities", e.target.value)}
-                      className="bg-background text-sm min-h-[60px]"
-                    />
-                  </div>
-                </div>
-              ))}
-              <p className="text-xs text-muted-foreground">
-                💡 AI will generate 2 project options per client based on role, industry, and dates
-              </p>
-            </CardContent>
-          </Card>
+                ))}
+              </CardContent>
+            </Card>
 
-          {/* Education */}
-          <Card className="border-border">
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4" /> Education
-                </span>
-                <Button type="button" variant="outline" size="sm" onClick={addEducation} className="h-7 text-xs gap-1">
-                  <Plus className="h-3 w-3" /> Add
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-3">
-              {data.education.map((edu, index) => (
-                <div key={edu.id} className="p-3 bg-muted/50 rounded-lg space-y-2 relative">
-                  {data.education.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeEducation(edu.id)}
-                      className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  )}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">School</Label>
-                      <Input
-                        placeholder="University of..."
-                        value={edu.school}
-                        onChange={(e) => updateEducation(edu.id, "school", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Degree</Label>
-                      <Input
-                        placeholder="Master's, Bachelor's"
-                        value={edu.degree}
-                        onChange={(e) => updateEducation(edu.id, "degree", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Field</Label>
-                      <Input
-                        placeholder="Computer Science"
-                        value={edu.field}
-                        onChange={(e) => updateEducation(edu.id, "field", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Graduation</Label>
-                      <Input
-                        placeholder="Jul '23"
-                        value={edu.graduationDate}
-                        onChange={(e) => updateEducation(edu.id, "graduationDate", e.target.value)}
-                        className="bg-background h-8 text-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Certifications - Only for professional template */}
-          {data.templateId === "professional" && (
+            {/* Certifications */}
             <Card className="border-border">
               <CardHeader className="py-3">
                 <CardTitle className="text-sm flex items-center justify-between">
@@ -982,7 +901,7 @@ CRITICAL RULES:
                       <div className="space-y-1">
                         <Label className="text-xs">Date</Label>
                         <Input
-                          placeholder="Sep '24"
+                          placeholder="Sep 2024"
                           value={cert.date}
                           onChange={(e) => updateCertification(cert.id, "date", e.target.value)}
                           className="bg-background h-8 text-sm"
@@ -1000,93 +919,76 @@ CRITICAL RULES:
                     </div>
                   </div>
                 ))}
+                {data.certifications.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    No certifications added yet
+                  </p>
+                )}
               </CardContent>
             </Card>
-          )}
 
-          {/* Skills */}
-          <Card className="border-border">
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Wrench className="h-4 w-4" /> Skills
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-3">
-              {/* Add category */}
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Add category (e.g., Programming Languages)"
-                  value={currentSkillCategory}
-                  onChange={(e) => setCurrentSkillCategory(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSkillCategory())}
-                  className="bg-background h-8 text-sm"
-                />
-                <Button type="button" variant="outline" size="sm" onClick={addSkillCategory} className="h-8">
-                  Add
-                </Button>
-              </div>
-
-              {/* Skill categories */}
-              {data.skillCategories.map((cat, catIndex) => (
-                <div key={catIndex} className="p-3 bg-muted/50 rounded-lg space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{cat.category}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeSkillCategory(catIndex)}
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder={`Add skill to ${cat.category}`}
-                      value={skillInput}
-                      onChange={(e) => setSkillInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addSkillToCategory(catIndex, skillInput);
-                          setSkillInput("");
-                        }
-                      }}
-                      className="bg-background h-8 text-sm"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        addSkillToCategory(catIndex, skillInput);
-                        setSkillInput("");
-                      }}
-                      className="h-8"
-                    >
-                      Add
-                    </Button>
-                  </div>
-                  {cat.skills.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {cat.skills.map((skill) => (
-                        <span
-                          key={skill}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs"
-                        >
-                          {skill}
-                          <button type="button" onClick={() => removeSkillFromCategory(catIndex, skill)}>
-                            <X className="h-2 w-2" />
-                          </button>
-                        </span>
-                      ))}
+            {/* Skills */}
+            <Card className="border-border">
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Wrench className="h-4 w-4" /> Skills
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-3">
+                {DEFAULT_SKILL_CATEGORIES.map((categoryKey) => (
+                  <div key={categoryKey} className="p-3 bg-muted/50 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{SKILL_CATEGORY_LABELS[categoryKey]}</span>
                     </div>
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder={`Add skill to ${SKILL_CATEGORY_LABELS[categoryKey]}`}
+                        value={currentSkillCategory === categoryKey ? skillInput : ""}
+                        onChange={(e) => {
+                          setCurrentSkillCategory(categoryKey);
+                          setSkillInput(e.target.value);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addSkillToCategory(categoryKey, skillInput);
+                            setSkillInput("");
+                          }
+                        }}
+                        className="bg-background h-8 text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          addSkillToCategory(categoryKey, skillInput);
+                          setSkillInput("");
+                        }}
+                        className="h-8"
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    {(data.skills[categoryKey] || []).length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {(data.skills[categoryKey] || []).map((skill) => (
+                          <span
+                            key={skill}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs"
+                          >
+                            {skill}
+                            <button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)}>
+                              <X className="h-2 w-2" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </ScrollArea>

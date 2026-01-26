@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { ResumeData } from "@/types/resume";
+import { ResumeJSON, SKILL_CATEGORY_LABELS } from "@/types/resume";
 
 export default function PrintResume() {
-  const [data, setData] = useState<ResumeData | null>(null);
+  const [data, setData] = useState<ResumeJSON | null>(null);
 
   useEffect(() => {
     // Get resume data from localStorage (passed from main app)
@@ -28,6 +28,14 @@ export default function PrintResume() {
       </div>
     );
   }
+
+  // Get non-empty skill categories
+  const skillCategories = Object.entries(data.skills)
+    .filter(([_, skills]) => skills.length > 0)
+    .map(([key, skills]) => ({
+      category: SKILL_CATEGORY_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      skills,
+    }));
 
   return (
     <>
@@ -80,35 +88,35 @@ export default function PrintResume() {
             className="font-bold tracking-wide"
             style={{ fontSize: "19pt" }}
           >
-            {data.personalInfo.fullName || "Your Name"}
+            {data.header.name || "Your Name"}
           </h1>
           
-          {(data.personalInfo.title || data.targetRole) && (
+          {data.header.title && (
             <p className="mt-1 font-bold" style={{ fontSize: "11.5pt" }}>
-              {data.personalInfo.title || data.targetRole}
+              {data.header.title}
             </p>
           )}
           
           <div className="flex flex-wrap justify-center items-center gap-x-2 mt-2 text-sm">
-            {data.personalInfo.location && (
+            {data.header.location && (
               <>
-                <span>{data.personalInfo.location}</span>
+                <span>{data.header.location}</span>
                 <span>|</span>
               </>
             )}
-            {data.personalInfo.email && (
+            {data.header.email && (
               <>
-                <span>{data.personalInfo.email}</span>
+                <span>{data.header.email}</span>
                 <span>|</span>
               </>
             )}
-            {data.personalInfo.phone && (
+            {data.header.phone && (
               <>
-                <span>{data.personalInfo.phone}</span>
-                {data.personalInfo.linkedin && <span>|</span>}
+                <span>{data.header.phone}</span>
+                {data.header.linkedin && <span>|</span>}
               </>
             )}
-            {data.personalInfo.linkedin && (
+            {data.header.linkedin && (
               <span>LinkedIn</span>
             )}
           </div>
@@ -127,63 +135,53 @@ export default function PrintResume() {
         )}
 
         {/* Experience Section */}
-        {data.clients.length > 0 && data.clients.some(c => c.name) && (
+        {data.experience.length > 0 && data.experience.some(e => e.company_or_client) && (
           <section className="mb-4">
             <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">
               EXPERIENCE
             </h2>
             <div className="space-y-5">
-              {data.clients.filter(c => c.name).map((client) => {
-                const selectedProject = client.projects.find(p => p.isSelected);
-                return (
-                  <div key={client.id}>
-                    <div className="flex justify-between items-baseline">
-                      <span className="font-bold" style={{ fontSize: "10pt" }}>
-                        {client.role || "Role"}
-                      </span>
-                      <span className="text-sm">
-                        {client.startDate || "Start"} -- {client.isCurrent ? "Present" : client.endDate || "End"}
-                      </span>
-                    </div>
-                    
-                    <div className="flex justify-between items-baseline">
-                      <span className="italic" style={{ fontSize: "10pt" }}>
-                        {client.name}
-                      </span>
-                      {client.location && (
-                        <span className="text-sm">{client.location}</span>
-                      )}
-                    </div>
-                    
-                    {selectedProject && selectedProject.bullets.length > 0 && (
-                      <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
-                        {selectedProject.bullets.map((bullet, idx) => (
-                          <li key={idx} className="pl-1">{bullet}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {!selectedProject && client.responsibilities && (
-                      <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
-                        {client.responsibilities.split('\n').filter(Boolean).map((line, idx) => (
-                          <li key={idx} className="pl-1">{line.replace(/^[-•]\s*/, '')}</li>
-                        ))}
-                      </ul>
+              {data.experience.filter(e => e.company_or_client).map((exp) => (
+                <div key={exp.id}>
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-bold" style={{ fontSize: "10pt" }}>
+                      {exp.role || "Role"}
+                    </span>
+                    <span className="text-sm">
+                      {exp.start_date || "Start"} -- {exp.end_date || "End"}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-baseline">
+                    <span className="italic" style={{ fontSize: "10pt" }}>
+                      {exp.company_or_client}
+                    </span>
+                    {exp.location && (
+                      <span className="text-sm">{exp.location}</span>
                     )}
                   </div>
-                );
-              })}
+                  
+                  {exp.bullets.length > 0 && (
+                    <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
+                      {exp.bullets.map((bullet, idx) => (
+                        <li key={idx} className="pl-1">{bullet}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
             </div>
           </section>
         )}
 
         {/* Education Section */}
-        {data.education.length > 0 && data.education.some(e => e.school) && (
+        {data.education.length > 0 && data.education.some(e => e.institution) && (
           <section className="mb-4">
             <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
               EDUCATION
             </h2>
             <div className="space-y-2">
-              {data.education.filter(e => e.school).map((edu) => (
+              {data.education.filter(e => e.institution).map((edu) => (
                 <div key={edu.id}>
                   <div className="flex justify-between items-baseline">
                     <span style={{ fontSize: "10pt" }}>
@@ -192,10 +190,10 @@ export default function PrintResume() {
                           ? `${edu.degree} in ${edu.field}` 
                           : edu.degree || edu.field || "Degree"}
                       </span>
-                      {edu.school && <span>, {edu.school}</span>}
+                      {edu.institution && <span>, {edu.institution}</span>}
                       {edu.gpa && <span> (GPA: {edu.gpa})</span>}
                     </span>
-                    <span className="text-sm">{edu.graduationDate}</span>
+                    <span className="text-sm">{edu.graduation_date}</span>
                   </div>
                   {edu.location && (
                     <div className="text-right text-sm">{edu.location}</div>
@@ -229,13 +227,13 @@ export default function PrintResume() {
         )}
 
         {/* Skills Section */}
-        {data.skillCategories.length > 0 && data.skillCategories.some(sc => sc.skills.length > 0) && (
+        {skillCategories.length > 0 && (
           <section className="mb-4">
             <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
               SKILLS
             </h2>
             <div className="space-y-1" style={{ fontSize: "10pt" }}>
-              {data.skillCategories.filter(sc => sc.skills.length > 0).map((sc, idx) => (
+              {skillCategories.map((sc, idx) => (
                 <p key={idx}>
                   <span className="font-bold">{sc.category}:</span>{" "}
                   <span>{sc.skills.join(", ")}</span>
@@ -246,17 +244,17 @@ export default function PrintResume() {
         )}
 
         {/* Projects Section */}
-        {data.projects && data.projects.length > 0 && data.projects.some(p => p.name) && (
+        {data.projects && data.projects.length > 0 && data.projects.some(p => p.title) && (
           <section className="mb-4">
             <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">
               PROJECTS
             </h2>
             <div className="space-y-3">
-              {data.projects.filter(p => p.name).map((project) => (
+              {data.projects.filter(p => p.title).map((project) => (
                 <div key={project.id}>
                   <div className="flex justify-between items-baseline">
                     <span className="font-bold" style={{ fontSize: "10pt" }}>
-                      {project.name}
+                      {project.title}
                     </span>
                     {project.date && (
                       <span className="italic text-sm">{project.organization && `${project.organization} — `}{project.date}</span>

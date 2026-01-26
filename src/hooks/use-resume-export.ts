@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ResumeData } from "@/types/resume";
+import { ResumeJSON, SKILL_CATEGORY_LABELS } from "@/types/resume";
 import { toast } from "sonner";
 
 export function useResumeExport() {
@@ -36,7 +36,7 @@ export function useResumeExport() {
     }
   }, []);
 
-  const exportToWord = useCallback(async (data: ResumeData, fileName: string) => {
+  const exportToWord = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
       const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } = await import("docx");
@@ -50,7 +50,7 @@ export function useResumeExport() {
           alignment: AlignmentType.CENTER,
           children: [
             new TextRun({
-              text: data.personalInfo.fullName || "Your Name",
+              text: data.header.name || "Your Name",
               bold: true,
               size: 38, // 19pt
               font: "Georgia",
@@ -60,14 +60,14 @@ export function useResumeExport() {
       );
 
       // Title
-      if (data.personalInfo.title || data.targetRole) {
+      if (data.header.title) {
         children.push(
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { before: 100 },
             children: [
               new TextRun({
-                text: data.personalInfo.title || data.targetRole || "",
+                text: data.header.title,
                 bold: true,
                 size: 23, // 11.5pt
                 font: "Georgia",
@@ -79,10 +79,10 @@ export function useResumeExport() {
 
       // Contact info
       const contactParts: string[] = [];
-      if (data.personalInfo.location) contactParts.push(data.personalInfo.location);
-      if (data.personalInfo.email) contactParts.push(data.personalInfo.email);
-      if (data.personalInfo.phone) contactParts.push(data.personalInfo.phone);
-      if (data.personalInfo.linkedin) contactParts.push(data.personalInfo.linkedin);
+      if (data.header.location) contactParts.push(data.header.location);
+      if (data.header.email) contactParts.push(data.header.email);
+      if (data.header.phone) contactParts.push(data.header.phone);
+      if (data.header.linkedin) contactParts.push(data.header.linkedin);
 
       if (contactParts.length > 0) {
         children.push(
@@ -137,8 +137,8 @@ export function useResumeExport() {
       }
 
       // Experience Section
-      const validClients = data.clients.filter(c => c.name);
-      if (validClients.length > 0) {
+      const validExperience = data.experience.filter(e => e.company_or_client);
+      if (validExperience.length > 0) {
         children.push(
           new Paragraph({
             heading: HeadingLevel.HEADING_2,
@@ -157,22 +157,20 @@ export function useResumeExport() {
           })
         );
 
-        validClients.forEach((client) => {
-          const selectedProject = client.projects.find(p => p.isSelected);
-          
+        validExperience.forEach((exp) => {
           // Role and dates
           children.push(
             new Paragraph({
               spacing: { before: 150 },
               children: [
                 new TextRun({
-                  text: client.role || "Role",
+                  text: exp.role || "Role",
                   bold: true,
                   size: 20,
                   font: "Georgia",
                 }),
                 new TextRun({
-                  text: `\t${client.startDate || "Start"} -- ${client.isCurrent ? "Present" : client.endDate || "End"}`,
+                  text: `\t${exp.start_date || "Start"} -- ${exp.end_date || "End"}`,
                   size: 20,
                   font: "Georgia",
                 }),
@@ -185,13 +183,13 @@ export function useResumeExport() {
             new Paragraph({
               children: [
                 new TextRun({
-                  text: client.name,
+                  text: exp.company_or_client,
                   italics: true,
                   size: 20,
                   font: "Georgia",
                 }),
-                client.location ? new TextRun({
-                  text: `\t${client.location}`,
+                exp.location ? new TextRun({
+                  text: `\t${exp.location}`,
                   size: 20,
                   font: "Georgia",
                 }) : new TextRun({ text: "" }),
@@ -200,10 +198,7 @@ export function useResumeExport() {
           );
 
           // Bullets
-          const bullets = selectedProject?.bullets || 
-            (client.responsibilities ? client.responsibilities.split('\n').filter(Boolean).map(line => line.replace(/^[-•]\s*/, '')) : []);
-          
-          bullets.forEach((bullet) => {
+          exp.bullets.forEach((bullet) => {
             children.push(
               new Paragraph({
                 bullet: { level: 0 },
@@ -222,7 +217,7 @@ export function useResumeExport() {
       }
 
       // Education Section
-      const validEducation = data.education.filter(e => e.school);
+      const validEducation = data.education.filter(e => e.institution);
       if (validEducation.length > 0) {
         children.push(
           new Paragraph({
@@ -257,8 +252,8 @@ export function useResumeExport() {
                   size: 20,
                   font: "Georgia",
                 }),
-                edu.school ? new TextRun({
-                  text: `, ${edu.school}`,
+                edu.institution ? new TextRun({
+                  text: `, ${edu.institution}`,
                   size: 20,
                   font: "Georgia",
                 }) : new TextRun({ text: "" }),
@@ -268,7 +263,7 @@ export function useResumeExport() {
                   font: "Georgia",
                 }) : new TextRun({ text: "" }),
                 new TextRun({
-                  text: `\t${edu.graduationDate || ""}`,
+                  text: `\t${edu.graduation_date || ""}`,
                   size: 20,
                   font: "Georgia",
                 }),
@@ -327,8 +322,14 @@ export function useResumeExport() {
       }
 
       // Skills Section
-      const validSkills = data.skillCategories.filter(sc => sc.skills.length > 0);
-      if (validSkills.length > 0) {
+      const skillCategories = Object.entries(data.skills)
+        .filter(([_, skills]) => skills.length > 0)
+        .map(([key, skills]) => ({
+          category: SKILL_CATEGORY_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          skills,
+        }));
+
+      if (skillCategories.length > 0) {
         children.push(
           new Paragraph({
             heading: HeadingLevel.HEADING_2,
@@ -347,7 +348,7 @@ export function useResumeExport() {
           })
         );
 
-        validSkills.forEach((sc) => {
+        skillCategories.forEach((sc) => {
           children.push(
             new Paragraph({
               spacing: { before: 50 },
@@ -370,7 +371,7 @@ export function useResumeExport() {
       }
 
       // Projects Section
-      const validProjects = data.projects?.filter(p => p.name) || [];
+      const validProjects = data.projects?.filter(p => p.title) || [];
       if (validProjects.length > 0) {
         children.push(
           new Paragraph({
@@ -396,7 +397,7 @@ export function useResumeExport() {
               spacing: { before: 100 },
               children: [
                 new TextRun({
-                  text: project.name,
+                  text: project.title,
                   bold: true,
                   size: 20,
                   font: "Georgia",
