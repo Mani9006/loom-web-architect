@@ -936,10 +936,8 @@ RULES:
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-3">
-                {/* Only show categories that have skills */}
-                {Object.entries(data.skills)
-                  .filter(([_, skills]) => skills.length > 0)
-                  .map(([categoryKey, skills]) => (
+                {/* Show all skill categories (both with skills and empty user-added ones) */}
+                {Object.entries(data.skills).map(([categoryKey, skills]) => (
                   <div key={categoryKey} className="p-3 bg-muted/50 rounded-lg space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">
@@ -989,22 +987,23 @@ RULES:
                         Add
                       </Button>
                     </div>
-                    <div className="flex flex-wrap gap-1">
-                      {skills.map((skill) => (
-                        <span
-                          key={skill}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs"
-                        >
-                          {skill}
-                          <button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)}>
-                            <X className="h-2 w-2" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
+                    {skills.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {skills.map((skill) => (
+                          <span
+                            key={skill}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs"
+                          >
+                            {skill}
+                            <button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)}>
+                              <X className="h-2 w-2" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
-                
                 {/* Add new category section */}
                 <div className="p-3 border-2 border-dashed border-muted rounded-lg space-y-2">
                   <span className="text-sm text-muted-foreground">Add New Skill Category</span>
@@ -1042,9 +1041,9 @@ RULES:
                 </div>
                 
                 {/* Empty state */}
-                {Object.values(data.skills).every(skills => skills.length === 0) && (
+                {Object.keys(data.skills).length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-2">
-                    No skills added yet. Upload a resume to parse skills or add categories manually.
+                    No skills added yet. Upload a resume to parse skills or add categories manually above.
                   </p>
                 )}
               </CardContent>

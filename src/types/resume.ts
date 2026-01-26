@@ -103,17 +103,8 @@ export interface CertificationEntry {
   date: string;
 }
 
-// Skills - Object with predefined categories
+// Skills - Object with dynamic categories (can be empty or have any category keys)
 export interface SkillsObject {
-  generative_ai: string[];
-  nlp: string[];
-  machine_learning: string[];
-  programming_languages: string[];
-  data_engineering_etl: string[];
-  visualization: string[];
-  cloud_mlops: string[];
-  collaboration_tools: string[];
-  // Allow custom categories
   [key: string]: string[];
 }
 
@@ -180,16 +171,7 @@ export const createEmptyResumeJSON = (): ResumeJSON => ({
     },
   ],
   certifications: [],
-  skills: {
-    generative_ai: [],
-    nlp: [],
-    machine_learning: [],
-    programming_languages: [],
-    data_engineering_etl: [],
-    visualization: [],
-    cloud_mlops: [],
-    collaboration_tools: [],
-  },
+  skills: {},
   projects: [],
 });
 
