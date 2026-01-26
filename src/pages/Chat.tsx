@@ -8,7 +8,7 @@ import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatWelcome } from "@/components/chat/ChatWelcome";
 import { GeneralChatPanel, GeneralChatMessage } from "@/components/chat/GeneralChatPanel";
 import { ATSCheckerPanel, ATSMessage } from "@/components/chat/ATSCheckerPanel";
-import { JobSearchPanel, JobSearchMessage } from "@/components/chat/JobSearchPanel";
+import { JobSearchPanel, JobSearchMessage, JobFilters } from "@/components/chat/JobSearchPanel";
 import { CoverLetterPanel, CoverLetterMessage } from "@/components/chat/CoverLetterPanel";
 import { InterviewPrepPanel, InterviewMessage } from "@/components/chat/InterviewPrepPanel";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
@@ -696,19 +696,36 @@ Be detailed and specific. If a job description is provided, also analyze keyword
   };
 
   // Job Search Handler
-  // Store user's resume text for follow-up searches
-  const jobResumeRef = useRef<string>("");
+  // Helper to build filter summary for user message
+  const buildFilterSummary = (filters: JobFilters): string => {
+    const parts: string[] = [];
+    if (filters.datePosted !== "all") {
+      const dateLabels: Record<string, string> = { "24h": "last 24 hours", "week": "past week", "month": "past month" };
+      parts.push(dateLabels[filters.datePosted] || filters.datePosted);
+    }
+    if (filters.jobType !== "all") parts.push(filters.jobType);
+    if (filters.experienceLevel !== "all") parts.push(`${filters.experienceLevel} level`);
+    if (filters.workLocation !== "all") parts.push(filters.workLocation);
+    if (filters.salaryRange !== "all") parts.push(filters.salaryRange);
+    return parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  };
 
-  const handleJobSearch = async (resumeText: string, preferences?: string) => {
+  // Store user's resume text and filters for follow-up searches
+  const jobResumeRef = useRef<string>("");
+  const jobFiltersRef = useRef<JobFilters | null>(null);
+
+  const handleJobSearch = async (resumeText: string, filters?: JobFilters) => {
     if (!session) return;
 
-    // Store resume for follow-up searches
+    // Store resume and filters for follow-up searches
     jobResumeRef.current = resumeText;
+    jobFiltersRef.current = filters || null;
 
     setIsLoading(true);
-    const userContent = preferences
-      ? `Find me real job postings from the last 24 hours matching my profile:\n\n**My Resume/Skills:**\n${resumeText}\n\n**Preferences:**\n${preferences}`
-      : `Find me real job postings from the last 24 hours matching my profile:\n\n${resumeText}`;
+    
+    // Build user-facing message with filter summary
+    const filterSummary = filters ? buildFilterSummary(filters) : "";
+    const userContent = `Find me real job postings matching my profile${filterSummary}`;
 
     const userMsg: JobSearchMessage = {
       id: crypto.randomUUID(),
@@ -738,7 +755,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
           },
           body: JSON.stringify({
             resumeText,
-            preferences,
+            filters,
             isFollowUp: false,
           }),
         }
