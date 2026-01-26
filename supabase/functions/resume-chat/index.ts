@@ -402,16 +402,16 @@ serve(async (req) => {
       });
     }
 
-    // Get model configuration (default to gemini-flash)
-    const modelKey = selectedModel || "gemini-flash";
+    // Get model configuration (default to gpt-4o for best quality)
+    const modelKey = selectedModel || "gpt-4o";
     const modelConfig = MODEL_CONFIGS[modelKey];
     
     if (!modelConfig) {
-      console.log(`Unknown model ${modelKey}, falling back to gemini-flash`);
-      // Fall back to gemini-flash
+      console.log(`Unknown model ${modelKey}, falling back to gpt-4o`);
+      // Fall back to gpt-4o
     }
 
-    const config = modelConfig || MODEL_CONFIGS["gemini-flash"];
+    const config = modelConfig || MODEL_CONFIGS["gpt-4o"];
     const apiKey = Deno.env.get(config.apiKeyEnv);
     
     if (!apiKey) {

@@ -20,17 +20,28 @@ Your capabilities include:
 
 When users share information about themselves (skills, experience, preferences), acknowledge it naturally. This context helps you provide personalized assistance.
 
-Keep responses clear, actionable, and well-formatted with markdown.`,
+Keep responses clear, actionable, and well-formatted with markdown. Use proper headings, bullet points, and spacing for readability.`,
 
   ats: `You are an ATS (Applicant Tracking System) expert. When analyzing resumes:
 
-1. Provide a clear **ATS Score: X/100**
-2. List **Strengths** that will rank well
-3. Identify **Issues Found** (formatting, parsing problems)
-4. Highlight **Missing Keywords** from the job description
-5. Give specific **Recommendations** with examples
+## Your Analysis Format
 
-Be thorough and actionable.`,
+### ATS Score: X/100
+
+### ✅ Strengths
+- List items that will rank well
+
+### ⚠️ Issues Found
+- Formatting problems
+- Parsing issues
+
+### 🔑 Missing Keywords
+- Keywords from the job description not found in resume
+
+### 💡 Recommendations
+- Specific, actionable improvements with examples
+
+Be thorough and actionable. Use clear sections and bullet points.`,
 
   cover_letter: `You are an expert cover letter writer. Create compelling, personalized letters that:
 
@@ -43,19 +54,39 @@ Keep letters 250-400 words, tailored to each opportunity.`,
 
   job_search: `You are a job search strategist. Help users by:
 
-1. Analyzing their skills and experience
-2. Suggesting suitable roles and industries
-3. Recommending specific job titles to search
-4. Providing application strategies
-5. Advising on networking and referrals`,
+## Your Response Format
+
+### 🎯 Role Analysis
+Analyze their skills and experience
+
+### 💼 Recommended Roles
+Suggest suitable roles and industries with specific job titles
+
+### 📋 Application Strategy
+Provide actionable next steps
+
+### 🤝 Networking Tips
+Advise on networking and referrals
+
+Use clear headings and bullet points for readability.`,
 
   interview: `You are an experienced interview coach. Prepare candidates by:
 
-1. Understanding the role and company
-2. Providing relevant practice questions
-3. Coaching on STAR method for behavioral questions
-4. Giving feedback on answer structure
-5. Sharing industry-specific tips`,
+## Your Response Format
+
+### 📋 Interview Questions
+Provide relevant practice questions (numbered list)
+
+### 💡 STAR Method Tips
+Coach on behavioral question structure
+
+### ✨ Key Points to Emphasize
+Specific talking points for this role
+
+### ⚠️ Common Pitfalls
+What to avoid
+
+Use clear formatting with headings and bullet points.`,
 };
 
 // Mem0 API functions - Following official v2 API
@@ -110,6 +141,27 @@ async function addToMem0(apiKey: string, userId: string, messages: any[]): Promi
   }
 }
 
+// Model configuration - using OpenAI for best quality
+const OPENAI_MODELS = {
+  premium: "gpt-4o",      // Best for complex tasks like ATS, cover letters
+  fast: "gpt-4o-mini",    // Good for general chat, quick responses
+};
+
+// Select model based on task complexity
+function getModelForMode(mode: string): string {
+  switch (mode) {
+    case "ats":
+    case "cover_letter":
+    case "resume":
+      return OPENAI_MODELS.premium;
+    case "interview":
+    case "job_search":
+    case "general":
+    default:
+      return OPENAI_MODELS.fast;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -147,11 +199,11 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const MEM0_API_KEY = Deno.env.get("MEM0_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      console.error("LOVABLE_API_KEY is not configured");
+    if (!OPENAI_API_KEY) {
+      console.error("OPENAI_API_KEY is not configured");
       return new Response(JSON.stringify({ error: "AI service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -186,27 +238,14 @@ serve(async (req) => {
 
     console.log(`[Chat] Mode: ${chatMode}, Messages: ${messages.length}`);
 
-    // Select optimal model based on chat mode (benchmark-driven)
-    // - cover_letter/ats: Pro for quality writing and analysis
-    // - interview/job_search: Flash for conversational speed
-    // - general: Flash for fast responses
-    const modelForMode: Record<string, string> = {
-      cover_letter: "google/gemini-2.5-pro",
-      ats: "google/gemini-2.5-pro", 
-      resume: "google/gemini-2.5-pro",
-      interview: "google/gemini-3-flash-preview",
-      job_search: "google/gemini-3-flash-preview",
-      general: "google/gemini-3-flash-preview",
-    };
-    
-    // Allow explicit model override from request, otherwise use mode-based selection
-    const selectedModel = requestedModel || modelForMode[chatMode] || "google/gemini-3-flash-preview";
-    console.log(`[Chat] Using model: ${selectedModel} for mode: ${chatMode}${requestedModel ? ' (override)' : ''}`);
+    // Select optimal model - use OpenAI models
+    const selectedModel = requestedModel || getModelForMode(chatMode);
+    console.log(`[Chat] Using OpenAI model: ${selectedModel} for mode: ${chatMode}`);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -221,19 +260,12 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error("OpenAI API error:", response.status, errorText);
 
       if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI usage limit reached. Please add credits." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
