@@ -62,6 +62,9 @@ export interface ResumeData {
 }
 
 // ============ NEW JSON SCHEMA ============
+
+// Header section
+export interface ResumeHeader {
   name: string;
   title: string;
   location: string;
