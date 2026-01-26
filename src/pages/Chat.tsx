@@ -120,17 +120,30 @@ export default function Chat() {
   );
 
   useEffect(() => {
+    // Track if initial session check is done to prevent premature redirects
+    let initialCheckDone = false;
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Auth] State change:', event, !!session);
+      
+      // Update state for all events
       setSession(session);
       setUser(session?.user ?? null);
-      if (!session?.user) {
+      
+      // Only redirect on explicit sign out, not on token refresh or initial events
+      // This prevents redirect loops when switching tabs during token refresh
+      if (event === 'SIGNED_OUT') {
         navigate("/auth");
       }
     });
 
+    // Check initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      initialCheckDone = true;
+      
+      // Only redirect if no session on initial load
       if (!session?.user) {
         navigate("/auth");
       }
