@@ -30,14 +30,24 @@ export function useCoverLetterActions() {
     setIsExporting(true);
     
     try {
-      // Create a styled HTML container for the PDF
+      // Create a styled HTML container for the PDF using safe DOM manipulation
+      // to prevent XSS attacks from user-controlled content
       const container = document.createElement("div");
-      container.innerHTML = `
-        <div style="font-family: 'Georgia', serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.6;">
-          <h1 style="font-size: 18px; margin-bottom: 24px; color: #1a1a1a;">${title}</h1>
-          <div style="font-size: 12px; color: #333; white-space: pre-wrap;">${content.replace(/\n/g, "<br/>")}</div>
-        </div>
-      `;
+      
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText = "font-family: 'Georgia', serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.6;";
+      
+      const heading = document.createElement("h1");
+      heading.style.cssText = "font-size: 18px; margin-bottom: 24px; color: #1a1a1a;";
+      heading.textContent = title; // Safe - uses textContent, no HTML parsing
+      
+      const contentDiv = document.createElement("div");
+      contentDiv.style.cssText = "font-size: 12px; color: #333; white-space: pre-wrap;";
+      contentDiv.textContent = content; // Safe - uses textContent, no HTML parsing
+      
+      wrapper.appendChild(heading);
+      wrapper.appendChild(contentDiv);
+      container.appendChild(wrapper);
 
       const options = {
         margin: [15, 15, 15, 15] as [number, number, number, number],
