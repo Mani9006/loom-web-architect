@@ -5,8 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, X, Sparkles, Loader2, FileText, Briefcase, GraduationCap, Award, Wrench, Upload } from "lucide-react";
-import { ResumeJSON, ExperienceEntry, EducationEntry, CertificationEntry, SKILL_CATEGORY_LABELS, DEFAULT_SKILL_CATEGORIES, createEmptyResumeJSON } from "@/types/resume";
+import { Plus, X, Sparkles, Loader2, FileText, Briefcase, GraduationCap, Award, Wrench, Upload, FolderKanban } from "lucide-react";
+import { ResumeJSON, ExperienceEntry, EducationEntry, CertificationEntry, ProjectEntry, SKILL_CATEGORY_LABELS, DEFAULT_SKILL_CATEGORIES, createEmptyResumeJSON } from "@/types/resume";
 import { TemplateSelector } from "./TemplateSelector";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ResumeFormSkeleton } from "./ResumeFormSkeleton";
@@ -1044,6 +1044,172 @@ RULES:
                 {Object.keys(data.skills).length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-2">
                     No skills added yet. Upload a resume to parse skills or add categories manually above.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Projects Section */}
+            <Card className="border-muted">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FolderKanban className="h-4 w-4 text-primary" />
+                  Projects
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-4">
+                {data.projects.map((project, index) => (
+                  <div key={project.id} className="p-3 bg-muted/50 rounded-lg space-y-3">
+                    <div className="flex justify-between items-start">
+                      <span className="text-sm font-medium text-muted-foreground">Project {index + 1}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          onChange({
+                            ...data,
+                            projects: data.projects.filter((_, i) => i !== index),
+                          });
+                        }}
+                        className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    
+                    <div className="grid gap-3">
+                      <div>
+                        <Label className="text-xs">Project Name</Label>
+                        <Input
+                          value={project.title}
+                          onChange={(e) => {
+                            const updated = [...data.projects];
+                            updated[index] = { ...project, title: e.target.value };
+                            onChange({ ...data, projects: updated });
+                          }}
+                          placeholder="e.g., AI-Powered Chatbot"
+                          className="h-9"
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">College/University</Label>
+                          <Input
+                            value={project.organization}
+                            onChange={(e) => {
+                              const updated = [...data.projects];
+                              updated[index] = { ...project, organization: e.target.value };
+                              onChange({ ...data, projects: updated });
+                            }}
+                            placeholder="e.g., MIT"
+                            className="h-9"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Month & Year</Label>
+                          <Input
+                            value={project.date}
+                            onChange={(e) => {
+                              const updated = [...data.projects];
+                              updated[index] = { ...project, date: e.target.value };
+                              onChange({ ...data, projects: updated });
+                            }}
+                            placeholder="e.g., May 2024"
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Project Bullets */}
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <Label className="text-xs">Key Points</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const updated = [...data.projects];
+                              updated[index] = { ...project, bullets: [...project.bullets, ""] };
+                              onChange({ ...data, projects: updated });
+                            }}
+                            className="h-6 text-xs gap-1"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Add Point
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {project.bullets.map((bullet, bulletIdx) => (
+                            <div key={bulletIdx} className="flex gap-2">
+                              <span className="text-muted-foreground mt-2">•</span>
+                              <Textarea
+                                value={bullet}
+                                onChange={(e) => {
+                                  const updated = [...data.projects];
+                                  const newBullets = [...project.bullets];
+                                  newBullets[bulletIdx] = e.target.value;
+                                  updated[index] = { ...project, bullets: newBullets };
+                                  onChange({ ...data, projects: updated });
+                                }}
+                                placeholder="Describe what you built, technologies used, and impact..."
+                                className="min-h-[60px] text-sm"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const updated = [...data.projects];
+                                  const newBullets = project.bullets.filter((_, i) => i !== bulletIdx);
+                                  updated[index] = { ...project, bullets: newBullets };
+                                  onChange({ ...data, projects: updated });
+                                }}
+                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
+                          {project.bullets.length === 0 && (
+                            <p className="text-xs text-muted-foreground">Click "Add Point" to add project details</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Add Project Button */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const newProject: ProjectEntry = {
+                      id: crypto.randomUUID(),
+                      title: "",
+                      organization: "",
+                      date: "",
+                      bullets: [""],
+                    };
+                    onChange({
+                      ...data,
+                      projects: [...data.projects, newProject],
+                    });
+                  }}
+                  className="w-full gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Project
+                </Button>
+                
+                {/* Empty state */}
+                {data.projects.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-2">
+                    No projects added yet. Upload a resume to parse projects or add them manually.
                   </p>
                 )}
               </CardContent>
