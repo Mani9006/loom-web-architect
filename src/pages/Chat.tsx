@@ -17,7 +17,7 @@ import { ResumePreview } from "@/components/resume/ResumePreview";
 import { OptionsPanel } from "@/components/resume/OptionsPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { ResumeData, Client } from "@/types/resume";
+import { ResumeJSON, createEmptyResumeJSON } from "@/types/resume";
 import { useResumeParser } from "@/hooks/use-resume-parser";
 
 type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-check" | "job-search" | "cover-letter" | "interview-prep";
@@ -31,49 +31,6 @@ type Conversation = {
   updated_at: string;
 };
 
-const createEmptyResumeData = (): ResumeData => ({
-  templateId: "",
-  personalInfo: {
-    fullName: "",
-    email: "",
-    phone: "",
-    location: "",
-    linkedin: "",
-    portfolio: "",
-  },
-  summary: "",
-  summaryOptions: [],
-  totalYearsExperience: 0,
-  clients: [
-    {
-      id: crypto.randomUUID(),
-      name: "",
-      industry: "",
-      location: "",
-      role: "",
-      startDate: "",
-      endDate: "",
-      isCurrent: false,
-      responsibilities: "",
-      projects: [],
-    },
-  ],
-  education: [
-    {
-      id: crypto.randomUUID(),
-      school: "",
-      degree: "",
-      field: "",
-      graduationDate: "",
-      gpa: "",
-    },
-  ],
-  certifications: [],
-  skillCategories: [],
-  projects: [],
-  targetRole: "",
-});
-
 export default function Chat() {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -84,7 +41,7 @@ export default function Chat() {
   const [profile, setProfile] = useState<{ full_name: string | null; email: string | null } | null>(null);
   const [chatMode, setChatMode] = useState<ChatMode>("welcome");
   const [generationPhase, setGenerationPhase] = useState<"thinking" | "generating" | null>(null);
-  const [resumeData, setResumeData] = useState<ResumeData>(createEmptyResumeData());
+  const [resumeData, setResumeData] = useState<ResumeJSON>(createEmptyResumeJSON());
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [generalMessages, setGeneralMessages] = useState<GeneralChatMessage[]>([]);
   const [atsMessages, setAtsMessages] = useState<ATSMessage[]>([]);

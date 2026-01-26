@@ -1,11 +1,11 @@
 import { useRef } from "react";
-import { ResumeData } from "@/types/resume";
+import { ResumeJSON, SKILL_CATEGORY_LABELS } from "@/types/resume";
 import { Loader2, FileDown, FileText, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useResumeExport } from "@/hooks/use-resume-export";
 
 interface ResumePreviewProps {
-  data: ResumeData;
+  data: ResumeJSON;
   isGenerating?: boolean;
 }
 
@@ -15,11 +15,11 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
 
   // Check if we have substantial content (for multi-page indication)
   const hasSubstantialContent = 
-    data.clients.filter(c => c.name).length >= 2 ||
-    (data.clients.filter(c => c.name).length >= 1 && data.skillCategories.length >= 3);
+    data.experience.filter(e => e.company_or_client).length >= 2 ||
+    (data.experience.filter(e => e.company_or_client).length >= 1 && Object.values(data.skills).some(s => s.length > 0));
 
-  const fileName = data.personalInfo.fullName 
-    ? `${data.personalInfo.fullName.replace(/\s+/g, '_')}_Resume`
+  const fileName = data.header.name 
+    ? `${data.header.name.replace(/\s+/g, '_')}_Resume`
     : "Resume";
 
   const handleExportPDF = () => {
@@ -38,6 +38,14 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
     // Open print view in new tab
     window.open("/print-resume", "_blank");
   };
+
+  // Get non-empty skill categories
+  const skillCategories = Object.entries(data.skills)
+    .filter(([_, skills]) => skills.length > 0)
+    .map(([key, skills]) => ({
+      category: SKILL_CATEGORY_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      skills,
+    }));
 
   return (
     <div className="h-full overflow-auto p-4 bg-muted/30">
@@ -94,39 +102,39 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
             className="font-bold tracking-wide"
             style={{ fontSize: "19pt" }}
           >
-            {data.personalInfo.fullName || "Your Name"}
+            {data.header.name || "Your Name"}
           </h1>
           
-          {(data.personalInfo.title || data.targetRole) && (
+          {data.header.title && (
             <p className="mt-1 font-bold" style={{ fontSize: "11.5pt" }}>
-              {data.personalInfo.title || data.targetRole}
+              {data.header.title}
             </p>
           )}
           
           <div className="flex flex-wrap justify-center items-center gap-x-2 mt-2 text-sm">
-            {data.personalInfo.location && (
+            {data.header.location && (
               <>
-                <span>📍 {data.personalInfo.location}</span>
+                <span>📍 {data.header.location}</span>
                 <span className="text-muted-foreground">|</span>
               </>
             )}
-            {data.personalInfo.email && (
+            {data.header.email && (
               <>
-                <a href={`mailto:${data.personalInfo.email}`} className="text-black hover:underline">
-                  ✉️ {data.personalInfo.email}
+                <a href={`mailto:${data.header.email}`} className="text-black hover:underline">
+                  ✉️ {data.header.email}
                 </a>
                 <span className="text-muted-foreground">|</span>
               </>
             )}
-            {data.personalInfo.phone && (
+            {data.header.phone && (
               <>
-                <span>📞 {data.personalInfo.phone}</span>
-                {data.personalInfo.linkedin && <span className="text-muted-foreground">|</span>}
+                <span>📞 {data.header.phone}</span>
+                {data.header.linkedin && <span className="text-muted-foreground">|</span>}
               </>
             )}
-            {data.personalInfo.linkedin && (
+            {data.header.linkedin && (
               <a 
-                href={data.personalInfo.linkedin.startsWith("http") ? data.personalInfo.linkedin : `https://${data.personalInfo.linkedin}`}
+                href={data.header.linkedin.startsWith("http") ? data.header.linkedin : `https://${data.header.linkedin}`}
                 className="text-black hover:underline"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -150,66 +158,56 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
         )}
 
         {/* Experience Section */}
-        {data.clients.length > 0 && data.clients.some(c => c.name) && (
+        {data.experience.length > 0 && data.experience.some(e => e.company_or_client) && (
           <section className="mb-4">
             <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">
               EXPERIENCE
             </h2>
             <div className="space-y-5">
-              {data.clients.filter(c => c.name).map((client) => {
-                const selectedProject = client.projects.find(p => p.isSelected);
-                return (
-                  <div key={client.id}>
-                    {/* Role and Dates on same line */}
-                    <div className="flex justify-between items-baseline">
-                      <span className="font-bold" style={{ fontSize: "10pt" }}>
-                        {client.role || "Role"}
-                      </span>
-                      <span className="text-sm">
-                        {client.startDate || "Start"} -- {client.isCurrent ? "Present" : client.endDate || "End"}
-                      </span>
-                    </div>
-                    
-                    {/* Company and Location */}
-                    <div className="flex justify-between items-baseline">
-                      <span className="italic" style={{ fontSize: "10pt" }}>
-                        {client.name}
-                      </span>
-                      {client.location && (
-                        <span className="text-sm">{client.location}</span>
-                      )}
-                    </div>
-                    
-                    {/* Bullet Points */}
-                    {selectedProject && selectedProject.bullets.length > 0 && (
-                      <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
-                        {selectedProject.bullets.map((bullet, idx) => (
-                          <li key={idx} className="pl-1">{bullet}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {!selectedProject && client.responsibilities && (
-                      <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
-                        {client.responsibilities.split('\n').filter(Boolean).map((line, idx) => (
-                          <li key={idx} className="pl-1">{line.replace(/^[-•]\s*/, '')}</li>
-                        ))}
-                      </ul>
+              {data.experience.filter(e => e.company_or_client).map((exp) => (
+                <div key={exp.id}>
+                  {/* Role and Dates on same line */}
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-bold" style={{ fontSize: "10pt" }}>
+                      {exp.role || "Role"}
+                    </span>
+                    <span className="text-sm">
+                      {exp.start_date || "Start"} -- {exp.end_date || "End"}
+                    </span>
+                  </div>
+                  
+                  {/* Company and Location */}
+                  <div className="flex justify-between items-baseline">
+                    <span className="italic" style={{ fontSize: "10pt" }}>
+                      {exp.company_or_client}
+                    </span>
+                    {exp.location && (
+                      <span className="text-sm">{exp.location}</span>
                     )}
                   </div>
-                );
-              })}
+                  
+                  {/* Bullet Points */}
+                  {exp.bullets.length > 0 && (
+                    <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
+                      {exp.bullets.map((bullet, idx) => (
+                        <li key={idx} className="pl-1">{bullet}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
             </div>
           </section>
         )}
 
         {/* Education Section */}
-        {data.education.length > 0 && data.education.some(e => e.school) && (
+        {data.education.length > 0 && data.education.some(e => e.institution) && (
           <section className="mb-4">
             <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
               EDUCATION
             </h2>
             <div className="space-y-2">
-              {data.education.filter(e => e.school).map((edu) => (
+              {data.education.filter(e => e.institution).map((edu) => (
                 <div key={edu.id}>
                   <div className="flex justify-between items-baseline">
                     <span style={{ fontSize: "10pt" }}>
@@ -218,10 +216,10 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
                           ? `${edu.degree} in ${edu.field}` 
                           : edu.degree || edu.field || "Degree"}
                       </span>
-                      {edu.school && <span>, {edu.school}</span>}
+                      {edu.institution && <span>, {edu.institution}</span>}
                       {edu.gpa && <span> (GPA: {edu.gpa})</span>}
                     </span>
-                    <span className="text-sm">{edu.graduationDate}</span>
+                    <span className="text-sm">{edu.graduation_date}</span>
                   </div>
                   {edu.location && (
                     <div className="text-right text-sm">{edu.location}</div>
@@ -243,13 +241,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
                 {data.certifications.filter(c => c.name).map((cert) => (
                   <tr key={cert.id}>
                     <td className="py-0.5">
-                      {cert.link ? (
-                        <a href={cert.link} className="text-primary font-bold hover:underline" target="_blank" rel="noopener noreferrer">
-                          {cert.name}
-                        </a>
-                      ) : (
-                        <span className="text-primary font-bold">{cert.name}</span>
-                      )}
+                      <span className="text-primary font-bold">{cert.name}</span>
                       {cert.issuer && <span>, {cert.issuer}</span>}
                     </td>
                     <td className="text-right py-0.5">{cert.date}</td>
@@ -261,13 +253,13 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
         )}
 
         {/* Skills Section */}
-        {data.skillCategories.length > 0 && data.skillCategories.some(sc => sc.skills.length > 0) && (
+        {skillCategories.length > 0 && (
           <section className="mb-4">
             <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
               SKILLS
             </h2>
             <div className="space-y-1" style={{ fontSize: "10pt" }}>
-              {data.skillCategories.filter(sc => sc.skills.length > 0).map((sc, idx) => (
+              {skillCategories.map((sc, idx) => (
                 <p key={idx}>
                   <span className="font-bold">{sc.category}:</span>{" "}
                   <span>{sc.skills.join(", ")}</span>
@@ -278,17 +270,17 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
         )}
 
         {/* Projects Section */}
-        {data.projects && data.projects.length > 0 && data.projects.some(p => p.name) && (
+        {data.projects && data.projects.length > 0 && data.projects.some(p => p.title) && (
           <section className="mb-4">
             <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">
               PROJECTS
             </h2>
             <div className="space-y-3">
-              {data.projects.filter(p => p.name).map((project) => (
+              {data.projects.filter(p => p.title).map((project) => (
                 <div key={project.id}>
                   <div className="flex justify-between items-baseline">
                     <span className="font-bold" style={{ fontSize: "10pt" }}>
-                      {project.name}
+                      {project.title}
                     </span>
                     {project.date && (
                       <span className="italic text-sm">{project.organization && `${project.organization} — `}{project.date}</span>
