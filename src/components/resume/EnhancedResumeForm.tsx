@@ -56,6 +56,7 @@ function formatResponsibilitiesAsBullets(responsibilities: string | string[]): s
 // Robust JSON parser that handles common AI response issues
 function parseAIResponse(content: string): Record<string, any> | null {
   console.log("Parsing AI response, length:", content.length);
+  console.log("Raw content preview:", content.substring(0, 500));
   
   // Remove markdown code blocks if present
   let cleaned = content
@@ -67,22 +68,43 @@ function parseAIResponse(content: string): Record<string, any> | null {
   let braceCount = 0;
   let startIdx = -1;
   let endIdx = -1;
+  let inString = false;
+  let escapeNext = false;
   
   for (let i = 0; i < cleaned.length; i++) {
-    if (cleaned[i] === '{') {
-      if (startIdx === -1) startIdx = i;
-      braceCount++;
-    } else if (cleaned[i] === '}') {
-      braceCount--;
-      if (braceCount === 0 && startIdx !== -1) {
-        endIdx = i + 1;
-        break;
+    const char = cleaned[i];
+    
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    
+    if (char === '\\' && inString) {
+      escapeNext = true;
+      continue;
+    }
+    
+    if (char === '"' && !escapeNext) {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === '{') {
+        if (startIdx === -1) startIdx = i;
+        braceCount++;
+      } else if (char === '}') {
+        braceCount--;
+        if (braceCount === 0 && startIdx !== -1) {
+          endIdx = i + 1;
+          break;
+        }
       }
     }
   }
   
   if (startIdx === -1 || endIdx === -1) {
-    console.error("No balanced JSON object found");
+    console.error("No balanced JSON object found. Content:", cleaned.substring(0, 200));
     return null;
   }
   
@@ -361,7 +383,11 @@ CRITICAL RULES:
             if (line.startsWith("data: ") && line !== "data: [DONE]") {
               try {
                 const parsed = JSON.parse(line.slice(6));
-                const content = parsed.choices?.[0]?.delta?.content;
+                // Handle different response formats from AI gateway
+                const content = parsed.choices?.[0]?.delta?.content || 
+                               parsed.choices?.[0]?.message?.content ||
+                               parsed.content ||
+                               parsed.text;
                 if (content) fullContent += content;
               } catch {
                 // Ignore parse errors for incomplete chunks
@@ -370,6 +396,9 @@ CRITICAL RULES:
           }
         }
       }
+
+      console.log("Full AI response received, length:", fullContent.length);
+      console.log("Response content preview:", fullContent.substring(0, 300));
 
       // Parse the JSON from the response with robust error handling
       const parsedData = parseAIResponse(fullContent);
