@@ -106,20 +106,36 @@ export default function Chat() {
     }
   }, [user]);
 
+  // Track if we've initialized for the current user to prevent re-initialization on token refresh
+  const userInitializedRef = useRef<string | null>(null);
+  
   useEffect(() => {
+    // Only reset state when switching to a different user or on initial load
+    // Don't reset on token refresh (same user.id)
     if (conversationId && user) {
       loadConversation(conversationId);
       setChatMode("resume-chat");
-    } else {
-      setCurrentConversation(null);
-      setChatMessages([]);
-      setGeneralMessages([]);
-      setAtsMessages([]);
-      setJobMessages([]);
-      setChatMode("welcome");
-      setResumeData(createEmptyResumeJSON());
+    } else if (!conversationId) {
+      // Only reset to welcome if this is a NEW user or we haven't initialized yet
+      if (user && userInitializedRef.current !== user.id) {
+        userInitializedRef.current = user.id;
+        // Don't reset if already in a mode (prevents tab-switch reset)
+        if (chatMode === "welcome") {
+          // Keep welcome state, don't reset
+        }
+      } else if (!user) {
+        // No user, reset everything
+        setCurrentConversation(null);
+        setChatMessages([]);
+        setGeneralMessages([]);
+        setAtsMessages([]);
+        setJobMessages([]);
+        setChatMode("welcome");
+        setResumeData(createEmptyResumeJSON());
+        userInitializedRef.current = null;
+      }
     }
-  }, [conversationId, user]);
+  }, [conversationId, user?.id]); // Only depend on user.id, not the whole user object
 
   const fetchProfile = async () => {
     if (!user) return;
