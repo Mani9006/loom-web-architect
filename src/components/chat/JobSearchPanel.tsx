@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Search, Loader2, Send, Sparkles } from "lucide-react";
+import { Search, Loader2, Send, Sparkles, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -8,6 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { AIMessageContent } from "@/components/chat/AIMessageContent";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export interface JobSearchMessage {
   id: string;
@@ -31,10 +38,18 @@ export interface JobResult {
   matchScore?: number;
 }
 
+export interface JobFilters {
+  jobType: string;
+  experienceLevel: string;
+  workLocation: string;
+  datePosted: string;
+  salaryRange: string;
+}
+
 interface JobSearchPanelProps {
   messages: JobSearchMessage[];
   isLoading: boolean;
-  onSearch: (resumeText: string, preferences?: string) => void;
+  onSearch: (resumeText: string, filters?: JobFilters) => void;
   onSendMessage: (message: string) => void;
   selectedModel: string;
   onModelChange: (model: string) => void;
@@ -47,11 +62,19 @@ export function JobSearchPanel({
   onSendMessage,
 }: JobSearchPanelProps) {
   const [resumeText, setResumeText] = useState("");
-  const [preferences, setPreferences] = useState("");
   const [followUpMessage, setFollowUpMessage] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // LinkedIn-style filters
+  const [filters, setFilters] = useState<JobFilters>({
+    jobType: "all",
+    experienceLevel: "all",
+    workLocation: "all",
+    datePosted: "24h",
+    salaryRange: "all",
+  });
 
   const handleDocumentExtracted = (text: string, fileName: string) => {
     setResumeText(text);
@@ -61,7 +84,7 @@ export function JobSearchPanel({
   const handleSearch = () => {
     if (!resumeText.trim()) return;
     setHasSearched(true);
-    onSearch(resumeText, preferences || undefined);
+    onSearch(resumeText, filters);
   };
 
   const handleSendFollowUp = () => {
@@ -77,6 +100,10 @@ export function JobSearchPanel({
     }
   };
 
+  const updateFilter = (key: keyof JobFilters, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
   return (
     <div className="flex flex-col h-full">
       {!hasSearched ? (
@@ -89,7 +116,7 @@ export function JobSearchPanel({
               </div>
               <h2 className="text-2xl font-semibold mb-2">AI Job Search</h2>
               <p className="text-muted-foreground">
-                Upload your resume (PDF or Word) and let AI find the latest matching jobs for you
+                Upload your resume and let AI find real jobs posted in the last 24 hours
               </p>
             </div>
 
@@ -97,7 +124,6 @@ export function JobSearchPanel({
             <div className="space-y-3">
               <Label className="text-base font-medium">Your Resume / Skills *</Label>
               
-              {/* Document Upload Component */}
               <DocumentUpload 
                 onTextExtracted={handleDocumentExtracted}
                 isLoading={isLoading}
@@ -125,19 +151,106 @@ export function JobSearchPanel({
                   setResumeText(e.target.value);
                   setUploadedFileName(null);
                 }}
-                className="min-h-[180px] resize-none mt-4"
+                className="min-h-[160px] resize-none mt-4"
               />
             </div>
 
-            {/* Preferences */}
-            <div className="space-y-3">
-              <Label className="text-base font-medium">Job Preferences (Optional)</Label>
-              <Textarea
-                placeholder="e.g., Remote only, San Francisco Bay Area, $120k+ salary, startup culture, etc."
-                value={preferences}
-                onChange={(e) => setPreferences(e.target.value)}
-                className="min-h-[100px] resize-none"
-              />
+            {/* Job Filters - LinkedIn Style */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-muted-foreground" />
+                <Label className="text-base font-medium">Job Filters</Label>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                {/* Date Posted */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-muted-foreground">Date Posted</Label>
+                  <Select value={filters.datePosted} onValueChange={(v) => updateFilter("datePosted", v)}>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border shadow-lg z-50">
+                      <SelectItem value="24h">Last 24 hours</SelectItem>
+                      <SelectItem value="week">Past week</SelectItem>
+                      <SelectItem value="month">Past month</SelectItem>
+                      <SelectItem value="all">Any time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Job Type */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-muted-foreground">Job Type</Label>
+                  <Select value={filters.jobType} onValueChange={(v) => updateFilter("jobType", v)}>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border shadow-lg z-50">
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="fulltime">Full-time</SelectItem>
+                      <SelectItem value="parttime">Part-time</SelectItem>
+                      <SelectItem value="contract">Contract</SelectItem>
+                      <SelectItem value="internship">Internship</SelectItem>
+                      <SelectItem value="temporary">Temporary</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Experience Level */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-muted-foreground">Experience Level</Label>
+                  <Select value={filters.experienceLevel} onValueChange={(v) => updateFilter("experienceLevel", v)}>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border shadow-lg z-50">
+                      <SelectItem value="all">All Levels</SelectItem>
+                      <SelectItem value="entry">Entry Level</SelectItem>
+                      <SelectItem value="mid">Mid Level</SelectItem>
+                      <SelectItem value="senior">Senior Level</SelectItem>
+                      <SelectItem value="director">Director</SelectItem>
+                      <SelectItem value="executive">Executive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Work Location */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-muted-foreground">Work Location</Label>
+                  <Select value={filters.workLocation} onValueChange={(v) => updateFilter("workLocation", v)}>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border shadow-lg z-50">
+                      <SelectItem value="all">All Locations</SelectItem>
+                      <SelectItem value="remote">Remote</SelectItem>
+                      <SelectItem value="hybrid">Hybrid</SelectItem>
+                      <SelectItem value="onsite">On-site</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Salary Range */}
+                <div className="space-y-1.5 col-span-2">
+                  <Label className="text-sm text-muted-foreground">Salary Range</Label>
+                  <Select value={filters.salaryRange} onValueChange={(v) => updateFilter("salaryRange", v)}>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border shadow-lg z-50">
+                      <SelectItem value="all">Any Salary</SelectItem>
+                      <SelectItem value="40k+">$40,000+</SelectItem>
+                      <SelectItem value="60k+">$60,000+</SelectItem>
+                      <SelectItem value="80k+">$80,000+</SelectItem>
+                      <SelectItem value="100k+">$100,000+</SelectItem>
+                      <SelectItem value="120k+">$120,000+</SelectItem>
+                      <SelectItem value="150k+">$150,000+</SelectItem>
+                      <SelectItem value="200k+">$200,000+</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
 
             {/* Search Button */}
@@ -150,7 +263,7 @@ export function JobSearchPanel({
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Searching Jobs...
+                  Searching Real Jobs...
                 </>
               ) : (
                 <>
@@ -164,13 +277,13 @@ export function JobSearchPanel({
             <Card className="p-4 bg-muted/50">
               <h4 className="font-medium mb-2 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
-                How it works
+                Smart Matching
               </h4>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• AI analyzes your resume to understand your skills</li>
-                <li>• Searches for the latest job postings matching your profile</li>
-                <li>• Ranks jobs by how well they match your experience</li>
-                <li>• Provides personalized recommendations</li>
+                <li>• Matches your skills to related roles (not just exact titles)</li>
+                <li>• Searches LinkedIn, Indeed, Glassdoor & company pages</li>
+                <li>• Returns 5 real jobs with direct apply links</li>
+                <li>• Remembers shown jobs to avoid duplicates</li>
               </ul>
             </Card>
           </div>
@@ -215,7 +328,7 @@ export function JobSearchPanel({
                 value={followUpMessage}
                 onChange={(e) => setFollowUpMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask about specific jobs or refine your search..."
+                placeholder="Ask for more jobs, different roles, or refine your search..."
                 disabled={isLoading}
               />
               <Button

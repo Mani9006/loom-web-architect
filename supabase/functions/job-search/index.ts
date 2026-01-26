@@ -53,28 +53,99 @@ async function addMemory(apiKey: string, userId: string, messages: any[], metada
   }
 }
 
-// Build search query from resume
-function buildJobSearchQuery(resumeText: string, preferences?: string, previousJobs?: string[]): string {
+// Job filter types
+interface JobFilters {
+  jobType?: string;
+  experienceLevel?: string;
+  workLocation?: string;
+  datePosted?: string;
+  salaryRange?: string;
+}
+
+// Build filter string for search query
+function buildFilterString(filters?: JobFilters): string {
+  if (!filters) return "";
+  
+  const parts: string[] = [];
+  
+  if (filters.jobType && filters.jobType !== "all") {
+    const typeMap: Record<string, string> = {
+      fulltime: "full-time",
+      parttime: "part-time",
+      contract: "contract",
+      internship: "internship",
+      temporary: "temporary",
+    };
+    parts.push(`Job Type: ${typeMap[filters.jobType] || filters.jobType}`);
+  }
+  
+  if (filters.experienceLevel && filters.experienceLevel !== "all") {
+    const levelMap: Record<string, string> = {
+      entry: "Entry Level / Junior",
+      mid: "Mid Level / Intermediate",
+      senior: "Senior Level",
+      director: "Director / Lead",
+      executive: "Executive / VP / C-Level",
+    };
+    parts.push(`Experience: ${levelMap[filters.experienceLevel] || filters.experienceLevel}`);
+  }
+  
+  if (filters.workLocation && filters.workLocation !== "all") {
+    const locationMap: Record<string, string> = {
+      remote: "Remote / Work from Home",
+      hybrid: "Hybrid",
+      onsite: "On-site / In-office",
+    };
+    parts.push(`Work Mode: ${locationMap[filters.workLocation] || filters.workLocation}`);
+  }
+  
+  if (filters.salaryRange && filters.salaryRange !== "all") {
+    parts.push(`Minimum Salary: ${filters.salaryRange.replace("+", " or more")}`);
+  }
+  
+  return parts.length > 0 ? `\n\nFILTERS:\n${parts.join("\n")}` : "";
+}
+
+// Get recency filter for Perplexity API
+function getRecencyFilter(filters?: JobFilters): string {
+  if (!filters?.datePosted || filters.datePosted === "24h") return "day";
+  if (filters.datePosted === "week") return "week";
+  if (filters.datePosted === "month") return "month";
+  return "day"; // default to 24 hours
+}
+
+// Build search query from resume with smart role matching
+function buildJobSearchQuery(resumeText: string, filters?: JobFilters, previousJobs?: string[]): string {
   const exclusions = previousJobs && previousJobs.length > 0
     ? `\n\nDO NOT suggest these jobs that were already shown: ${previousJobs.slice(0, 10).join(", ")}`
     : "";
 
-  return `Find exactly 5 REAL job postings posted in the LAST 24 HOURS that match this candidate's profile.
+  const filterString = buildFilterString(filters);
+  const datePosted = filters?.datePosted || "24h";
+  const dateLabel = datePosted === "24h" ? "last 24 hours" : datePosted === "week" ? "past week" : datePosted === "month" ? "past month" : "recently";
+
+  return `Find exactly 5 REAL job postings posted in the ${dateLabel} that match this candidate's profile.
 
 CANDIDATE RESUME/SKILLS:
 ${resumeText}
-
-${preferences ? `PREFERENCES: ${preferences}` : ""}
+${filterString}
 ${exclusions}
+
+SMART MATCHING STRATEGY (VERY IMPORTANT):
+- 80% weight on SKILLS and EXPERIENCE - focus on transferable skills, technologies, and experience
+- 20% weight on job title - consider RELATED roles, not just exact title matches
+- For example: A "Data Scientist" should also see "ML Engineer", "AI Engineer", "Applied Scientist", "Research Scientist", "Data Analyst" roles
+- An "ETL Developer" should also see "Data Engineer", "Analytics Engineer", "BI Developer", "Data Pipeline Engineer" roles
+- Look for roles where the candidate's SKILLS match, even if the title is different
 
 CRITICAL REQUIREMENTS:
 1. Return EXACTLY 5 job listings
-2. ONLY show jobs posted within the last 24 hours (today's postings)
+2. ONLY show jobs posted within the ${dateLabel}
 3. Search LinkedIn Jobs, Indeed, Google Jobs, Glassdoor, company career pages
-4. Match jobs to the candidate's skills, experience level, and location preferences
+4. Match jobs primarily by SKILLS and EXPERIENCE, then by title
 5. Each job MUST have a DIRECT CLICKABLE URL to the actual job posting page
 6. Include: Job Title, Company, Location, Posted Time, and the Apply URL as a markdown link
-7. Rank by relevance to the candidate's profile`;
+7. Rank by relevance to the candidate's SKILLS (not just title match)`;
 }
 
 serve(async (req) => {
@@ -107,7 +178,7 @@ serve(async (req) => {
     }
 
     const userId = claimsData.claims.sub as string;
-    const { resumeText, preferences, isFollowUp, conversationHistory } = await req.json();
+    const { resumeText, filters, isFollowUp, conversationHistory } = await req.json();
 
     if (!resumeText && !isFollowUp) {
       return new Response(JSON.stringify({ error: "Resume text is required" }), {
@@ -145,11 +216,13 @@ serve(async (req) => {
       }
     }
 
-    // Build the search query
-    const searchQuery = buildJobSearchQuery(resumeText, preferences, previousJobs);
+    // Build the search query with filters
+    const searchQuery = buildJobSearchQuery(resumeText, filters, previousJobs);
+    const recencyFilter = getRecencyFilter(filters);
+    const dateLabel = filters?.datePosted === "week" ? "past week" : filters?.datePosted === "month" ? "past month" : "last 24 hours";
 
     // Use Perplexity for real-time job search
-    console.log("[JobSearch] Searching with Perplexity sonar-pro...");
+    console.log(`[JobSearch] Searching with Perplexity sonar-pro, recency: ${recencyFilter}...`);
     
     const perplexityResponse = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
@@ -166,13 +239,20 @@ serve(async (req) => {
 
 Your task is to find EXACTLY 5 GENUINE, RECENTLY POSTED job openings that match the candidate's profile.
 
+SMART MATCHING APPROACH (CRITICAL):
+- Focus 80% on SKILLS and EXPERIENCE matching - look for transferable skills
+- Focus 20% on job title - consider RELATED roles, not just exact matches
+- Example: "Data Scientist" → also show "ML Engineer", "AI Engineer", "Applied Scientist", "Research Scientist"
+- Example: "ETL Developer" → also show "Data Engineer", "Analytics Engineer", "BI Developer"
+- Example: "Frontend Developer" → also show "UI Engineer", "React Developer", "Web Developer"
+- Match by what the candidate CAN DO, not just what their current title is
+
 CRITICAL REQUIREMENTS:
 1. Return EXACTLY 5 job listings - no more, no less
-2. Only recommend jobs posted within the LAST 24 HOURS
+2. Only recommend jobs posted within the ${dateLabel}
 3. Each job MUST include a DIRECT CLICKABLE LINK as a markdown URL [Apply Here](https://actual-job-url.com)
 4. Verify jobs are from legitimate sources (LinkedIn, Indeed, company career pages, etc.)
-5. Match jobs precisely to the candidate's skills and experience level
-6. Consider location preferences (remote, hybrid, or specific locations mentioned)
+5. Match jobs by SKILLS first, then title similarity
 
 FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 
@@ -180,7 +260,7 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 
 - **Location:** [City, State or Remote]
 - **Posted:** [e.g., "2 hours ago", "Today"]
-- **Why You're a Match:** [1-2 sentences connecting their skills to this role]
+- **Why You're a Match:** [1-2 sentences connecting their SKILLS to this role - be specific about which skills match]
 - **Key Requirements:** [2-3 bullet points]
 - **Apply Now:** [Apply on LinkedIn](https://www.linkedin.com/jobs/view/...) or [Apply on Indeed](https://www.indeed.com/...)
 
@@ -196,7 +276,7 @@ IMPORTANT: Every job listing MUST have a working clickable link. Use markdown li
           ...(conversationHistory || []),
           { role: "user", content: searchQuery },
         ],
-        search_recency_filter: "day", // Only search content from last 24 hours
+        search_recency_filter: recencyFilter,
         stream: true,
       }),
     });
@@ -267,14 +347,16 @@ Format with clear headings and actionable advice.`,
 
     // Store this search in memory for future deduplication (fire and forget)
     if (MEM0_API_KEY) {
+      const filterSummary = filters ? JSON.stringify(filters) : "no filters";
       const memoryMessages = [
         { role: "user", content: `Job search request: ${resumeText?.substring(0, 500)}` },
-        { role: "assistant", content: `Searching for jobs matching: ${preferences || "general preferences"}` },
+        { role: "assistant", content: `Searching for jobs with filters: ${filterSummary}` },
       ];
       addMemory(MEM0_API_KEY, userId, memoryMessages, {
         type: "job_search",
         timestamp: new Date().toISOString(),
         hasResume: !!resumeText,
+        filters: filters || {},
       });
     }
 
