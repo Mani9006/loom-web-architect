@@ -250,7 +250,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
             messages: [
               {
                 role: "system",
-                content: `You are an expert resume parser. Extract structured resume data from the provided text.
+                content: `You are an expert resume parser. Extract ALL structured resume data from the provided text.
 
 OUTPUT: Return ONLY valid JSON (no markdown, no backticks, no explanations).
 
@@ -272,7 +272,7 @@ SCHEMA:
       "start_date": "Mon YYYY",
       "end_date": "Mon YYYY or Present",
       "location": "City, State",
-      "bullets": ["Achievement 1", "Achievement 2", "Achievement 3"]
+      "bullets": ["...ALL bullet points from this role..."]
     }
   ],
   "education": [
@@ -293,31 +293,25 @@ SCHEMA:
     }
   ],
   "skills": {
-    "programming_languages": ["Python", "Java"],
-    "data_engineering_etl": ["Spark", "Airflow"],
-    "cloud_mlops": ["AWS", "Azure"],
-    "visualization": ["Tableau", "PowerBI"],
-    "machine_learning": ["TensorFlow", "PyTorch"],
-    "nlp": ["BERT", "GPT"],
-    "generative_ai": ["LangChain", "RAG"],
-    "collaboration_tools": ["Jira", "Git"]
+    "category_name": ["skill1", "skill2", "...all skills in this category..."]
   },
   "projects": [
     {
       "title": "Project Name",
       "organization": "Organization",
       "date": "Date",
-      "bullets": ["Description 1", "Description 2"]
+      "bullets": ["...ALL bullet points from this project..."]
     }
   ]
 }
 
-RULES:
+CRITICAL RULES:
 1. Extract ONLY the person's name in header.name
-2. bullets must be an array of strings, not a single string
-3. skills must be an object with category keys and array values
-4. Use empty string "" for missing fields, never null
-5. Return ONLY the JSON object`
+2. bullets must be an array of strings - EXTRACT EVERY SINGLE BULLET POINT, do not truncate or summarize
+3. For experience and projects: include ALL bullet points exactly as written, even if there are 10+ bullets per entry
+4. skills must be an object with category keys matching the resume's skill groupings and array values containing ALL skills
+5. Use empty string "" for missing fields, never null
+6. Return ONLY the JSON object`
               },
               {
                 role: "user",
