@@ -309,9 +309,16 @@ CRITICAL RULES:
 1. Extract ONLY the person's name in header.name
 2. bullets must be an array of strings - EXTRACT EVERY SINGLE BULLET POINT, do not truncate or summarize
 3. For experience and projects: include ALL bullet points exactly as written, even if there are 10+ bullets per entry
-4. For skills: USE THE EXACT CATEGORY NAMES from the resume (convert to lowercase snake_case for keys). DO NOT create your own categories or rename them. Extract ALL skills under each category exactly as listed.
-   - Example: If resume shows "Data Engineering & ETL: Spark, Airflow, Kafka" → use key "data_engineering_etl" with array ["Spark", "Airflow", "Kafka"]
-   - Example: If resume shows "Programming Languages: Python, Java, SQL" → use key "programming_languages" with array ["Python", "Java", "SQL"]
+4. SKILLS EXTRACTION IS CRITICAL:
+   - READ the skills section of the resume CAREFULLY
+   - Use the EXACT category names as they appear in the resume document (converted to lowercase_snake_case)
+   - DO NOT invent categories like "programming_languages", "machine_learning", "nlp", "generative_ai" unless they actually appear in the resume
+   - DO NOT rename categories - if the resume says "Programming & Querying", use "programming_querying", NOT "programming_languages"
+   - If resume says "Cloud Platforms", use "cloud_platforms", NOT "cloud_mlops"
+   - If resume says "Databases & Storage", use "databases_storage"
+   - If resume says "Reporting & Analytics", use "reporting_analytics"
+   - If resume says "DevOps & Automation", use "devops_automation"
+   - Extract ALL skills listed under each category
 5. Use empty string "" for missing fields, never null
 6. Return ONLY the JSON object`
               },
