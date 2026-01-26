@@ -293,7 +293,7 @@ SCHEMA:
     }
   ],
   "skills": {
-    "category_name": ["skill1", "skill2", "...all skills in this category..."]
+    "actual_category_name_from_resume": ["ALL skills exactly as listed under this category"]
   },
   "projects": [
     {
@@ -309,7 +309,9 @@ CRITICAL RULES:
 1. Extract ONLY the person's name in header.name
 2. bullets must be an array of strings - EXTRACT EVERY SINGLE BULLET POINT, do not truncate or summarize
 3. For experience and projects: include ALL bullet points exactly as written, even if there are 10+ bullets per entry
-4. skills must be an object with category keys matching the resume's skill groupings and array values containing ALL skills
+4. For skills: USE THE EXACT CATEGORY NAMES from the resume (convert to lowercase snake_case for keys). DO NOT create your own categories or rename them. Extract ALL skills under each category exactly as listed.
+   - Example: If resume shows "Data Engineering & ETL: Spark, Airflow, Kafka" → use key "data_engineering_etl" with array ["Spark", "Airflow", "Kafka"]
+   - Example: If resume shows "Programming Languages: Python, Java, SQL" → use key "programming_languages" with array ["Python", "Java", "SQL"]
 5. Use empty string "" for missing fields, never null
 6. Return ONLY the JSON object`
               },
