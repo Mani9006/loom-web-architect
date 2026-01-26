@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Mem0 API functions
+// Mem0 API functions - using v2 API with proper filter structure
 async function searchMemories(apiKey: string, userId: string, query: string): Promise<string[]> {
   try {
     const response = await fetch("https://api.mem0.ai/v1/memories/search/", {
@@ -16,15 +16,16 @@ async function searchMemories(apiKey: string, userId: string, query: string): Pr
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        query,
+        query: query || "job search",
         version: "v2",
-        filters: { OR: [{ user_id: userId }] },
+        user_id: userId,
         limit: 20,
       }),
     });
 
     if (!response.ok) {
-      console.error("Mem0 search error:", response.status);
+      const errorText = await response.text();
+      console.error("Mem0 search error:", response.status, errorText);
       return [];
     }
 
@@ -58,7 +59,7 @@ function buildJobSearchQuery(resumeText: string, preferences?: string, previousJ
     ? `\n\nDO NOT suggest these jobs that were already shown: ${previousJobs.slice(0, 10).join(", ")}`
     : "";
 
-  return `Find real job postings posted in the LAST 24 HOURS that match this candidate's profile.
+  return `Find exactly 5 REAL job postings posted in the LAST 24 HOURS that match this candidate's profile.
 
 CANDIDATE RESUME/SKILLS:
 ${resumeText}
@@ -66,13 +67,14 @@ ${resumeText}
 ${preferences ? `PREFERENCES: ${preferences}` : ""}
 ${exclusions}
 
-REQUIREMENTS:
-1. ONLY show jobs posted within the last 24 hours (very recent postings)
-2. Search LinkedIn Jobs, Indeed, Google Jobs, Glassdoor, company career pages
-3. Match jobs to the candidate's skills, experience level, and location preferences
-4. Provide DIRECT LINKS to each job posting
-5. Include: Job Title, Company, Location, Posted Time, Direct Apply Link
-6. Rank by relevance to the candidate's profile`;
+CRITICAL REQUIREMENTS:
+1. Return EXACTLY 5 job listings
+2. ONLY show jobs posted within the last 24 hours (today's postings)
+3. Search LinkedIn Jobs, Indeed, Google Jobs, Glassdoor, company career pages
+4. Match jobs to the candidate's skills, experience level, and location preferences
+5. Each job MUST have a DIRECT CLICKABLE URL to the actual job posting page
+6. Include: Job Title, Company, Location, Posted Time, and the Apply URL as a markdown link
+7. Rank by relevance to the candidate's profile`;
 }
 
 serve(async (req) => {
@@ -162,30 +164,34 @@ serve(async (req) => {
             role: "system",
             content: `You are an expert job search assistant with access to real-time job listings.
 
-Your task is to find GENUINE, RECENTLY POSTED job openings that match the candidate's profile.
+Your task is to find EXACTLY 5 GENUINE, RECENTLY POSTED job openings that match the candidate's profile.
 
 CRITICAL REQUIREMENTS:
-1. Only recommend jobs posted within the LAST 24 HOURS
-2. Include DIRECT LINKS to each job posting (the actual application/job page URL)
-3. Verify jobs are from legitimate sources (LinkedIn, Indeed, company career pages, etc.)
-4. Match jobs precisely to the candidate's skills and experience level
-5. Consider location preferences (remote, hybrid, or specific locations mentioned)
+1. Return EXACTLY 5 job listings - no more, no less
+2. Only recommend jobs posted within the LAST 24 HOURS
+3. Each job MUST include a DIRECT CLICKABLE LINK as a markdown URL [Apply Here](https://actual-job-url.com)
+4. Verify jobs are from legitimate sources (LinkedIn, Indeed, company career pages, etc.)
+5. Match jobs precisely to the candidate's skills and experience level
+6. Consider location preferences (remote, hybrid, or specific locations mentioned)
 
-FORMAT YOUR RESPONSE:
-For each job, provide:
-## 🎯 [Job Title] at [Company]
+FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
+
+## 1. 🎯 [Job Title] at [Company]
 
 - **Location:** [City, State or Remote]
 - **Posted:** [e.g., "2 hours ago", "Today"]
-- **Match Score:** [Why this matches their profile - 1-2 sentences]
+- **Why You're a Match:** [1-2 sentences connecting their skills to this role]
 - **Key Requirements:** [2-3 bullet points]
-- **🔗 Apply:** [Direct link to the job posting]
+- **Apply Now:** [Apply on LinkedIn](https://www.linkedin.com/jobs/view/...) or [Apply on Indeed](https://www.indeed.com/...)
 
 ---
 
+## 2. 🎯 [Next Job Title] at [Company]
+... and so on for all 5 jobs
+
 ${userContext ? `\nUSER CONTEXT FROM PREVIOUS INTERACTIONS:\n${userContext}` : ""}
 
-If you cannot find jobs from the last 24 hours, clearly state this and explain what recent jobs are available.`,
+IMPORTANT: Every job listing MUST have a working clickable link. Use markdown link format: [Link Text](URL)`,
           },
           ...(conversationHistory || []),
           { role: "user", content: searchQuery },
