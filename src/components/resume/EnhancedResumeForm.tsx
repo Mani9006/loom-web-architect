@@ -223,6 +223,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
   const [selectedTemplate, setSelectedTemplate] = useState("professional");
   const [skillInput, setSkillInput] = useState("");
   const [currentSkillCategory, setCurrentSkillCategory] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [isParsingResume, setIsParsingResume] = useState(false);
   const { toast } = useToast();
 
@@ -935,14 +936,32 @@ RULES:
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-3">
-                {DEFAULT_SKILL_CATEGORIES.map((categoryKey) => (
+                {/* Only show categories that have skills */}
+                {Object.entries(data.skills)
+                  .filter(([_, skills]) => skills.length > 0)
+                  .map(([categoryKey, skills]) => (
                   <div key={categoryKey} className="p-3 bg-muted/50 rounded-lg space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{SKILL_CATEGORY_LABELS[categoryKey]}</span>
+                      <span className="text-sm font-medium">
+                        {SKILL_CATEGORY_LABELS[categoryKey] || categoryKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const newSkills = { ...data.skills };
+                          delete newSkills[categoryKey];
+                          onChange({ ...data, skills: newSkills });
+                        }}
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
                     </div>
                     <div className="flex gap-2">
                       <Input
-                        placeholder={`Add skill to ${SKILL_CATEGORY_LABELS[categoryKey]}`}
+                        placeholder={`Add skill...`}
                         value={currentSkillCategory === categoryKey ? skillInput : ""}
                         onChange={(e) => {
                           setCurrentSkillCategory(categoryKey);
@@ -970,23 +989,64 @@ RULES:
                         Add
                       </Button>
                     </div>
-                    {(data.skills[categoryKey] || []).length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {(data.skills[categoryKey] || []).map((skill) => (
-                          <span
-                            key={skill}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs"
-                          >
-                            {skill}
-                            <button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)}>
-                              <X className="h-2 w-2" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    <div className="flex flex-wrap gap-1">
+                      {skills.map((skill) => (
+                        <span
+                          key={skill}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs"
+                        >
+                          {skill}
+                          <button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)}>
+                            <X className="h-2 w-2" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ))}
+                
+                {/* Add new category section */}
+                <div className="p-3 border-2 border-dashed border-muted rounded-lg space-y-2">
+                  <span className="text-sm text-muted-foreground">Add New Skill Category</span>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Category name (e.g., Cloud Platforms)"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      className="bg-background h-8 text-sm"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (newCategoryName.trim()) {
+                          const categoryKey = newCategoryName.trim().toLowerCase().replace(/\s+/g, '_').replace(/&/g, '');
+                          if (!data.skills[categoryKey]) {
+                            onChange({
+                              ...data,
+                              skills: {
+                                ...data.skills,
+                                [categoryKey]: [],
+                              },
+                            });
+                          }
+                          setNewCategoryName("");
+                        }
+                      }}
+                      className="h-8"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Empty state */}
+                {Object.values(data.skills).every(skills => skills.length === 0) && (
+                  <p className="text-sm text-muted-foreground text-center py-2">
+                    No skills added yet. Upload a resume to parse skills or add categories manually.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>
