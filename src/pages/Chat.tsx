@@ -696,13 +696,19 @@ Be detailed and specific. If a job description is provided, also analyze keyword
   };
 
   // Job Search Handler
+  // Store user's resume text for follow-up searches
+  const jobResumeRef = useRef<string>("");
+
   const handleJobSearch = async (resumeText: string, preferences?: string) => {
     if (!session) return;
 
+    // Store resume for follow-up searches
+    jobResumeRef.current = resumeText;
+
     setIsLoading(true);
     const userContent = preferences
-      ? `Based on my resume and preferences, find me the latest matching job opportunities:\n\n**My Resume/Skills:**\n${resumeText}\n\n**Preferences:**\n${preferences}`
-      : `Based on my resume, find me the latest matching job opportunities:\n\n${resumeText}`;
+      ? `Find me real job postings from the last 24 hours matching my profile:\n\n**My Resume/Skills:**\n${resumeText}\n\n**Preferences:**\n${preferences}`
+      : `Find me real job postings from the last 24 hours matching my profile:\n\n${resumeText}`;
 
     const userMsg: JobSearchMessage = {
       id: crypto.randomUUID(),
@@ -721,8 +727,9 @@ Be detailed and specific. If a job description is provided, also analyze keyword
 
     try {
       let assistantContent = "";
+      // Use dedicated job-search edge function with Perplexity for real-time search
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/job-search`,
         {
           method: "POST",
           headers: {
@@ -730,35 +737,15 @@ Be detailed and specific. If a job description is provided, also analyze keyword
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content: `You are an expert job search assistant. Based on the user's resume and preferences, provide personalized job recommendations.
-
-For each recommendation:
-1. **Job Title** - A realistic job title matching their skills
-2. **Company Type** - The type of company that would hire for this role
-3. **Location** - Suggested locations or remote options
-4. **Salary Range** - Estimated salary range based on experience
-5. **Why It's a Match** - Explain why this role suits their background
-6. **Skills to Highlight** - Which skills from their resume to emphasize
-7. **Search Keywords** - Keywords to use on job boards
-
-Also provide:
-- **Top Job Boards**: Best sites to find these roles
-- **Networking Tips**: How to find opportunities in this field
-- **Application Strategy**: Tips for standing out
-
-Be specific and actionable. Reference their actual skills and experience.`,
-              },
-              { role: "user", content: userContent },
-            ],
+            resumeText,
+            preferences,
+            isFollowUp: false,
           }),
         }
       );
 
       if (!response.ok) {
-        if (response.status === 429) throw new Error("Rate limit exceeded.");
+        if (response.status === 429) throw new Error("Rate limit exceeded. Please try again in a moment.");
         if (response.status === 402) throw new Error("AI usage limit reached.");
         throw new Error("Failed to search jobs");
       }
@@ -838,8 +825,15 @@ Be specific and actionable. Reference their actual skills and experience.`,
 
     try {
       let assistantContent = "";
+      // Build conversation history for context
+      const conversationHistory = jobMessages.concat(userMsg).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      // Use dedicated job-search edge function with conversation context
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/job-search`,
         {
           method: "POST",
           headers: {
@@ -847,15 +841,17 @@ Be specific and actionable. Reference their actual skills and experience.`,
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            messages: jobMessages.concat(userMsg).map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
+            resumeText: jobResumeRef.current,
+            isFollowUp: true,
+            conversationHistory,
           }),
         }
       );
 
-      if (!response.ok) throw new Error("Failed to get response");
+      if (!response.ok) {
+        if (response.status === 429) throw new Error("Rate limit exceeded. Please try again in a moment.");
+        throw new Error("Failed to get response");
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -898,7 +894,7 @@ Be specific and actionable. Reference their actual skills and experience.`,
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to get response",
+        description: error instanceof Error ? error.message : "Failed to get response",
         variant: "destructive",
       });
       setJobMessages((prev) => prev.filter((m) => m.id !== tempId));
