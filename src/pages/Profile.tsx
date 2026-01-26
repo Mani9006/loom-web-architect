@@ -32,7 +32,9 @@ export default function Profile() {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
-      if (!session?.user) {
+      
+      // Only redirect on explicit sign out, not during token refresh
+      if (event === 'SIGNED_OUT') {
         navigate("/auth");
       }
     });
