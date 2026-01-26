@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import ReactMarkdown from "react-markdown";
+import { AIMessageContent } from "@/components/chat/AIMessageContent";
 import { ModelSelector } from "@/components/resume/ModelSelector";
 import { VoiceControls } from "@/components/chat/VoiceControls";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
@@ -203,17 +203,7 @@ export function GeneralChatPanel({
                   )}
                 >
                   {message.content ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none">
-                      <ReactMarkdown
-                        components={{
-                          p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-                          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                        }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
-                    </div>
+                    <AIMessageContent content={message.content} />
                   ) : message.isThinking ? (
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />

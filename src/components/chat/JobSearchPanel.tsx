@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
-import ReactMarkdown from "react-markdown";
+import { AIMessageContent } from "@/components/chat/AIMessageContent";
 
 export interface JobSearchMessage {
   id: string;
@@ -199,9 +199,7 @@ export function JobSearchPanel({
                         <span>Searching for matching jobs...</span>
                       </div>
                     ) : (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
-                      </div>
+                      <AIMessageContent content={message.content} />
                     )}
                   </div>
                 </div>
