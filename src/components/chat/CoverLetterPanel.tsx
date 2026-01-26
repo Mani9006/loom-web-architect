@@ -13,7 +13,7 @@ import { useCoverLetters, CoverLetter } from "@/hooks/use-cover-letters";
 import { CoverLetterTemplateSelector, CoverLetterTemplate } from "./CoverLetterTemplateSelector";
 import { Loader2, FileText, Send, Copy, ArrowLeft, Sparkles, Save, FolderOpen, Palette } from "lucide-react";
 import { CoverLetterActionButtons } from "./CoverLetterActions";
-import ReactMarkdown from "react-markdown";
+import { AIMessageContent } from "@/components/chat/AIMessageContent";
 import { useToast } from "@/hooks/use-toast";
 
 export interface CoverLetterMessage {
@@ -403,9 +403,7 @@ export function CoverLetterPanel({
                     <span className="text-sm">Crafting your cover letter...</span>
                   </div>
                 ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
+                  <AIMessageContent content={msg.content} />
                 )}
               </div>
             </div>

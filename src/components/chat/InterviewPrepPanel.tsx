@@ -12,7 +12,7 @@ import { VoiceInterviewSimulation, InterviewTranscript } from "@/components/chat
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { useTextToSpeech } from "@/hooks/use-text-to-speech";
 import { Loader2, MessageSquare, Send, ArrowLeft, Sparkles, Brain, HelpCircle, Target, Mic, Radio } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import { AIMessageContent } from "@/components/chat/AIMessageContent";
 import { useToast } from "@/hooks/use-toast";
 
 export interface InterviewMessage {
@@ -460,9 +460,7 @@ export function InterviewPrepPanel({
                     <span className="text-sm">Preparing interview questions...</span>
                   </div>
                 ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
+                  <AIMessageContent content={msg.content} />
                 )}
               </div>
             </div>

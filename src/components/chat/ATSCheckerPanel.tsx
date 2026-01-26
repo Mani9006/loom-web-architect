@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
-import ReactMarkdown from "react-markdown";
+import { AIMessageContent } from "@/components/chat/AIMessageContent";
 
 export interface ATSMessage {
   id: string;
@@ -229,9 +229,7 @@ export function ATSCheckerPanel({
                         <span>Analyzing resume...</span>
                       </div>
                     ) : (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
-                      </div>
+                      <AIMessageContent content={message.content} />
                     )}
                   </div>
                 </div>
