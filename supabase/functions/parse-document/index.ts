@@ -146,10 +146,11 @@ async function ocrWithAIVision(
   mimeType: string,
   pageCount: number,
   controller?: ReadableStreamDefaultController
-): Promise<string> {
+): Promise<string | null> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
-    throw new Error("AI service not configured for OCR");
+    console.log("AI service not configured for OCR - LOVABLE_API_KEY missing");
+    return null;
   }
 
   console.log("Using AI Vision for OCR on:", fileName, "estimated pages:", pageCount);
@@ -164,19 +165,20 @@ async function ocrWithAIVision(
     });
   }
 
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      // Gemini 2.5 Pro: SOTA for vision/OCR tasks (80.5% CharXiv benchmark)
-      model: "google/gemini-2.5-pro",
-      messages: [
-        {
-          role: "system",
-          content: `You are an OCR specialist processing a multi-page document. Extract ALL text from ALL pages of the provided document accurately.
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        // Gemini 2.5 Pro: SOTA for vision/OCR tasks (80.5% CharXiv benchmark)
+        model: "google/gemini-2.5-pro",
+        messages: [
+          {
+            role: "system",
+            content: `You are an OCR specialist processing a multi-page document. Extract ALL text from ALL pages of the provided document accurately.
 Preserve the structure as much as possible including:
 - Headers and section titles
 - Bullet points and lists  
@@ -187,56 +189,61 @@ Preserve the structure as much as possible including:
 - Page breaks (indicate with --- between pages if multiple pages)
 
 Return ONLY the extracted text from all pages, formatted cleanly. Do not add any commentary or notes.`
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `Please extract all the text from ALL pages of this ${pageCount}-page document:`
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${mimeType};base64,${base64}`
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Please extract all the text from ALL pages of this ${pageCount}-page document:`
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${mimeType};base64,${base64}`
+                }
               }
-            }
-          ]
-        }
-      ],
-      max_tokens: 8192,
-    }),
-  });
-
-  if (controller) {
-    sendSSE(controller, { 
-      type: "progress", 
-      stage: "ocr_processing",
-      message: "AI is analyzing document pages...",
-      progress: 50
+            ]
+          }
+        ],
+        max_tokens: 8192,
+      }),
     });
-  }
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("AI Vision OCR error:", response.status, errorText);
-    throw new Error("Failed to perform OCR on document");
-  }
+    if (controller) {
+      sendSSE(controller, { 
+        type: "progress", 
+        stage: "ocr_processing",
+        message: "AI is analyzing document pages...",
+        progress: 50
+      });
+    }
 
-  const data = await response.json();
-  const extractedText = data.choices?.[0]?.message?.content || "";
-  
-  if (controller) {
-    sendSSE(controller, { 
-      type: "progress", 
-      stage: "ocr_complete",
-      message: "OCR processing complete!",
-      progress: 90
-    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("AI Vision OCR error:", response.status, errorText);
+      // Return null instead of throwing - allows graceful fallback
+      return null;
+    }
+
+    const data = await response.json();
+    const extractedText = data.choices?.[0]?.message?.content || "";
+    
+    if (controller) {
+      sendSSE(controller, { 
+        type: "progress", 
+        stage: "ocr_complete",
+        message: "OCR processing complete!",
+        progress: 90
+      });
+    }
+    
+    console.log("OCR completed, extracted text length:", extractedText.length);
+    return extractedText;
+  } catch (error) {
+    console.error("OCR exception:", error);
+    return null;
   }
-  
-  console.log("OCR completed, extracted text length:", extractedText.length);
-  return extractedText;
 }
 
 serve(async (req) => {
