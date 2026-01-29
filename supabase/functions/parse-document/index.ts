@@ -348,7 +348,7 @@ serve(async (req) => {
                   uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
                 );
                 
-                extractedText = await ocrWithAIVision(base64, fileName, "application/pdf", pageCount, controller);
+                extractedText = await ocrWithAIVision(base64, fileName, "application/pdf", pageCount, controller) || "";
               } else {
                 sendSSE(controller, { 
                   type: "progress", 
@@ -367,7 +367,7 @@ serve(async (req) => {
               const mimeType = fileName.endsWith(".png") ? "image/png" : 
                               fileName.endsWith(".webp") ? "image/webp" : "image/jpeg";
               
-              extractedText = await ocrWithAIVision(base64, fileName, mimeType, 1, controller);
+              extractedText = await ocrWithAIVision(base64, fileName, mimeType, 1, controller) || "";
             } else if (fileName.endsWith(".docx")) {
               sendSSE(controller, { 
                 type: "progress", 
@@ -464,7 +464,7 @@ serve(async (req) => {
           );
           
           try {
-            extractedText = await ocrWithAIVision(base64, fileName, "application/pdf", pageCount);
+            extractedText = await ocrWithAIVision(base64, fileName, "application/pdf", pageCount) || "";
           } catch (ocrError) {
             console.error("OCR failed:", ocrError);
             return new Response(JSON.stringify({ 
@@ -520,7 +520,7 @@ serve(async (req) => {
                         fileName.endsWith(".webp") ? "image/webp" : "image/jpeg";
         
         console.log("Processing image file with OCR:", fileName);
-        extractedText = await ocrWithAIVision(base64, fileName, mimeType, 1);
+        extractedText = await ocrWithAIVision(base64, fileName, mimeType, 1) || "";
         console.log("Image OCR completed, text length:", extractedText.length);
       } catch (imgError) {
         console.error("Image OCR error:", imgError);
