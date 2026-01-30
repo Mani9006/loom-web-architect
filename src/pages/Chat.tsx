@@ -8,7 +8,7 @@ import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatWelcome } from "@/components/chat/ChatWelcome";
 import { GeneralChatPanel, GeneralChatMessage } from "@/components/chat/GeneralChatPanel";
 import { ATSCheckerPanel, ATSMessage } from "@/components/chat/ATSCheckerPanel";
-import { JobSearchPanel, JobSearchMessage, JobFilters } from "@/components/chat/JobSearchPanel";
+import { JobSearchPanel } from "@/components/chat/JobSearchPanel";
 import { CoverLetterPanel, CoverLetterMessage } from "@/components/chat/CoverLetterPanel";
 import { InterviewPrepPanel, InterviewMessage } from "@/components/chat/InterviewPrepPanel";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
@@ -45,7 +45,7 @@ export default function Chat() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [generalMessages, setGeneralMessages] = useState<GeneralChatMessage[]>([]);
   const [atsMessages, setAtsMessages] = useState<ATSMessage[]>([]);
-  const [jobMessages, setJobMessages] = useState<JobSearchMessage[]>([]);
+  // Job search is now handled internally by JobSearchPanel
   const [coverLetterMessages, setCoverLetterMessages] = useState<CoverLetterMessage[]>([]);
   const [interviewMessages, setInterviewMessages] = useState<InterviewMessage[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectOptionsData[]>([]);
@@ -129,7 +129,6 @@ export default function Chat() {
         setChatMessages([]);
         setGeneralMessages([]);
         setAtsMessages([]);
-        setJobMessages([]);
         setChatMode("welcome");
         setResumeData(createEmptyResumeJSON());
         userInitializedRef.current = null;
@@ -207,7 +206,7 @@ export default function Chat() {
             setChatMode("ats-check");
             break;
           case "job-search":
-            setJobMessages(loadedMessages);
+            // Job search is self-contained in JobSearchPanel
             setChatMode("job-search");
             break;
           case "cover-letter":
@@ -252,7 +251,6 @@ export default function Chat() {
     setChatMessages([]);
     setGeneralMessages([]);
     setAtsMessages([]);
-    setJobMessages([]);
     setCoverLetterMessages([]);
     setInterviewMessages([]);
     setChatMode("welcome");
@@ -337,7 +335,6 @@ export default function Chat() {
 
   const handleStartJobSearch = () => {
     setChatMode("job-search");
-    setJobMessages([]);
   };
 
   const handleStartCoverLetter = () => {
@@ -695,230 +692,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
     }
   };
 
-  // Job Search Handler
-  // Helper to build filter summary for user message
-  const buildFilterSummary = (filters: JobFilters): string => {
-    const parts: string[] = [];
-    if (filters.datePosted !== "all") {
-      const dateLabels: Record<string, string> = { "24h": "last 24 hours", "week": "past week", "month": "past month" };
-      parts.push(dateLabels[filters.datePosted] || filters.datePosted);
-    }
-    if (filters.jobType !== "all") parts.push(filters.jobType);
-    if (filters.experienceLevel !== "all") parts.push(`${filters.experienceLevel} level`);
-    if (filters.workLocation !== "all") parts.push(filters.workLocation);
-    if (filters.salaryRange !== "all") parts.push(filters.salaryRange);
-    return parts.length > 0 ? ` (${parts.join(", ")})` : "";
-  };
-
-  // Store user's resume text and filters for follow-up searches
-  const jobResumeRef = useRef<string>("");
-  const jobFiltersRef = useRef<JobFilters | null>(null);
-
-  const handleJobSearch = async (resumeText: string, filters?: JobFilters) => {
-    if (!session) return;
-
-    // Store resume and filters for follow-up searches
-    jobResumeRef.current = resumeText;
-    jobFiltersRef.current = filters || null;
-
-    setIsLoading(true);
-    
-    // Build user-facing message with filter summary
-    const filterSummary = filters ? buildFilterSummary(filters) : "";
-    const userContent = `Find me real job postings matching my profile${filterSummary}`;
-
-    const userMsg: JobSearchMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: userContent,
-      timestamp: new Date(),
-    };
-
-    setJobMessages([userMsg]);
-
-    const tempId = crypto.randomUUID();
-    setJobMessages((prev) => [
-      ...prev,
-      { id: tempId, role: "assistant", content: "", timestamp: new Date(), isThinking: true },
-    ]);
-
-    try {
-      let assistantContent = "";
-      // Use dedicated job-search edge function with Perplexity for real-time search
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/job-search`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            resumeText,
-            filters,
-            isFollowUp: false,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        if (response.status === 429) throw new Error("Rate limit exceeded. Please try again in a moment.");
-        if (response.status === 402) throw new Error("AI usage limit reached.");
-        throw new Error("Failed to search jobs");
-      }
-
-      setJobMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
-      );
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          let newlineIndex: number;
-
-          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-            const line = buffer.slice(0, newlineIndex);
-            buffer = buffer.slice(newlineIndex + 1);
-
-            if (line.startsWith(":") || line.trim() === "") continue;
-            if (!line.startsWith("data: ")) continue;
-
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === "[DONE]") continue;
-
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                assistantContent += content;
-                setJobMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
-                );
-              }
-            } catch {
-              buffer = line + "\n" + buffer;
-              break;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to search jobs",
-        variant: "destructive",
-      });
-      setJobMessages((prev) => prev.filter((m) => m.id !== tempId));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleJobFollowUp = async (message: string) => {
-    if (!session) return;
-
-    setIsLoading(true);
-    const userMsg: JobSearchMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: message,
-      timestamp: new Date(),
-    };
-
-    setJobMessages((prev) => [...prev, userMsg]);
-
-    const tempId = crypto.randomUUID();
-    setJobMessages((prev) => [
-      ...prev,
-      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
-    ]);
-
-    try {
-      let assistantContent = "";
-      // Build conversation history for context
-      const conversationHistory = jobMessages.concat(userMsg).map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      // Use dedicated job-search edge function with conversation context
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/job-search`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            resumeText: jobResumeRef.current,
-            isFollowUp: true,
-            conversationHistory,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        if (response.status === 429) throw new Error("Rate limit exceeded. Please try again in a moment.");
-        throw new Error("Failed to get response");
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          let newlineIndex: number;
-
-          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-            const line = buffer.slice(0, newlineIndex);
-            buffer = buffer.slice(newlineIndex + 1);
-
-            if (line.startsWith(":") || line.trim() === "") continue;
-            if (!line.startsWith("data: ")) continue;
-
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === "[DONE]") continue;
-
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                assistantContent += content;
-                setJobMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
-                );
-              }
-            } catch {
-              buffer = line + "\n" + buffer;
-              break;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to get response",
-        variant: "destructive",
-      });
-      setJobMessages((prev) => prev.filter((m) => m.id !== tempId));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Job Search is now self-contained in JobSearchPanel
 
   // Cover Letter Generator Handler
   const handleCoverLetterGenerate = async (resumeText: string, jobDescription: string, companyName: string, jobTitle: string, template: string = "modern") => {
@@ -1987,10 +1761,6 @@ ${experienceSummary}
             {chatMode === "job-search" && (
               <div className="flex-1">
                 <JobSearchPanel
-                  messages={jobMessages}
-                  isLoading={isLoading}
-                  onSearch={handleJobSearch}
-                  onSendMessage={handleJobFollowUp}
                   selectedModel={selectedModel}
                   onModelChange={setSelectedModel}
                 />
