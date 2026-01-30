@@ -31,8 +31,8 @@ function formatResponsibilitiesAsBullets(responsibilities: string | string[]): s
     .split(/\n|(?=•)|(?=-)/)
     .map(line => line.trim())
     .filter(line => line.length > 0)
-    .map(line => line.replace(/^[•\-\*]\s*/, ''))
-    .filter(line => line.length > 5);
+    .map(line => line.replace(/^[•\-\*]\s*/, ''));
+
 }
 
 // Robust JSON parser that handles common AI response issues
@@ -309,9 +309,12 @@ CRITICAL RULES:
 1. Extract ONLY the person's name in header.name
 2. bullets must be an array of strings - EXTRACT EVERY SINGLE BULLET POINT, do not truncate or summarize
 3. For experience and projects: include ALL bullet points exactly as written, even if there are 10+ bullets per entry
+   - NEVER limit bullets to 3/5/7; include every bullet from the resume
+   - Preserve order; do not dedupe; keep even short bullets
 4. SKILLS EXTRACTION IS CRITICAL:
    - READ the skills section of the resume CAREFULLY
    - Use the EXACT category names as they appear in the resume document (converted to lowercase_snake_case)
+   - If you cannot find category names in the resume, return an EMPTY skills object {}
    - DO NOT invent categories like "programming_languages", "machine_learning", "nlp", "generative_ai" unless they actually appear in the resume
    - DO NOT rename categories - if the resume says "Programming & Querying", use "programming_querying", NOT "programming_languages"
    - If resume says "Cloud Platforms", use "cloud_platforms", NOT "cloud_mlops"
