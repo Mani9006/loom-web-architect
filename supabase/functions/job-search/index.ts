@@ -1,5 +1,25 @@
+// Supabase Edge Function - Runs on Deno runtime
+// @deno-types="npm:@types/node"
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+interface Memory {
+  memory?: string;
+  content?: string;
+}
+
+interface Message {
+  role: string;
+  content: string;
+}
+
+interface ExaResult {
+  title: string;
+  url: string;
+  publishedDate?: string;
+  text?: string;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,14 +51,14 @@ async function searchMemories(apiKey: string, userId: string, query: string): Pr
 
     const data = await response.json();
     const memories = Array.isArray(data) ? data : (data.results || data.memories || []);
-    return memories.map((m: any) => m.memory || m.content).filter(Boolean);
+    return memories.map((m: Memory) => m.memory || m.content).filter(Boolean);
   } catch (e) {
     console.error("Mem0 search error:", e);
     return [];
   }
 }
 
-async function addMemory(apiKey: string, userId: string, messages: any[], metadata?: any): Promise<void> {
+async function addMemory(apiKey: string, userId: string, messages: Message[], metadata?: Record<string, unknown>): Promise<void> {
   try {
     await fetch("https://api.mem0.ai/v1/memories/", {
       method: "POST",
@@ -51,6 +71,87 @@ async function addMemory(apiKey: string, userId: string, messages: any[], metada
   } catch (e) {
     console.error("Memory add error:", e);
   }
+}
+
+// Exa.ai search function for job listings
+async function searchJobsWithExa(apiKey: string, resumeText: string, filters?: JobFilters): Promise<string> {
+  try {
+    const datePosted = filters?.datePosted || "24h";
+    const dateLabel = datePosted === "24h" ? "last 24 hours" : datePosted === "week" ? "past week" : "past month";
+    
+    // Extract key skills and job title from resume
+    const skills = resumeText.match(/(?:skills?|technologies?|expertise)[\s:]+([^\n]+)/gi)?.join(" ") || "";
+    const jobTitle = resumeText.match(/(?:title|position|role)[\s:]+([^\n]+)/i)?.[1] || "software engineer";
+    
+    // Build search query focusing on job boards
+    let searchQuery = `${jobTitle} jobs hiring ${dateLabel} site:(linkedin.com/jobs OR indeed.com OR glassdoor.com)`;
+    
+    if (filters?.workLocation === "remote") {
+      searchQuery += " remote";
+    }
+    if (filters?.jobType && filters.jobType !== "all") {
+      searchQuery += ` ${filters.jobType}`;
+    }
+    
+    console.log(`[Exa] Searching with query: ${searchQuery}`);
+    
+    const response = await fetch("https://api.exa.ai/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        query: searchQuery,
+        type: "neural",
+        useAutoprompt: true,
+        numResults: 10,
+        contents: {
+          text: true,
+          highlights: true,
+        },
+        startPublishedDate: getExaDateFilter(filters),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Exa API error:", response.status, errorText);
+      return "";
+    }
+
+    const data = await response.json();
+    
+    // Format Exa results into a readable format
+    if (data.results && data.results.length > 0) {
+      const jobListings = data.results.map((result: ExaResult, index: number) => {
+        return `${index + 1}. ${result.title}
+   URL: ${result.url}
+   Published: ${result.publishedDate || "Recently"}
+   ${result.text ? `Description: ${result.text.substring(0, 300)}...` : ""}`;
+      }).join("\n\n");
+      
+      return `\n\n=== Additional Job Listings from Exa.ai ===\n${jobListings}\n`;
+    }
+    
+    return "";
+  } catch (e) {
+    console.error("Exa search error:", e);
+    return "";
+  }
+}
+
+// Get date filter for Exa API (ISO format)
+function getExaDateFilter(filters?: JobFilters): string {
+  const now = new Date();
+  if (!filters?.datePosted || filters.datePosted === "24h") {
+    now.setDate(now.getDate() - 1);
+  } else if (filters.datePosted === "week") {
+    now.setDate(now.getDate() - 7);
+  } else if (filters.datePosted === "month") {
+    now.setDate(now.getDate() - 30);
+  }
+  return now.toISOString();
 }
 
 // Job filter types
@@ -148,7 +249,7 @@ CRITICAL REQUIREMENTS:
 7. Rank by relevance to the candidate's SKILLS (not just title match)`;
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -190,9 +291,10 @@ serve(async (req) => {
     const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const MEM0_API_KEY = Deno.env.get("MEM0_API_KEY");
+    const EXA_API_KEY = Deno.env.get("EXA_API_KEY");
 
-    if (!PERPLEXITY_API_KEY) {
-      console.error("PERPLEXITY_API_KEY not configured");
+    if (!PERPLEXITY_API_KEY && !EXA_API_KEY) {
+      console.error("Neither PERPLEXITY_API_KEY nor EXA_API_KEY configured");
       return new Response(JSON.stringify({ error: "Job search service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -221,10 +323,18 @@ serve(async (req) => {
     const recencyFilter = getRecencyFilter(filters);
     const dateLabel = filters?.datePosted === "week" ? "past week" : filters?.datePosted === "month" ? "past month" : "last 24 hours";
 
-    // Use Perplexity for real-time job search
-    console.log(`[JobSearch] Searching with Perplexity sonar-pro, recency: ${recencyFilter}...`);
+    // Fetch additional job listings from Exa.ai if available
+    let exaResults = "";
+    if (EXA_API_KEY) {
+      console.log("[JobSearch] Fetching additional jobs from Exa.ai...");
+      exaResults = await searchJobsWithExa(EXA_API_KEY, resumeText, filters);
+    }
+
+    // Use Perplexity for real-time job search if available
+    if (PERPLEXITY_API_KEY) {
+      console.log(`[JobSearch] Searching with Perplexity sonar-pro, recency: ${recencyFilter}...`);
     
-    const perplexityResponse = await fetch("https://api.perplexity.ai/chat/completions", {
+      const perplexityResponse = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
@@ -270,6 +380,7 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 ... and so on for all 5 jobs
 
 ${userContext ? `\nUSER CONTEXT FROM PREVIOUS INTERACTIONS:\n${userContext}` : ""}
+${exaResults ? `\nREFERENCE JOBS FROM EXA.AI (use these as additional sources):\n${exaResults}` : ""}
 
 IMPORTANT: Every job listing MUST have a working clickable link. Use markdown link format: [Link Text](URL)`,
           },
@@ -295,6 +406,9 @@ IMPORTANT: Every job listing MUST have a working clickable link. Use markdown li
       // Fallback to OpenAI if Perplexity fails
       if (OPENAI_API_KEY) {
         console.log("[JobSearch] Falling back to OpenAI...");
+        
+        const exaContext = exaResults ? `\n\nHere are some job listings found:\n${exaResults}` : "";
+        
         const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -306,14 +420,14 @@ IMPORTANT: Every job listing MUST have a working clickable link. Use markdown li
             messages: [
               {
                 role: "system",
-                content: `You are a job search strategist. Since real-time search is unavailable, provide strategic job search guidance based on the candidate's profile.
+                content: `You are a job search strategist. ${exaResults ? "You have access to real job listings from Exa.ai." : "Since real-time search is unavailable, provide strategic job search guidance based on the candidate's profile."}
 
-Help them by:
+${exaResults ? `Review these job listings and format them nicely with direct apply links. Add insights about why the candidate is a good match for each role.${exaContext}` : `Help them by:
 1. Identifying the best job titles to search for
 2. Recommending specific companies that typically hire for these roles
 3. Providing direct links to job boards with pre-filled searches
 4. Suggesting networking strategies
-5. Listing keywords to use in their search
+5. Listing keywords to use in their search`}
 
 Format with clear headings and actionable advice.`,
               },
@@ -370,6 +484,59 @@ Format with clear headings and actionable advice.`,
         "Connection": "keep-alive",
       },
     });
+    
+    } else if (EXA_API_KEY && exaResults) {
+      // If only Exa.ai is available, use OpenAI to format Exa results
+      console.log("[JobSearch] Using Exa.ai results with OpenAI formatting...");
+      
+      if (OPENAI_API_KEY) {
+        const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: `You are a job search assistant. You have real job listings from Exa.ai. Format them nicely with:
+- Job title and company
+- Location and posted date
+- Why the candidate is a good match
+- Direct apply links
+
+Here are the job listings:
+${exaResults}`,
+              },
+              { role: "user", content: `Format these jobs for: ${resumeText.substring(0, 500)}...` },
+            ],
+            stream: true,
+          }),
+        });
+
+        if (openaiResponse.ok) {
+          return new Response(openaiResponse.body, {
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+            },
+          });
+        }
+      }
+      
+      // If no OpenAI, return Exa results directly
+      return new Response(JSON.stringify({ message: exaResults }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } else {
+      return new Response(JSON.stringify({ error: "No job search APIs configured. Please set PERPLEXITY_API_KEY or EXA_API_KEY." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
   } catch (error) {
     console.error("Job search error:", error);
     return new Response(

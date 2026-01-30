@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.window", "esnext"],
+    "strict": false,
+    "allowJs": true,
+    "checkJs": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true
+  },
+  "importMap": "./import_map.json",
+  "lint": {
+    "rules": {
+      "exclude": ["no-explicit-any"]
+    }
+  }
+}

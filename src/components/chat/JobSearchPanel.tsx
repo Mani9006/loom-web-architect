@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { toast } from "sonner";
 import html2pdf from "html2pdf.js";
+import { supabase } from "@/integrations/supabase/client";
+import ReactMarkdown from "react-markdown";
 import {
   Select,
   SelectContent,
@@ -62,6 +64,8 @@ export function JobSearchPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [streamingResponse, setStreamingResponse] = useState("");
+  const [conversationHistory, setConversationHistory] = useState<Array<{role: string, content: string}>>([]); 
   const resultsRef = useRef<HTMLDivElement>(null);
 
   // Load filters from localStorage on mount
@@ -95,81 +99,91 @@ export function JobSearchPanel({
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleSearch = async () => {
-    if (!resumeText.trim()) {
+  const handleSearch = async (isFollowUp = false) => {
+    if (!resumeText.trim() && !isFollowUp) {
       toast.error("Please upload or paste your resume first");
       return;
     }
 
     setIsLoading(true);
     setHasSearched(true);
-    setJobs([]);
+    setStreamingResponse("");
+    
+    if (!isFollowUp) {
+      setJobs([]);
+      setConversationHistory([]);
+    }
 
     try {
-      const response = await fetch("https://reddy9006.app.n8n.cloud/webhook-test/job-search", {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        toast.error("Please sign in to search for jobs");
+        return;
+      }
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://eybsvijjtjwshbcsjtvz.supabase.co';
+      const response = await fetch(`${supabaseUrl}/functions/v1/job-search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          resume_text: resumeText,
-          filters: {
-            datePosted: filters.datePosted,
-            jobType: filters.jobType,
-            experienceLevel: filters.experienceLevel,
-            workLocation: filters.workLocation,
-            salaryRange: filters.salaryRange,
-          },
+          resumeText,
+          filters,
+          isFollowUp,
+          conversationHistory: isFollowUp ? conversationHistory : undefined,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Request failed: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed: ${response.status}`);
       }
 
-      const data = await response.json();
-      
-      // Handle different response formats from n8n
-      let jobResults: JobResult[] = [];
-      
-      if (Array.isArray(data)) {
-        jobResults = data.map((job: any, index: number) => ({
-          id: job.id || `job-${index}`,
-          title: job.title || job.job_title || "Unknown Title",
-          company: job.company || job.company_name || "Unknown Company",
-          location: job.location || "Not specified",
-          type: job.type || job.job_type || filters.jobType,
-          salary: job.salary || job.salary_range || "Not disclosed",
-          postedDate: job.postedDate || job.posted_date || "Recent",
-          description: job.description || "",
-          url: job.url || job.link || job.apply_url || "#",
-          matchScore: job.matchScore || job.match_score || Math.floor(Math.random() * 20) + 80,
-        }));
-      } else if (data.jobs && Array.isArray(data.jobs)) {
-        jobResults = data.jobs.map((job: any, index: number) => ({
-          id: job.id || `job-${index}`,
-          title: job.title || job.job_title || "Unknown Title",
-          company: job.company || job.company_name || "Unknown Company",
-          location: job.location || "Not specified",
-          type: job.type || job.job_type || filters.jobType,
-          salary: job.salary || job.salary_range || "Not disclosed",
-          postedDate: job.postedDate || job.posted_date || "Recent",
-          description: job.description || "",
-          url: job.url || job.link || job.apply_url || "#",
-          matchScore: job.matchScore || job.match_score || Math.floor(Math.random() * 20) + 80,
-        }));
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6);
+              if (data === "[DONE]") continue;
+              
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.choices?.[0]?.delta?.content || "";
+                fullResponse += content;
+                setStreamingResponse(fullResponse);
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
       }
 
-      setJobs(jobResults);
-      
-      if (jobResults.length === 0) {
-        toast.info("No matching jobs found. Try adjusting your filters.");
-      } else {
-        toast.success(`Found ${jobResults.length} matching jobs!`);
-      }
+      // Update conversation history
+      setConversationHistory(prev => [
+        ...prev,
+        { role: "user", content: isFollowUp ? "Generate more job opportunities" : `Find jobs for: ${resumeText.substring(0, 200)}...` },
+        { role: "assistant", content: fullResponse }
+      ]);
+
+      toast.success("Job search completed!");
     } catch (error) {
       console.error("Job search error:", error);
-      toast.error("Failed to search for jobs. Please try again.");
+      toast.error(error instanceof Error ? error.message : "Failed to search for jobs. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -366,7 +380,7 @@ export function JobSearchPanel({
           {/* Search Button */}
           <div className="flex gap-3">
             <Button
-              onClick={handleSearch}
+              onClick={() => handleSearch(false)}
               disabled={!resumeText.trim() || isLoading}
               className="flex-1 gap-2"
               size="lg"
@@ -416,77 +430,47 @@ export function JobSearchPanel({
           )}
 
           {/* Results */}
-          {!isLoading && hasSearched && jobs.length > 0 && (
+          {!isLoading && hasSearched && streamingResponse && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">
-                  Found {jobs.length} Matching Jobs
+                  Job Search Results
                 </h3>
-                <Button
-                  onClick={handleDownloadPDF}
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Download Matches as PDF
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleSearch(true)}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    disabled={isLoading}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Generate More Jobs
+                  </Button>
+                  <Button
+                    onClick={handleDownloadPDF}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download as PDF
+                  </Button>
+                </div>
               </div>
 
-              <div ref={resultsRef} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {jobs.map((job) => (
-                  <Card key={job.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-lg leading-tight">{job.title}</CardTitle>
-                        {job.matchScore && (
-                          <Badge className={`shrink-0 ${getMatchScoreColor(job.matchScore)}`}>
-                            {job.matchScore}% Match
-                          </Badge>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Building2 className="w-4 h-4 shrink-0" />
-                          <span className="truncate">{job.company}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <MapPin className="w-4 h-4 shrink-0" />
-                          <span className="truncate">{job.location}</span>
-                        </div>
-                        {job.salary && job.salary !== "Not disclosed" && (
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <DollarSign className="w-4 h-4 shrink-0" />
-                            <span className="truncate">{job.salary}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {job.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {job.description}
-                        </p>
-                      )}
-
-                      <Button
-                        onClick={() => window.open(job.url, "_blank")}
-                        className="w-full gap-2"
-                        size="sm"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        View Job
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              <Card ref={resultsRef} className="p-6">
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown>
+                    {streamingResponse}
+                  </ReactMarkdown>
+                </div>
+              </Card>
             </div>
           )}
 
           {/* No Results */}
-          {!isLoading && hasSearched && jobs.length === 0 && (
+          {!isLoading && hasSearched && !streamingResponse && (
             <Card className="p-8 text-center">
               <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-medium mb-2">No Jobs Found</h3>

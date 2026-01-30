@@ -37,9 +37,6 @@ function formatResponsibilitiesAsBullets(responsibilities: string | string[]): s
 
 // Robust JSON parser that handles common AI response issues
 function parseAIResponse(content: string): Record<string, any> | null {
-  console.log("Parsing AI response, length:", content.length);
-  console.log("Raw content preview:", content.substring(0, 500));
-  
   // Remove markdown code blocks if present
   let cleaned = content
     .replace(/```json\s*/gi, '')

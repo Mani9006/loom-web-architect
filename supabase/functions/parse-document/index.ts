@@ -1,3 +1,6 @@
+// Supabase Edge Function - Runs on Deno runtime
+// @deno-types="npm:@types/node"
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
@@ -246,7 +249,7 @@ Return ONLY the extracted text from all pages, formatted cleanly. Do not add any
   }
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -348,7 +351,19 @@ serve(async (req) => {
                   uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
                 );
                 
-                extractedText = await ocrWithAIVision(base64, fileName, "application/pdf", pageCount, controller) || "";
+                const ocrResult = await ocrWithAIVision(base64, fileName, "application/pdf", pageCount, controller);
+                
+                if (ocrResult && ocrResult.length > extractedText.length) {
+                  extractedText = ocrResult;
+                } else if (!ocrResult) {
+                  sendSSE(controller, { 
+                    type: "progress", 
+                    stage: "ocr_failed",
+                    message: "OCR unavailable, using basic text extraction",
+                    progress: 80
+                  });
+                  // Keep whatever text we extracted
+                }
               } else {
                 sendSSE(controller, { 
                   type: "progress", 
@@ -367,7 +382,18 @@ serve(async (req) => {
               const mimeType = fileName.endsWith(".png") ? "image/png" : 
                               fileName.endsWith(".webp") ? "image/webp" : "image/jpeg";
               
-              extractedText = await ocrWithAIVision(base64, fileName, mimeType, 1, controller) || "";
+              const ocrResult = await ocrWithAIVision(base64, fileName, mimeType, 1, controller);
+              
+              if (ocrResult) {
+                extractedText = ocrResult;
+              } else {
+                sendSSE(controller, { 
+                  type: "error", 
+                  error: "OCR service not available. Please paste your resume content directly."
+                });
+                controller.close();
+                return;
+              }
             } else if (fileName.endsWith(".docx")) {
               sendSSE(controller, { 
                 type: "progress", 
@@ -459,20 +485,45 @@ serve(async (req) => {
         if (needsOCR) {
           console.log("PDF needs OCR - either too short or contains metadata instead of content");
           
-          const base64 = btoa(
-            uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
-          );
-          
-          try {
-            extractedText = await ocrWithAIVision(base64, fileName, "application/pdf", pageCount) || "";
-          } catch (ocrError) {
-            console.error("OCR failed:", ocrError);
-            return new Response(JSON.stringify({ 
-              error: "Failed to OCR scanned document. Please try pasting your resume content directly." 
-            }), {
-              status: 400,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
+          // Check if OCR is available
+          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+          if (!LOVABLE_API_KEY) {
+            console.log("LOVABLE_API_KEY not configured, returning partial text");
+            if (extractedText.length > 0) {
+              // Return what we have if there's any text at all
+              console.log("Returning basic extracted text instead");
+            } else {
+              return new Response(JSON.stringify({ 
+                error: "This PDF requires OCR (scanned document), but OCR service is not configured. Please paste your resume content directly or use a text-based PDF." 
+              }), {
+                status: 400,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              });
+            }
+          } else {
+            const base64 = btoa(
+              uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
+            );
+            
+            try {
+              const ocrResult = await ocrWithAIVision(base64, fileName, "application/pdf", pageCount);
+              if (ocrResult && ocrResult.length > extractedText.length) {
+                extractedText = ocrResult;
+              } else if (!ocrResult) {
+                console.log("OCR returned no results, keeping basic extraction");
+              }
+            } catch (ocrError) {
+              console.error("OCR failed:", ocrError);
+              // If we have any text from basic extraction, use it instead of erroring
+              if (extractedText.length < 20) {
+                return new Response(JSON.stringify({ 
+                  error: "Failed to extract text from this scanned PDF. Please try pasting your resume content directly." 
+                }), {
+                  status: 400,
+                  headers: { ...corsHeaders, "Content-Type": "application/json" },
+                });
+              }
+            }
           }
         }
 
@@ -520,11 +571,26 @@ serve(async (req) => {
                         fileName.endsWith(".webp") ? "image/webp" : "image/jpeg";
         
         console.log("Processing image file with OCR:", fileName);
-        extractedText = await ocrWithAIVision(base64, fileName, mimeType, 1) || "";
-        console.log("Image OCR completed, text length:", extractedText.length);
+        
+        const ocrResult = await ocrWithAIVision(base64, fileName, mimeType, 1);
+        
+        if (ocrResult) {
+          extractedText = ocrResult;
+          console.log("Image OCR completed, text length:", extractedText.length);
+        } else {
+          console.log("OCR not available for image");
+          return new Response(JSON.stringify({ 
+            error: "OCR service not configured. Please paste your resume content directly." 
+          }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       } catch (imgError) {
         console.error("Image OCR error:", imgError);
-        return new Response(JSON.stringify({ error: "Failed to extract text from image" }), {
+        return new Response(JSON.stringify({ 
+          error: "Failed to extract text from image. Please paste your resume content directly." 
+        }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });

@@ -70,8 +70,6 @@ export default function Chat() {
     let initialCheckDone = false;
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[Auth] State change:', event, !!session);
-      
       // Update state for all events
       setSession(session);
       setUser(session?.user ?? null);
