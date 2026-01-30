@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Search, Loader2, Sparkles, Filter, MapPin, Building2, DollarSign, ExternalLink, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+const FILTERS_STORAGE_KEY = "job-search-filters";
 
 export interface JobFilters {
   jobType: string;
@@ -43,6 +45,14 @@ interface JobSearchPanelProps {
   onModelChange: (model: string) => void;
 }
 
+const defaultFilters: JobFilters = {
+  jobType: "all",
+  experienceLevel: "all",
+  workLocation: "all",
+  datePosted: "24h",
+  salaryRange: "all",
+};
+
 export function JobSearchPanel({
   selectedModel,
   onModelChange,
@@ -54,13 +64,27 @@ export function JobSearchPanel({
   const [hasSearched, setHasSearched] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  const [filters, setFilters] = useState<JobFilters>({
-    jobType: "all",
-    experienceLevel: "all",
-    workLocation: "all",
-    datePosted: "24h",
-    salaryRange: "all",
+  // Load filters from localStorage on mount
+  const [filters, setFilters] = useState<JobFilters>(() => {
+    try {
+      const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
+      if (stored) {
+        return { ...defaultFilters, ...JSON.parse(stored) };
+      }
+    } catch (e) {
+      console.error("Failed to load filters from localStorage:", e);
+    }
+    return defaultFilters;
   });
+
+  // Save filters to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+    } catch (e) {
+      console.error("Failed to save filters to localStorage:", e);
+    }
+  }, [filters]);
 
   const handleDocumentExtracted = (text: string, fileName: string) => {
     setResumeText(text);
@@ -188,13 +212,7 @@ export function JobSearchPanel({
     setJobs([]);
     setResumeText("");
     setUploadedFileName(null);
-    setFilters({
-      jobType: "all",
-      experienceLevel: "all",
-      workLocation: "all",
-      datePosted: "24h",
-      salaryRange: "all",
-    });
+    // Keep the filters - they are persisted in localStorage
   };
 
   return (

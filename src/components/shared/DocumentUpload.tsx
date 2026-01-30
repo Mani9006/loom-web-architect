@@ -172,7 +172,7 @@ export function DocumentUpload({
       }
       
       if (!extractedText || extractedText.trim().length === 0) {
-        throw new Error("No text could be extracted from the document");
+        throw new Error("Could not extract text from this document. Please try pasting your resume text directly, or use a different file format.");
       }
 
       onTextExtracted(extractedText, extractedFileName);
