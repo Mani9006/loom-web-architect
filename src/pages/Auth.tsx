@@ -33,7 +33,7 @@ export default function Auth() {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session?.user) {
-        navigate("/");
+        navigate("/chat");
       }
       if (event === "PASSWORD_RECOVERY") {
         navigate("/reset-password");
@@ -43,7 +43,7 @@ export default function Auth() {
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        navigate("/");
+        navigate("/chat");
       }
     });
 
@@ -117,7 +117,7 @@ export default function Auth() {
           }
         }
       } else {
-        const redirectUrl = `${window.location.origin}/`;
+        const redirectUrl = `${window.location.origin}/chat`;
         
         const { error } = await supabase.auth.signUp({
           email,
@@ -168,7 +168,7 @@ export default function Auth() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: `${window.location.origin}/chat`,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -222,7 +222,7 @@ export default function Auth() {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="w-full max-w-md space-y-8 text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
               <Mail className="w-6 h-6 text-primary-foreground" />
             </div>
           </div>
@@ -249,10 +249,10 @@ export default function Auth() {
         {/* Logo */}
         <div className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
               <Sparkles className="w-6 h-6 text-primary-foreground" />
             </div>
-            <h1 className="text-2xl font-semibold">AI Assistant</h1>
+            <h1 className="text-2xl font-bold">CareerPrep<span className="text-primary">.ai</span></h1>
           </div>
           <p className="text-muted-foreground">{getTitle()}</p>
         </div>

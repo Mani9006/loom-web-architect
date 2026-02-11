@@ -71,7 +71,7 @@ export default function ResetPassword() {
           description: "Your password has been successfully reset.",
         });
         // Redirect to home after a short delay
-        setTimeout(() => navigate("/"), 2000);
+        setTimeout(() => navigate("/chat"), 2000);
       }
     } catch (error) {
       toast({

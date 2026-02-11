@@ -30,10 +30,10 @@ export function ChatHeader({ user, displayName, onSignOut }: ChatHeaderProps) {
       <div className="flex items-center gap-3">
         <SidebarTrigger className="lg:hidden" />
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center lg:hidden">
-            <Sparkles className="w-4 h-4 text-white" />
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center lg:hidden">
+            <Sparkles className="w-4 h-4 text-primary-foreground" />
           </div>
-          <span className="font-medium lg:hidden">AI Assistant</span>
+          <span className="font-bold lg:hidden">CareerPrep<span className="text-primary">.ai</span></span>
         </div>
       </div>
 
@@ -50,8 +50,8 @@ export function ChatHeader({ user, displayName, onSignOut }: ChatHeaderProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 focus:outline-none">
-              <Avatar className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 cursor-pointer">
-                <AvatarFallback className="bg-transparent text-white text-sm font-medium">
+              <Avatar className="w-8 h-8 bg-primary cursor-pointer">
+                <AvatarFallback className="bg-transparent text-primary-foreground text-sm font-medium">
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -61,8 +61,8 @@ export function ChatHeader({ user, displayName, onSignOut }: ChatHeaderProps) {
             <div className="px-3 py-3">
               <p className="text-sm text-muted-foreground">{user.email}</p>
               <div className="flex items-center gap-3 mt-3">
-                <Avatar className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500">
-                  <AvatarFallback className="bg-transparent text-white text-xl font-medium">
+                <Avatar className="w-14 h-14 bg-primary">
+                  <AvatarFallback className="bg-transparent text-primary-foreground text-xl font-medium">
                     {initials}
                   </AvatarFallback>
                 </Avatar>

@@ -57,8 +57,8 @@ export function ChatWelcome({
       <div className="text-center max-w-3xl">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
-            <Sparkles className="w-7 h-7 text-white" />
+          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center shadow-lg">
+            <Sparkles className="w-7 h-7 text-primary-foreground" />
           </div>
         </div>
         
