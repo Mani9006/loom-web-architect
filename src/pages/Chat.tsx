@@ -244,7 +244,7 @@ export default function Chat() {
   };
 
   const handleNewChat = () => {
-    navigate("/");
+    navigate("/chat");
     setCurrentConversation(null);
     setChatMessages([]);
     setGeneralMessages([]);
@@ -1630,7 +1630,7 @@ ${experienceSummary}
     await fetchConversations();
     
     if (currentConversation?.id === id) {
-      navigate("/");
+      navigate("/chat");
     }
 
     // Show toast with undo option
@@ -1672,7 +1672,7 @@ ${experienceSummary}
     // Delete all conversations
     await supabase.from("conversations").delete().eq("user_id", user?.id);
     await fetchConversations();
-    navigate("/");
+    navigate("/chat");
     toast({
       title: "All conversations cleared",
       description: `${conversations.length} conversations deleted`,

@@ -169,7 +169,7 @@ export default function Dashboard() {
             <h1 className="text-3xl font-bold">Welcome back{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}!</h1>
             <p className="text-muted-foreground">Here's an overview of your activity</p>
           </div>
-          <Button onClick={() => navigate("/")} className="gap-2">
+          <Button onClick={() => navigate("/chat")} className="gap-2">
             <Sparkles className="w-4 h-4" />
             Start New Chat
           </Button>

@@ -149,7 +149,7 @@ export default function Profile() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/chat")}
           className="mr-2"
         >
           <ArrowLeft className="w-5 h-5" />
