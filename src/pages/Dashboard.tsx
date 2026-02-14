@@ -130,27 +130,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
-        <div className="max-w-6xl mx-auto flex items-center gap-3 px-4 h-16">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/chat")}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <h1 className="text-lg font-bold">Dashboard</h1>
-          </div>
-          <div className="ml-auto">
-            <Button onClick={() => navigate("/chat")} size="sm" className="gap-2">
-              <Sparkles className="w-4 h-4" /> New Chat
-            </Button>
-          </div>
-        </div>
-      </header>
-
+    <div className="bg-muted/30 min-h-full">
       <div className="max-w-6xl mx-auto p-6 space-y-6">
         {/* Welcome */}
         <div>

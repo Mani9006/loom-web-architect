@@ -11,6 +11,13 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import PrintResume from "./pages/PrintResume";
+import AppLayout from "./components/layout/AppLayout";
+import HomePage from "./pages/HomePage";
+import JobTracker from "./pages/JobTracker";
+import MockInterviews from "./pages/MockInterviews";
+import Documents from "./pages/Documents";
+import ResumeBuilder from "./pages/ResumeBuilder";
+import JobsPage from "./pages/JobsPage";
 
 const queryClient = new QueryClient();
 
@@ -21,14 +28,28 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
+          {/* Public routes */}
           <Route path="/" element={<Landing />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/c/:conversationId" element={<Chat />} />
-          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/auth" element={<Auth />} />
-          <Route path="/profile" element={<Profile />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/print-resume" element={<PrintResume />} />
+
+          {/* App routes with sidebar layout */}
+          <Route element={<AppLayout />}>
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/resume-builder" element={<ResumeBuilder />} />
+            <Route path="/job-tracker" element={<JobTracker />} />
+            <Route path="/mock-interviews" element={<MockInterviews />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/c/:conversationId" element={<Chat />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/documents" element={<Documents />} />
+            <Route path="/cover-letters" element={<Documents />} />
+            <Route path="/ai-toolbox" element={<Chat />} />
+          </Route>
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
