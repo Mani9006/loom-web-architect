@@ -8,7 +8,7 @@ import {
   CheckCircle2, ArrowRight, Zap, Clock, Heart, Shield,
   Star, Lightbulb, Mic, Sparkles, Play, ArrowUpRight
 } from "lucide-react";
-import logoImg from "@/assets/logo-new.png";
+import Logo, { LogoIcon } from "@/components/shared/Logo";
 import heroBg from "@/assets/hero-bg.png";
 
 const fadeUp = {
@@ -62,10 +62,7 @@ export default function Landing() {
       <nav className="sticky top-0 z-50 bg-background/60 backdrop-blur-2xl border-b border-border/30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <img src={logoImg} alt="ResumePreps" className="w-9 h-9 rounded-xl object-contain" />
-              <span className="text-lg font-bold text-foreground tracking-tight">ResumePreps</span>
-            </div>
+            <Logo size="md" />
             <div className="hidden md:flex items-center gap-8">
               {["Features", "How It Works", "Testimonials", "Pricing"].map((l) => (
                 <a key={l} href={`#${l.toLowerCase().replace(/ /g, "-")}`} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">{l}</a>
@@ -318,10 +315,7 @@ export default function Landing() {
       <footer className="py-14 border-t border-border/50">
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <img src={logoImg} alt="ResumePreps" className="w-8 h-8 rounded-xl object-contain" />
-              <span className="text-sm font-bold text-foreground">ResumePreps</span>
-            </div>
+            <Logo size="sm" />
             <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} ResumePreps. All rights reserved.</p>
           </div>
         </div>
