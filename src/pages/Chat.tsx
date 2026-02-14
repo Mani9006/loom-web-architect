@@ -1690,13 +1690,7 @@ ${experienceSummary}
 
   return (
     <SidebarProvider>
-      {/*
-        Fixed-screen layout:
-        - Prevent the overall page from scrolling
-        - Allow only the left chat message viewport to scroll (handled inside ResumeChatPanel)
-        - Keep the right resume preview pane fixed
-      */}
-      <div className="flex h-screen w-full overflow-hidden bg-background">
+      <div className="flex h-full w-full overflow-hidden bg-background">
         <ChatSidebar
           conversations={conversations}
           currentConversationId={currentConversation?.id}
@@ -1712,7 +1706,6 @@ ${experienceSummary}
         />
 
         <div className="flex-1 flex flex-col min-w-0">
-          <ChatHeader user={user} displayName={displayName} onSignOut={handleSignOut} />
 
           <main className="flex-1 flex overflow-hidden">
             {/* Welcome / General Chat Mode */}
