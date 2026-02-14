@@ -5,7 +5,7 @@ import { User } from "@supabase/supabase-js";
 import {
   Home, Briefcase, FileText, Target, Mic2, MessageSquare,
   FolderOpen, ChevronDown, ChevronRight, LogOut,
-  Settings, User as UserIcon, Wrench, Users, Menu, X, PanelLeftClose, PanelLeft
+  Settings, User as UserIcon, Wrench, Users, Menu, X, PanelLeftClose, PanelLeft, BarChart3
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -34,6 +34,7 @@ const navItems: NavItem[] = [
   { label: "Job Tracker", icon: Target, path: "/job-tracker" },
   { label: "Mock Interviews", icon: Mic2, path: "/mock-interviews", badge: "Voice" },
   { label: "AI Chat", icon: MessageSquare, path: "/chat" },
+  { label: "Analytics", icon: BarChart3, path: "/analytics", badge: "New" },
   {
     label: "Documents",
     icon: FolderOpen,

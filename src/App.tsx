@@ -21,6 +21,7 @@ import JobsPage from "./pages/JobsPage";
 import Contacts from "./pages/Contacts";
 import CoverLettersPage from "./pages/CoverLettersPage";
 import AIToolbox from "./pages/AIToolbox";
+import Analytics from "./pages/Analytics";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,7 @@ const App = () => (
             <Route path="/linkedin" element={<Profile />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/ai-toolbox" element={<AIToolbox />} />
+            <Route path="/analytics" element={<Analytics />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />
