@@ -5,7 +5,7 @@ import { User } from "@supabase/supabase-js";
 import {
   Home, Briefcase, FileText, Target, Mic2, MessageSquare,
   FolderOpen, ChevronDown, ChevronRight, Sparkles, LogOut,
-  Settings, User as UserIcon, Wrench
+  Settings, User as UserIcon, Wrench, Users
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -38,10 +38,31 @@ const navItems: NavItem[] = [
     path: "/documents",
     children: [
       { label: "My Documents", path: "/documents" },
+      { label: "LinkedIn", path: "/linkedin" },
       { label: "Cover Letters", path: "/cover-letters" },
     ],
   },
-  { label: "AI Toolbox", icon: Wrench, path: "/ai-toolbox" },
+  {
+    label: "Networking",
+    icon: Users,
+    path: "/contacts",
+    children: [
+      { label: "Contacts", path: "/contacts" },
+    ],
+  },
+  {
+    label: "AI Toolbox",
+    icon: Wrench,
+    path: "/ai-toolbox",
+    children: [
+      { label: "Personal Brand Statement", path: "/ai-toolbox" },
+      { label: "Email Writer", path: "/ai-toolbox" },
+      { label: "Elevator Pitch", path: "/ai-toolbox" },
+      { label: "LinkedIn Headline", path: "/ai-toolbox" },
+      { label: "LinkedIn About", path: "/ai-toolbox" },
+      { label: "LinkedIn Post", path: "/ai-toolbox" },
+    ],
+  },
 ];
 
 export default function AppLayout() {

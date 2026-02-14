@@ -18,6 +18,9 @@ import MockInterviews from "./pages/MockInterviews";
 import Documents from "./pages/Documents";
 import ResumeBuilder from "./pages/ResumeBuilder";
 import JobsPage from "./pages/JobsPage";
+import Contacts from "./pages/Contacts";
+import CoverLettersPage from "./pages/CoverLettersPage";
+import AIToolbox from "./pages/AIToolbox";
 
 const queryClient = new QueryClient();
 
@@ -46,8 +49,10 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/documents" element={<Documents />} />
-            <Route path="/cover-letters" element={<Documents />} />
-            <Route path="/ai-toolbox" element={<Chat />} />
+            <Route path="/cover-letters" element={<CoverLettersPage />} />
+            <Route path="/linkedin" element={<Profile />} />
+            <Route path="/contacts" element={<Contacts />} />
+            <Route path="/ai-toolbox" element={<AIToolbox />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />
