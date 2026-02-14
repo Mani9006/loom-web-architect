@@ -9,6 +9,7 @@ import {
   Star, Lightbulb, Mic, Sparkles, Play, ArrowUpRight
 } from "lucide-react";
 import logoImg from "@/assets/logo-new.png";
+import heroBg from "@/assets/hero-bg.png";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -85,8 +86,12 @@ export default function Landing() {
       </nav>
 
       {/* Hero */}
-      <section className="relative pt-20 sm:pt-28 pb-20">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
+      <section className="relative pt-20 sm:pt-28 pb-20 overflow-hidden">
+        {/* Hero background illustration */}
+        <div className="absolute inset-0 pointer-events-none">
+          <img src={heroBg} alt="" className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[1400px] max-w-none opacity-[0.07] blur-sm select-none" />
+        </div>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative z-10">
           <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0}>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card text-sm font-medium text-muted-foreground mb-8 shadow-sm">
               <Sparkles className="w-4 h-4 text-primary" />
