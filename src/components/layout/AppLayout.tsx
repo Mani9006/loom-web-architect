@@ -122,18 +122,25 @@ export default function AppLayout() {
           onClick={() => hasChildren ? toggleMenu(item.label) : handleNavigate(item.path)}
           title={!showText ? item.label : undefined}
           className={cn(
-            "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-200",
+            "w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-medium transition-all duration-200 group",
             active
-              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              ? "bg-gradient-to-r from-sidebar-primary/20 to-sidebar-primary/10 text-sidebar-accent-foreground"
               : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
           )}
         >
-          <Icon className={cn("w-[18px] h-[18px] shrink-0", active && "text-sidebar-primary")} strokeWidth={active ? 2.2 : 1.8} />
+          <div className={cn(
+            "w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0",
+            active
+              ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-lg"
+              : "bg-sidebar-accent/50 text-sidebar-foreground group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground"
+          )}>
+            <Icon className="w-4 h-4" strokeWidth={active ? 2.2 : 1.8} />
+          </div>
           {showText && (
             <>
               <span className="flex-1 text-left truncate">{item.label}</span>
               {item.badge && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-sidebar-primary/20 text-sidebar-primary font-bold">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sidebar-primary/20 text-sidebar-primary font-bold">
                   {item.badge}
                 </span>
               )}
@@ -144,13 +151,13 @@ export default function AppLayout() {
           )}
         </button>
         {hasChildren && expanded && showText && (
-          <div className="ml-[30px] mt-1 space-y-0.5 border-l-2 border-sidebar-border pl-3">
+          <div className="ml-[44px] mt-1.5 space-y-0.5 border-l-2 border-sidebar-border/50 pl-3">
             {item.children!.map((child) => (
               <button
                 key={child.label + child.path}
                 onClick={() => handleNavigate(child.path)}
                 className={cn(
-                  "w-full text-left px-2.5 py-1.5 rounded-lg text-[12px] transition-colors",
+                  "w-full text-left px-3 py-1.5 rounded-xl text-[12px] transition-colors",
                   isActive(child.path)
                     ? "text-sidebar-primary font-semibold"
                     : "text-sidebar-foreground/60 hover:text-sidebar-accent-foreground"
@@ -168,52 +175,64 @@ export default function AppLayout() {
   const sidebarContent = (
     <aside
       className={cn(
-        "border-r border-sidebar-border bg-sidebar flex flex-col shrink-0 transition-all duration-200 h-full",
-        isMobile ? "w-[260px]" : sidebarOpen ? "w-[230px]" : "w-[60px]"
+        "border-r border-sidebar-border bg-sidebar flex flex-col shrink-0 transition-all duration-300 h-full",
+        isMobile ? "w-[260px]" : sidebarOpen ? "w-[240px]" : "w-[68px]"
       )}
     >
       {/* Logo */}
-      <div className="h-[60px] flex items-center justify-between px-4">
-        <div className="flex items-center gap-2.5">
-          <img src={logoImg} alt="ResumePrep" className="w-8 h-8 rounded-lg object-contain" />
+      <div className="h-[68px] flex items-center justify-between px-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl overflow-hidden bg-sidebar-accent flex items-center justify-center">
+            <img src={logoImg} alt="ResumePrep" className="w-9 h-9 object-contain" />
+          </div>
           {showText && (
-            <span className="font-bold text-[15px] text-sidebar-accent-foreground tracking-tight">
+            <span className="font-bold text-[16px] text-sidebar-accent-foreground tracking-tight">
               ResumePrep
             </span>
           )}
         </div>
         {isMobile && (
-          <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/60 transition-colors">
+          <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-xl text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/60 transition-colors">
             <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
       {/* Main Nav */}
-      <nav className="flex-1 overflow-y-auto px-2.5 py-2 space-y-1">
-        <div className="space-y-0.5">
+      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+        {showText && (
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-sidebar-foreground/40 px-3 mb-2">
+            Main
+          </p>
+        )}
+        <div className="space-y-1">
           {mainNav.map(renderNavItem)}
         </div>
 
-        {showText && (
-          <div className="my-4 mx-3 h-px bg-sidebar-border" />
-        )}
+        <div className="my-5 mx-3 h-px bg-sidebar-border/50" />
 
-        <div className="space-y-0.5">
+        {showText && (
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-sidebar-foreground/40 px-3 mb-2">
+            Tools
+          </p>
+        )}
+        <div className="space-y-1">
           {secondaryNav.map(renderNavItem)}
         </div>
       </nav>
 
       {/* Bottom User Section */}
-      <div className="border-t border-sidebar-border p-2.5">
+      <div className="border-t border-sidebar-border/50 p-3">
         <button
           onClick={() => handleNavigate("/profile")}
           className={cn(
-            "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-colors",
+            "w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-medium transition-colors",
             "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
           )}
         >
-          <Settings className="w-[18px] h-[18px]" strokeWidth={1.8} />
+          <div className="w-8 h-8 rounded-xl bg-sidebar-accent/50 flex items-center justify-center">
+            <Settings className="w-4 h-4" strokeWidth={1.8} />
+          </div>
           {showText && "Settings"}
         </button>
       </div>
@@ -232,7 +251,7 @@ export default function AppLayout() {
       {!isMobile && sidebarContent}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-[60px] flex items-center justify-between px-5 border-b border-border bg-background shrink-0">
+        <header className="h-[68px] flex items-center justify-between px-6 border-b border-border/50 bg-background/80 backdrop-blur-xl shrink-0">
           {isMobile ? (
             <button onClick={() => setMobileOpen(true)} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
               <Menu className="w-5 h-5" />
@@ -246,34 +265,37 @@ export default function AppLayout() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-2.5 focus:outline-none hover:opacity-80 transition-opacity">
-                <Avatar className="w-8 h-8">
+                <Avatar className="w-9 h-9 ring-2 ring-border">
                   <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-bold">{initials}</AvatarFallback>
                 </Avatar>
-                <span className="text-sm font-medium hidden sm:inline text-foreground">{displayName}</span>
+                <div className="hidden sm:block text-left">
+                  <p className="text-sm font-semibold text-foreground leading-none">{displayName}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Free plan</p>
+                </div>
                 <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 rounded-xl">
+            <DropdownMenuContent align="end" className="w-56 rounded-2xl p-1.5">
               <div className="px-3 py-2.5">
                 <p className="font-semibold text-sm">{displayName}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{user.email}</p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer gap-2.5 rounded-lg">
+              <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer gap-2.5 rounded-xl">
                 <UserIcon className="w-4 h-4" /> Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/dashboard")} className="cursor-pointer gap-2.5 rounded-lg">
+              <DropdownMenuItem onClick={() => navigate("/dashboard")} className="cursor-pointer gap-2.5 rounded-xl">
                 <Home className="w-4 h-4" /> Dashboard
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive gap-2.5 rounded-lg">
+              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive gap-2.5 rounded-xl">
                 <LogOut className="w-4 h-4" /> Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-muted/30">
+        <main className="flex-1 overflow-y-auto mesh-bg">
           <Outlet />
         </main>
       </div>
