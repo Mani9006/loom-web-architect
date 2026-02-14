@@ -87,14 +87,14 @@ export default function Auth() {
   if (mode === "forgot" && resetSent) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="w-full max-w-sm space-y-5 text-center">
-          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto">
-            <Mail className="w-6 h-6 text-primary" />
+        <div className="w-full max-w-sm space-y-6 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+            <Mail className="w-7 h-7 text-primary" />
           </div>
           <h1 className="text-xl font-bold text-foreground">Check your email</h1>
           <p className="text-muted-foreground text-sm">We've sent a password reset link to <strong className="text-foreground">{email}</strong></p>
-          <Button variant="outline" onClick={() => switchMode("login")} className="w-full h-10 gap-2 text-[13px]">
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to sign in
+          <Button variant="outline" onClick={() => switchMode("login")} className="w-full h-11 gap-2 rounded-xl">
+            <ArrowLeft className="w-4 h-4" /> Back to sign in
           </Button>
         </div>
       </div>
@@ -103,49 +103,51 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-[400px]">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,hsl(12_76%_58%/0.04),transparent_50%)]" />
+      <div className="absolute bottom-0 left-0 w-96 h-96 rounded-full bg-accent/[0.03] blur-3xl" />
+      <div className="w-full max-w-[420px] relative">
         {/* Logo */}
-        <div className="text-center mb-7">
-          <div className="flex items-center justify-center gap-2 mb-1.5">
-            <img src={logoImg} alt="ResumePrep" className="w-9 h-9 rounded-lg object-contain" />
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-2.5 mb-2">
+            <img src={logoImg} alt="ResumePrep" className="w-10 h-10 rounded-xl object-contain" />
           </div>
-          <h1 className="text-lg font-bold text-foreground">ResumePrep</h1>
-          <p className="text-muted-foreground text-[13px] mt-0.5">AI-powered career platform</p>
+          <h1 className="text-xl font-bold text-foreground">ResumePrep</h1>
+          <p className="text-muted-foreground text-sm mt-1">AI-powered career platform</p>
         </div>
 
         {/* Card */}
-        <div className="bg-card rounded-xl border border-border shadow-lg overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border shadow-lg overflow-hidden">
           {/* Tabs */}
           {mode !== "forgot" && (
             <div className="flex border-b border-border">
               <button
                 onClick={() => switchMode("login")}
-                className={`flex-1 py-3 text-center text-[13px] font-semibold transition-colors relative ${
+                className={`flex-1 py-3.5 text-center text-sm font-semibold transition-colors relative ${
                   mode === "login" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 Log In
-                {mode === "login" && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary" />}
+                {mode === "login" && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-full" />}
               </button>
               <button
                 onClick={() => switchMode("signup")}
-                className={`flex-1 py-3 text-center text-[13px] font-semibold transition-colors relative ${
+                className={`flex-1 py-3.5 text-center text-sm font-semibold transition-colors relative ${
                   mode === "signup" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 Sign Up
-                {mode === "signup" && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary" />}
+                {mode === "signup" && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-full" />}
               </button>
             </div>
           )}
 
-          <div className="p-6 space-y-5">
+          <div className="p-7 space-y-5">
             {mode === "forgot" && (
               <div className="text-center mb-1">
-                <h2 className="text-[15px] font-bold text-foreground">Reset Password</h2>
-                <p className="text-[12px] text-muted-foreground mt-1">Enter your email to receive a reset link</p>
-                <Button type="button" variant="ghost" size="sm" onClick={() => switchMode("login")} className="mt-1.5 gap-1 text-muted-foreground text-[12px]">
-                  <ArrowLeft className="w-3 h-3" /> Back to login
+                <h2 className="text-base font-bold text-foreground">Reset Password</h2>
+                <p className="text-sm text-muted-foreground mt-1">Enter your email to receive a reset link</p>
+                <Button type="button" variant="ghost" size="sm" onClick={() => switchMode("login")} className="mt-2 gap-1 text-muted-foreground text-sm">
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back to login
                 </Button>
               </div>
             )}
@@ -158,7 +160,7 @@ export default function Auth() {
                   variant="outline"
                   onClick={() => handleSocialLogin("google")}
                   disabled={socialLoading !== null}
-                  className="w-full h-10 gap-2.5 font-medium text-[13px]"
+                  className="w-full h-11 gap-2.5 font-medium rounded-xl"
                 >
                   {socialLoading === "google" ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -175,17 +177,17 @@ export default function Auth() {
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
-                  <div className="relative flex justify-center text-[11px] uppercase"><span className="bg-card px-3 text-muted-foreground">or</span></div>
+                  <div className="relative flex justify-center text-[11px] uppercase"><span className="bg-card px-3 text-muted-foreground font-medium">or</span></div>
                 </div>
               </>
             )}
 
             {/* Form */}
-            <form onSubmit={handleAuth} className="space-y-3.5">
+            <form onSubmit={handleAuth} className="space-y-4">
               {mode === "signup" && (
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="space-y-1">
-                    <Label className="text-[12px] font-medium">First Name</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">First Name</Label>
                     <Input
                       placeholder="First Name"
                       value={fullName.split(" ")[0] || ""}
@@ -193,11 +195,11 @@ export default function Auth() {
                         const last = fullName.split(" ").slice(1).join(" ");
                         setFullName(last ? `${e.target.value} ${last}` : e.target.value);
                       }}
-                      className="h-9 text-[13px]"
+                      className="h-10 rounded-xl"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-[12px] font-medium">Last Name</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Last Name</Label>
                     <Input
                       placeholder="Last Name"
                       value={fullName.split(" ").slice(1).join(" ") || ""}
@@ -205,30 +207,30 @@ export default function Auth() {
                         const first = fullName.split(" ")[0] || "";
                         setFullName(e.target.value ? `${first} ${e.target.value}` : first);
                       }}
-                      className="h-9 text-[13px]"
+                      className="h-10 rounded-xl"
                     />
                   </div>
                 </div>
               )}
 
-              <div className="space-y-1">
-                <Label className="text-[12px] font-medium">Email</Label>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Email</Label>
                 <Input
                   type="email"
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setErrors((p) => ({ ...p, email: undefined })); }}
-                  className="h-9 text-[13px]"
+                  className="h-10 rounded-xl"
                 />
-                {errors.email && <p className="text-[12px] text-destructive">{errors.email}</p>}
+                {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
               </div>
 
               {mode !== "forgot" && (
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-[12px] font-medium">Password</Label>
+                    <Label className="text-sm font-medium">Password</Label>
                     {mode === "login" && (
-                      <button type="button" onClick={() => switchMode("forgot")} className="text-[11px] text-primary hover:underline font-medium">
+                      <button type="button" onClick={() => switchMode("forgot")} className="text-xs text-primary hover:underline font-medium">
                         Forgot password?
                       </button>
                     )}
@@ -238,22 +240,22 @@ export default function Auth() {
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => { setPassword(e.target.value); setErrors((p) => ({ ...p, password: undefined })); }}
-                    className="h-9 text-[13px]"
+                    className="h-10 rounded-xl"
                   />
-                  {errors.password && <p className="text-[12px] text-destructive">{errors.password}</p>}
+                  {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
                 </div>
               )}
 
               {mode === "signup" && (
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-2.5">
                   <input type="checkbox" id="terms" className="mt-0.5 rounded border-border" defaultChecked />
-                  <label htmlFor="terms" className="text-[11px] text-muted-foreground leading-relaxed">
+                  <label htmlFor="terms" className="text-xs text-muted-foreground leading-relaxed">
                     I agree to the <a href="#" className="text-primary hover:underline">Terms</a> and <a href="#" className="text-primary hover:underline">Privacy Policy</a>
                   </label>
                 </div>
               )}
 
-              <Button type="submit" disabled={loading} className="w-full h-10 font-semibold text-[13px]">
+              <Button type="submit" disabled={loading} className="w-full h-11 font-semibold rounded-xl">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : mode === "login" ? "Log In" : mode === "signup" ? "Create Account" : "Send Reset Link"}
               </Button>
             </form>

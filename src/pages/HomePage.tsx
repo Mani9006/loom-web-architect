@@ -4,12 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  CheckCircle2, ArrowRight, FileEdit, Search, KanbanSquare,
-  Headphones, Sparkles, ChevronRight, TrendingUp, Zap, Mail,
-  Rocket, BookmarkCheck, Send, MessageSquareMore, Trophy, XCircle,
+  CheckCircle2, ArrowRight, FileText, Search, Columns3,
+  Mic, Wand2, ChevronRight, TrendingUp, Zap, Mail,
+  Rocket, Bookmark, Send, MessageCircle, Trophy, XCircle,
   ArrowUpRight
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface Stats {
   saved: number;
@@ -27,18 +28,18 @@ const progressSteps = [
 ];
 
 const quickActions = [
-  { label: "Resume Builder", icon: FileEdit, path: "/resume-builder", desc: "AI-optimized resumes" },
+  { label: "Resume Builder", icon: FileText, path: "/resume-builder", desc: "AI-optimized resumes" },
   { label: "Job Search", icon: Search, path: "/jobs", desc: "AI-matched jobs" },
-  { label: "Job Tracker", icon: KanbanSquare, path: "/job-tracker", desc: "Kanban pipeline" },
-  { label: "Mock Interview", icon: Headphones, path: "/mock-interviews", desc: "Voice practice" },
+  { label: "Job Tracker", icon: Columns3, path: "/job-tracker", desc: "Kanban pipeline" },
+  { label: "Mock Interview", icon: Mic, path: "/mock-interviews", desc: "Voice practice" },
   { label: "Cover Letter", icon: Mail, path: "/cover-letters", desc: "Tailored letters" },
-  { label: "AI Toolbox", icon: Sparkles, path: "/ai-toolbox", desc: "6 career tools" },
+  { label: "AI Toolbox", icon: Wand2, path: "/ai-toolbox", desc: "6 career tools" },
 ];
 
 const pipelineItems = [
-  { label: "Saved", key: "saved" as const, icon: BookmarkCheck, color: "text-muted-foreground" },
+  { label: "Saved", key: "saved" as const, icon: Bookmark, color: "text-muted-foreground" },
   { label: "Applied", key: "applied" as const, icon: Send, color: "text-primary" },
-  { label: "Interviewing", key: "interviewing" as const, icon: MessageSquareMore, color: "text-primary" },
+  { label: "Interviewing", key: "interviewing" as const, icon: MessageCircle, color: "text-accent" },
   { label: "Offers", key: "offer" as const, icon: Trophy, color: "text-primary" },
   { label: "Rejected", key: "rejected" as const, icon: XCircle, color: "text-destructive" },
 ];
@@ -74,24 +75,23 @@ export default function HomePage() {
     load();
   }, []);
 
-  const currentStepIndex = Math.min(completedSteps.length, progressSteps.length - 1);
   const progressPercent = (completedSteps.length / progressSteps.length) * 100;
 
   return (
     <div className="p-6 lg:p-8 max-w-[1200px] mx-auto space-y-8">
       {/* Welcome */}
       <div className="space-y-1">
-        <h1 className="text-[22px] font-bold text-foreground tracking-tight">
-          Welcome back, {displayName}
+        <h1 className="text-2xl font-bold text-foreground tracking-tight">
+          Welcome back, {displayName} 👋
         </h1>
-        <p className="text-muted-foreground text-sm">Your career dashboard — here's what needs attention.</p>
+        <p className="text-muted-foreground">Your career dashboard — here's what needs attention.</p>
       </div>
 
       {/* Stepper */}
       <div className="flex items-center gap-1">
         {progressSteps.map((step, i) => {
           const isCompleted = completedSteps.includes(step.key);
-          const isCurrent = i === currentStepIndex;
+          const isCurrent = i === Math.min(completedSteps.length, progressSteps.length - 1);
           return (
             <div key={step.key} className="flex items-center gap-1 flex-1">
               {i > 0 && (
@@ -99,18 +99,18 @@ export default function HomePage() {
               )}
               <div className="flex items-center gap-1.5">
                 {isCompleted ? (
-                  <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />
+                  <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4 text-primary-foreground" />
                   </div>
                 ) : (
                   <div className={cn(
-                    "w-5 h-5 rounded-full border-2",
+                    "w-6 h-6 rounded-full border-2",
                     isCurrent ? "border-primary" : "border-border"
                   )} />
                 )}
                 <span className={cn(
                   "text-xs font-medium whitespace-nowrap",
-                  isCompleted ? "text-foreground" : isCurrent ? "text-foreground" : "text-muted-foreground"
+                  isCompleted || isCurrent ? "text-foreground" : "text-muted-foreground"
                 )}>
                   {step.label}
                 </span>
@@ -123,37 +123,37 @@ export default function HomePage() {
       {/* Cards Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Progress Card */}
-        <Card className="lg:col-span-2 shadow-sm border-border">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+        <Card className="lg:col-span-2 rounded-2xl">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-semibold text-foreground flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-primary" /> Progress
               </h3>
-              <Badge variant="secondary" className="text-[10px] font-bold">
+              <Badge variant="secondary" className="text-[11px] font-bold rounded-lg">
                 {completedSteps.length}/{progressSteps.length}
               </Badge>
             </div>
-            <div className="w-full bg-secondary rounded-full h-1.5 mb-5">
+            <div className="w-full bg-secondary rounded-full h-2 mb-6">
               <div
-                className="bg-primary h-1.5 rounded-full transition-all duration-500"
+                className="bg-primary h-2 rounded-full transition-all duration-500"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {["Add a Job", "Tailor Your Resume", "Create a Cover Letter", "Apply for a Job"].map(
                 (label, i) => (
-                  <div key={label} className="flex items-center gap-2.5">
+                  <div key={label} className="flex items-center gap-3">
                     {i < completedSteps.length ? (
                       <CheckCircle2 className="w-4 h-4 text-primary" />
                     ) : i === completedSteps.length ? (
-                      <div className="w-4 h-4 rounded-[4px] bg-primary flex items-center justify-center">
+                      <div className="w-4 h-4 rounded bg-primary flex items-center justify-center">
                         <ChevronRight className="w-2.5 h-2.5 text-primary-foreground" />
                       </div>
                     ) : (
-                      <div className="w-4 h-4 rounded-full border-[1.5px] border-border" />
+                      <div className="w-4 h-4 rounded-full border-2 border-border" />
                     )}
                     <span className={cn(
-                      "text-[13px]",
+                      "text-sm",
                       i < completedSteps.length ? "text-muted-foreground line-through" : "text-foreground"
                     )}>{label}</span>
                   </div>
@@ -164,24 +164,24 @@ export default function HomePage() {
         </Card>
 
         {/* CTA Card */}
-        <Card className="lg:col-span-3 shadow-sm border-primary/10 overflow-hidden relative">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.03] via-transparent to-primary/[0.06]" />
-          <CardContent className="p-5 flex flex-col justify-between h-full relative">
+        <Card className="lg:col-span-3 rounded-2xl overflow-hidden relative border-primary/10">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.04] via-transparent to-accent/[0.06]" />
+          <CardContent className="p-6 flex flex-col justify-between h-full relative">
             <div>
-              <Badge className="mb-3 text-[10px] font-bold gap-1 bg-primary text-primary-foreground">
-                <Rocket className="w-3 h-3" /> Recommended
+              <Badge className="mb-4 font-bold gap-1.5 bg-primary text-primary-foreground rounded-lg">
+                <Rocket className="w-3.5 h-3.5" /> Recommended
               </Badge>
-              <h3 className="text-lg font-bold text-foreground mb-1.5">Send Your First Application</h3>
-              <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
+              <h3 className="text-xl font-bold text-foreground mb-2">Send Your First Application</h3>
+              <p className="text-muted-foreground max-w-md leading-relaxed">
                 Use AI to find matching roles, then apply with your optimized resume and tailored cover letter.
               </p>
             </div>
-            <div className="flex gap-2.5 mt-5">
-              <Button onClick={() => navigate("/jobs")} size="sm" className="gap-1.5 shadow-sm">
-                <Zap className="w-3.5 h-3.5" /> Find Jobs
+            <div className="flex gap-3 mt-6">
+              <Button onClick={() => navigate("/jobs")} className="gap-2 rounded-xl shadow-md shadow-primary/15">
+                <Zap className="w-4 h-4" /> Find Jobs
               </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/resume-builder")} className="gap-1.5">
-                <FileEdit className="w-3.5 h-3.5" /> Review Resume
+              <Button variant="outline" onClick={() => navigate("/resume-builder")} className="gap-2 rounded-xl">
+                <FileText className="w-4 h-4" /> Review Resume
               </Button>
             </div>
           </CardContent>
@@ -190,20 +190,20 @@ export default function HomePage() {
 
       {/* Quick Actions */}
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Quick Actions</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <h3 className="font-semibold text-foreground mb-4">Quick Actions</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {quickActions.map((action) => (
             <button
               key={action.label}
               onClick={() => navigate(action.path)}
-              className="group flex flex-col items-center gap-2.5 p-4 rounded-lg border border-border bg-card hover:border-primary/20 hover:shadow-sm transition-all duration-200 text-center"
+              className="group flex flex-col items-center gap-3 p-5 rounded-2xl border border-border bg-card hover:border-primary/20 hover:shadow-md transition-all duration-200 text-center"
             >
-              <div className="w-9 h-9 rounded-lg bg-primary/[0.06] flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                <action.icon className="w-[18px] h-[18px] text-primary" />
+              <div className="w-11 h-11 rounded-xl bg-primary/[0.07] flex items-center justify-center group-hover:bg-primary/[0.12] transition-colors">
+                <action.icon className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <p className="text-[12px] font-semibold text-foreground">{action.label}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{action.desc}</p>
+                <p className="text-[13px] font-semibold text-foreground">{action.label}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{action.desc}</p>
               </div>
             </button>
           ))}
@@ -212,24 +212,24 @@ export default function HomePage() {
 
       {/* Pipeline */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-foreground">Job Pipeline</h3>
-          <button onClick={() => navigate("/job-tracker")} className="text-xs text-primary font-medium flex items-center gap-1 hover:underline">
-            View tracker <ArrowUpRight className="w-3 h-3" />
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-foreground">Job Pipeline</h3>
+          <button onClick={() => navigate("/job-tracker")} className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline">
+            View tracker <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {pipelineItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
                 key={item.label}
                 onClick={() => navigate("/job-tracker")}
-                className="flex flex-col items-center gap-1 p-4 rounded-lg border border-border bg-card hover:border-primary/20 hover:shadow-sm transition-all duration-200"
+                className="flex flex-col items-center gap-1.5 p-5 rounded-2xl border border-border bg-card hover:border-primary/20 hover:shadow-md transition-all duration-200"
               >
-                <Icon className={cn("w-4 h-4 mb-1", item.color)} />
-                <span className="text-xl font-bold text-foreground">{stats[item.key]}</span>
-                <span className="text-[11px] text-muted-foreground">{item.label}</span>
+                <Icon className={cn("w-5 h-5 mb-1", item.color)} />
+                <span className="text-2xl font-bold text-foreground">{stats[item.key]}</span>
+                <span className="text-xs text-muted-foreground">{item.label}</span>
               </button>
             );
           })}
@@ -237,8 +237,4 @@ export default function HomePage() {
       </div>
     </div>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
 }

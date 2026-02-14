@@ -8,7 +8,7 @@ import {
   PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area,
 } from "recharts";
 
-const COLORS = ["hsl(239,84%,67%)", "hsl(174,60%,51%)", "hsl(45,93%,58%)", "hsl(0,84%,60%)", "hsl(280,60%,60%)"];
+const COLORS = ["hsl(12,76%,58%)", "hsl(28,80%,52%)", "hsl(160,50%,45%)", "hsl(340,65%,55%)", "hsl(200,70%,50%)"];
 
 const SKILL_GAPS = [
   { skill: "React", level: 85 },
