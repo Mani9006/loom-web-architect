@@ -33,7 +33,7 @@ const stats = [
 ];
 
 const testimonials = [
-  { name: "Sarah Chen", role: "Software Engineer → Google", content: "ResumePrep's ATS checker found 12 missing keywords. After optimizing, I got callbacks from 5 FAANG companies in 2 weeks.", avatar: "SC" },
+  { name: "Sarah Chen", role: "Software Engineer → Google", content: "ResumePreps' ATS checker found 12 missing keywords. After optimizing, I got callbacks from 5 FAANG companies in 2 weeks.", avatar: "SC" },
   { name: "Michael Torres", role: "PM → Meta", content: "The voice interview simulation was incredibly realistic. I practiced behavioral questions until I could answer them in my sleep.", avatar: "MT" },
   { name: "Priya Sharma", role: "Data Scientist → Amazon", content: "Generated 8 tailored cover letters in 20 minutes. Each one perfectly aligned my experience with the job requirements.", avatar: "PS" },
   { name: "David Gartner", role: "Financial Analyst", content: "The job match scoring saved me from applying to positions I wasn't qualified for and found roles I never would have searched for.", avatar: "DG" },
@@ -63,8 +63,8 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <img src={logoImg} alt="ResumePrep" className="w-9 h-9 rounded-xl object-contain" />
-              <span className="text-lg font-bold text-foreground tracking-tight">ResumePrep</span>
+              <img src={logoImg} alt="ResumePreps" className="w-9 h-9 rounded-xl object-contain" />
+              <span className="text-lg font-bold text-foreground tracking-tight">ResumePreps</span>
             </div>
             <div className="hidden md:flex items-center gap-8">
               {["Features", "How It Works", "Testimonials", "Pricing"].map((l) => (
@@ -210,7 +210,7 @@ export default function Landing() {
 
             <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={1}
               className="rounded-3xl border border-primary/15 bg-gradient-to-br from-primary/[0.03] to-accent/[0.03] p-8 space-y-6">
-              <div className="flex items-center gap-2 text-primary font-bold text-sm"><span className="text-2xl">🚀</span> With ResumePrep</div>
+              <div className="flex items-center gap-2 text-primary font-bold text-sm"><span className="text-2xl">🚀</span> With ResumePreps</div>
               {[
                 { icon: Heart, title: "ATS-Optimized", desc: "AI ensures every resume passes screening" },
                 { icon: Zap, title: "5 Minutes Flat", desc: "AI generates everything you need instantly" },
@@ -319,10 +319,10 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <img src={logoImg} alt="ResumePrep" className="w-8 h-8 rounded-xl object-contain" />
-              <span className="text-sm font-bold text-foreground">ResumePrep</span>
+              <img src={logoImg} alt="ResumePreps" className="w-8 h-8 rounded-xl object-contain" />
+              <span className="text-sm font-bold text-foreground">ResumePreps</span>
             </div>
-            <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} ResumePrep. All rights reserved.</p>
+            <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} ResumePreps. All rights reserved.</p>
           </div>
         </div>
       </footer>

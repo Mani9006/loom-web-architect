@@ -110,7 +110,7 @@ export default function Auth() {
         <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-primary/[0.06] blur-3xl animate-blob" />
         <div className="absolute bottom-20 right-20 w-48 h-48 rounded-full bg-accent/[0.05] blur-3xl animate-blob" style={{ animationDelay: "3s" }} />
         <div className="relative text-center max-w-md">
-          <img src={logoImg} alt="ResumePrep" className="w-20 h-20 mx-auto mb-8 rounded-3xl" />
+          <img src={logoImg} alt="ResumePreps" className="w-20 h-20 mx-auto mb-8 rounded-3xl" />
           <h2 className="text-4xl font-extrabold text-foreground mb-4 tracking-tight">
             Your career,<br/><span className="gradient-text">supercharged.</span>
           </h2>
@@ -126,8 +126,8 @@ export default function Auth() {
           className="w-full max-w-[420px]">
           {/* Mobile logo */}
           <div className="lg:hidden text-center mb-8">
-            <img src={logoImg} alt="ResumePrep" className="w-14 h-14 mx-auto mb-3 rounded-2xl" />
-            <h1 className="text-xl font-bold text-foreground">ResumePrep</h1>
+            <img src={logoImg} alt="ResumePreps" className="w-14 h-14 mx-auto mb-3 rounded-2xl" />
+            <h1 className="text-xl font-bold text-foreground">ResumePreps</h1>
           </div>
 
           {/* Card */}

@@ -183,11 +183,11 @@ export default function AppLayout() {
       <div className="h-[68px] flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl overflow-hidden bg-sidebar-accent flex items-center justify-center">
-            <img src={logoImg} alt="ResumePrep" className="w-9 h-9 object-contain" />
+            <img src={logoImg} alt="ResumePreps" className="w-9 h-9 object-contain" />
           </div>
           {showText && (
             <span className="font-bold text-[16px] text-sidebar-accent-foreground tracking-tight">
-              ResumePrep
+              ResumePreps
             </span>
           )}
         </div>
