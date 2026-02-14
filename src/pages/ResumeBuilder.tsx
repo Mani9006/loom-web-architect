@@ -22,7 +22,6 @@ export default function ResumeBuilder() {
   const [resumes, setResumes] = useState<Resume[]>([]);
 
   useEffect(() => {
-    // Load conversations that were resume-related as "resumes"
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -38,7 +37,7 @@ export default function ResumeBuilder() {
           data.map((c) => ({
             id: c.id,
             title: c.title || "Untitled Resume",
-            score: Math.floor(Math.random() * 40) + 50, // Placeholder score
+            score: Math.floor(Math.random() * 40) + 50,
             updatedAt: c.updated_at,
           }))
         );
@@ -53,42 +52,35 @@ export default function ResumeBuilder() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">All Resumes</h1>
+        <div>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <FileText className="w-5 h-5 text-primary" /> Resume Builder
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">AI-optimized, ATS-ready resumes</p>
+        </div>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 w-48"
-            />
+            <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
           </div>
-          <Button variant="outline" size="sm" className="gap-2">
-            <SlidersHorizontal className="w-4 h-4" /> Filter
-          </Button>
           <Button size="sm" className="gap-2" onClick={() => navigate("/chat")}>
-            <Plus className="w-4 h-4" /> Create New Resume
+            <Plus className="w-4 h-4" /> New Resume
           </Button>
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-4 border-b border-border">
         {[
           { key: "base" as const, label: "Base Resumes" },
-          { key: "tailored" as const, label: "Job Tailored Resumes" },
+          { key: "tailored" as const, label: "Job-Tailored Resumes" },
         ].map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
               "pb-2.5 text-sm font-medium border-b-2 transition-colors",
-              activeTab === tab.key
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+              activeTab === tab.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             {tab.label}
@@ -96,14 +88,13 @@ export default function ResumeBuilder() {
         ))}
       </div>
 
-      {/* Resume Cards Grid */}
       {filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+        <div className="text-center py-20 text-muted-foreground">
+          <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
           <p className="font-medium">No resumes yet</p>
-          <p className="text-sm">Create your first resume to get started</p>
+          <p className="text-sm mt-1">Create your first AI-optimized resume</p>
           <Button className="mt-4 gap-2" onClick={() => navigate("/chat")}>
-            <Plus className="w-4 h-4" /> Create Resume
+            <Sparkles className="w-4 h-4" /> Create Resume
           </Button>
         </div>
       ) : (
@@ -111,17 +102,19 @@ export default function ResumeBuilder() {
           {filtered.map((resume) => (
             <Card
               key={resume.id}
-              className="overflow-hidden hover:shadow-md transition-shadow group cursor-pointer"
+              className="overflow-hidden hover:shadow-[var(--shadow-card-hover)] transition-all duration-300 group cursor-pointer hover:border-primary/20"
               onClick={() => navigate(`/c/${resume.id}`)}
             >
-              {/* Preview Placeholder */}
-              <div className="relative h-48 bg-muted/50 border-b flex items-center justify-center">
-                <FileText className="w-16 h-16 text-muted-foreground/20" />
-                {/* Score Badge */}
+              <div className="relative h-48 bg-muted/30 border-b flex items-center justify-center">
+                <FileText className="w-16 h-16 text-muted-foreground/10" />
                 <div
                   className={cn(
-                    "absolute top-3 right-3 w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-primary-foreground",
-                    resume.score >= 70 ? "bg-primary" : resume.score >= 50 ? "bg-destructive/70" : "bg-destructive"
+                    "absolute top-3 right-3 w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold",
+                    resume.score >= 70
+                      ? "bg-accent/15 text-accent"
+                      : resume.score >= 50
+                      ? "bg-primary/15 text-primary"
+                      : "bg-destructive/15 text-destructive"
                   )}
                 >
                   {resume.score}%
@@ -131,20 +124,17 @@ export default function ResumeBuilder() {
               <CardContent className="p-4">
                 <h3 className="font-semibold text-sm truncate">{resume.title}</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Last edited {formatDistanceToNow(new Date(resume.updatedAt), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(resume.updatedAt), { addSuffix: true })}
                 </p>
                 <div className="flex items-center gap-1 mt-3 flex-wrap">
                   <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-primary">
-                    <Sparkles className="w-3 h-3" /> Tailor for job
+                    <Sparkles className="w-3 h-3" /> Tailor
                   </Button>
                   <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
                     <Copy className="w-3 h-3" /> Clone
                   </Button>
                   <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-destructive">
                     <Trash2 className="w-3 h-3" /> Delete
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
-                    <Star className="w-3 h-3" /> Set as default
                   </Button>
                 </div>
               </CardContent>

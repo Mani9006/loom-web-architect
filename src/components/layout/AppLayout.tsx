@@ -4,8 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import {
   Home, Briefcase, FileText, Target, Mic2, MessageSquare,
-  FolderOpen, ChevronDown, ChevronRight, Sparkles, LogOut,
-  Settings, User as UserIcon, Wrench, Users
+  FolderOpen, ChevronDown, ChevronRight, LogOut,
+  Settings, User as UserIcon, Wrench, Users, Menu, X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import logoImg from "@/assets/logo.png";
 
 interface NavItem {
   label: string;
@@ -27,18 +28,17 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
-  { label: "Jobs", icon: Briefcase, path: "/jobs", badge: "Beta" },
+  { label: "Jobs", icon: Briefcase, path: "/jobs", badge: "AI" },
   { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
   { label: "Job Tracker", icon: Target, path: "/job-tracker" },
-  { label: "Mock Interviews", icon: Mic2, path: "/mock-interviews" },
+  { label: "Mock Interviews", icon: Mic2, path: "/mock-interviews", badge: "Voice" },
   { label: "AI Chat", icon: MessageSquare, path: "/chat" },
   {
-    label: "Application Materials",
+    label: "Documents",
     icon: FolderOpen,
     path: "/documents",
     children: [
       { label: "My Documents", path: "/documents" },
-      { label: "LinkedIn", path: "/linkedin" },
       { label: "Cover Letters", path: "/cover-letters" },
     ],
   },
@@ -54,8 +54,9 @@ const navItems: NavItem[] = [
     label: "AI Toolbox",
     icon: Wrench,
     path: "/ai-toolbox",
+    badge: "6 Tools",
     children: [
-      { label: "Personal Brand Statement", path: "/ai-toolbox" },
+      { label: "Brand Statement", path: "/ai-toolbox" },
       { label: "Email Writer", path: "/ai-toolbox" },
       { label: "Elevator Pitch", path: "/ai-toolbox" },
       { label: "LinkedIn Headline", path: "/ai-toolbox" },
@@ -71,6 +72,7 @@ export default function AppLayout() {
   const [user, setUser] = useState<User | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -122,20 +124,25 @@ export default function AppLayout() {
 
   return (
     <div className="flex h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="w-[200px] border-r border-border bg-sidebar flex flex-col shrink-0">
+      {/* Sidebar — dark premium */}
+      <aside
+        className={cn(
+          "border-r border-sidebar-border bg-sidebar flex flex-col shrink-0 transition-all duration-300",
+          sidebarOpen ? "w-[220px]" : "w-[60px]"
+        )}
+      >
         {/* Logo */}
-        <div className="h-14 flex items-center gap-2 px-4 border-b border-border">
-          <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
-            <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
-          </div>
-          <span className="font-bold text-sm">
-            CareerPrep<span className="text-primary">.ai</span>
-          </span>
+        <div className="h-14 flex items-center gap-2.5 px-3 border-b border-sidebar-border">
+          <img src={logoImg} alt="ResumePrep" className="w-8 h-8 rounded-lg object-contain" />
+          {sidebarOpen && (
+            <span className="font-bold text-sm text-sidebar-foreground tracking-tight">
+              Resume<span className="text-accent">Prep</span>
+            </span>
+          )}
         </div>
 
         {/* Nav Items */}
-        <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             const hasChildren = !!item.children;
@@ -152,35 +159,40 @@ export default function AppLayout() {
                       navigate(item.path);
                     }
                   }}
+                  title={!sidebarOpen ? item.label : undefined}
                   className={cn(
-                    "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors",
+                    "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-200",
                     active
-                      ? "bg-primary/10 text-primary"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                      ? "bg-sidebar-primary/15 text-sidebar-primary-foreground"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                   )}
                 >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="flex-1 text-left truncate">{item.label}</span>
-                  {item.badge && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-                      {item.badge}
-                    </span>
-                  )}
-                  {hasChildren && (
-                    expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
+                  <Icon className={cn("w-4 h-4 shrink-0", active && "text-primary")} />
+                  {sidebarOpen && (
+                    <>
+                      <span className="flex-1 text-left truncate">{item.label}</span>
+                      {item.badge && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-semibold">
+                          {item.badge}
+                        </span>
+                      )}
+                      {hasChildren && (
+                        expanded ? <ChevronDown className="w-3.5 h-3.5 opacity-50" /> : <ChevronRight className="w-3.5 h-3.5 opacity-50" />
+                      )}
+                    </>
                   )}
                 </button>
-                {hasChildren && expanded && (
-                  <div className="ml-6 mt-0.5 space-y-0.5">
+                {hasChildren && expanded && sidebarOpen && (
+                  <div className="ml-7 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2.5">
                     {item.children!.map((child) => (
                       <button
-                        key={child.path}
+                        key={child.label + child.path}
                         onClick={() => navigate(child.path)}
                         className={cn(
-                          "w-full text-left px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors",
+                          "w-full text-left px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors",
                           isActive(child.path)
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
+                            ? "text-primary"
+                            : "text-sidebar-foreground/50 hover:text-sidebar-foreground/80"
                         )}
                       >
                         {child.label}
@@ -194,13 +206,13 @@ export default function AppLayout() {
         </nav>
 
         {/* Bottom */}
-        <div className="border-t border-border p-2 space-y-0.5">
+        <div className="border-t border-sidebar-border p-2">
           <button
             onClick={() => navigate("/profile")}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
           >
             <Settings className="w-4 h-4" />
-            Settings
+            {sidebarOpen && "Settings"}
           </button>
         </div>
       </aside>
@@ -208,7 +220,14 @@ export default function AppLayout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
-        <header className="h-14 flex items-center justify-end px-4 border-b border-border bg-background shrink-0">
+        <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-background shrink-0">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground"
+          >
+            {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+          </button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-2 focus:outline-none hover:opacity-80 transition-opacity">
