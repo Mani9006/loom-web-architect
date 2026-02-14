@@ -3,9 +3,9 @@ import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import {
-  LayoutDashboard, Search, FileEdit, KanbanSquare, Headphones, BotMessageSquare,
+  Home, Search, FileText, Columns3, Mic, MessageCircle,
   FolderOpen, ChevronDown, ChevronRight, LogOut,
-  Settings, User as UserIcon, Sparkles, Users2, Menu, X, PanelLeftClose, PanelLeft, BarChart3
+  Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -28,16 +28,16 @@ interface NavItem {
 }
 
 const mainNav: NavItem[] = [
-  { label: "Home", icon: LayoutDashboard, path: "/home" },
+  { label: "Home", icon: Home, path: "/home" },
   { label: "Job Search", icon: Search, path: "/jobs", badge: "AI" },
-  { label: "Resume Builder", icon: FileEdit, path: "/resume-builder" },
-  { label: "Job Tracker", icon: KanbanSquare, path: "/job-tracker" },
-  { label: "Interviews", icon: Headphones, path: "/mock-interviews" },
-  { label: "AI Chat", icon: BotMessageSquare, path: "/chat" },
+  { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
+  { label: "Job Tracker", icon: Columns3, path: "/job-tracker" },
+  { label: "Interviews", icon: Mic, path: "/mock-interviews" },
+  { label: "AI Chat", icon: MessageCircle, path: "/chat" },
 ];
 
 const secondaryNav: NavItem[] = [
-  { label: "Analytics", icon: BarChart3, path: "/analytics" },
+  { label: "Analytics", icon: TrendingUp, path: "/analytics" },
   {
     label: "Documents",
     icon: FolderOpen,
@@ -47,10 +47,10 @@ const secondaryNav: NavItem[] = [
       { label: "Cover Letters", path: "/cover-letters" },
     ],
   },
-  { label: "Contacts", icon: Users2, path: "/contacts" },
+  { label: "Contacts", icon: Users, path: "/contacts" },
   {
     label: "AI Toolbox",
-    icon: Sparkles,
+    icon: Wand2,
     path: "/ai-toolbox",
     badge: "6",
     children: [
@@ -122,37 +122,37 @@ export default function AppLayout() {
           onClick={() => hasChildren ? toggleMenu(item.label) : handleNavigate(item.path)}
           title={!showText ? item.label : undefined}
           className={cn(
-            "w-full flex items-center gap-3 px-3 py-[7px] rounded-lg text-[13px] font-medium transition-all duration-150",
+            "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-200",
             active
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
               : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
           )}
         >
-          <Icon className={cn("w-4 h-4 shrink-0", active && "text-sidebar-primary")} />
+          <Icon className={cn("w-[18px] h-[18px] shrink-0", active && "text-sidebar-primary")} strokeWidth={active ? 2.2 : 1.8} />
           {showText && (
             <>
               <span className="flex-1 text-left truncate">{item.label}</span>
               {item.badge && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sidebar-primary/20 text-sidebar-primary font-semibold">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-sidebar-primary/20 text-sidebar-primary font-bold">
                   {item.badge}
                 </span>
               )}
               {hasChildren && (
-                expanded ? <ChevronDown className="w-3 h-3 opacity-40" /> : <ChevronRight className="w-3 h-3 opacity-40" />
+                expanded ? <ChevronDown className="w-3.5 h-3.5 opacity-40" /> : <ChevronRight className="w-3.5 h-3.5 opacity-40" />
               )}
             </>
           )}
         </button>
         {hasChildren && expanded && showText && (
-          <div className="ml-[27px] mt-0.5 space-y-0.5 border-l border-sidebar-border pl-3">
+          <div className="ml-[30px] mt-1 space-y-0.5 border-l-2 border-sidebar-border pl-3">
             {item.children!.map((child) => (
               <button
                 key={child.label + child.path}
                 onClick={() => handleNavigate(child.path)}
                 className={cn(
-                  "w-full text-left px-2.5 py-[5px] rounded-md text-[12px] transition-colors",
+                  "w-full text-left px-2.5 py-1.5 rounded-lg text-[12px] transition-colors",
                   isActive(child.path)
-                    ? "text-sidebar-primary font-medium"
+                    ? "text-sidebar-primary font-semibold"
                     : "text-sidebar-foreground/60 hover:text-sidebar-accent-foreground"
                 )}
               >
@@ -169,34 +169,34 @@ export default function AppLayout() {
     <aside
       className={cn(
         "border-r border-sidebar-border bg-sidebar flex flex-col shrink-0 transition-all duration-200 h-full",
-        isMobile ? "w-[260px]" : sidebarOpen ? "w-[220px]" : "w-[56px]"
+        isMobile ? "w-[260px]" : sidebarOpen ? "w-[230px]" : "w-[60px]"
       )}
     >
       {/* Logo */}
-      <div className="h-14 flex items-center justify-between px-3">
-        <div className="flex items-center gap-2">
-          <img src={logoImg} alt="ResumePrep" className="w-7 h-7 rounded-md object-contain" />
+      <div className="h-[60px] flex items-center justify-between px-4">
+        <div className="flex items-center gap-2.5">
+          <img src={logoImg} alt="ResumePrep" className="w-8 h-8 rounded-lg object-contain" />
           {showText && (
-            <span className="font-bold text-[14px] text-sidebar-accent-foreground tracking-tight">
+            <span className="font-bold text-[15px] text-sidebar-accent-foreground tracking-tight">
               ResumePrep
             </span>
           )}
         </div>
         {isMobile && (
-          <button onClick={() => setMobileOpen(false)} className="p-1 rounded-md text-sidebar-foreground hover:text-sidebar-accent-foreground">
+          <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/60 transition-colors">
             <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
       {/* Main Nav */}
-      <nav className="flex-1 overflow-y-auto px-2 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto px-2.5 py-2 space-y-1">
         <div className="space-y-0.5">
           {mainNav.map(renderNavItem)}
         </div>
 
         {showText && (
-          <div className="my-3 mx-3 h-px bg-sidebar-border" />
+          <div className="my-4 mx-3 h-px bg-sidebar-border" />
         )}
 
         <div className="space-y-0.5">
@@ -205,15 +205,15 @@ export default function AppLayout() {
       </nav>
 
       {/* Bottom User Section */}
-      <div className="border-t border-sidebar-border p-2">
+      <div className="border-t border-sidebar-border p-2.5">
         <button
           onClick={() => handleNavigate("/profile")}
           className={cn(
-            "w-full flex items-center gap-3 px-3 py-[7px] rounded-lg text-[13px] font-medium transition-colors",
+            "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-colors",
             "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
           )}
         >
-          <Settings className="w-4 h-4" />
+          <Settings className="w-[18px] h-[18px]" strokeWidth={1.8} />
           {showText && "Settings"}
         </button>
       </div>
@@ -232,41 +232,41 @@ export default function AppLayout() {
       {!isMobile && sidebarContent}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-background shrink-0">
+        <header className="h-[60px] flex items-center justify-between px-5 border-b border-border bg-background shrink-0">
           {isMobile ? (
-            <button onClick={() => setMobileOpen(true)} className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground">
+            <button onClick={() => setMobileOpen(true)} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
               <Menu className="w-5 h-5" />
             </button>
           ) : (
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground">
-              {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
+              {sidebarOpen ? <PanelLeftClose className="w-[18px] h-[18px]" /> : <PanelLeft className="w-[18px] h-[18px]" />}
             </button>
           )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-2.5 focus:outline-none hover:opacity-80 transition-opacity">
-                <Avatar className="w-7 h-7">
+                <Avatar className="w-8 h-8">
                   <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-bold">{initials}</AvatarFallback>
                 </Avatar>
                 <span className="text-sm font-medium hidden sm:inline text-foreground">{displayName}</span>
-                <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent align="end" className="w-56 rounded-xl">
               <div className="px-3 py-2.5">
                 <p className="font-semibold text-sm">{displayName}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{user.email}</p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer gap-2.5">
+              <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer gap-2.5 rounded-lg">
                 <UserIcon className="w-4 h-4" /> Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/dashboard")} className="cursor-pointer gap-2.5">
-                <LayoutDashboard className="w-4 h-4" /> Dashboard
+              <DropdownMenuItem onClick={() => navigate("/dashboard")} className="cursor-pointer gap-2.5 rounded-lg">
+                <Home className="w-4 h-4" /> Dashboard
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive gap-2.5">
+              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive gap-2.5 rounded-lg">
                 <LogOut className="w-4 h-4" /> Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
