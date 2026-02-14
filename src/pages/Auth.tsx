@@ -31,11 +31,11 @@ export default function Auth() {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session?.user) navigate("/chat");
+      if (event === "SIGNED_IN" && session?.user) navigate("/home");
       if (event === "PASSWORD_RECOVERY") navigate("/reset-password");
     });
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) navigate("/chat");
+      if (session?.user) navigate("/home");
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
@@ -65,7 +65,7 @@ export default function Auth() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) toast({ title: "Login failed", description: error.message.includes("Invalid login credentials") ? "Invalid email or password." : error.message, variant: "destructive" });
       } else {
-        const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/chat`, data: { full_name: fullName } } });
+        const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/home`, data: { full_name: fullName } } });
         if (error) toast({ title: error.message.includes("already registered") ? "Account exists" : "Sign up failed", description: error.message.includes("already registered") ? "This email is already registered." : error.message, variant: "destructive" });
         else toast({ title: "Welcome!", description: "Account created successfully." });
       }
@@ -76,7 +76,7 @@ export default function Auth() {
   const handleSocialLogin = async (provider: Provider) => {
     setSocialLoading(provider);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: `${window.location.origin}/chat`, queryParams: { access_type: 'offline', prompt: 'consent' } } });
+      const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: `${window.location.origin}/home`, queryParams: { access_type: 'offline', prompt: 'consent' } } });
       if (error) { toast({ title: "Login failed", description: error.message, variant: "destructive" }); setSocialLoading(null); }
     } catch { toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" }); setSocialLoading(null); }
   };
@@ -118,7 +118,7 @@ export default function Auth() {
               <Sparkles className="w-6 h-6 text-primary-foreground" />
             </div>
           </div>
-          <h1 className="text-xl font-bold">CareerPrep<span className="text-primary">.ai</span></h1>
+          <h1 className="text-xl font-bold">Resume<span className="text-accent">Prep</span></h1>
           <p className="text-muted-foreground text-sm mt-1">Job Seeker Portal</p>
         </div>
 
