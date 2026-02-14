@@ -8,7 +8,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { Search, SlidersHorizontal, Plus, Users, FolderOpen } from "lucide-react";
+import { Search, Plus, Users, FolderOpen } from "lucide-react";
 
 interface Contact {
   id: string;
@@ -37,32 +37,29 @@ export default function Contacts() {
   };
 
   const filtered = contacts.filter(
-    (c) =>
-      c.fullName.toLowerCase().includes(search.toLowerCase()) ||
-      c.company.toLowerCase().includes(search.toLowerCase())
+    (c) => c.fullName.toLowerCase().includes(search.toLowerCase()) || c.company.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Users className="w-5 h-5 text-primary" />
-          <h1 className="text-xl font-bold">Contacts</h1>
+        <div>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <Users className="w-5 h-5 text-accent" /> Contacts
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Track your professional network</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
+            <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
           </div>
-          <Button variant="outline" size="sm" className="gap-2">
-            <SlidersHorizontal className="w-4 h-4" /> Filter
-          </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-2"><Plus className="w-4 h-4" /> Create Contact</Button>
+              <Button size="sm" className="gap-2"><Plus className="w-4 h-4" /> Add Contact</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Create Contact</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Add Contact</DialogTitle></DialogHeader>
               <div className="space-y-3">
                 {[
                   { key: "fullName", label: "Full Name", placeholder: "John Doe" },
@@ -80,7 +77,7 @@ export default function Contacts() {
                     />
                   </div>
                 ))}
-                <Button onClick={addContact} className="w-full">Create</Button>
+                <Button onClick={addContact} className="w-full">Create Contact</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -102,16 +99,17 @@ export default function Contacts() {
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-16 text-muted-foreground">
-                  <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                  <p>No data</p>
+                  <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-20" />
+                  <p className="font-medium">No contacts yet</p>
+                  <p className="text-sm mt-1">Start building your professional network</p>
                 </TableCell>
               </TableRow>
             ) : (
               filtered.map((c) => (
-                <TableRow key={c.id}>
+                <TableRow key={c.id} className="hover:bg-muted/20">
                   <TableCell className="font-medium">{c.fullName}</TableCell>
                   <TableCell>{c.company}</TableCell>
-                  <TableCell>{c.relationship}</TableCell>
+                  <TableCell><span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">{c.relationship}</span></TableCell>
                   <TableCell className="text-primary truncate max-w-[150px]">{c.linkedin}</TableCell>
                   <TableCell>{c.email}</TableCell>
                 </TableRow>

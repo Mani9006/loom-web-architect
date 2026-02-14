@@ -3,101 +3,94 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
-  FileText, Search, Target, Mail, MessageSquare, Sparkles,
+  FileText, Search, Target, Mail, MessageSquare,
   CheckCircle, ArrowRight, Zap, Clock, ThumbsUp, Shield,
-  Star, Briefcase, Lightbulb, BarChart3
+  Star, Briefcase, Lightbulb, BarChart3, Mic2, Brain
 } from "lucide-react";
+import logoImg from "@/assets/logo.png";
 
 const features = [
   {
     icon: FileText, tag: "AI Resume Builder",
-    title: "Instantly build a job-ready resume with AI",
-    description: "Use AI to make your resume ATS-friendly, boost your score, and add job-specific keywords in just a few clicks.",
-    cta: "Create my resume",
-    gradient: "from-blue-500 to-blue-600",
+    title: "Build job-winning resumes in minutes",
+    description: "Our AI analyzes thousands of successful resumes to craft ATS-optimized documents that get you past screening.",
+    cta: "Build my resume",
   },
   {
     icon: Lightbulb, tag: "Job Fit Analyzer",
-    title: "Personalize your documents for every Job",
-    description: "Quickly create resumes and cover letters tailored to each job's specific requirements.",
-    cta: "Analyze Job Fit",
-    gradient: "from-purple-500 to-purple-600",
+    title: "Know your match score before you apply",
+    description: "Instantly see how well your profile matches any job — with AI recommendations to close the gap.",
+    cta: "Analyze fit",
   },
   {
     icon: Target, tag: "ATS Score Checker",
-    title: "Optimize your resume for ATS systems",
-    description: "Get detailed ATS compatibility scores, keyword analysis, and actionable improvement suggestions.",
-    cta: "Check ATS Score",
-    gradient: "from-emerald-500 to-emerald-600",
+    title: "Beat the bots, reach the humans",
+    description: "Get a detailed ATS compatibility score with keyword gaps, formatting fixes, and actionable improvements.",
+    cta: "Check my score",
   },
   {
-    icon: Mail, tag: "AI Cover Letter",
-    title: "Generate tailored cover letters instantly",
-    description: "Create compelling, personalized cover letters with multiple templates and version history.",
-    cta: "Write Cover Letter",
-    gradient: "from-orange-500 to-orange-600",
+    icon: Mail, tag: "AI Cover Letters",
+    title: "Personalized letters that get responses",
+    description: "Generate tailored cover letters that align your achievements with each job's specific requirements.",
+    cta: "Write a letter",
   },
   {
     icon: Search, tag: "Smart Job Search",
-    title: "Find matching jobs powered by AI",
-    description: "AI analyzes your skills and experience to suggest the best matching roles and application strategies.",
-    cta: "Find Jobs",
-    gradient: "from-pink-500 to-pink-600",
+    title: "AI finds jobs you'd never discover alone",
+    description: "Real-time AI matching analyzes your skills across LinkedIn, Indeed, and Google Jobs to surface the best fits.",
+    cta: "Find jobs",
   },
   {
-    icon: MessageSquare, tag: "Interview Prep",
-    title: "Practice with AI-powered mock interviews",
-    description: "Get real-time feedback with voice support and AI-generated questions tailored to your target role.",
-    cta: "Start Practicing",
-    gradient: "from-cyan-500 to-cyan-600",
+    icon: Mic2, tag: "Voice Interview Prep",
+    title: "Practice with an AI interviewer — out loud",
+    description: "Voice-powered mock interviews with real-time feedback, scoring, and personalized improvement plans.",
+    cta: "Start practicing",
   },
 ];
 
 const stats = [
-  { value: "1M+", label: "Job Seekers Served", icon: Briefcase },
-  { value: "60%", label: "Faster time to interviews", icon: Zap },
-  { value: "2x", label: "More Job Offers", icon: ThumbsUp },
+  { value: "50K+", label: "Resumes Optimized", icon: FileText },
+  { value: "3x", label: "More Interview Callbacks", icon: Zap },
+  { value: "85%", label: "Users Land Jobs Faster", icon: ThumbsUp },
 ];
-
-const companyLogos = ["Google", "Microsoft", "Adobe", "Meta", "Netflix", "Amazon", "Tesla", "Spotify"];
 
 const testimonials = [
   {
-    name: "Sarah Chen", role: "Software Engineer at Google",
-    content: "CareerPrep AI transformed my job search. The resume builder and ATS checker helped me land interviews at top tech companies within weeks.",
+    name: "Sarah Chen", role: "Software Engineer → Google",
+    content: "ResumePrep's ATS checker found 12 missing keywords in my resume. After optimizing, I got callbacks from 5 FAANG companies in 2 weeks.",
     avatar: "SC",
   },
   {
-    name: "Michael Torres", role: "Product Manager at Meta",
-    content: "The AI-powered interview prep was a game-changer. I felt confident and prepared for every question. Highly recommend!",
+    name: "Michael Torres", role: "PM → Meta",
+    content: "The voice interview simulation was incredibly realistic. I practiced behavioral questions until I could answer them in my sleep. Got the offer!",
     avatar: "MT",
   },
   {
-    name: "Priya Sharma", role: "Data Scientist at Amazon",
-    content: "The cover letter generator saved me hours. Each letter was perfectly tailored to the job description. I got 3x more callbacks.",
+    name: "Priya Sharma", role: "Data Scientist → Amazon",
+    content: "Generated 8 tailored cover letters in 20 minutes. Each one perfectly aligned my experience with the job requirements. Game-changer.",
     avatar: "PS",
   },
   {
     name: "David Gartner", role: "Financial Analyst",
-    content: "CareerPrep gave me confidence in my CV and Cover Letter with its skill match checker, enabling multiple submissions to numerous companies.",
+    content: "The job match scoring saved me from applying to positions I wasn't qualified for and found roles I never would have searched for.",
     avatar: "DG",
   },
   {
-    name: "Max Li", role: "Senior Software Engineer",
-    content: "I have not expected that you will review and build my resume so detailed and even give me an example how to rephrase my experience. Incredible.",
+    name: "Max Li", role: "Senior SWE",
+    content: "I didn't expect an AI to rewrite my experience bullets so effectively. Each one now starts with a strong action verb and includes metrics.",
     avatar: "ML",
   },
   {
     name: "Andrii Z", role: "Full Stack Engineer",
-    content: "This app has been incredibly helpful for my job search. Even though I hadn't anticipated job hunting, this app has made the process much easier!",
+    content: "From resume building to interview prep to job tracking — everything in one place. Cancelled three other subscriptions. This is all you need.",
     avatar: "AZ",
   },
 ];
 
 const beforeAfter = [
-  { before: { icon: FileText, title: "Rejection", desc: "Non-compliant resumes lead to rejections" }, after: { icon: ThumbsUp, title: "No More Rejections", desc: "Instantly create ATS-friendly resumes" } },
-  { before: { icon: Clock, title: "Time Wasted", desc: "Job searching is a time-consuming task" }, after: { icon: Zap, title: "Save Time", desc: "AI tools simplify your entire job search" } },
-  { before: { icon: Shield, title: "Fragmented Tools", desc: "Switching between multiple tools is stressful" }, after: { icon: CheckCircle, title: "All in One", desc: "Manage your entire job search in one platform" } },
+  { before: { icon: FileText, title: "Silent Rejections", desc: "ATS filters reject 75% of resumes before humans see them" }, after: { icon: ThumbsUp, title: "ATS-Optimized", desc: "AI ensures your resume passes every screening system" } },
+  { before: { icon: Clock, title: "Hours Wasted", desc: "Manually tailoring each application takes 2-3 hours" }, after: { icon: Zap, title: "Minutes, Not Hours", desc: "AI generates tailored materials in under 5 minutes" } },
+  { before: { icon: Shield, title: "Tool Fatigue", desc: "Juggling 5+ apps for resume, cover letter, tracking" }, after: { icon: CheckCircle, title: "One Platform", desc: "Everything from resume to offer in a single workspace" } },
 ];
 
 export default function Landing() {
@@ -113,14 +106,14 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
+      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-bold text-foreground">CareerPrep<span className="text-primary">.ai</span></span>
+              <img src={logoImg} alt="ResumePrep" className="w-9 h-9 rounded-xl object-contain" />
+              <span className="text-xl font-bold text-foreground tracking-tight">
+                Resume<span className="text-accent">Prep</span>
+              </span>
             </div>
 
             <div className="hidden md:flex items-center gap-8">
@@ -132,11 +125,11 @@ export default function Landing() {
 
             <div className="flex items-center gap-3">
               {isLoggedIn ? (
-                <Button onClick={() => navigate("/chat")} className="gap-2">Go to Dashboard <ArrowRight className="w-4 h-4" /></Button>
+                <Button onClick={() => navigate("/home")} className="gap-2">Go to Dashboard <ArrowRight className="w-4 h-4" /></Button>
               ) : (
                 <>
-                  <Button variant="ghost" onClick={() => navigate("/auth?mode=login")} className="text-sm font-semibold">LOG IN</Button>
-                  <Button onClick={() => navigate("/auth?mode=signup")} className="font-semibold">SIGN UP</Button>
+                  <Button variant="ghost" onClick={() => navigate("/auth?mode=login")} className="text-sm font-semibold">Log In</Button>
+                  <Button onClick={() => navigate("/auth?mode=signup")} className="font-semibold">Get Started Free</Button>
                 </>
               )}
             </div>
@@ -146,78 +139,69 @@ export default function Landing() {
 
       {/* Hero */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-background" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-24 text-center">
-          <p className="text-primary font-semibold text-sm tracking-wider uppercase mb-6">
-            TRUSTED BY OVER 1,000,000+ JOB SEEKERS!
-          </p>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
-            Land your <span className="text-primary">dream job.</span>
-            <br />Without the stress.
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(239_84%_67%/0.08),transparent_60%)]" />
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full bg-accent/5 blur-3xl" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-28 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-8">
+            <Brain className="w-4 h-4" />
+            Powered by advanced AI models
+          </div>
+          <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-extrabold tracking-tight mb-6 leading-[1.1]">
+            Your entire job search,
+            <br />
+            <span className="gradient-text">supercharged by AI.</span>
           </h1>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-10">
+            Build ATS-optimized resumes, generate tailored cover letters, practice with voice interviews, and find matching jobs — all in one platform.
+          </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-4 mb-10">
-            {["AI Resume Builder", "Automated Job Tracking", "Optimize your LinkedIn Profile", "And Much More..."].map((item) => (
-              <div key={item} className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <CheckCircle className="w-4 h-4 text-primary" />{item}
-              </div>
-            ))}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+            <Button size="lg" onClick={() => navigate("/auth?mode=signup")} className="text-base px-10 py-6 gap-2 shadow-lg shadow-primary/20 font-semibold">
+              Start Free — No Card Required <ArrowRight className="w-5 h-5" />
+            </Button>
           </div>
 
-          <Button size="lg" onClick={() => navigate("/auth?mode=signup")} className="text-base px-10 py-6 gap-2 shadow-lg shadow-primary/25 font-semibold uppercase tracking-wide">
-            Sign Up For Free
-          </Button>
-        </div>
-      </section>
-
-      {/* Company Logos Marquee */}
-      <section className="py-12 border-y border-border bg-muted/20">
-        <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-center text-lg font-bold mb-2">Trusted by job seekers who've landed at top companies</h2>
-          <p className="text-center text-sm text-muted-foreground mb-8">Our users have secured positions at industry-leading companies</p>
-          <div className="flex items-center justify-center gap-8 sm:gap-12 flex-wrap opacity-60">
-            {companyLogos.map((logo) => (
-              <span key={logo} className="text-lg sm:text-xl font-bold text-foreground/50">{logo}</span>
+          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+            {["AI Resume Builder", "Voice Interview Prep", "Real-time Job Matching", "ATS Score Checker"].map((item) => (
+              <div key={item} className="flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4 text-accent" />{item}
+              </div>
             ))}
           </div>
         </div>
       </section>
 
       {/* Stats */}
-      <section className="py-16">
-        <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-center text-3xl font-bold mb-2">Real Results for Job Seekers Like You</h2>
-          <p className="text-center text-muted-foreground mb-12">More interviews, offers, and a faster path to your next role</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 max-w-4xl mx-auto">
+      <section className="py-20 border-y border-border bg-muted/30">
+        <div className="max-w-5xl mx-auto px-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
             {stats.map((stat) => (
-              <div key={stat.label} className="text-center">
+              <div key={stat.label} className="text-center animate-slide-up">
                 <div className="text-5xl font-extrabold text-foreground mb-2">{stat.value}</div>
                 <div className="inline-flex items-center gap-2 text-sm text-muted-foreground font-medium">
-                  <stat.icon className="w-4 h-4 text-primary" />{stat.label}
+                  <stat.icon className="w-4 h-4 text-accent" />{stat.label}
                 </div>
               </div>
             ))}
-          </div>
-          <div className="text-center mt-8">
-            <Button onClick={() => navigate("/auth?mode=signup")} className="font-semibold uppercase tracking-wide">
-              Sign Up For Free
-            </Button>
           </div>
         </div>
       </section>
 
       {/* Before/After */}
-      <section id="how-it-works" className="py-20 bg-muted/30">
+      <section id="how-it-works" className="py-24">
         <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-center text-3xl sm:text-4xl font-bold mb-4">Say goodbye to job search frustration</h2>
-          <p className="text-center text-lg text-muted-foreground max-w-2xl mx-auto mb-16">
-            From constant rejections to landing your dream job, discover the difference CareerPrep AI can make
-          </p>
+          <div className="text-center mb-16">
+            <p className="text-accent font-semibold text-sm tracking-wider uppercase mb-3">The ResumePrep Difference</p>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Stop struggling. Start landing.</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              See how ResumePrep transforms every frustrating part of your job search
+            </p>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             <div className="rounded-2xl border-2 border-destructive/20 bg-destructive/5 p-8">
               <div className="flex items-center gap-2 mb-6">
                 <span className="text-2xl">😕</span>
-                <h3 className="text-lg font-bold text-destructive">Before CareerPrep AI</h3>
+                <h3 className="text-lg font-bold text-destructive">Without ResumePrep</h3>
               </div>
               <div className="space-y-4">
                 {beforeAfter.map((item) => (
@@ -233,16 +217,16 @@ export default function Landing() {
                 ))}
               </div>
             </div>
-            <div className="rounded-2xl border-2 border-primary/20 bg-primary/5 p-8">
+            <div className="rounded-2xl border-2 border-accent/30 bg-accent/5 p-8">
               <div className="flex items-center gap-2 mb-6">
-                <span className="text-2xl">🤩</span>
-                <h3 className="text-lg font-bold text-primary">After CareerPrep AI</h3>
+                <span className="text-2xl">🚀</span>
+                <h3 className="text-lg font-bold text-accent">With ResumePrep</h3>
               </div>
               <div className="space-y-4">
                 {beforeAfter.map((item) => (
                   <div key={item.after.title} className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <item.after.icon className="w-5 h-5 text-primary" />
+                    <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+                      <item.after.icon className="w-5 h-5 text-accent" />
                     </div>
                     <div>
                       <p className="font-semibold text-sm">{item.after.title}</p>
@@ -256,23 +240,27 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Features - CareerFlow style alternating layout */}
-      <section id="features" className="py-20">
+      {/* Features */}
+      <section id="features" className="py-24 bg-muted/20">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
-            <p className="text-primary font-semibold text-sm tracking-wider uppercase mb-3">FEATURES</p>
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Simplify Every Step of Your Job Search</h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Everything you need to land your dream job, powered by AI</p>
+            <p className="text-accent font-semibold text-sm tracking-wider uppercase mb-3">Platform</p>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Six AI-powered tools. One platform.</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Everything you need to go from job search to job offer</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((feature) => (
-              <div key={feature.title} className="group p-6 rounded-2xl bg-card border border-border hover:border-primary/30 transition-all hover:shadow-lg">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                    <feature.icon className="w-5 h-5 text-white" />
+            {features.map((feature, i) => (
+              <div
+                key={feature.title}
+                className="group p-6 rounded-2xl bg-card border border-border hover:border-primary/30 transition-all duration-300 hover:shadow-[var(--shadow-card-hover)]"
+                style={{ animationDelay: `${i * 100}ms` }}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <feature.icon className="w-5 h-5 text-primary" />
                   </div>
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{feature.tag}</span>
+                  <span className="text-xs font-semibold text-accent uppercase tracking-wider">{feature.tag}</span>
                 </div>
                 <h3 className="text-lg font-bold mb-2">{feature.title}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">{feature.description}</p>
@@ -286,13 +274,15 @@ export default function Landing() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 bg-muted/30">
+      <section id="testimonials" className="py-24">
         <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-center text-3xl sm:text-4xl font-bold mb-2">Hear From Our Community</h2>
-          <p className="text-center text-lg text-muted-foreground mb-12">Trusted and loved by over 1M+ users worldwide</p>
+          <div className="text-center mb-16">
+            <p className="text-accent font-semibold text-sm tracking-wider uppercase mb-3">Success Stories</p>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Real people. Real results.</h2>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {testimonials.map((t) => (
-              <div key={t.name} className="p-6 rounded-2xl bg-card border border-border hover:shadow-md transition-shadow">
+              <div key={t.name} className="p-6 rounded-2xl bg-card border border-border hover:shadow-[var(--shadow-card-hover)] transition-all duration-300">
                 <div className="flex items-center gap-1 mb-4">
                   {[...Array(5)].map((_, i) => <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
                 </div>
@@ -311,51 +301,47 @@ export default function Landing() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="py-20">
+      <section id="pricing" className="py-24 bg-muted/20">
         <div className="max-w-5xl mx-auto px-4">
-          <h2 className="text-center text-3xl sm:text-4xl font-bold mb-2">Simple Pricing, Powerful Features</h2>
-          <p className="text-center text-muted-foreground mb-12">Whether you're starting out or need extra support, we have a plan for you</p>
+          <div className="text-center mb-16">
+            <p className="text-accent font-semibold text-sm tracking-wider uppercase mb-3">Pricing</p>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Start free. Upgrade when ready.</h2>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Free */}
             <div className="rounded-2xl border border-border bg-card p-8">
-              <h3 className="text-lg font-bold mb-1">Basic</h3>
+              <h3 className="text-lg font-bold mb-1">Starter</h3>
               <div className="text-4xl font-extrabold mb-4">Free</div>
-              <Button variant="outline" className="w-full mb-6 font-semibold" onClick={() => navigate("/auth?mode=signup")}>Start now</Button>
-              <p className="text-sm text-muted-foreground mb-4">Start your journey now!</p>
+              <Button variant="outline" className="w-full mb-6 font-semibold" onClick={() => navigate("/auth?mode=signup")}>Get started</Button>
               <div className="space-y-3">
-                {["Unlimited Resume Analysis", "ATS Score Checking", "Basic Job Search"].map((f) => (
-                  <div key={f} className="flex items-center gap-2 text-sm"><CheckCircle className="w-4 h-4 text-primary shrink-0" />{f}</div>
+                {["3 AI Resume Builds", "ATS Score Checking", "Basic Job Search", "5 Cover Letters/mo"].map((f) => (
+                  <div key={f} className="flex items-center gap-2 text-sm"><CheckCircle className="w-4 h-4 text-accent shrink-0" />{f}</div>
                 ))}
               </div>
             </div>
-            {/* Premium */}
             <div className="rounded-2xl border-2 border-primary bg-card p-8 relative shadow-lg shadow-primary/10">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-bold px-4 py-1 rounded-full">POPULAR</div>
-              <h3 className="text-lg font-bold mb-1">Premium</h3>
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-bold px-4 py-1 rounded-full">MOST POPULAR</div>
+              <h3 className="text-lg font-bold mb-1">Pro</h3>
               <div className="flex items-baseline gap-1 mb-4">
-                <span className="text-4xl font-extrabold">$8</span>
-                <span className="text-muted-foreground">.99/week</span>
+                <span className="text-4xl font-extrabold">$12</span>
+                <span className="text-muted-foreground">/month</span>
               </div>
-              <Button className="w-full mb-6 font-semibold" onClick={() => navigate("/auth?mode=signup")}>Start now</Button>
-              <p className="text-sm text-muted-foreground mb-4">Everything in Free Plan; Plus:</p>
+              <Button className="w-full mb-6 font-semibold" onClick={() => navigate("/auth?mode=signup")}>Start free trial</Button>
               <div className="space-y-3">
-                {["Unlimited AI Resumes", "AI Resume ATS Optimizer", "AI Cover Letter Generator", "Advanced ATS Analysis", "Interview Prep with Voice", "Priority Support"].map((f) => (
-                  <div key={f} className="flex items-center gap-2 text-sm"><CheckCircle className="w-4 h-4 text-primary shrink-0" />{f}</div>
+                {["Unlimited Resumes", "AI Resume Optimizer", "Unlimited Cover Letters", "Voice Interview Prep", "Real-time Job Matching", "Priority Support"].map((f) => (
+                  <div key={f} className="flex items-center gap-2 text-sm"><CheckCircle className="w-4 h-4 text-accent shrink-0" />{f}</div>
                 ))}
               </div>
             </div>
-            {/* Premium Plus */}
             <div className="rounded-2xl border border-border bg-card p-8">
-              <h3 className="text-lg font-bold mb-1">Premium Plus</h3>
+              <h3 className="text-lg font-bold mb-1">Enterprise</h3>
               <div className="flex items-baseline gap-1 mb-4">
-                <span className="text-4xl font-extrabold">$14</span>
-                <span className="text-muted-foreground">.99/week</span>
+                <span className="text-4xl font-extrabold">$29</span>
+                <span className="text-muted-foreground">/month</span>
               </div>
-              <Button variant="outline" className="w-full mb-6 font-semibold" onClick={() => navigate("/auth?mode=signup")}>Start now</Button>
-              <p className="text-sm text-muted-foreground mb-4">Everything in Premium; Plus:</p>
+              <Button variant="outline" className="w-full mb-6 font-semibold" onClick={() => navigate("/auth?mode=signup")}>Contact us</Button>
               <div className="space-y-3">
-                {["Unlimited AI Job Applications", "AI Application Autofill", "LinkedIn Profile Optimizer", "Skill Gap Analyzer", "Career Coach Access", "24/7 Priority Support"].map((f) => (
-                  <div key={f} className="flex items-center gap-2 text-sm"><CheckCircle className="w-4 h-4 text-primary shrink-0" />{f}</div>
+                {["Everything in Pro", "AI Application Autofill", "LinkedIn Profile Optimizer", "Skill Gap Analyzer", "Career Coach AI", "API Access"].map((f) => (
+                  <div key={f} className="flex items-center gap-2 text-sm"><CheckCircle className="w-4 h-4 text-accent shrink-0" />{f}</div>
                 ))}
               </div>
             </div>
@@ -364,31 +350,29 @@ export default function Landing() {
       </section>
 
       {/* CTA */}
-      <section className="py-20 bg-primary relative overflow-hidden">
+      <section className="py-24 relative overflow-hidden" style={{ background: "var(--gradient-primary)" }}>
         <div className="absolute -top-20 -right-20 w-80 h-80 rounded-full bg-white/5" />
         <div className="absolute -bottom-20 -left-20 w-96 h-96 rounded-full bg-white/5" />
         <div className="max-w-4xl mx-auto px-4 text-center relative z-10">
-          <h2 className="text-3xl sm:text-4xl font-bold text-primary-foreground mb-4">Take Control of Your Job Search Today</h2>
-          <p className="text-lg text-primary-foreground/80 mb-8 max-w-2xl mx-auto">
-            Join thousands who've transformed their job search with CareerPrep AI. Access powerful AI tools designed to help you land interviews faster — at no cost.
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Ready to land your dream job?</h2>
+          <p className="text-lg text-white/80 mb-8 max-w-2xl mx-auto">
+            Join thousands who've transformed their job search with ResumePrep. Start free today.
           </p>
-          <Button size="lg" variant="secondary" onClick={() => navigate("/auth?mode=signup")} className="text-base px-10 py-6 gap-2 font-semibold uppercase tracking-wide">
-            Sign Up For Free <ArrowRight className="w-5 h-5" />
+          <Button size="lg" variant="secondary" onClick={() => navigate("/auth?mode=signup")} className="text-base px-10 py-6 gap-2 font-semibold bg-background text-foreground hover:bg-background/90">
+            Get Started Free <ArrowRight className="w-5 h-5" />
           </Button>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-12 border-t border-border bg-muted/30">
+      <footer className="py-12 border-t border-border">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-primary-foreground" />
-              </div>
-              <span className="text-lg font-bold">CareerPrep<span className="text-primary">.ai</span></span>
+              <img src={logoImg} alt="ResumePrep" className="w-8 h-8 rounded-lg object-contain" />
+              <span className="text-lg font-bold">Resume<span className="text-accent">Prep</span></span>
             </div>
-            <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} CareerPrep AI. All rights reserved.</p>
+            <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} ResumePrep. All rights reserved.</p>
           </div>
         </div>
       </footer>

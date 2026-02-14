@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   CheckCircle2, ArrowRight, FileText, Briefcase, Target,
-  Mic2, Sparkles, ChevronRight
+  Mic2, Sparkles, ChevronRight, TrendingUp, Brain, Zap, Mail
 } from "lucide-react";
 
 interface Stats {
@@ -21,6 +21,15 @@ const progressSteps = [
   { label: "Jobs", key: "jobs" },
   { label: "Networking", key: "networking" },
   { label: "Interviews", key: "interviews" },
+];
+
+const quickActions = [
+  { label: "Resume Builder", icon: FileText, path: "/resume-builder", desc: "AI-optimized resumes", color: "text-primary" },
+  { label: "Job Search", icon: Briefcase, path: "/jobs", desc: "AI-matched jobs", color: "text-accent" },
+  { label: "Job Tracker", icon: Target, path: "/job-tracker", desc: "Kanban pipeline", color: "text-primary" },
+  { label: "Mock Interview", icon: Mic2, path: "/mock-interviews", desc: "Voice practice", color: "text-accent" },
+  { label: "Cover Letter", icon: Mail, path: "/cover-letters", desc: "Tailored letters", color: "text-primary" },
+  { label: "AI Toolbox", icon: Brain, path: "/ai-toolbox", desc: "6 career tools", color: "text-accent" },
 ];
 
 export default function HomePage() {
@@ -42,7 +51,6 @@ export default function HomePage() {
 
       setDisplayName(profile?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "there");
 
-      // Get conversation stats to determine progress
       const { data: convs } = await supabase
         .from("conversations")
         .select("chat_mode")
@@ -55,7 +63,6 @@ export default function HomePage() {
       if (modes.has("interview-prep")) steps.push("interviews");
       setCompletedSteps([...new Set(steps)]);
 
-      // Cover letters as "saved" count
       const { count: clCount } = await supabase
         .from("cover_letters")
         .select("id", { count: "exact", head: true })
@@ -69,30 +76,30 @@ export default function HomePage() {
   const currentStepIndex = Math.min(completedSteps.length, progressSteps.length - 1);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-8">
+    <div className="p-6 max-w-6xl mx-auto space-y-8">
       {/* Welcome */}
-      <div className="text-center space-y-2 pt-4">
-        <h1 className="text-3xl font-bold">Hi, {displayName}</h1>
-        <p className="text-muted-foreground">Here's an impactful action plan for your dream job hunt</p>
+      <div className="space-y-1 pt-2">
+        <h1 className="text-2xl font-bold">Welcome back, {displayName} 👋</h1>
+        <p className="text-muted-foreground text-sm">Here's your personalized action plan</p>
       </div>
 
       {/* Progress Stepper */}
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {progressSteps.map((step, i) => {
           const isCompleted = completedSteps.includes(step.key);
           const isCurrent = i === currentStepIndex;
           return (
             <div key={step.key} className="flex items-center gap-2">
               {i > 0 && (
-                <div className={`w-12 h-0.5 ${isCompleted ? "bg-primary" : "bg-border"}`} />
+                <div className={`w-10 h-0.5 ${isCompleted ? "bg-accent" : "bg-border"}`} />
               )}
               <div className="flex items-center gap-1.5">
                 {isCompleted ? (
-                  <CheckCircle2 className="w-5 h-5 text-primary" />
+                  <CheckCircle2 className="w-5 h-5 text-accent" />
                 ) : (
                   <div className={`w-5 h-5 rounded-full border-2 ${isCurrent ? "border-primary" : "border-muted-foreground/30"}`} />
                 )}
-                <span className={`text-xs font-medium ${isCurrent ? "text-primary" : "text-muted-foreground"}`}>
+                <span className={`text-xs font-medium whitespace-nowrap ${isCurrent ? "text-primary" : "text-muted-foreground"}`}>
                   {step.label}
                 </span>
               </div>
@@ -101,19 +108,22 @@ export default function HomePage() {
         })}
       </div>
 
-      {/* Progress Card + Next Step */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Progress Card */}
+        <Card className="lg:col-span-1">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Your Progress</h3>
-              <span className="text-sm text-primary font-bold">
+              <h3 className="font-semibold flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-accent" /> Progress
+              </h3>
+              <span className="text-sm text-accent font-bold">
                 {completedSteps.length}/{progressSteps.length}
               </span>
             </div>
             <div className="w-full bg-muted rounded-full h-2 mb-4">
               <div
-                className="bg-primary h-2 rounded-full transition-all"
+                className="bg-accent h-2 rounded-full transition-all"
                 style={{ width: `${(completedSteps.length / progressSteps.length) * 100}%` }}
               />
             </div>
@@ -122,7 +132,7 @@ export default function HomePage() {
                 (label, i) => (
                   <div key={label} className="flex items-center gap-2.5">
                     {i < completedSteps.length ? (
-                      <CheckCircle2 className="w-5 h-5 text-primary" />
+                      <CheckCircle2 className="w-5 h-5 text-accent" />
                     ) : i === completedSteps.length ? (
                       <div className="w-5 h-5 rounded bg-primary flex items-center justify-center">
                         <ChevronRight className="w-3 h-3 text-primary-foreground" />
@@ -138,89 +148,70 @@ export default function HomePage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-primary/5 border-primary/20">
+        {/* Next Step Card */}
+        <Card className="lg:col-span-2 border-primary/20 bg-primary/5">
           <CardContent className="p-6 flex flex-col justify-between h-full">
             <div>
-              <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded">Jobs</span>
-              <h3 className="text-lg font-bold mt-3">Send Out Your First Job Application</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Take the leap! 80% of jobs are filled through networking, but you have to start somewhere.
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-full uppercase tracking-wider">Recommended</span>
+              </div>
+              <h3 className="text-xl font-bold mb-2">Send Out Your First Application</h3>
+              <p className="text-sm text-muted-foreground max-w-lg">
+                You've built your materials — now take the leap. Use AI Job Search to find matching roles, then apply with your optimized resume and tailored cover letter.
               </p>
             </div>
-            <Button onClick={() => navigate("/jobs")} className="mt-4 gap-2 w-fit">
-              <Sparkles className="w-4 h-4" /> Apply Now
-            </Button>
+            <div className="flex gap-3 mt-6">
+              <Button onClick={() => navigate("/jobs")} className="gap-2">
+                <Sparkles className="w-4 h-4" /> Find Matching Jobs
+              </Button>
+              <Button variant="outline" onClick={() => navigate("/resume-builder")} className="gap-2">
+                <FileText className="w-4 h-4" /> Review Resume
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Explore Banner */}
-      <Card className="border-dashed">
-        <CardContent className="p-6 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold">You've Taken the First Step — Let's Go Further</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              You've already started your journey. Now explore all the AI-powered tools designed to help you land your dream job.
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => navigate("/chat")} className="gap-2 shrink-0">
-            Explore All Features <ArrowRight className="w-4 h-4" />
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Quick Stats */}
+      {/* Quick Actions Grid */}
       <div>
-        <h3 className="text-lg font-bold mb-4">Quick Stats</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="font-semibold">Jobs Tracker</h4>
-                <Button variant="ghost" size="icon" onClick={() => navigate("/job-tracker")}>
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="space-y-2.5">
-                {[
-                  { label: "Saved", value: stats.saved },
-                  { label: "Applied", value: stats.applied },
-                  { label: "Interviewing", value: stats.interviewing },
-                  { label: "Offer", value: stats.offer },
-                  { label: "Rejected", value: stats.rejected },
-                ].map((row) => (
-                  <div key={row.label} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{row.label}</span>
-                    <span className="font-semibold">{row.value}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        <h3 className="text-lg font-bold mb-4">Quick Actions</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {quickActions.map((action) => (
+            <Card
+              key={action.label}
+              className="cursor-pointer hover:shadow-[var(--shadow-card-hover)] transition-all duration-300 hover:border-primary/20 group"
+              onClick={() => navigate(action.path)}
+            >
+              <CardContent className="p-4 flex flex-col items-center text-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                  <action.icon className={`w-5 h-5 ${action.color}`} />
+                </div>
+                <p className="text-xs font-semibold">{action.label}</p>
+                <p className="text-[10px] text-muted-foreground">{action.desc}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
 
-          <Card>
-            <CardContent className="p-6">
-              <h4 className="font-semibold mb-3">Quick Actions</h4>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
-                  { label: "Job Search", icon: Briefcase, path: "/jobs" },
-                  { label: "Job Tracker", icon: Target, path: "/job-tracker" },
-                  { label: "Mock Interview", icon: Mic2, path: "/mock-interviews" },
-                ].map((action) => (
-                  <Button
-                    key={action.label}
-                    variant="outline"
-                    className="h-auto py-3 flex-col gap-1.5 text-xs"
-                    onClick={() => navigate(action.path)}
-                  >
-                    <action.icon className="w-4 h-4 text-primary" />
-                    {action.label}
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+      {/* Stats Row */}
+      <div>
+        <h3 className="text-lg font-bold mb-4">Job Pipeline</h3>
+        <div className="grid grid-cols-5 gap-3">
+          {[
+            { label: "Saved", value: stats.saved, color: "bg-muted" },
+            { label: "Applied", value: stats.applied, color: "bg-primary/10" },
+            { label: "Interviewing", value: stats.interviewing, color: "bg-accent/10" },
+            { label: "Offers", value: stats.offer, color: "bg-accent/20" },
+            { label: "Rejected", value: stats.rejected, color: "bg-destructive/10" },
+          ].map((item) => (
+            <Card key={item.label} className="cursor-pointer hover:shadow-[var(--shadow-card-hover)] transition-all" onClick={() => navigate("/job-tracker")}>
+              <CardContent className="p-4 text-center">
+                <p className="text-2xl font-bold">{item.value}</p>
+                <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     </div>

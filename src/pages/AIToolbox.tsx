@@ -6,17 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Loader2, Send } from "lucide-react";
+import { Sparkles, Loader2, Send, Wand2, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 const AI_TOOLS = [
-  { id: "personal-brand", label: "Personal Brand Statement", desc: "Craft a compelling personal brand statement" },
-  { id: "email-writer", label: "Email Writer", desc: "Write professional emails for job applications" },
-  { id: "elevator-pitch", label: "Elevator Pitch", desc: "Create a concise and impactful elevator pitch" },
-  { id: "linkedin-headline", label: "LinkedIn Headline", desc: "Generate an attention-grabbing LinkedIn headline" },
-  { id: "linkedin-about", label: "LinkedIn About", desc: "Write a compelling LinkedIn About section" },
-  { id: "linkedin-post", label: "LinkedIn Post", desc: "Create engaging LinkedIn posts" },
+  { id: "personal-brand", label: "Personal Brand Statement", desc: "Craft a compelling personal brand statement that sets you apart", icon: "✨" },
+  { id: "email-writer", label: "Professional Email Writer", desc: "Write polished emails for job applications and follow-ups", icon: "📧" },
+  { id: "elevator-pitch", label: "Elevator Pitch", desc: "Create a 30-second pitch that makes people remember you", icon: "🎯" },
+  { id: "linkedin-headline", label: "LinkedIn Headline", desc: "Generate headlines that attract recruiters and opportunities", icon: "💼" },
+  { id: "linkedin-about", label: "LinkedIn About Section", desc: "Write a compelling story that showcases your career journey", icon: "📝" },
+  { id: "linkedin-post", label: "LinkedIn Post Creator", desc: "Create engaging posts that build your professional brand", icon: "📣" },
 ];
 
 export default function AIToolbox() {
@@ -26,6 +26,7 @@ export default function AIToolbox() {
   const [input, setInput] = useState("");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const generate = async () => {
     if (!input.trim()) return;
@@ -87,30 +88,37 @@ export default function AIToolbox() {
     }
   };
 
+  const copyResult = () => {
+    navigator.clipboard.writeText(result);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast({ title: "Copied!", description: "Content copied to clipboard" });
+  };
+
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div>
         <h1 className="text-xl font-bold flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-primary" /> AI Toolbox
+          <Wand2 className="w-5 h-5 text-accent" /> AI Toolbox
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">AI-powered tools to supercharge your career</p>
+        <p className="text-sm text-muted-foreground mt-1">6 AI-powered tools to supercharge your career brand</p>
       </div>
 
       {/* Tool Selector */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {AI_TOOLS.map((tool) => (
           <button
             key={tool.id}
             onClick={() => { setSelectedTool(tool); setResult(""); }}
             className={cn(
-              "p-3 rounded-xl border text-left transition-all",
+              "p-3 rounded-xl border text-left transition-all duration-200",
               selectedTool.id === tool.id
-                ? "border-primary bg-primary/5"
+                ? "border-primary bg-primary/5 shadow-[var(--shadow-card-hover)]"
                 : "border-border hover:border-primary/30 hover:bg-muted/50"
             )}
           >
-            <p className="text-sm font-medium">{tool.label}</p>
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{tool.desc}</p>
+            <span className="text-xl mb-1 block">{tool.icon}</span>
+            <p className="text-xs font-semibold leading-tight">{tool.label}</p>
           </button>
         ))}
       </div>
@@ -129,21 +137,33 @@ export default function AIToolbox() {
             />
           </div>
           <Button onClick={generate} disabled={loading || !input.trim()} className="w-full gap-2">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             Generate {selectedTool.label}
           </Button>
         </div>
 
         <Card className="border-dashed">
           <CardContent className="p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <h3 className="font-semibold text-sm">Result</h3>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <h3 className="font-semibold text-sm">Result</h3>
+              </div>
+              {result && (
+                <Button variant="ghost" size="sm" onClick={copyResult} className="gap-1.5 text-xs h-7">
+                  {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              )}
             </div>
             {result ? (
               <div className="prose prose-sm max-w-none whitespace-pre-wrap text-sm">{result}</div>
             ) : (
-              <p className="text-sm text-muted-foreground">Your AI generated content will show here</p>
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Wand2 className="w-10 h-10 text-muted-foreground/20 mb-3" />
+                <p className="text-sm text-muted-foreground">Your AI-generated content will appear here</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Select a tool, add context, and hit generate</p>
+              </div>
             )}
           </CardContent>
         </Card>
