@@ -18,8 +18,12 @@ import MockInterviews from "./pages/MockInterviews";
 import Documents from "./pages/Documents";
 import ResumeBuilder from "./pages/ResumeBuilder";
 import JobsPage from "./pages/JobsPage";
+import JobSearchPage from "./pages/JobSearchPage";
 import Contacts from "./pages/Contacts";
 import CoverLettersPage from "./pages/CoverLettersPage";
+import CoverLetterPage from "./pages/CoverLetterPage";
+import InterviewPrepPage from "./pages/InterviewPrepPage";
+import ATSCheckerPage from "./pages/ATSCheckerPage";
 import AIToolbox from "./pages/AIToolbox";
 import Analytics from "./pages/Analytics";
 
@@ -42,9 +46,13 @@ const App = () => (
           <Route element={<AppLayout />}>
             <Route path="/home" element={<HomePage />} />
             <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/job-search" element={<JobSearchPage />} />
             <Route path="/resume-builder" element={<ResumeBuilder />} />
             <Route path="/job-tracker" element={<JobTracker />} />
             <Route path="/mock-interviews" element={<MockInterviews />} />
+            <Route path="/interview-prep" element={<InterviewPrepPage />} />
+            <Route path="/cover-letter" element={<CoverLetterPage />} />
+            <Route path="/ats-checker" element={<ATSCheckerPage />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/c/:conversationId" element={<Chat />} />
             <Route path="/dashboard" element={<Dashboard />} />
