@@ -36,7 +36,7 @@ export default function InterviewPrepPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({
           messages: [{ role: "user", content: `Generate ${interviewType} interview prep for ${jobTitle} at ${companyName}.\n\nResume:\n${resumeText}\n\nJob Description:\n${jobDescription}` }],
-          mode: "interview-prep",
+          mode: "interview",
         }),
       });
 
@@ -91,7 +91,7 @@ export default function InterviewPrepPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({
           messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
-          mode: "interview-prep",
+          mode: "interview",
         }),
       });
 

@@ -32,7 +32,7 @@ export default function CoverLetterPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
         body: JSON.stringify({
           messages: [{ role: "user", content: `Write a ${template} cover letter for ${jobTitle} at ${companyName}.\n\nResume:\n${resumeText}\n\nJob Description:\n${jobDescription}` }],
-          mode: "cover-letter",
+          mode: "cover_letter",
         }),
       });
 
@@ -89,7 +89,7 @@ export default function CoverLetterPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
         body: JSON.stringify({
           messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
-          mode: "cover-letter",
+          mode: "cover_letter",
         }),
       });
 
