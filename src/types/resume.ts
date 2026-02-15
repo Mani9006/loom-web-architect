@@ -1,6 +1,6 @@
 /**
  * Resume JSON Schema - Single Source of Truth
- * 
+ *
  * This schema matches the exact structure required for the Professional template.
  * All UI fields read from and write to this JSON.
  * The template is rendered only from this JSON - no direct text editing.
@@ -101,6 +101,7 @@ export interface CertificationEntry {
   name: string;
   issuer: string;
   date: string;
+  url?: string; // Optional hyperlink for the certification (e.g., verification URL)
 }
 
 // Skills - Object with dynamic categories (can be empty or have any category keys)
@@ -115,6 +116,7 @@ export interface ProjectEntry {
   organization: string;
   date: string;
   bullets: string[];
+  url?: string; // Optional hyperlink for the project (e.g., GitHub repo, live demo)
 }
 
 // Language entry
@@ -139,6 +141,7 @@ export interface AwardEntry {
   title: string;
   issuer: string;
   date: string;
+  url?: string; // Optional hyperlink for the award/publication
 }
 
 // Custom section entry (user-defined sections)
@@ -148,6 +151,7 @@ export interface CustomSectionEntry {
   subtitle: string;
   date: string;
   bullets: string[];
+  url?: string; // Optional hyperlink for the entry title
 }
 
 // Custom section definition
