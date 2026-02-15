@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/hooks/use-theme";
 import {
   Home, Search, FileText, Columns3, Mic, MessageCircle,
   FolderOpen, ChevronDown, ChevronRight, LogOut,
-  Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp, Target
+  Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp, Target,
+  Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -71,6 +73,7 @@ export default function AppLayout() {
   const location = useLocation();
   const isMobile = useIsMobile();
   const { user, signOut } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [displayName, setDisplayName] = useState("");
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -196,7 +199,21 @@ export default function AppLayout() {
         <div className="space-y-1">{secondaryNav.map(renderNavItem)}</div>
       </nav>
 
-      <div className="border-t border-sidebar-border/50 p-3">
+      {/* Footer: Theme toggle + Settings */}
+      <div className="border-t border-sidebar-border/50 p-3 space-y-1">
+        <button
+          onClick={toggleTheme}
+          title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          className={cn(
+            "w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-medium transition-colors",
+            "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+          )}
+        >
+          <div className="w-8 h-8 rounded-xl bg-sidebar-accent/50 flex items-center justify-center">
+            {theme === "light" ? <Moon className="w-4 h-4" strokeWidth={1.8} /> : <Sun className="w-4 h-4" strokeWidth={1.8} />}
+          </div>
+          {showText && (theme === "light" ? "Dark Mode" : "Light Mode")}
+        </button>
         <button
           onClick={() => handleNavigate("/profile")}
           className={cn(

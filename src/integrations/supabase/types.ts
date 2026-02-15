@@ -195,8 +195,11 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          job_preferences: Json | null
           location: string | null
+          onboarding_completed: boolean
           phone: string | null
+          target_role: string | null
           updated_at: string
           user_id: string
         }
@@ -206,8 +209,11 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          job_preferences?: Json | null
           location?: string | null
+          onboarding_completed?: boolean
           phone?: string | null
+          target_role?: string | null
           updated_at?: string
           user_id: string
         }
@@ -217,8 +223,11 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          job_preferences?: Json | null
           location?: string | null
+          onboarding_completed?: boolean
           phone?: string | null
+          target_role?: string | null
           updated_at?: string
           user_id?: string
         }
