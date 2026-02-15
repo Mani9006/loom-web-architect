@@ -30,7 +30,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
   { label: "Job Search", icon: Search, path: "/jobs", badge: "AI" },
-  { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
+  { label: "Resume Builder", icon: FileText, path: "/chat?mode=resume-form" },
   { label: "Job Tracker", icon: Columns3, path: "/job-tracker" },
   { label: "Interviews", icon: Mic, path: "/mock-interviews" },
   { label: "AI Chat", icon: MessageCircle, path: "/chat" },
@@ -100,9 +100,15 @@ export default function AppLayout() {
     setExpandedMenus((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
   };
   const handleNavigate = (path: string) => { navigate(path); if (isMobile) setMobileOpen(false); };
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => {
+    const [pathname, search] = path.split("?");
+    if (search) {
+      return location.pathname === pathname && location.search === `?${search}`;
+    }
+    return location.pathname === pathname;
+  };
   const isParentActive = (item: NavItem) =>
-    item.children?.some((c) => location.pathname === c.path) || location.pathname === item.path;
+    item.children?.some((c) => isActive(c.path)) || isActive(item.path);
 
   const initials = displayName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 

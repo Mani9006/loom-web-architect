@@ -64,7 +64,7 @@ export default function ResumeBuilder() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
           </div>
-          <Button size="sm" className="gap-2" onClick={() => navigate("/chat")}>
+          <Button size="sm" className="gap-2" onClick={() => navigate("/chat?mode=resume-form")}>
             <Plus className="w-4 h-4" /> New Resume
           </Button>
         </div>
@@ -93,7 +93,7 @@ export default function ResumeBuilder() {
           <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
           <p className="font-medium">No resumes yet</p>
           <p className="text-sm mt-1">Create your first AI-optimized resume</p>
-          <Button className="mt-4 gap-2" onClick={() => navigate("/chat")}>
+          <Button className="mt-4 gap-2" onClick={() => navigate("/chat?mode=resume-form")}>
             <Sparkles className="w-4 h-4" /> Create Resume
           </Button>
         </div>
