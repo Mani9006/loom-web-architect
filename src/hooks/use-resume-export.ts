@@ -68,6 +68,72 @@ class PDFResumeRenderer {
     this.doc.text(str, x, y, { align });
   }
 
+  /**
+   * Draws a single line of text justified across the full available width.
+   * Words are spaced evenly so the text fills from left margin to right margin.
+   * The last line of a paragraph should NOT be justified (passed as isLastLine).
+   */
+  private justifiedLine(words: string[], x: number, y: number, maxWidth: number, size: number, style: FontStyle = "normal", isLastLine = false) {
+    this.setFont(size, style);
+    if (words.length === 0) return;
+
+    // Last line or single word: just left-align
+    if (isLastLine || words.length === 1) {
+      this.doc.text(words.join(" "), x, y);
+      return;
+    }
+
+    const totalTextWidth = words.reduce((sum, w) => sum + (this.doc.getStringUnitWidth(w) * size) / 72, 0);
+    const totalGap = maxWidth - totalTextWidth;
+    const gapPerSpace = totalGap / (words.length - 1);
+
+    let curX = x;
+    for (let i = 0; i < words.length; i++) {
+      this.doc.text(words[i], curX, y);
+      const wordW = (this.doc.getStringUnitWidth(words[i]) * size) / 72;
+      curX += wordW + gapPerSpace;
+    }
+  }
+
+  /**
+   * Wraps text into lines and draws each line justified (full left-to-right fill).
+   * The last line is left-aligned per standard typographic convention.
+   */
+  private justifiedBlock(text: string, x: number, maxWidth: number, size: number, style: FontStyle = "normal") {
+    this.setFont(size, style);
+    const allWords = text.split(/\s+/).filter(w => w.length > 0);
+    if (allWords.length === 0) return;
+
+    const lineH = this.lh(size);
+    const lines: string[][] = [];
+    let currentLine: string[] = [];
+    let currentWidth = 0;
+    const spaceWidth = (this.doc.getStringUnitWidth(" ") * size) / 72;
+
+    for (const word of allWords) {
+      const wordWidth = (this.doc.getStringUnitWidth(word) * size) / 72;
+      const neededWidth = currentLine.length > 0 ? currentWidth + spaceWidth + wordWidth : wordWidth;
+
+      if (neededWidth > maxWidth && currentLine.length > 0) {
+        lines.push(currentLine);
+        currentLine = [word];
+        currentWidth = wordWidth;
+      } else {
+        currentLine.push(word);
+        currentWidth = neededWidth;
+      }
+    }
+    if (currentLine.length > 0) lines.push(currentLine);
+
+    for (let i = 0; i < lines.length; i++) {
+      this.ensureSpace(lineH);
+      const drawY = this.y + lineH;
+      const isLastLine = i === lines.length - 1;
+      this.justifiedLine(lines[i], x, drawY, maxWidth, size, style, isLastLine);
+      this.y = drawY;
+    }
+  }
+
   private hline(width: number = 1) {
     this.doc.setDrawColor(0);
     this.doc.setLineWidth(ptToIn(width));
@@ -119,10 +185,34 @@ class PDFResumeRenderer {
     const bulletX = PAGE.marginLeft + indent - ptToIn(8);
     const textX = PAGE.marginLeft + indent;
     const maxW = CONTENT_WIDTH - indent;
-    const lines = this.wrapText(text, maxW, FS.body);
-    const lineH = this.lh(FS.body);
 
-    for (let i = 0; i < lines.length; i++) {
+    // Word-wrap manually for justified rendering
+    this.setFont(FS.body, "normal");
+    const allWords = text.split(/\s+/).filter(w => w.length > 0);
+    if (allWords.length === 0) return;
+
+    const lineH = this.lh(FS.body);
+    const spaceWidth = (this.doc.getStringUnitWidth(" ") * FS.body) / 72;
+    const wordLines: string[][] = [];
+    let currentLine: string[] = [];
+    let currentWidth = 0;
+
+    for (const word of allWords) {
+      const wordWidth = (this.doc.getStringUnitWidth(word) * FS.body) / 72;
+      const neededWidth = currentLine.length > 0 ? currentWidth + spaceWidth + wordWidth : wordWidth;
+
+      if (neededWidth > maxW && currentLine.length > 0) {
+        wordLines.push(currentLine);
+        currentLine = [word];
+        currentWidth = wordWidth;
+      } else {
+        currentLine.push(word);
+        currentWidth = neededWidth;
+      }
+    }
+    if (currentLine.length > 0) wordLines.push(currentLine);
+
+    for (let i = 0; i < wordLines.length; i++) {
       this.ensureSpace(lineH);
       const drawY = this.y + lineH;
 
@@ -131,7 +221,8 @@ class PDFResumeRenderer {
         this.text("\u2022", bulletX, drawY, FS.body);
       }
 
-      this.text(lines[i], textX, drawY, FS.body);
+      const isLastLine = i === wordLines.length - 1;
+      this.justifiedLine(wordLines[i], textX, drawY, maxW, FS.body, "normal", isLastLine);
       this.y = drawY;
     }
     this.y += ptToIn(1); // 1pt spacing after bullet
@@ -172,14 +263,7 @@ class PDFResumeRenderer {
 
   private renderSummary(summary: string) {
     this.sectionHeading("Summary");
-    const lines = this.wrapText(summary, CONTENT_WIDTH, FS.body);
-    const lineH = this.lh(FS.body);
-    for (const line of lines) {
-      this.ensureSpace(lineH);
-      const drawY = this.y + lineH;
-      this.text(line, PAGE.marginLeft, drawY, FS.body);
-      this.y = drawY;
-    }
+    this.justifiedBlock(summary, PAGE.marginLeft, CONTENT_WIDTH, FS.body);
     this.y += ptToIn(4);
   }
 

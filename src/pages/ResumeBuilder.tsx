@@ -679,7 +679,7 @@ export default function ResumeBuilder() {
   return (
     <div className="flex h-full w-full overflow-hidden bg-background">
       {/* ─── LEFT PANEL: Accordion editor ─────────────────────────────── */}
-      <div className={cn("w-full lg:w-[38%] lg:min-w-[340px] lg:max-w-[440px] flex flex-col border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
+      <div className={cn("w-full lg:w-[38%] lg:min-w-[340px] lg:max-w-[440px] flex flex-col min-h-0 border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card">
           <h1 className="text-sm font-bold flex-1">Resume Builder</h1>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -713,7 +713,7 @@ export default function ResumeBuilder() {
           </div>
         )}
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           {/* Job Description Targeting */}
           <div className="px-3 py-2">
             <button
@@ -824,7 +824,7 @@ export default function ResumeBuilder() {
                           {count > 0 && <Badge variant="secondary" className="ml-auto text-[10px] h-5 shrink-0">{count}</Badge>}
                         </span>
                       </AccordionTrigger>
-                      <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      <div className="flex items-center shrink-0">
                         <Tooltip><TooltipTrigger asChild><button onClick={(e) => { e.stopPropagation(); setEditingSectionId(section.id); setEditingSectionLabel(section.label); }} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Pencil className="h-3 w-3" /></button></TooltipTrigger><TooltipContent>Rename section</TooltipContent></Tooltip>
                         <Tooltip><TooltipTrigger asChild><button onClick={(e) => { e.stopPropagation(); toggleSectionVisibility(section.id); }} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">{isHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}</button></TooltipTrigger><TooltipContent>{isHidden ? "Show on resume" : "Hide from resume"}</TooltipContent></Tooltip>
                         {(section.id !== "personal" && section.id !== "summary") && (
