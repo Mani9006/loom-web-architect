@@ -836,7 +836,7 @@ export default function ResumeBuilder() {
                       {/* ── Personal Info: compact 3-col grid ── */}
                       {section.id === "personal" && (
                         <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
-                          {([{ field: "name" as const, label: "Name", placeholder: "John Doe" }, { field: "title" as const, label: "Title", placeholder: "Data Engineer" }, { field: "email" as const, label: "Email", placeholder: "john@email.com", type: "email" }, { field: "phone" as const, label: "Phone", placeholder: "+1 555-123-4567" }, { field: "location" as const, label: "Location", placeholder: "Dallas, TX" }, { field: "linkedin" as const, label: "LinkedIn", placeholder: "linkedin.com/in/..." }] as const).map(({ field, label, placeholder, type }) => (
+                          {([{ field: "name" as const, label: "Name", placeholder: "John Doe" }, { field: "title" as const, label: "Title", placeholder: "Data Engineer" }, { field: "email" as const, label: "Email", placeholder: "john@email.com", type: "email" as const }, { field: "phone" as const, label: "Phone", placeholder: "+1 555-123-4567" }, { field: "location" as const, label: "Location", placeholder: "Dallas, TX" }, { field: "linkedin" as const, label: "LinkedIn", placeholder: "linkedin.com/in/..." }] as { field: keyof typeof data.header; label: string; placeholder: string; type?: string }[]).map(({ field, label, placeholder, type }) => (
                             <div key={field}>
                               <Input type={type || "text"} placeholder={`${label}: ${placeholder}`} value={data.header[field]} onChange={(e) => updateHeader(field, e.target.value)} className="bg-background h-7 text-xs" />
                             </div>
