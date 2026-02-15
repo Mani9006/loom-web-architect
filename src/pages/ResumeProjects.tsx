@@ -3,12 +3,20 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ResumeJSON, createEmptyResumeJSON } from "@/types/resume";
 import { calculateATSScore } from "@/lib/ats-scorer";
+import {
+  streamAIText, parseAIResponse, mapParsedToResumePayload, RESUME_PARSE_SYSTEM_PROMPT,
+} from "@/lib/ai-resume-parser";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
+import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -22,9 +30,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Search, FileText, MoreVertical, Copy, Trash2,
-  Pencil, Clock, Sparkles, Shield, Briefcase,
+  Pencil, Clock, Sparkles, Shield, Briefcase, Loader2,
+  CheckCircle, Upload, FolderOpen,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
+
+type ResumeSource = "scratch" | "upload" | "existing";
 
 interface ResumeRow {
   id: string;
@@ -69,6 +80,12 @@ export default function ResumeProjects() {
   const [newResumeName, setNewResumeName] = useState("");
   const [newResumeRole, setNewResumeRole] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [resumeSource, setResumeSource] = useState<ResumeSource>("scratch");
+  const [uploadedResumeText, setUploadedResumeText] = useState<string | null>(null);
+  const [uploadedResumeFileName, setUploadedResumeFileName] = useState("");
+  const [existingDocuments, setExistingDocuments] = useState<any[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [isParsingImport, setIsParsingImport] = useState(false);
 
   // ── Fetch all resumes ─────────────────────────────────────────────────
   const fetchResumes = async () => {
@@ -89,6 +106,23 @@ export default function ResumeProjects() {
 
   useEffect(() => { fetchResumes(); }, []);
 
+  // ── Fetch existing uploaded documents when create dialog opens ──────
+  useEffect(() => {
+    if (!createOpen) return;
+    const fetchDocs = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("user_documents" as any)
+        .select("id, file_name, category, created_at, extracted_text")
+        .eq("user_id", user.id)
+        .eq("category", "resume")
+        .order("created_at", { ascending: false });
+      if (data) setExistingDocuments(data as any[]);
+    };
+    fetchDocs();
+  }, [createOpen]);
+
   // ── Filtered resumes ──────────────────────────────────────────────────
   const filteredResumes = useMemo(() => {
     if (!searchQuery.trim()) return resumes;
@@ -101,6 +135,17 @@ export default function ResumeProjects() {
     });
   }, [resumes, searchQuery]);
 
+  // ── Reset dialog state ───────────────────────────────────────────────
+  const resetCreateDialog = () => {
+    setNewResumeName("");
+    setNewResumeRole("");
+    setResumeSource("scratch");
+    setUploadedResumeText(null);
+    setUploadedResumeFileName("");
+    setSelectedDocumentId(null);
+    setIsParsingImport(false);
+  };
+
   // ── Create new resume ─────────────────────────────────────────────────
   const handleCreateResume = async () => {
     if (!newResumeName.trim()) return;
@@ -109,21 +154,90 @@ export default function ResumeProjects() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setIsCreating(false); return; }
 
+    let payload: any;
     const emptyResume = createEmptyResumeJSON();
-    const payload = {
-      user_id: user.id,
-      title: newResumeName.trim(),
-      personal_info: { ...emptyResume.header, title: newResumeRole.trim() } as any,
-      summary: "",
-      experience: [] as any,
-      education: [] as any,
-      skills: {} as any,
-      projects: [] as any,
-      certifications: [] as any,
-      languages: [] as any,
-      template: "professional",
-    };
 
+    if (resumeSource === "scratch") {
+      // Empty resume
+      payload = {
+        user_id: user.id,
+        title: newResumeName.trim(),
+        personal_info: { ...emptyResume.header, title: newResumeRole.trim() } as any,
+        summary: "",
+        experience: [] as any,
+        education: [] as any,
+        skills: {} as any,
+        projects: [] as any,
+        certifications: [] as any,
+        languages: [] as any,
+        template: "professional",
+      };
+    } else {
+      // "upload" or "existing" — get extracted text and AI-parse it
+      let textToParse: string;
+      if (resumeSource === "upload") {
+        textToParse = uploadedResumeText!;
+      } else {
+        const selectedDoc = existingDocuments.find((d) => d.id === selectedDocumentId);
+        textToParse = selectedDoc?.extracted_text || "";
+        if (!textToParse) {
+          toast({ title: "Error", description: "Selected document has no extracted text.", variant: "destructive" });
+          setIsCreating(false);
+          return;
+        }
+      }
+
+      // AI parse
+      setIsParsingImport(true);
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        if (!session.session) throw new Error("Not authenticated");
+
+        const fullContent = await streamAIText(
+          session.session.access_token,
+          [
+            { role: "system", content: RESUME_PARSE_SYSTEM_PROMPT },
+            { role: "user", content: `Parse this resume:\n\n${textToParse}` },
+          ],
+          "resume_parse",
+        );
+
+        const parsedData = parseAIResponse(fullContent);
+        if (!parsedData) throw new Error("Could not extract structured data.");
+
+        const mapped = mapParsedToResumePayload(parsedData);
+
+        payload = {
+          user_id: user.id,
+          title: newResumeName.trim(),
+          personal_info: {
+            ...mapped.personal_info,
+            title: newResumeRole.trim() || mapped.personal_info.title,
+          } as any,
+          summary: mapped.summary,
+          experience: mapped.experience as any,
+          education: mapped.education as any,
+          skills: mapped.skills as any,
+          projects: mapped.projects as any,
+          certifications: mapped.certifications as any,
+          languages: [] as any,
+          template: "professional",
+        };
+      } catch (error) {
+        toast({
+          title: "Import failed",
+          description: error instanceof Error ? error.message : "Failed to parse resume",
+          variant: "destructive",
+        });
+        setIsCreating(false);
+        setIsParsingImport(false);
+        return;
+      } finally {
+        setIsParsingImport(false);
+      }
+    }
+
+    // Insert into Supabase
     const { data: newResume, error } = await supabase
       .from("resumes" as any)
       .insert(payload)
@@ -137,8 +251,7 @@ export default function ResumeProjects() {
     }
 
     setCreateOpen(false);
-    setNewResumeName("");
-    setNewResumeRole("");
+    resetCreateDialog();
     navigate(`/resume-builder/${(newResume as any).id}`);
   };
 
@@ -285,18 +398,19 @@ export default function ResumeProjects() {
       )}
 
       {/* Create Resume Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) resetCreateDialog(); }}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-primary" />
               Create New Resume
             </DialogTitle>
             <DialogDescription>
-              Give your resume a name and optionally set a target role.
+              Start fresh or import from an existing document.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {/* Resume Name */}
             <div className="space-y-2">
               <Label htmlFor="resume-name">Resume Name *</Label>
               <Input
@@ -304,10 +418,11 @@ export default function ResumeProjects() {
                 placeholder="e.g., Senior Engineer Resume"
                 value={newResumeName}
                 onChange={(e) => setNewResumeName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && newResumeName.trim()) handleCreateResume(); }}
                 autoFocus
               />
             </div>
+
+            {/* Target Role */}
             <div className="space-y-2">
               <Label htmlFor="resume-role">Target Role (optional)</Label>
               <Input
@@ -317,15 +432,95 @@ export default function ResumeProjects() {
                 onChange={(e) => setNewResumeRole(e.target.value)}
               />
             </div>
+
+            {/* Resume Source Selection */}
+            <div className="space-y-3">
+              <Label>Resume Source</Label>
+              <RadioGroup value={resumeSource} onValueChange={(v) => setResumeSource(v as ResumeSource)} className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="scratch" id="src-scratch" />
+                  <Label htmlFor="src-scratch" className="font-normal cursor-pointer">Start from scratch</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="upload" id="src-upload" />
+                  <Label htmlFor="src-upload" className="font-normal cursor-pointer flex items-center gap-1.5">
+                    <Upload className="h-3.5 w-3.5" /> Upload a resume file
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="existing" id="src-existing" />
+                  <Label htmlFor="src-existing" className="font-normal cursor-pointer flex items-center gap-1.5">
+                    <FolderOpen className="h-3.5 w-3.5" /> Use an existing document
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Upload section */}
+            {resumeSource === "upload" && (
+              <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
+                <DocumentUpload
+                  onTextExtracted={(text, fileName) => {
+                    setUploadedResumeText(text);
+                    setUploadedResumeFileName(fileName);
+                    if (!newResumeName.trim()) {
+                      setNewResumeName(fileName.replace(/\.[^.]+$/, ""));
+                    }
+                  }}
+                  persistToDocuments={true}
+                  label="Drop your resume here"
+                />
+                {uploadedResumeText && (
+                  <div className="flex items-center gap-2 text-sm text-green-600 mt-2">
+                    <CheckCircle className="h-4 w-4" />
+                    Resume extracted: {uploadedResumeFileName}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Existing document picker */}
+            {resumeSource === "existing" && (
+              <div className="space-y-2">
+                {existingDocuments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-lg border text-center">
+                    No uploaded resume documents found. Upload one first using the option above.
+                  </p>
+                ) : (
+                  <Select value={selectedDocumentId || ""} onValueChange={setSelectedDocumentId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a document..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {existingDocuments.map((doc) => (
+                        <SelectItem key={doc.id} value={doc.id}>
+                          {doc.file_name} — {format(new Date(doc.created_at), "MMM dd, yyyy")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
               onClick={handleCreateResume}
-              disabled={!newResumeName.trim() || isCreating}
+              disabled={
+                !newResumeName.trim() ||
+                isCreating ||
+                isParsingImport ||
+                (resumeSource === "upload" && !uploadedResumeText) ||
+                (resumeSource === "existing" && !selectedDocumentId)
+              }
               className="gap-2"
             >
-              {isCreating ? "Creating..." : "Create Resume"}
+              {isCreating || isParsingImport ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> {isParsingImport ? "Importing..." : "Creating..."}</>
+              ) : (
+                "Create Resume"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

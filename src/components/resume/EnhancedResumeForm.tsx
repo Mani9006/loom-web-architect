@@ -596,6 +596,7 @@ CRITICAL RULES:
               <DocumentUpload
                 onTextExtracted={handleResumeImported}
                 isLoading={isParsingResume}
+                persistToDocuments={true}
                 label={isParsingResume ? "Parsing resume..." : "Upload Resume (PDF/Word)"}
               />
             </CardContent>
