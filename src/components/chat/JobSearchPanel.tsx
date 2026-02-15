@@ -11,13 +11,7 @@ import { toast } from "sonner";
 import html2pdf from "html2pdf.js";
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const FILTERS_STORAGE_KEY = "job-search-filters";
 
@@ -55,17 +49,14 @@ const defaultFilters: JobFilters = {
   salaryRange: "all",
 };
 
-export function JobSearchPanel({
-  selectedModel,
-  onModelChange,
-}: JobSearchPanelProps) {
+export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelProps) {
   const [resumeText, setResumeText] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [streamingResponse, setStreamingResponse] = useState("");
-  const [conversationHistory, setConversationHistory] = useState<Array<{role: string, content: string}>>([]); 
+  const [conversationHistory, setConversationHistory] = useState<Array<{ role: string; content: string }>>([]);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   // Load filters from localStorage on mount
@@ -96,7 +87,7 @@ export function JobSearchPanel({
   };
 
   const updateFilter = (key: keyof JobFilters, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleSearch = async (isFollowUp = false) => {
@@ -108,26 +99,28 @@ export function JobSearchPanel({
     setIsLoading(true);
     setHasSearched(true);
     setStreamingResponse("");
-    
+
     if (!isFollowUp) {
       setJobs([]);
       setConversationHistory([]);
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session) {
         toast.error("Please sign in to search for jobs");
         return;
       }
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://eybsvijjtjwshbcsjtvz.supabase.co';
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://eybsvijjtjwshbcsjtvz.supabase.co";
       const response = await fetch(`${supabaseUrl}/functions/v1/job-search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           resumeText,
@@ -159,7 +152,7 @@ export function JobSearchPanel({
             if (line.startsWith("data: ")) {
               const data = line.slice(6);
               if (data === "[DONE]") continue;
-              
+
               try {
                 const parsed = JSON.parse(data);
                 const content = parsed.choices?.[0]?.delta?.content || "";
@@ -174,10 +167,13 @@ export function JobSearchPanel({
       }
 
       // Update conversation history
-      setConversationHistory(prev => [
+      setConversationHistory((prev) => [
         ...prev,
-        { role: "user", content: isFollowUp ? "Generate more job opportunities" : `Find jobs for: ${resumeText.substring(0, 200)}...` },
-        { role: "assistant", content: fullResponse }
+        {
+          role: "user",
+          content: isFollowUp ? "Generate more job opportunities" : `Find jobs for: ${resumeText.substring(0, 200)}...`,
+        },
+        { role: "assistant", content: fullResponse },
       ]);
 
       toast.success("Job search completed!");
@@ -190,7 +186,7 @@ export function JobSearchPanel({
   };
 
   const handleDownloadPDF = () => {
-    if (!resultsRef.current || jobs.length === 0) {
+    if (!resultsRef.current || !streamingResponse) {
       toast.error("No results to download");
       return;
     }
@@ -198,20 +194,17 @@ export function JobSearchPanel({
     const element = resultsRef.current;
     const opt = {
       margin: 0.5,
-      filename: 'job-matches.pdf',
-      image: { type: 'jpeg' as const, quality: 0.98 },
+      filename: "job-matches.pdf",
+      image: { type: "jpeg" as const, quality: 0.98 },
       html2canvas: { scale: 2 },
-      jsPDF: { unit: 'in' as const, format: 'letter' as const, orientation: 'portrait' as const }
+      jsPDF: { unit: "in" as const, format: "letter" as const, orientation: "portrait" as const },
     };
 
-    toast.promise(
-      html2pdf().set(opt).from(element).save(),
-      {
-        loading: 'Generating PDF...',
-        success: 'PDF downloaded successfully!',
-        error: 'Failed to generate PDF',
-      }
-    );
+    toast.promise(html2pdf().set(opt).from(element).save(), {
+      loading: "Generating PDF...",
+      success: "PDF downloaded successfully!",
+      error: "Failed to generate PDF",
+    });
   };
 
   const getMatchScoreColor = (score: number) => {
@@ -239,16 +232,14 @@ export function JobSearchPanel({
               <Search className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-2xl font-semibold mb-2">AI Job Search</h2>
-            <p className="text-muted-foreground">
-              Upload your resume and let AI find real jobs matching your skills
-            </p>
+            <p className="text-muted-foreground">Upload your resume and let AI find real jobs matching your skills</p>
           </div>
 
           {/* Resume Input */}
           <div className="space-y-3">
             <Label className="text-base font-medium">Your Resume / Skills *</Label>
-            
-            <DocumentUpload 
+
+            <DocumentUpload
               onTextExtracted={handleDocumentExtracted}
               isLoading={isLoading}
               label="Upload Resume (PDF/Word)"
@@ -285,7 +276,7 @@ export function JobSearchPanel({
               <Filter className="w-4 h-4 text-muted-foreground" />
               <Label className="text-base font-medium">Job Filters</Label>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {/* Date Posted */}
               <div className="space-y-1.5">
@@ -397,13 +388,9 @@ export function JobSearchPanel({
                 </>
               )}
             </Button>
-            
+
             {hasSearched && (
-              <Button
-                onClick={handleNewSearch}
-                variant="outline"
-                size="lg"
-              >
+              <Button onClick={handleNewSearch} variant="outline" size="lg">
                 New Search
               </Button>
             )}
@@ -433,9 +420,7 @@ export function JobSearchPanel({
           {!isLoading && hasSearched && streamingResponse && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">
-                  Job Search Results
-                </h3>
+                <h3 className="text-lg font-semibold">Job Search Results</h3>
                 <div className="flex gap-2">
                   <Button
                     onClick={() => handleSearch(true)}
@@ -447,12 +432,7 @@ export function JobSearchPanel({
                     <Sparkles className="w-4 h-4" />
                     Generate More Jobs
                   </Button>
-                  <Button
-                    onClick={handleDownloadPDF}
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                  >
+                  <Button onClick={handleDownloadPDF} variant="outline" size="sm" className="gap-2">
                     <Download className="w-4 h-4" />
                     Download as PDF
                   </Button>
@@ -461,9 +441,7 @@ export function JobSearchPanel({
 
               <Card ref={resultsRef} className="p-6">
                 <div className="prose prose-sm dark:prose-invert max-w-none">
-                  <ReactMarkdown>
-                    {streamingResponse}
-                  </ReactMarkdown>
+                  <ReactMarkdown>{streamingResponse}</ReactMarkdown>
                 </div>
               </Card>
             </div>
