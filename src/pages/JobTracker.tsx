@@ -109,8 +109,16 @@ export default function JobTracker() {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="p-6 h-full flex flex-col">
+        <div className="flex items-center justify-between mb-6">
+          <div className="space-y-1">
+            <div className="h-6 w-32 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-48 bg-muted animate-pulse rounded" />
+          </div>
+        </div>
+        <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-4">
+          {[1,2,3,4,5].map(i => <div key={i} className="h-full bg-muted/20 animate-pulse rounded-xl" />)}
+        </div>
       </div>
     );
   }
@@ -145,7 +153,7 @@ export default function JobTracker() {
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-5 gap-4 min-h-0 overflow-x-auto">
+      <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-4 min-h-0 overflow-x-auto">
         {COLUMNS.map((col) => {
           const colJobs = filteredJobs.filter((j) => j.status === col.key);
           return (
