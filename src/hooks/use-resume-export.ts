@@ -29,7 +29,6 @@ export function useResumeExport() {
 
       const children: any[] = [];
 
-      // Header - Name
       children.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,
@@ -37,14 +36,13 @@ export function useResumeExport() {
             new TextRun({
               text: data.header.name || "Your Name",
               bold: true,
-              size: 38, // 19pt
+              size: 38,
               font: "Georgia",
             }),
           ],
         }),
       );
 
-      // Title
       if (data.header.title) {
         children.push(
           new Paragraph({
@@ -54,7 +52,7 @@ export function useResumeExport() {
               new TextRun({
                 text: data.header.title,
                 bold: true,
-                size: 23, // 11.5pt
+                size: 23,
                 font: "Georgia",
               }),
             ],
@@ -62,7 +60,6 @@ export function useResumeExport() {
         );
       }
 
-      // Contact info
       const contactParts: string[] = [];
       if (data.header.location) contactParts.push(data.header.location);
       if (data.header.email) contactParts.push(data.header.email);
@@ -88,7 +85,6 @@ export function useResumeExport() {
         );
       }
 
-      // Summary Section
       if (data.summary) {
         children.push(
           new Paragraph({
@@ -121,7 +117,6 @@ export function useResumeExport() {
         );
       }
 
-      // Experience Section
       const validExperience = data.experience.filter((e) => e.company_or_client);
       if (validExperience.length > 0) {
         children.push(
@@ -143,7 +138,6 @@ export function useResumeExport() {
         );
 
         validExperience.forEach((exp) => {
-          // Role and dates
           children.push(
             new Paragraph({
               spacing: { before: 150 },
@@ -163,7 +157,6 @@ export function useResumeExport() {
             }),
           );
 
-          // Company and location
           children.push(
             new Paragraph({
               children: [
@@ -184,7 +177,6 @@ export function useResumeExport() {
             }),
           );
 
-          // Bullets
           exp.bullets.forEach((bullet) => {
             children.push(
               new Paragraph({
@@ -203,7 +195,6 @@ export function useResumeExport() {
         });
       }
 
-      // Education Section
       const validEducation = data.education.filter((e) => e.institution);
       if (validEducation.length > 0) {
         children.push(
@@ -263,7 +254,6 @@ export function useResumeExport() {
         });
       }
 
-      // Certifications Section
       const validCerts = data.certifications.filter((c) => c.name);
       if (validCerts.length > 0) {
         children.push(
@@ -313,7 +303,6 @@ export function useResumeExport() {
         });
       }
 
-      // Skills Section
       const skillCategories = Object.entries(data.skills)
         .filter(([_, skills]) => skills.length > 0)
         .map(([key, skills]) => ({
@@ -362,7 +351,6 @@ export function useResumeExport() {
         });
       }
 
-      // Projects Section
       const validProjects = data.projects?.filter((p) => p.title) || [];
       if (validProjects.length > 0) {
         children.push(
@@ -430,8 +418,8 @@ export function useResumeExport() {
             properties: {
               page: {
                 margin: {
-                  top: 720, // 0.5 inch
-                  right: 1080, // 0.75 inch
+                  top: 720,
+                  right: 1080,
                   bottom: 720,
                   left: 1080,
                 },
