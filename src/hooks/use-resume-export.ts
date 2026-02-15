@@ -80,7 +80,15 @@ class PDFResumeRenderer {
    * Words are spaced evenly so the text fills from left margin to right margin.
    * The last line of a paragraph should NOT be justified (passed as isLastLine).
    */
-  private justifiedLine(words: string[], x: number, y: number, maxWidth: number, size: number, style: FontStyle = "normal", isLastLine = false) {
+  private justifiedLine(
+    words: string[],
+    x: number,
+    y: number,
+    maxWidth: number,
+    size: number,
+    style: FontStyle = "normal",
+    isLastLine = false,
+  ) {
     this.setFont(size, style);
     if (words.length === 0) return;
 
@@ -108,7 +116,7 @@ class PDFResumeRenderer {
    */
   private justifiedBlock(text: string, x: number, maxWidth: number, size: number, style: FontStyle = "normal") {
     this.setFont(size, style);
-    const allWords = text.split(/\s+/).filter(w => w.length > 0);
+    const allWords = text.split(/\s+/).filter((w) => w.length > 0);
     if (allWords.length === 0) return;
 
     const lineH = this.lh(size);
@@ -195,7 +203,7 @@ class PDFResumeRenderer {
 
     // Word-wrap manually for justified rendering
     this.setFont(FS.body, "normal");
-    const allWords = text.split(/\s+/).filter(w => w.length > 0);
+    const allWords = text.split(/\s+/).filter((w) => w.length > 0);
     if (allWords.length === 0) return;
 
     const lineH = this.lh(FS.body);
