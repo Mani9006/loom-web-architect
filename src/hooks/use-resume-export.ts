@@ -10,25 +10,11 @@ export function useResumeExport() {
     try {
       const html2pdf = (await import("html2pdf.js")).default;
 
-      // Clone element so we can adjust styles for PDF without affecting the live preview
-      const clone = resumeElement.cloneNode(true) as HTMLElement;
-
-      // Remove the template's own padding — html2pdf margin handles page margins instead.
-      // This avoids double-margins (template padding + html2pdf margin).
-      clone.style.padding = "0";
-      clone.style.width = "7.3in"; // 8.5in - 0.6in*2 = content width inside margins
-      clone.style.minHeight = "auto";
-      clone.style.backgroundColor = "#fff";
-      clone.style.boxSizing = "border-box";
-
-      // Place offscreen so html2canvas can capture it
-      clone.style.position = "absolute";
-      clone.style.left = "-9999px";
-      clone.style.top = "0";
-      document.body.appendChild(clone);
-
+      // html2pdf captures the element as-is via html2canvas.
+      // The template already has 0.5in/0.6in padding built in, so we use margin:0
+      // to avoid double margins. The template padding IS the page margin.
       const opt = {
-        margin: [0.5, 0.6, 0.5, 0.6], // top, right, bottom, left in inches
+        margin: 0,
         filename: `${fileName}.pdf`,
         image: { type: "png" as const, quality: 1 },
         html2canvas: {
@@ -48,10 +34,7 @@ export function useResumeExport() {
         },
       };
 
-      await html2pdf().set(opt).from(clone).save();
-
-      // Clean up
-      document.body.removeChild(clone);
+      await html2pdf().set(opt).from(resumeElement).save();
       toast.success("Resume exported as PDF!");
     } catch (error) {
       console.error("PDF export error:", error);
