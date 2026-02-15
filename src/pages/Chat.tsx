@@ -3,8 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User, Session } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
-import { ChatSidebar, ConversationFolder } from "@/components/chat/ChatSidebar";
-import { ChatHeader } from "@/components/chat/ChatHeader";
+import { ConversationFolder } from "@/components/chat/ChatSidebar";
 import { ChatWelcome } from "@/components/chat/ChatWelcome";
 import { GeneralChatPanel, GeneralChatMessage } from "@/components/chat/GeneralChatPanel";
 import { ATSCheckerPanel, ATSMessage } from "@/components/chat/ATSCheckerPanel";
@@ -12,15 +11,27 @@ import { JobSearchPanel } from "@/components/chat/JobSearchPanel";
 import { CoverLetterPanel, CoverLetterMessage } from "@/components/chat/CoverLetterPanel";
 import { InterviewPrepPanel, InterviewMessage } from "@/components/chat/InterviewPrepPanel";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
-import { ResumeChatPanel, ChatMessage, ProjectOptionsData, SummaryOptionsData } from "@/components/resume/ResumeChatPanel";
+import {
+  ResumeChatPanel,
+  ChatMessage,
+  ProjectOptionsData,
+  SummaryOptionsData,
+} from "@/components/resume/ResumeChatPanel";
 import { ResumePreview } from "@/components/resume/ResumePreview";
 import { OptionsPanel } from "@/components/resume/OptionsPanel";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { ResumeJSON, createEmptyResumeJSON } from "@/types/resume";
 import { useResumeParser } from "@/hooks/use-resume-parser";
 
-type ChatMode = "welcome" | "general" | "resume-form" | "resume-chat" | "ats-check" | "job-search" | "cover-letter" | "interview-prep";
+type ChatMode =
+  | "welcome"
+  | "general"
+  | "resume-form"
+  | "resume-chat"
+  | "ats-check"
+  | "job-search"
+  | "cover-letter"
+  | "interview-prep";
 
 type Conversation = {
   id: string;
@@ -61,23 +72,22 @@ export default function Chat() {
     setResumeData((prev) => ({ ...prev, ...updates }));
   }, []);
 
-  const { parseIncremental, parseComplete, reset: resetParser } = useResumeParser(
-    resumeData,
-    handleResumeUpdate
-  );
+  const { parseIncremental, parseComplete, reset: resetParser } = useResumeParser(resumeData, handleResumeUpdate);
 
   useEffect(() => {
     // Track if initial session check is done to prevent premature redirects
     let initialCheckDone = false;
-    
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       // Update state for all events
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       // Only redirect on explicit sign out, not on token refresh or initial events
       // This prevents redirect loops when switching tabs during token refresh
-      if (event === 'SIGNED_OUT') {
+      if (event === "SIGNED_OUT") {
         navigate("/auth");
       }
     });
@@ -87,7 +97,7 @@ export default function Chat() {
       setSession(session);
       setUser(session?.user ?? null);
       initialCheckDone = true;
-      
+
       // Only redirect if no session on initial load
       if (!session?.user) {
         navigate("/auth");
@@ -107,7 +117,7 @@ export default function Chat() {
 
   // Track if we've initialized for the current user to prevent re-initialization on token refresh
   const userInitializedRef = useRef<string | null>(null);
-  
+
   useEffect(() => {
     if (conversationId && user) {
       loadConversation(conversationId);
@@ -115,8 +125,16 @@ export default function Chat() {
     } else if (!conversationId) {
       // Check for mode query param
       const modeParam = searchParams.get("mode") as ChatMode | null;
-      const validModes: ChatMode[] = ["resume-form", "resume-chat", "ats-check", "job-search", "cover-letter", "interview-prep", "general"];
-      
+      const validModes: ChatMode[] = [
+        "resume-form",
+        "resume-chat",
+        "ats-check",
+        "job-search",
+        "cover-letter",
+        "interview-prep",
+        "general",
+      ];
+
       if (modeParam && validModes.includes(modeParam)) {
         setChatMode(modeParam);
         // Clear the query param so it doesn't persist on refresh
@@ -137,20 +155,13 @@ export default function Chat() {
 
   const fetchProfile = async () => {
     if (!user) return;
-    const { data } = await supabase
-      .from("profiles")
-      .select("full_name, email")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const { data } = await supabase.from("profiles").select("full_name, email").eq("user_id", user.id).maybeSingle();
     setProfile(data);
   };
 
   const fetchConversations = async () => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from("conversations")
-      .select("*")
-      .order("updated_at", { ascending: false });
+    const { data, error } = await supabase.from("conversations").select("*").order("updated_at", { ascending: false });
     if (!error && data) {
       setConversations(data as Conversation[]);
     }
@@ -168,18 +179,14 @@ export default function Chat() {
   };
 
   const loadConversation = async (id: string) => {
-    const { data: conv } = await supabase
-      .from("conversations")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
+    const { data: conv } = await supabase.from("conversations").select("*").eq("id", id).maybeSingle();
 
     if (conv) {
       setCurrentConversation(conv);
-      
+
       // Determine chat mode from conversation
       const mode = (conv as any).chat_mode || "general";
-      
+
       const { data: msgs } = await supabase
         .from("messages")
         .select("*")
@@ -257,69 +264,56 @@ export default function Chat() {
   };
 
   const handleRenameConversation = async (id: string, newTitle: string) => {
-    const { error } = await supabase
-      .from("conversations")
-      .update({ title: newTitle })
-      .eq("id", id);
-    
+    const { error } = await supabase.from("conversations").update({ title: newTitle }).eq("id", id);
+
     if (error) {
       toast({ title: "Error", description: "Failed to rename conversation", variant: "destructive" });
       return;
     }
-    
+
     // Update local state
-    setConversations((prev) =>
-      prev.map((conv) => (conv.id === id ? { ...conv, title: newTitle } : conv))
-    );
-    
+    setConversations((prev) => prev.map((conv) => (conv.id === id ? { ...conv, title: newTitle } : conv)));
+
     if (currentConversation?.id === id) {
-      setCurrentConversation((prev) => prev ? { ...prev, title: newTitle } : null);
+      setCurrentConversation((prev) => (prev ? { ...prev, title: newTitle } : null));
     }
   };
 
   const handleCreateFolder = async (name: string, color: string) => {
     if (!user) return;
-    const { error } = await supabase
-      .from("conversation_folders")
-      .insert({ user_id: user.id, name, color });
-    
+    const { error } = await supabase.from("conversation_folders").insert({ user_id: user.id, name, color });
+
     if (error) {
       toast({ title: "Error", description: "Failed to create folder", variant: "destructive" });
       return;
     }
-    
+
     await fetchFolders();
   };
 
   const handleDeleteFolder = async (id: string) => {
-    const { error } = await supabase
-      .from("conversation_folders")
-      .delete()
-      .eq("id", id);
-    
+    const { error } = await supabase.from("conversation_folders").delete().eq("id", id);
+
     if (error) {
       toast({ title: "Error", description: "Failed to delete folder", variant: "destructive" });
       return;
     }
-    
+
     await fetchFolders();
     await fetchConversations(); // Refresh conversations as folder_id is set to null
   };
 
   const handleMoveToFolder = async (conversationId: string, folderId: string | null) => {
-    const { error } = await supabase
-      .from("conversations")
-      .update({ folder_id: folderId })
-      .eq("id", conversationId);
-    
+    const { error } = await supabase.from("conversations").update({ folder_id: folderId }).eq("id", conversationId);
+
     if (error) {
       toast({ title: "Error", description: "Failed to move conversation", variant: "destructive" });
       return;
     }
-    
+
     // Update local state
     setConversations((prev) =>
-      prev.map((conv) => (conv.id === conversationId ? { ...conv, folder_id: folderId } : conv))
+      prev.map((conv) => (conv.id === conversationId ? { ...conv, folder_id: folderId } : conv)),
     );
   };
 
@@ -360,7 +354,12 @@ export default function Chat() {
       const title = message.length > 50 ? message.substring(0, 47) + "..." : message;
       convId = await createNewConversation(title, "general");
       if (convId) {
-        const newConv = { id: convId, title, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+        const newConv = {
+          id: convId,
+          title,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
         setCurrentConversation(newConv as any);
       }
     }
@@ -392,31 +391,26 @@ export default function Chat() {
 
     try {
       let assistantContent = "";
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            messages: [...generalMessages, userMsg].map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
-            mode: "general",
-          }),
-        }
-      );
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          messages: [...generalMessages, userMsg].map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          mode: "general",
+        }),
+      });
 
       if (!response.ok) {
         throw new Error("Failed to get response");
       }
 
-      setGeneralMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
-      );
+      setGeneralMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m)));
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -446,7 +440,7 @@ export default function Chat() {
               if (content) {
                 assistantContent += content;
                 setGeneralMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m)),
                 );
               }
             } catch {
@@ -506,19 +500,17 @@ export default function Chat() {
 
     try {
       let assistantContent = "";
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content: `You are an expert ATS (Applicant Tracking System) resume analyzer. Analyze the resume and provide:
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert ATS (Applicant Tracking System) resume analyzer. Analyze the resume and provide:
 
 1. **ATS Score**: A number from 0-100 representing ATS compatibility. Format: "**ATS Score: XX/100**"
 2. **Strengths**: What the resume does well for ATS
@@ -528,12 +520,11 @@ export default function Chat() {
 6. **Recommendations**: Specific actionable improvements
 
 Be detailed and specific. If a job description is provided, also analyze keyword matching.`,
-              },
-              { role: "user", content: userContent },
-            ],
-          }),
-        }
-      );
+            },
+            { role: "user", content: userContent },
+          ],
+        }),
+      });
 
       if (!response.ok) {
         if (response.status === 429) throw new Error("Rate limit exceeded.");
@@ -541,9 +532,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
         throw new Error("Failed to analyze resume");
       }
 
-      setAtsMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
-      );
+      setAtsMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m)));
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -577,9 +566,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
                 const atsScore = scoreMatch ? parseInt(scoreMatch[1]) : undefined;
 
                 setAtsMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === tempId ? { ...m, content: assistantContent, atsScore } : m
-                  )
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent, atsScore } : m)),
                 );
               }
             } catch {
@@ -615,29 +602,23 @@ Be detailed and specific. If a job description is provided, also analyze keyword
     setAtsMessages((prev) => [...prev, userMsg]);
 
     const tempId = crypto.randomUUID();
-    setAtsMessages((prev) => [
-      ...prev,
-      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
-    ]);
+    setAtsMessages((prev) => [...prev, { id: tempId, role: "assistant", content: "", timestamp: new Date() }]);
 
     try {
       let assistantContent = "";
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            messages: atsMessages.concat(userMsg).map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
-          }),
-        }
-      );
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          messages: atsMessages.concat(userMsg).map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      });
 
       if (!response.ok) throw new Error("Failed to get response");
 
@@ -668,9 +649,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
               const content = parsed.choices?.[0]?.delta?.content;
               if (content) {
                 assistantContent += content;
-                setAtsMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
-                );
+                setAtsMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m)));
               }
             } catch {
               buffer = line + "\n" + buffer;
@@ -694,7 +673,13 @@ Be detailed and specific. If a job description is provided, also analyze keyword
   // Job Search is now self-contained in JobSearchPanel
 
   // Cover Letter Generator Handler
-  const handleCoverLetterGenerate = async (resumeText: string, jobDescription: string, companyName: string, jobTitle: string, template: string = "modern") => {
+  const handleCoverLetterGenerate = async (
+    resumeText: string,
+    jobDescription: string,
+    companyName: string,
+    jobTitle: string,
+    template: string = "modern",
+  ) => {
     if (!session) return;
 
     // Import template prompt helper
@@ -730,19 +715,17 @@ ${jobDescription}`;
 
     try {
       let assistantContent = "";
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content: `You are an expert cover letter writer. Create compelling, personalized cover letters.
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert cover letter writer. Create compelling, personalized cover letters.
 
 ${templatePrompt}
 
@@ -753,12 +736,11 @@ Guidelines:
 - Highlight 2-3 key achievements that directly relate to the role
 
 Output ONLY the cover letter text, properly formatted with paragraphs. Do not include any meta-commentary.`,
-              },
-              { role: "user", content: userContent },
-            ],
-          }),
-        }
-      );
+            },
+            { role: "user", content: userContent },
+          ],
+        }),
+      });
 
       if (!response.ok) {
         if (response.status === 429) throw new Error("Rate limit exceeded.");
@@ -766,9 +748,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
         throw new Error("Failed to generate cover letter");
       }
 
-      setCoverLetterMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
-      );
+      setCoverLetterMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m)));
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -798,7 +778,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
               if (content) {
                 assistantContent += content;
                 setCoverLetterMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m)),
                 );
               }
             } catch {
@@ -834,35 +814,30 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
     setCoverLetterMessages((prev) => [...prev, userMsg]);
 
     const tempId = crypto.randomUUID();
-    setCoverLetterMessages((prev) => [
-      ...prev,
-      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
-    ]);
+    setCoverLetterMessages((prev) => [...prev, { id: tempId, role: "assistant", content: "", timestamp: new Date() }]);
 
     try {
       let assistantContent = "";
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content: "You are a cover letter writing assistant. Help the user revise and improve their cover letter based on their feedback. Output only the revised cover letter or the specific changes they requested.",
-              },
-              ...coverLetterMessages.concat(userMsg).map((m) => ({
-                role: m.role,
-                content: m.content,
-              })),
-            ],
-          }),
-        }
-      );
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a cover letter writing assistant. Help the user revise and improve their cover letter based on their feedback. Output only the revised cover letter or the specific changes they requested.",
+            },
+            ...coverLetterMessages.concat(userMsg).map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          ],
+        }),
+      });
 
       if (!response.ok) throw new Error("Failed to get response");
 
@@ -894,7 +869,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
               if (content) {
                 assistantContent += content;
                 setCoverLetterMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m)),
                 );
               }
             } catch {
@@ -917,7 +892,13 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
   };
 
   // Interview Prep Handler
-  const handleInterviewGenerate = async (resumeText: string, jobDescription: string, companyName: string, jobTitle: string, interviewType: string) => {
+  const handleInterviewGenerate = async (
+    resumeText: string,
+    jobDescription: string,
+    companyName: string,
+    jobTitle: string,
+    interviewType: string,
+  ) => {
     if (!session) return;
 
     setIsLoading(true);
@@ -956,19 +937,17 @@ ${jobDescription}`;
 
     try {
       let assistantContent = "";
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content: `You are an expert interview coach. Generate realistic interview questions based on the candidate's resume and target job.
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert interview coach. Generate realistic interview questions based on the candidate's resume and target job.
 
 For ${typeLabels[interviewType] || "comprehensive"} interviews, provide:
 
@@ -993,12 +972,11 @@ For each question:
 - Reference specific skills or experiences from their resume when relevant
 
 Format with clear headers and bullet points. Be specific to the role and company.`,
-              },
-              { role: "user", content: userContent },
-            ],
-          }),
-        }
-      );
+            },
+            { role: "user", content: userContent },
+          ],
+        }),
+      });
 
       if (!response.ok) {
         if (response.status === 429) throw new Error("Rate limit exceeded.");
@@ -1006,9 +984,7 @@ Format with clear headers and bullet points. Be specific to the role and company
         throw new Error("Failed to generate interview questions");
       }
 
-      setInterviewMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
-      );
+      setInterviewMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m)));
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1038,7 +1014,7 @@ Format with clear headers and bullet points. Be specific to the role and company
               if (content) {
                 assistantContent += content;
                 setInterviewMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m)),
                 );
               }
             } catch {
@@ -1074,29 +1050,23 @@ Format with clear headers and bullet points. Be specific to the role and company
     setInterviewMessages((prev) => [...prev, userMsg]);
 
     const tempId = crypto.randomUUID();
-    setInterviewMessages((prev) => [
-      ...prev,
-      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
-    ]);
+    setInterviewMessages((prev) => [...prev, { id: tempId, role: "assistant", content: "", timestamp: new Date() }]);
 
     try {
       let assistantContent = "";
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            messages: interviewMessages.concat(userMsg).map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
-          }),
-        }
-      );
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          messages: interviewMessages.concat(userMsg).map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      });
 
       if (!response.ok) throw new Error("Failed to get response");
 
@@ -1128,7 +1098,7 @@ Format with clear headers and bullet points. Be specific to the role and company
               if (content) {
                 assistantContent += content;
                 setInterviewMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
+                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m)),
                 );
               }
             } catch {
@@ -1176,8 +1146,18 @@ Format with clear headers and bullet points. Be specific to the role and company
       let year = parseInt(parts[2]);
       if (year < 100) year += 2000;
       const monthMap: Record<string, number> = {
-        jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-        jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+        jan: 0,
+        feb: 1,
+        mar: 2,
+        apr: 3,
+        may: 4,
+        jun: 5,
+        jul: 6,
+        aug: 7,
+        sep: 8,
+        oct: 9,
+        nov: 10,
+        dec: 11,
       };
       const month = monthStr ? monthMap[monthStr.toLowerCase().slice(0, 3)] || 0 : 0;
       return new Date(year, month, 1);
@@ -1209,7 +1189,9 @@ Format with clear headers and bullet points. Be specific to the role and company
       // Build context message from experience
       const experienceSummary = resumeData.experience
         .filter((exp) => exp.company_or_client)
-        .map((exp) => `- ${exp.role} at ${exp.company_or_client} from ${exp.start_date} to ${exp.end_date || "Present"}`)
+        .map(
+          (exp) => `- ${exp.role} at ${exp.company_or_client} from ${exp.start_date} to ${exp.end_date || "Present"}`,
+        )
         .join("\n");
 
       const userContent = `Generate my resume using the Professional template.
@@ -1254,24 +1236,21 @@ ${experienceSummary}
 
       // Stream AI response
       let assistantContent = "";
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resume-chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resume-chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          messages: [],
+          resumeData: {
+            ...resumeData,
+            totalYearsExperience: totalYears,
           },
-          body: JSON.stringify({
-            messages: [],
-            resumeData: {
-              ...resumeData,
-              totalYearsExperience: totalYears,
-            },
-            selectedModel,
-          }),
-        }
-      );
+          selectedModel,
+        }),
+      });
 
       if (!response.ok) {
         if (response.status === 429) throw new Error("Rate limit exceeded. Please wait and try again.");
@@ -1279,9 +1258,7 @@ ${experienceSummary}
         throw new Error("Failed to generate resume");
       }
 
-      setChatMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m))
-      );
+      setChatMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m)));
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1310,9 +1287,7 @@ ${experienceSummary}
               const content = parsed.choices?.[0]?.delta?.content;
               if (content) {
                 assistantContent += content;
-                setChatMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
-                );
+                setChatMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m)));
                 // Live parse for real-time preview updates
                 parseIncremental(assistantContent);
               }
@@ -1350,19 +1325,21 @@ ${experienceSummary}
 
   const parseAndUpdateResumeFromAI = (content: string) => {
     // Extract summary options
-    const summaryMatch = content.match(/## Professional Summary[\s\S]*?\*\*Option 1:\*\*\s*([\s\S]*?)\*\*Option 2:\*\*\s*([\s\S]*?)(?=\n##|$)/);
-    
+    const summaryMatch = content.match(
+      /## Professional Summary[\s\S]*?\*\*Option 1:\*\*\s*([\s\S]*?)\*\*Option 2:\*\*\s*([\s\S]*?)(?=\n##|$)/,
+    );
+
     if (summaryMatch) {
       const option1 = summaryMatch[1].trim();
       const option2 = summaryMatch[2].trim();
-      
+
       const newSummaryOptions: SummaryOptionsData = {
         options: [
           { id: crypto.randomUUID(), content: option1, isSelected: true },
           { id: crypto.randomUUID(), content: option2, isSelected: false },
         ],
       };
-      
+
       setSummaryOptions(newSummaryOptions);
       setResumeData((prev) => ({
         ...prev,
@@ -1376,39 +1353,42 @@ ${experienceSummary}
     if (experienceSection) {
       const clientSections = experienceSection[1].split(/### /).filter(Boolean);
       const newProjectOptions: ProjectOptionsData[] = [];
-      
+
       clientSections.forEach((section) => {
         // Parse role and company from "Role | Company Name"
         const headerMatch = section.match(/^([^|]+)\s*\|\s*([^\n]+)/);
         if (!headerMatch) return;
-        
+
         const role = headerMatch[1].trim();
         const companyName = headerMatch[2].trim();
-        
+
         // Find matching experience in resumeData
         const matchingExp = resumeData.experience.find(
-          (exp) => exp.company_or_client.toLowerCase() === companyName.toLowerCase() || 
-                   exp.role.toLowerCase() === role.toLowerCase()
+          (exp) =>
+            exp.company_or_client.toLowerCase() === companyName.toLowerCase() ||
+            exp.role.toLowerCase() === role.toLowerCase(),
         );
-        
+
         if (!matchingExp) return;
-        
+
         // Extract bullet options
-        const option1Match = section.match(/\*\*(?:Project )?Option 1[^*]*\*\*\s*([\s\S]*?)(?=\*\*(?:Project )?Option 2|$)/);
+        const option1Match = section.match(
+          /\*\*(?:Project )?Option 1[^*]*\*\*\s*([\s\S]*?)(?=\*\*(?:Project )?Option 2|$)/,
+        );
         const option2Match = section.match(/\*\*(?:Project )?Option 2[^*]*\*\*\s*([\s\S]*?)(?=\n###|\n##|$)/);
-        
+
         if (option1Match && option2Match) {
           const extractBullets = (text: string): string[] => {
             return text
-              .split('\n')
-              .filter((line) => line.trim().startsWith('-'))
-              .map((line) => line.replace(/^-\s*/, '').trim())
+              .split("\n")
+              .filter((line) => line.trim().startsWith("-"))
+              .map((line) => line.replace(/^-\s*/, "").trim())
               .filter(Boolean);
           };
-          
+
           const bullets1 = extractBullets(option1Match[1]);
           const bullets2 = extractBullets(option2Match[1]);
-          
+
           const expProjectOptions: ProjectOptionsData = {
             clientId: matchingExp.id,
             clientName: companyName,
@@ -1418,11 +1398,11 @@ ${experienceSummary}
               { id: crypto.randomUUID(), title: "Option 2", bullets: bullets2, isSelected: false },
             ],
           };
-          
+
           newProjectOptions.push(expProjectOptions);
         }
       });
-      
+
       setProjectOptions(newProjectOptions);
     }
   };
@@ -1447,31 +1427,25 @@ ${experienceSummary}
     setChatMessages((prev) => [...prev, userMsg]);
 
     const tempId = crypto.randomUUID();
-    setChatMessages((prev) => [
-      ...prev,
-      { id: tempId, role: "assistant", content: "", timestamp: new Date() },
-    ]);
+    setChatMessages((prev) => [...prev, { id: tempId, role: "assistant", content: "", timestamp: new Date() }]);
 
     try {
       let assistantContent = "";
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resume-chat`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            messages: [...chatMessages, userMsg].map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
-            currentResume: resumeData,
-            selectedModel,
-          }),
-        }
-      );
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/resume-chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          messages: [...chatMessages, userMsg].map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          currentResume: resumeData,
+          selectedModel,
+        }),
+      });
 
       if (!response.ok) {
         if (response.status === 429) throw new Error("Rate limit exceeded.");
@@ -1506,9 +1480,7 @@ ${experienceSummary}
               const content = parsed.choices?.[0]?.delta?.content;
               if (content) {
                 assistantContent += content;
-                setChatMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m))
-                );
+                setChatMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent } : m)));
                 // Live parse for real-time preview updates
                 parseIncremental(assistantContent);
               }
@@ -1548,7 +1520,7 @@ ${experienceSummary}
 
   const handleSelectSummary = (optionId: string) => {
     // Update resume data with selected summary
-    const selectedOption = summaryOptions?.options.find(opt => opt.id === optionId);
+    const selectedOption = summaryOptions?.options.find((opt) => opt.id === optionId);
     if (selectedOption) {
       setResumeData((prev) => ({
         ...prev,
@@ -1557,27 +1529,29 @@ ${experienceSummary}
     }
 
     // Update options panel state
-    setSummaryOptions((prev) => prev ? {
-      ...prev,
-      options: prev.options.map((opt) => ({
-        ...opt,
-        isSelected: opt.id === optionId,
-      })),
-    } : null);
+    setSummaryOptions((prev) =>
+      prev
+        ? {
+            ...prev,
+            options: prev.options.map((opt) => ({
+              ...opt,
+              isSelected: opt.id === optionId,
+            })),
+          }
+        : null,
+    );
   };
 
   const handleSelectProject = (experienceId: string, optionId: string) => {
     // Find the selected option and update the experience bullets
-    const projectOpt = projectOptions.find(p => p.clientId === experienceId);
-    const selectedOption = projectOpt?.options.find(o => o.id === optionId);
-    
+    const projectOpt = projectOptions.find((p) => p.clientId === experienceId);
+    const selectedOption = projectOpt?.options.find((o) => o.id === optionId);
+
     if (selectedOption) {
       setResumeData((prev) => ({
         ...prev,
         experience: prev.experience.map((exp) =>
-          exp.id === experienceId
-            ? { ...exp, bullets: selectedOption.bullets }
-            : exp
+          exp.id === experienceId ? { ...exp, bullets: selectedOption.bullets } : exp,
         ),
       }));
     }
@@ -1593,8 +1567,8 @@ ${experienceSummary}
                 isSelected: opt.id === optionId,
               })),
             }
-          : expData
-      )
+          : expData,
+      ),
     );
   };
 
@@ -1607,16 +1581,9 @@ ${experienceSummary}
 
   const handleDeleteConversation = async (id: string) => {
     // First, get the conversation and messages for undo
-    const { data: convData } = await supabase
-      .from("conversations")
-      .select("*")
-      .eq("id", id)
-      .single();
-    
-    const { data: messagesData } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("conversation_id", id);
+    const { data: convData } = await supabase.from("conversations").select("*").eq("id", id).single();
+
+    const { data: messagesData } = await supabase.from("messages").select("*").eq("conversation_id", id);
 
     // Store for undo
     setDeletedConversation({
@@ -1629,7 +1596,7 @@ ${experienceSummary}
     await supabase.from("messages").delete().eq("conversation_id", id);
     await supabase.from("conversations").delete().eq("id", id);
     await fetchConversations();
-    
+
     if (currentConversation?.id === id) {
       navigate("/chat");
     }
@@ -1692,133 +1659,130 @@ ${experienceSummary}
   return (
     <div className="flex h-full w-full overflow-hidden">
       <main className="flex-1 flex overflow-hidden">
-            {/* Welcome / General Chat Mode */}
-            {(chatMode === "welcome" || chatMode === "general") && (
-              <div className="flex-1">
-                <GeneralChatPanel
-                  messages={generalMessages}
+        {/* Welcome / General Chat Mode */}
+        {(chatMode === "welcome" || chatMode === "general") && (
+          <div className="flex-1">
+            <GeneralChatPanel
+              messages={generalMessages}
+              isLoading={isLoading}
+              onSendMessage={handleGeneralChat}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              welcomeComponent={
+                chatMode === "welcome" ? (
+                  <ChatWelcome
+                    displayName={displayName}
+                    onSuggestionClick={handleGeneralChat}
+                    onStartResume={handleStartResume}
+                    onStartATSCheck={handleStartATSCheck}
+                    onStartJobSearch={handleStartJobSearch}
+                    onStartCoverLetter={handleStartCoverLetter}
+                    onStartInterviewPrep={handleStartInterviewPrep}
+                  />
+                ) : undefined
+              }
+            />
+          </div>
+        )}
+
+        {/* ATS Check Mode */}
+        {chatMode === "ats-check" && (
+          <div className="flex-1">
+            <ATSCheckerPanel
+              messages={atsMessages}
+              isLoading={isLoading}
+              onAnalyze={handleATSAnalyze}
+              onSendMessage={handleATSFollowUp}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+            />
+          </div>
+        )}
+
+        {/* Job Search Mode */}
+        {chatMode === "job-search" && (
+          <div className="flex-1">
+            <JobSearchPanel selectedModel={selectedModel} onModelChange={setSelectedModel} />
+          </div>
+        )}
+
+        {/* Cover Letter Mode */}
+        {chatMode === "cover-letter" && (
+          <div className="flex-1">
+            <CoverLetterPanel
+              messages={coverLetterMessages}
+              isLoading={isLoading}
+              onGenerate={handleCoverLetterGenerate}
+              onSendMessage={handleCoverLetterFollowUp}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              onBack={handleNewChat}
+            />
+          </div>
+        )}
+
+        {/* Interview Prep Mode */}
+        {chatMode === "interview-prep" && (
+          <div className="flex-1">
+            <InterviewPrepPanel
+              messages={interviewMessages}
+              isLoading={isLoading}
+              onGenerate={handleInterviewGenerate}
+              onSendMessage={handleInterviewFollowUp}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              onBack={handleNewChat}
+              session={session}
+            />
+          </div>
+        )}
+
+        {/* Resume Form Mode */}
+        {chatMode === "resume-form" && (
+          <div className="flex-1 relative">
+            <EnhancedResumeForm
+              data={resumeData}
+              onChange={setResumeData}
+              onGenerate={handleGenerateResume}
+              isGenerating={isLoading}
+            />
+          </div>
+        )}
+
+        {/* Resume Chat Mode */}
+        {chatMode === "resume-chat" && (
+          <>
+            {/* Chat Panel - Left */}
+            <div className="w-[400px] border-r border-border flex flex-col h-full overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ResumeChatPanel
+                  messages={chatMessages}
                   isLoading={isLoading}
-                  onSendMessage={handleGeneralChat}
-                  selectedModel={selectedModel}
-                  onModelChange={setSelectedModel}
-                  welcomeComponent={
-                    chatMode === "welcome" ? (
-                      <ChatWelcome
-                        displayName={displayName}
-                        onSuggestionClick={handleGeneralChat}
-                        onStartResume={handleStartResume}
-                        onStartATSCheck={handleStartATSCheck}
-                        onStartJobSearch={handleStartJobSearch}
-                        onStartCoverLetter={handleStartCoverLetter}
-                        onStartInterviewPrep={handleStartInterviewPrep}
-                      />
-                    ) : undefined
-                  }
-                />
-              </div>
-            )}
-
-            {/* ATS Check Mode */}
-            {chatMode === "ats-check" && (
-              <div className="flex-1">
-                <ATSCheckerPanel
-                  messages={atsMessages}
-                  isLoading={isLoading}
-                  onAnalyze={handleATSAnalyze}
-                  onSendMessage={handleATSFollowUp}
+                  generationPhase={generationPhase}
+                  onSendMessage={handleSendMessage}
                   selectedModel={selectedModel}
                   onModelChange={setSelectedModel}
                 />
               </div>
-            )}
 
-            {/* Job Search Mode */}
-            {chatMode === "job-search" && (
-              <div className="flex-1">
-                <JobSearchPanel
-                  selectedModel={selectedModel}
-                  onModelChange={setSelectedModel}
-                />
-              </div>
-            )}
-
-            {/* Cover Letter Mode */}
-            {chatMode === "cover-letter" && (
-              <div className="flex-1">
-                <CoverLetterPanel
-                  messages={coverLetterMessages}
-                  isLoading={isLoading}
-                  onGenerate={handleCoverLetterGenerate}
-                  onSendMessage={handleCoverLetterFollowUp}
-                  selectedModel={selectedModel}
-                  onModelChange={setSelectedModel}
-                  onBack={handleNewChat}
-                />
-              </div>
-            )}
-
-            {/* Interview Prep Mode */}
-            {chatMode === "interview-prep" && (
-              <div className="flex-1">
-                <InterviewPrepPanel
-                  messages={interviewMessages}
-                  isLoading={isLoading}
-                  onGenerate={handleInterviewGenerate}
-                  onSendMessage={handleInterviewFollowUp}
-                  selectedModel={selectedModel}
-                  onModelChange={setSelectedModel}
-                  onBack={handleNewChat}
-                  session={session}
-                />
-              </div>
-            )}
-
-            {/* Resume Form Mode */}
-            {chatMode === "resume-form" && (
-              <div className="flex-1 relative">
-                <EnhancedResumeForm
-                  data={resumeData}
-                  onChange={setResumeData}
-                  onGenerate={handleGenerateResume}
-                  isGenerating={isLoading}
-                />
-              </div>
-            )}
-
-            {/* Resume Chat Mode */}
-            {chatMode === "resume-chat" && (
-              <>
-                {/* Chat Panel - Left */}
-                <div className="w-[400px] border-r border-border flex flex-col h-full overflow-hidden">
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <ResumeChatPanel
-                      messages={chatMessages}
-                      isLoading={isLoading}
-                      generationPhase={generationPhase}
-                      onSendMessage={handleSendMessage}
-                      selectedModel={selectedModel}
-                      onModelChange={setSelectedModel}
-                    />
-                  </div>
-                  
-                  {(projectOptions.length > 0 || summaryOptions) && (
-                    <div className="shrink-0 max-h-[280px] overflow-y-auto border-t border-border">
-                      <OptionsPanel
-                        projectOptions={projectOptions}
-                        summaryOptions={summaryOptions}
-                        onSelectProject={handleSelectProject}
-                        onSelectSummary={handleSelectSummary}
-                      />
-                    </div>
-                  )}
+              {(projectOptions.length > 0 || summaryOptions) && (
+                <div className="shrink-0 max-h-[280px] overflow-y-auto border-t border-border">
+                  <OptionsPanel
+                    projectOptions={projectOptions}
+                    summaryOptions={summaryOptions}
+                    onSelectProject={handleSelectProject}
+                    onSelectSummary={handleSelectSummary}
+                  />
                 </div>
+              )}
+            </div>
 
-                {/* Resume Preview - Right */}
-                <div className="flex-1 h-full overflow-y-auto bg-muted/30">
-                  <ResumePreview data={resumeData} isGenerating={isLoading} />
-                </div>
-              </>
-            )}
+            {/* Resume Preview - Right */}
+            <div className="flex-1 h-full overflow-y-auto bg-muted/30">
+              <ResumePreview data={resumeData} isGenerating={isLoading} />
+            </div>
+          </>
+        )}
       </main>
     </div>
   );
