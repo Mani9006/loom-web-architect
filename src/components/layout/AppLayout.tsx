@@ -29,10 +29,11 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
-  { label: "Job Search", icon: Search, path: "/jobs", badge: "AI" },
-  { label: "Resume Builder", icon: FileText, path: "/chat?mode=resume-form" },
+  { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
+  { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
+  { label: "Cover Letter", icon: FolderOpen, path: "/cover-letter" },
   { label: "Job Tracker", icon: Columns3, path: "/job-tracker" },
-  { label: "Interviews", icon: Mic, path: "/mock-interviews" },
+  { label: "Interviews", icon: Mic, path: "/interview-prep" },
   { label: "AI Chat", icon: MessageCircle, path: "/chat" },
 ];
 
