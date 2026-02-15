@@ -95,6 +95,24 @@ class PDFResumeRenderer {
     this.doc.text(str, x, y, { align });
   }
 
+  /** Draws text as a clickable hyperlink in the PDF. Falls back to plain text if no URL. */
+  private linkedText(
+    str: string,
+    url: string | undefined,
+    x: number,
+    y: number,
+    size: number,
+    style: FontStyle = "bold",
+  ) {
+    this.setFont(size, style);
+    if (url) {
+      const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+      this.doc.textWithLink(str, x, y, { url: fullUrl });
+    } else {
+      this.doc.text(str, x, y);
+    }
+  }
+
   /**
    * Draws a single line of text justified across the full available width.
    * Words are spaced evenly so the text fills from left margin to right margin.
@@ -408,18 +426,16 @@ class PDFResumeRenderer {
     if (valid.length === 0) return;
     this.sectionHeading("Certifications");
     valid.forEach((cert) => {
-      // Name bold, issuer normal weight with em-dash separator
+      // Name bold (hyperlinked if URL provided), issuer normal weight with em-dash separator
       const nameW = this.textWidth(cert.name, FS.body, "bold");
       const lineH = this.lh(FS.body);
       const rightText = cert.date || "";
-      const rightW = rightText ? this.textWidth(rightText, FS.small) : 0;
-      const gap = rightText ? ptToIn(8) : 0;
 
       this.ensureSpace(lineH);
       const drawY = this.y + lineH;
 
-      // Bold name
-      this.text(cert.name, PAGE.marginLeft, drawY, FS.body, "bold");
+      // Bold name — hyperlinked if cert.url is provided
+      this.linkedText(cert.name, cert.url, PAGE.marginLeft, drawY, FS.body, "bold");
 
       // Normal weight issuer after em-dash
       if (cert.issuer) {
@@ -446,7 +462,27 @@ class PDFResumeRenderer {
       const rightParts: string[] = [];
       if (proj.organization) rightParts.push(proj.organization);
       if (proj.date) rightParts.push(proj.date);
-      this.flexRow(proj.title, rightParts.join(" \u2014 "), FS.body, "bold", FS.small, "italic");
+      const rightText = rightParts.join(" \u2014 ");
+
+      // If project has a URL, render the title as a hyperlink; otherwise use flexRow
+      if (proj.url) {
+        const lineH = this.lh(FS.body);
+        const rightW = rightText ? this.textWidth(rightText, FS.small, "italic") : 0;
+        const gap = rightText ? ptToIn(8) : 0;
+
+        this.ensureSpace(lineH);
+        const drawY = this.y + lineH;
+
+        this.linkedText(proj.title, proj.url, PAGE.marginLeft, drawY, FS.body, "bold");
+
+        if (rightText) {
+          this.text(rightText, PAGE.width - PAGE.marginRight, drawY, FS.small, "italic", "right");
+        }
+        this.y = drawY;
+      } else {
+        this.flexRow(proj.title, rightText, FS.body, "bold", FS.small, "italic");
+      }
+
       proj.bullets.forEach((b) => this.bulletPoint(b));
       if (idx < valid.length - 1) this.y += ptToIn(SP.entryGap);
     });
@@ -486,14 +522,16 @@ class PDFResumeRenderer {
     if (valid.length === 0) return;
     this.sectionHeading("Awards & Publications");
     valid.forEach((award) => {
-      // Title bold, issuer normal with em-dash
+      // Title bold (hyperlinked if URL provided), issuer normal with em-dash
       const nameW = this.textWidth(award.title, FS.body, "bold");
       const lineH = this.lh(FS.body);
 
       this.ensureSpace(lineH);
       const drawY = this.y + lineH;
 
-      this.text(award.title, PAGE.marginLeft, drawY, FS.body, "bold");
+      // Bold title — hyperlinked if award.url is provided
+      this.linkedText(award.title, award.url, PAGE.marginLeft, drawY, FS.body, "bold");
+
       if (award.issuer) {
         const separator = " \u2014 ";
         const sepW = this.textWidth(separator, FS.body);
@@ -515,7 +553,19 @@ class PDFResumeRenderer {
       this.sectionHeading(cs.name);
       const entries = cs.entries.filter((e) => e.title);
       entries.forEach((entry, idx) => {
-        this.flexRow(entry.title, entry.date || "", FS.body, "bold", FS.small);
+        // If entry has a URL, render title as hyperlink; otherwise use flexRow
+        if (entry.url) {
+          const lineH = this.lh(FS.body);
+          this.ensureSpace(lineH);
+          const drawY = this.y + lineH;
+          this.linkedText(entry.title, entry.url, PAGE.marginLeft, drawY, FS.body, "bold");
+          if (entry.date) {
+            this.text(entry.date, PAGE.width - PAGE.marginRight, drawY, FS.small, "normal", "right");
+          }
+          this.y = drawY;
+        } else {
+          this.flexRow(entry.title, entry.date || "", FS.body, "bold", FS.small);
+        }
         if (entry.subtitle) {
           const subH = this.lh(FS.body);
           this.ensureSpace(subH);
@@ -602,7 +652,8 @@ export function useResumeExport() {
   const exportToWord = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
-      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } = await import("docx");
+      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ExternalHyperlink } =
+        await import("docx");
       const { saveAs } = await import("file-saver");
 
       const children: any[] = [];
@@ -872,17 +923,32 @@ export function useResumeExport() {
         children.push(sectionHeading("Certifications"));
 
         validCerts.forEach((cert) => {
+          const certNameChild = cert.url
+            ? new ExternalHyperlink({
+                link: cert.url.startsWith("http") ? cert.url : `https://${cert.url}`,
+                children: [
+                  new TextRun({
+                    text: cert.name,
+                    bold: true,
+                    size: 20,
+                    font: "Calibri",
+                    color: "000000",
+                  }),
+                ],
+              })
+            : new TextRun({
+                text: cert.name,
+                bold: true,
+                size: 20,
+                font: "Calibri",
+              });
+
           children.push(
             new Paragraph({
               spacing: { before: 40 },
               tabStops: [{ type: "right" as any, position: 9360 }],
               children: [
-                new TextRun({
-                  text: cert.name,
-                  bold: true,
-                  size: 20,
-                  font: "Calibri",
-                }),
+                certNameChild,
                 cert.issuer
                   ? new TextRun({
                       text: ` \u2014 ${cert.issuer}`,
@@ -907,17 +973,32 @@ export function useResumeExport() {
         children.push(sectionHeading("Projects"));
 
         validProjects.forEach((project) => {
+          const projTitleChild = project.url
+            ? new ExternalHyperlink({
+                link: project.url.startsWith("http") ? project.url : `https://${project.url}`,
+                children: [
+                  new TextRun({
+                    text: project.title,
+                    bold: true,
+                    size: 20,
+                    font: "Calibri",
+                    color: "000000",
+                  }),
+                ],
+              })
+            : new TextRun({
+                text: project.title,
+                bold: true,
+                size: 20,
+                font: "Calibri",
+              });
+
           children.push(
             new Paragraph({
               spacing: { before: 100 },
               tabStops: [{ type: "right" as any, position: 9360 }],
               children: [
-                new TextRun({
-                  text: project.title,
-                  bold: true,
-                  size: 20,
-                  font: "Calibri",
-                }),
+                projTitleChild,
                 project.date || project.organization
                   ? new TextRun({
                       text: `\t${project.organization ? `${project.organization} \u2014 ` : ""}${project.date || ""}`,
@@ -1022,17 +1103,32 @@ export function useResumeExport() {
         children.push(sectionHeading("Awards & Publications"));
 
         validAwards.forEach((award) => {
+          const awardTitleChild = award.url
+            ? new ExternalHyperlink({
+                link: award.url.startsWith("http") ? award.url : `https://${award.url}`,
+                children: [
+                  new TextRun({
+                    text: award.title,
+                    bold: true,
+                    size: 20,
+                    font: "Calibri",
+                    color: "000000",
+                  }),
+                ],
+              })
+            : new TextRun({
+                text: award.title,
+                bold: true,
+                size: 20,
+                font: "Calibri",
+              });
+
           children.push(
             new Paragraph({
               spacing: { before: 40 },
               tabStops: [{ type: "right" as any, position: 9360 }],
               children: [
-                new TextRun({
-                  text: award.title,
-                  bold: true,
-                  size: 20,
-                  font: "Calibri",
-                }),
+                awardTitleChild,
                 award.issuer
                   ? new TextRun({ text: ` \u2014 ${award.issuer}`, size: 20, font: "Calibri" })
                   : new TextRun({ text: "" }),
@@ -1052,12 +1148,21 @@ export function useResumeExport() {
         cs.entries
           .filter((e) => e.title)
           .forEach((entry) => {
+            const entryTitleChild = entry.url
+              ? new ExternalHyperlink({
+                  link: entry.url.startsWith("http") ? entry.url : `https://${entry.url}`,
+                  children: [
+                    new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri", color: "000000" }),
+                  ],
+                })
+              : new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri" });
+
             children.push(
               new Paragraph({
                 spacing: { before: 100 },
                 tabStops: [{ type: "right" as any, position: 9360 }],
                 children: [
-                  new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri" }),
+                  entryTitleChild,
                   entry.date
                     ? new TextRun({ text: `\t${entry.date}`, size: 19, font: "Calibri" })
                     : new TextRun({ text: "" }),
