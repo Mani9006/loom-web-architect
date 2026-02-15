@@ -267,6 +267,31 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
             ))}
           </section>
         )}
+
+        {/* ===== CUSTOM SECTIONS ===== */}
+        {(data.customSections || []).filter((cs) => cs.entries.some((e) => e.title)).map((cs) => (
+          <section key={cs.id} style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>{cs.name}</h2>
+            {cs.entries.filter((e) => e.title).map((entry) => (
+              <div key={entry.id} style={{ marginBottom: "6pt" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontWeight: 700, fontSize: "10pt" }}>{entry.title}</span>
+                  {entry.date && <span style={{ fontSize: "9.5pt", flexShrink: 0 }}>{entry.date}</span>}
+                </div>
+                {entry.subtitle && (
+                  <div><span style={{ fontStyle: "italic", fontSize: "10pt" }}>{entry.subtitle}</span></div>
+                )}
+                {entry.bullets.length > 0 && (
+                  <ul style={{ margin: "2pt 0 0 16pt", padding: 0, listStyleType: "disc" }}>
+                    {entry.bullets.map((bullet, idx) => (
+                      <li key={idx} style={{ paddingLeft: "2pt", fontSize: "10pt", lineHeight: "1.35" }}>{bullet}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </section>
+        ))}
       </div>
     );
   }
