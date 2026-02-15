@@ -936,17 +936,17 @@ export default function ResumeBuilder() {
                       {section.id === "experience" && (
                         <div className="space-y-1">
                           {data.experience.map((exp, index) => (
-                            <div key={exp.id} className="rounded border border-border/40 overflow-hidden">
+                            <div key={exp.id} className="rounded border border-border/40">
                               {/* Summary row - always visible */}
                               <div
-                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedExpId === exp.id && "bg-muted/40")}
+                                className={cn("flex items-center gap-1 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedExpId === exp.id && "bg-muted/40")}
                                 onClick={() => setExpandedExpId(expandedExpId === exp.id ? null : exp.id)}
                               >
                                 <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedExpId === exp.id && "rotate-180")} />
-                                <span className="text-xs font-medium truncate flex-1">
+                                <span className="text-xs font-medium truncate flex-1 min-w-0">
                                   {exp.role || exp.company_or_client ? `${exp.role || "Role"}${exp.company_or_client ? ` @ ${exp.company_or_client}` : ""}` : `Experience ${index + 1}`}
                                 </span>
-                                {exp.start_date && <span className="text-[10px] text-muted-foreground shrink-0">{exp.start_date}{exp.end_date ? ` - ${exp.end_date}` : ""}</span>}
+                                {exp.start_date && <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline">{exp.start_date}{exp.end_date ? ` - ${exp.end_date}` : ""}</span>}
                                 <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
                                   {data.experience.length > 1 && <>
                                     <button type="button" onClick={() => moveExperience(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
@@ -979,7 +979,7 @@ export default function ResumeBuilder() {
                       {section.id === "education" && (
                         <div className="space-y-1">
                           {data.education.map((edu, eduIndex) => (
-                            <div key={edu.id} className="rounded border border-border/40 overflow-hidden">
+                            <div key={edu.id} className="rounded border border-border/40">
                               <div
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedEduId === edu.id && "bg-muted/40")}
                                 onClick={() => setExpandedEduId(expandedEduId === edu.id ? null : edu.id)}
@@ -1040,7 +1040,7 @@ export default function ResumeBuilder() {
                       {section.id === "projects" && (
                         <div className="space-y-1">
                           {data.projects.map((project, index) => (
-                            <div key={project.id} className="rounded border border-border/40 overflow-hidden">
+                            <div key={project.id} className="rounded border border-border/40">
                               <div
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedProjIdx === index && "bg-muted/40")}
                                 onClick={() => setExpandedProjIdx(expandedProjIdx === index ? null : index)}
@@ -1076,7 +1076,7 @@ export default function ResumeBuilder() {
                       {section.id === "certifications" && (
                         <div className="space-y-1">
                           {data.certifications.map((cert) => (
-                            <div key={cert.id} className="rounded border border-border/40 overflow-hidden">
+                            <div key={cert.id} className="rounded border border-border/40">
                               <div
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedCertId === cert.id && "bg-muted/40")}
                                 onClick={() => setExpandedCertId(expandedCertId === cert.id ? null : cert.id)}
@@ -1107,7 +1107,7 @@ export default function ResumeBuilder() {
                       {section.id === "languages" && (
                         <div className="space-y-1">
                           {(data.languages || []).map((lang) => (
-                            <div key={lang.id} className="rounded border border-border/40 overflow-hidden">
+                            <div key={lang.id} className="rounded border border-border/40">
                               <div
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedLangId === lang.id && "bg-muted/40")}
                                 onClick={() => setExpandedLangId(expandedLangId === lang.id ? null : lang.id)}
@@ -1140,7 +1140,7 @@ export default function ResumeBuilder() {
                       {section.id === "volunteer" && (
                         <div className="space-y-1">
                           {(data.volunteer || []).map((vol) => (
-                            <div key={vol.id} className="rounded border border-border/40 overflow-hidden">
+                            <div key={vol.id} className="rounded border border-border/40">
                               <div
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedVolId === vol.id && "bg-muted/40")}
                                 onClick={() => setExpandedVolId(expandedVolId === vol.id ? null : vol.id)}
@@ -1175,7 +1175,7 @@ export default function ResumeBuilder() {
                       {section.id === "awards" && (
                         <div className="space-y-1">
                           {(data.awards || []).map((award) => (
-                            <div key={award.id} className="rounded border border-border/40 overflow-hidden">
+                            <div key={award.id} className="rounded border border-border/40">
                               <div
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedAwardId === award.id && "bg-muted/40")}
                                 onClick={() => setExpandedAwardId(expandedAwardId === award.id ? null : award.id)}
@@ -1210,7 +1210,7 @@ export default function ResumeBuilder() {
                         return (
                           <div className="space-y-1">
                             {cs.entries.map((entry) => (
-                              <div key={entry.id} className="rounded border border-border/40 overflow-hidden">
+                              <div key={entry.id} className="rounded border border-border/40">
                                 <div
                                   className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedCustomId === entry.id && "bg-muted/40")}
                                   onClick={() => setExpandedCustomId(expandedCustomId === entry.id ? null : entry.id)}
