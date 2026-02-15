@@ -190,7 +190,7 @@ export function JobSearchPanel({
   };
 
   const handleDownloadPDF = () => {
-    if (!resultsRef.current || jobs.length === 0) {
+    if (!resultsRef.current || !streamingResponse) {
       toast.error("No results to download");
       return;
     }

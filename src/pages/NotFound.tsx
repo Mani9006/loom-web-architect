@@ -34,7 +34,7 @@ const NotFound = () => {
         <Button
           variant="link"
           className="text-primary-foreground/90 hover:text-primary-foreground font-semibold gap-2"
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/home")}
         >
           <ArrowLeft className="w-4 h-4" />
           Go back home

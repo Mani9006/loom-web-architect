@@ -21,6 +21,7 @@ const HomePage = lazy(() => import("./pages/HomePage"));
 const JobTracker = lazy(() => import("./pages/JobTracker"));
 const MockInterviews = lazy(() => import("./pages/MockInterviews"));
 const Documents = lazy(() => import("./pages/Documents"));
+const ResumeProjects = lazy(() => import("./pages/ResumeProjects"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
 const JobsPage = lazy(() => import("./pages/JobsPage"));
 const JobSearchPage = lazy(() => import("./pages/JobSearchPage"));
@@ -64,7 +65,8 @@ const App = () => (
                     <Route path="/home" element={<HomePage />} />
                     <Route path="/jobs" element={<JobsPage />} />
                     <Route path="/job-search" element={<JobSearchPage />} />
-                    <Route path="/resume-builder" element={<ResumeBuilder />} />
+                    <Route path="/resume-builder" element={<ResumeProjects />} />
+                    <Route path="/resume-builder/:resumeId" element={<ResumeBuilder />} />
                     <Route path="/job-tracker" element={<JobTracker />} />
                     <Route path="/mock-interviews" element={<MockInterviews />} />
                     <Route path="/interview-prep" element={<InterviewPrepPage />} />

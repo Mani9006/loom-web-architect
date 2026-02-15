@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
-  User, Moon, Sun, HelpCircle, MessageSquare, ExternalLink,
+  User, Moon, Sun, MessageSquare, ExternalLink,
   History, LayoutDashboard, Trash2, Sparkles,
 } from "lucide-react";
 
@@ -97,7 +97,7 @@ export function SettingsDialog({
             <Separator />
 
             <Section title="Chat">
-              <NavButton icon={History} label="View Chat History" onClick={() => handleNavigation("/")} />
+              <NavButton icon={History} label="View Chat History" onClick={() => handleNavigation("/chat")} />
               {onClearAllConversations && conversationCount > 0 && (
                 <Button
                   variant="ghost"
@@ -117,14 +117,7 @@ export function SettingsDialog({
 
             <Section title="Help & Support">
               <Button variant="ghost" className="w-full justify-start gap-3 h-11 font-medium" asChild>
-                <a href="https://docs.lovable.dev" target="_blank" rel="noopener noreferrer">
-                  <HelpCircle className="w-4 h-4" />
-                  <span>Help Center</span>
-                  <ExternalLink className="w-3.5 h-3.5 ml-auto text-muted-foreground" />
-                </a>
-              </Button>
-              <Button variant="ghost" className="w-full justify-start gap-3 h-11 font-medium" asChild>
-                <a href="mailto:support@lovable.dev" target="_blank" rel="noopener noreferrer">
+                <a href="mailto:support@resumepreps.com" target="_blank" rel="noopener noreferrer">
                   <MessageSquare className="w-4 h-4" />
                   <span>Contact Support</span>
                   <ExternalLink className="w-3.5 h-3.5 ml-auto text-muted-foreground" />

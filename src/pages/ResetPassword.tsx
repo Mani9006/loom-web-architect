@@ -46,7 +46,7 @@ export default function ResetPassword() {
       } else {
         setSuccess(true);
         toast({ title: "Password updated", description: "Your password has been successfully reset." });
-        setTimeout(() => navigate("/chat"), 2000);
+        setTimeout(() => navigate("/home"), 2000);
       }
     } catch {
       toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" });

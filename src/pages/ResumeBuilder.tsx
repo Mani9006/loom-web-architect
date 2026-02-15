@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useResumeExport } from "@/hooks/use-resume-export";
@@ -73,6 +74,7 @@ import {
   Trash2,
   LayoutList,
   Linkedin,
+  ArrowLeft,
 } from "lucide-react";
 import { Reorder } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -220,6 +222,8 @@ async function streamAIText(
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function ResumeBuilder() {
+  const { resumeId } = useParams<{ resumeId: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { exportToPDF, exportToWord, isExporting } = useResumeExport();
   const resumeRef = useRef<HTMLDivElement>(null);
@@ -268,45 +272,56 @@ export default function ResumeBuilder() {
 
   // Map our section IDs to ATS section names
   const sectionToATSName: Record<string, string> = {
-    personal: "Personal Info",
-    summary: "Summary",
-    experience: "Experience",
+    personal: "Contact Info",
+    summary: "Professional Summary",
+    experience: "Work Experience",
     education: "Education",
     skills: "Skills",
-    projects: "Projects",
-    certifications: "Certifications",
+    projects: "Content Quality",
+    certifications: "Content Quality",
     formatting: "Formatting",
   };
 
-  // ── Load saved resume ──────────────────────────────────────────────────
+  // ── Load resume by ID from URL ──────────────────────────────────────────
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setIsLoaded(true); return; }
 
-      const { data: resumes } = await supabase
-        .from("resumes" as any).select("*").eq("user_id", user.id)
-        .order("updated_at", { ascending: false }).limit(1);
-
-      if (resumes && resumes.length > 0) {
-        const r = resumes[0] as any;
-        setCurrentResumeId(r.id);
-        setData({
-          header: r.personal_info || createEmptyResumeJSON().header,
-          summary: r.summary || "",
-          experience: Array.isArray(r.experience) ? r.experience : [],
-          education: Array.isArray(r.education) ? r.education : [],
-          certifications: Array.isArray(r.certifications) ? r.certifications : [],
-          skills: r.skills && typeof r.skills === "object" && !Array.isArray(r.skills) ? r.skills : {},
-          projects: Array.isArray(r.projects) ? r.projects : [],
-          languages: Array.isArray(r.languages) ? r.languages : [],
-          volunteer: Array.isArray(r.volunteer) ? r.volunteer : [],
-          awards: Array.isArray(r.awards) ? r.awards : [],
-        });
+      // If no resumeId in URL, redirect to projects listing
+      if (!resumeId) {
+        navigate("/resume-builder", { replace: true });
+        return;
       }
+
+      const { data: resume, error } = await supabase
+        .from("resumes" as any).select("*")
+        .eq("id", resumeId).eq("user_id", user.id).single();
+
+      if (error || !resume) {
+        // Resume not found or doesn't belong to user
+        toast({ title: "Resume not found", description: "The resume you're looking for doesn't exist or was deleted.", variant: "destructive" });
+        navigate("/resume-builder", { replace: true });
+        return;
+      }
+
+      const r = resume as any;
+      setCurrentResumeId(r.id);
+      setData({
+        header: r.personal_info || createEmptyResumeJSON().header,
+        summary: r.summary || "",
+        experience: Array.isArray(r.experience) ? r.experience : [],
+        education: Array.isArray(r.education) ? r.education : [],
+        certifications: Array.isArray(r.certifications) ? r.certifications : [],
+        skills: r.skills && typeof r.skills === "object" && !Array.isArray(r.skills) ? r.skills : {},
+        projects: Array.isArray(r.projects) ? r.projects : [],
+        languages: Array.isArray(r.languages) ? r.languages : [],
+        volunteer: Array.isArray(r.volunteer) ? r.volunteer : [],
+        awards: Array.isArray(r.awards) ? r.awards : [],
+      });
       setIsLoaded(true);
     })();
-  }, []);
+  }, [resumeId]);
 
   // ── Auto-save (debounced 2s) ───────────────────────────────────────────
   const saveToSupabase = useCallback(async (resumeJson: ResumeJSON) => {
@@ -720,6 +735,9 @@ export default function ResumeBuilder() {
       {/* ─── LEFT PANEL: Accordion editor ─────────────────────────────── */}
       <div className={cn("w-full lg:w-[48%] lg:min-w-[380px] lg:max-w-[520px] flex flex-col min-h-0 border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/resume-builder")} className="h-7 px-2 gap-1 text-xs text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-3.5 w-3.5" /> All Resumes
+          </Button>
           <h1 className="text-sm font-bold flex-1">Resume Builder</h1>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             {isSaving ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving...</> : lastSaved ? <><Cloud className="h-3 w-3 text-green-500" /> Saved</> : <><CloudOff className="h-3 w-3" /> Not saved</>}
@@ -1060,6 +1078,7 @@ export default function ResumeBuilder() {
                                       <Input placeholder="Organization" value={project.organization} onChange={(e) => updateProject(index, { organization: e.target.value })} className="bg-background h-7 text-xs" />
                                       <Input placeholder="Date" value={project.date} onChange={(e) => updateProject(index, { date: e.target.value })} className="bg-background h-7 text-xs" />
                                     </div>
+                                    <Input placeholder="Link URL (e.g., https://github.com/...)" value={project.url || ""} onChange={(e) => updateProject(index, { url: e.target.value })} className="bg-background h-7 text-xs" />
                                     <Textarea placeholder={"Key points (one per line)\n- Built a chatbot...\n- Implemented ML pipeline..."} value={project.bullets.join("\n")} onChange={(e) => updateProject(index, { bullets: e.target.value.split("\n") })} className="bg-background text-xs min-h-[50px] resize-y" />
                                   </div>
                                 )}
@@ -1093,6 +1112,7 @@ export default function ResumeBuilder() {
                                     <Input placeholder="Date" value={cert.date} onChange={(e) => updateCertification(cert.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
                                   </div>
                                   <Input placeholder="Issuer (e.g., AWS)" value={cert.issuer} onChange={(e) => updateCertification(cert.id, "issuer", e.target.value)} className="bg-background h-7 text-xs" />
+                                  <Input placeholder="Credential URL (e.g., https://credly.com/...)" value={cert.url || ""} onChange={(e) => updateCertification(cert.id, "url", e.target.value)} className="bg-background h-7 text-xs" />
                                 </div>
                               )}
                             </div>
@@ -1192,6 +1212,7 @@ export default function ResumeBuilder() {
                                     <Input placeholder="Issuer/Publisher" value={award.issuer} onChange={(e) => updateAward(award.id, "issuer", e.target.value)} className="bg-background h-7 text-xs" />
                                     <Input placeholder="Date" value={award.date} onChange={(e) => updateAward(award.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
                                   </div>
+                                  <Input placeholder="Link URL (e.g., https://...)" value={award.url || ""} onChange={(e) => updateAward(award.id, "url", e.target.value)} className="bg-background h-7 text-xs" />
                                 </div>
                               )}
                             </div>
@@ -1227,6 +1248,7 @@ export default function ResumeBuilder() {
                                       <Input placeholder="Subtitle / Organization" value={entry.subtitle} onChange={(e) => updateCustomEntry(section.id, entry.id, "subtitle", e.target.value)} className="bg-background h-7 text-xs" />
                                       <Input placeholder="Date" value={entry.date} onChange={(e) => updateCustomEntry(section.id, entry.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
                                     </div>
+                                    <Input placeholder="Link URL (e.g., https://...)" value={entry.url || ""} onChange={(e) => updateCustomEntry(section.id, entry.id, "url", e.target.value)} className="bg-background h-7 text-xs" />
                                     <Textarea placeholder={"Details (one per line)"} value={entry.bullets.join("\n")} onChange={(e) => updateCustomEntry(section.id, entry.id, "bullets", e.target.value.split("\n").filter((b: string) => b.trim()))} className="bg-background text-xs min-h-[50px] resize-y" />
                                   </div>
                                 )}
@@ -1249,7 +1271,7 @@ export default function ResumeBuilder() {
                               <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
                                 <Shield className="h-3 w-3" /> ATS Issues ({sectionIssues.length})
                               </span>
-                              {(atsName === "Summary" || atsName === "Experience" || atsName === "Skills") && (
+                              {(atsName === "Professional Summary" || atsName === "Work Experience" || atsName === "Skills") && (
                                 <Button
                                   type="button"
                                   variant="ghost"
