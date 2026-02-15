@@ -327,7 +327,7 @@ CRITICAL RULES:
                 content: `Parse this resume:\n\n${text}`
               }
             ],
-            model: "google/gemini-2.5-pro",
+            mode: "resume",
           }),
         }
       );
