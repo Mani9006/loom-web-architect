@@ -5,49 +5,13 @@ import { toast } from "sonner";
 export function useResumeExport() {
   const [isExporting, setIsExporting] = useState(false);
 
-  const exportToPDF = useCallback(async (resumeElement: HTMLElement, fileName: string) => {
+  const exportToPDF = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
-      const html2pdf = (await import("html2pdf.js")).default;
-
-      // Temporarily strip the template's own padding so html2pdf's margin
-      // controls all page margins (top/bottom/left/right) on EVERY page.
-      // Without this, only page 1 gets top padding; subsequent pages start
-      // at the very top with no margin.
-      const savedPadding = resumeElement.style.padding;
-      const savedWidth = resumeElement.style.width;
-      const savedMinHeight = resumeElement.style.minHeight;
-      resumeElement.style.padding = "0";
-      resumeElement.style.width = "7.3in"; // 8.5 - 0.6*2 = content width
-      resumeElement.style.minHeight = "auto";
-
-      const opt = {
-        margin: [0.5, 0.6, 0.5, 0.6], // top, right, bottom, left in inches
-        filename: `${fileName}.pdf`,
-        image: { type: "png" as const, quality: 1 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          letterRendering: true,
-          backgroundColor: "#ffffff",
-        },
-        jsPDF: {
-          unit: "in" as const,
-          format: "letter" as const,
-          orientation: "portrait" as const,
-        },
-        pagebreak: {
-          mode: ["css", "legacy"] as string[],
-        },
-      };
-
-      await html2pdf().set(opt).from(resumeElement).save();
-
-      // Restore original styles so the live preview is unaffected
-      resumeElement.style.padding = savedPadding;
-      resumeElement.style.width = savedWidth;
-      resumeElement.style.minHeight = savedMinHeight;
-
+      const { PDFResumeRenderer } = await import("@/lib/pdf-renderer");
+      const renderer = new PDFResumeRenderer();
+      const doc = await renderer.render(data);
+      doc.save(`${fileName}.pdf`);
       toast.success("Resume exported as PDF!");
     } catch (error) {
       console.error("PDF export error:", error);

@@ -23,9 +23,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
     : "Resume";
 
   const handleExportPDF = () => {
-    if (resumeRef.current) {
-      exportToPDF(resumeRef.current, fileName);
-    }
+    exportToPDF(data, fileName);
   };
 
   const handleExportWord = () => {

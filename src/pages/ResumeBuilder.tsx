@@ -670,7 +670,7 @@ export default function ResumeBuilder() {
   };
 
   const fileName = data.header.name ? `${data.header.name.replace(/\s+/g, "_")}_Resume` : "Resume";
-  const handleDownloadPDF = () => { if (resumeRef.current) exportToPDF(resumeRef.current, fileName); };
+  const handleDownloadPDF = () => exportToPDF(previewData, fileName);
   const handleDownloadWord = () => exportToWord(data, fileName);
   const handlePrintView = () => { localStorage.setItem("printResumeData", JSON.stringify(data)); window.open("/print-resume", "_blank"); };
 
