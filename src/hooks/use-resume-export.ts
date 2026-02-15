@@ -38,7 +38,6 @@ export function useResumeExport() {
         },
         pagebreak: {
           mode: ["css", "legacy"] as string[],
-          avoid: [".pdf-no-break"],
         },
       };
 
