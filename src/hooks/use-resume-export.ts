@@ -83,24 +83,23 @@ class PDFResumeRenderer {
     rightStyle: FontStyle = "normal",
   ) {
     const lineH = this.lh(Math.max(leftSize, rightSize));
-    this.ensureSpace(lineH);
-
     const rightW = right ? this.textWidth(right, rightSize, rightStyle) : 0;
     const gap = right ? ptToIn(8) : 0;
     const maxLeftW = CONTENT_WIDTH - rightW - gap;
     const leftLines = this.wrapText(left, maxLeftW, leftSize, leftStyle);
 
-    const baseY = this.y + lineH;
-    this.text(leftLines[0], PAGE.marginLeft, baseY, leftSize, leftStyle);
-    if (right) {
-      this.text(right, PAGE.width - PAGE.marginRight, baseY, rightSize, rightStyle, "right");
-    }
-    this.y = baseY;
+    for (let i = 0; i < leftLines.length; i++) {
+      this.ensureSpace(lineH);
+      const drawY = this.y + lineH;
 
-    for (let i = 1; i < leftLines.length; i++) {
-      this.y += this.lh(leftSize);
-      this.ensureSpace(this.lh(leftSize));
-      this.text(leftLines[i], PAGE.marginLeft, this.y, leftSize, leftStyle);
+      this.text(leftLines[i], PAGE.marginLeft, drawY, leftSize, leftStyle);
+
+      // Right-aligned text only on the first line
+      if (i === 0 && right) {
+        this.text(right, PAGE.width - PAGE.marginRight, drawY, rightSize, rightStyle, "right");
+      }
+
+      this.y = drawY;
     }
   }
 
@@ -121,21 +120,21 @@ class PDFResumeRenderer {
     const textX = PAGE.marginLeft + indent;
     const maxW = CONTENT_WIDTH - indent;
     const lines = this.wrapText(text, maxW, FS.body);
-
-    const firstLineH = this.lh(FS.body);
-    this.ensureSpace(firstLineH);
-
-    const bulletY = this.y + firstLineH;
-    this.text("\u2022", bulletX, bulletY, FS.body);
+    const lineH = this.lh(FS.body);
 
     for (let i = 0; i < lines.length; i++) {
-      if (i > 0) {
-        this.y += this.lh(FS.body);
-        this.ensureSpace(this.lh(FS.body));
+      this.ensureSpace(lineH);
+      const drawY = this.y + lineH;
+
+      // Draw bullet marker on the first line only
+      if (i === 0) {
+        this.text("\u2022", bulletX, drawY, FS.body);
       }
-      this.text(lines[i], textX, this.y + firstLineH * (i === 0 ? 1 : 0), FS.body);
+
+      this.text(lines[i], textX, drawY, FS.body);
+      this.y = drawY;
     }
-    this.y += firstLineH + this.lh(FS.body) * (lines.length - 1) + ptToIn(1);
+    this.y += ptToIn(1); // 1pt spacing after bullet
   }
 
   // ── Section renderers ──────────────────────────────────────────────
@@ -174,11 +173,12 @@ class PDFResumeRenderer {
   private renderSummary(summary: string) {
     this.sectionHeading("Summary");
     const lines = this.wrapText(summary, CONTENT_WIDTH, FS.body);
+    const lineH = this.lh(FS.body);
     for (const line of lines) {
-      const lineH = this.lh(FS.body);
       this.ensureSpace(lineH);
-      this.text(line, PAGE.marginLeft, this.y + lineH, FS.body);
-      this.y += lineH;
+      const drawY = this.y + lineH;
+      this.text(line, PAGE.marginLeft, drawY, FS.body);
+      this.y = drawY;
     }
     this.y += ptToIn(4);
   }
@@ -229,19 +229,20 @@ class PDFResumeRenderer {
     cats.forEach((cat) => {
       const prefix = `${cat.label}: `;
       const prefixW = this.textWidth(prefix, FS.body, "bold");
-      const lines = this.wrapText(prefix + cat.skills.join(", "), CONTENT_WIDTH, FS.body);
+      const fullText = prefix + cat.skills.join(", ");
+      const lines = this.wrapText(fullText, CONTENT_WIDTH, FS.body);
+      const lineH = this.lh(FS.body);
       for (let i = 0; i < lines.length; i++) {
-        const lineH = this.lh(FS.body);
         this.ensureSpace(lineH);
-        const ly = this.y + lineH;
+        const drawY = this.y + lineH;
         if (i === 0) {
-          this.text(prefix, PAGE.marginLeft, ly, FS.body, "bold");
+          this.text(prefix, PAGE.marginLeft, drawY, FS.body, "bold");
           const rest = lines[0].substring(prefix.length);
-          if (rest) this.text(rest, PAGE.marginLeft + prefixW, ly, FS.body);
+          if (rest) this.text(rest, PAGE.marginLeft + prefixW, drawY, FS.body);
         } else {
-          this.text(lines[i], PAGE.marginLeft, ly, FS.body);
+          this.text(lines[i], PAGE.marginLeft, drawY, FS.body);
         }
-        this.y += lineH;
+        this.y = drawY;
       }
       this.y += ptToIn(1);
     });
