@@ -138,7 +138,7 @@ Extract EVERY bullet point without truncation. Use lowercase_snake_case for skil
               },
               { role: "user", content: `Parse this resume:\n\n${text}` },
             ],
-            model: "google/gemini-2.5-pro",
+            mode: "resume",
           }),
         }
       );
