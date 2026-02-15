@@ -7,6 +7,18 @@ interface ResumeTemplateProps {
   className?: string;
 }
 
+// ATS-compliant section heading style (consistent across all sections)
+const sectionHeadingStyle: React.CSSProperties = {
+  fontSize: "11pt",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  borderBottom: "1.5px solid #000",
+  paddingBottom: "2pt",
+  marginTop: "8pt",
+  marginBottom: "6pt",
+};
+
 export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
   ({ data, className }, ref) => {
     const skillCategories = Object.entries(data.skills)
@@ -20,6 +32,9 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
     const validEducation = data.education.filter((e) => e.institution);
     const validCerts = data.certifications.filter((c) => c.name);
     const validProjects = (data.projects || []).filter((p) => p.title);
+    const validLanguages = (data.languages || []).filter((l) => l.language);
+    const validVolunteer = (data.volunteer || []).filter((v) => v.organization);
+    const validAwards = (data.awards || []).filter((a) => a.title);
 
     return (
       <div
@@ -28,47 +43,47 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
         style={{
           width: "8.5in",
           minHeight: "11in",
-          padding: "1.8cm 2cm 2cm 2cm",
-          fontFamily: "'Charter', 'Bitstream Charter', 'Georgia', serif",
+          padding: "0.5in 0.6in 0.5in 0.6in",
+          fontFamily: "'Calibri', 'Arial', 'Helvetica Neue', sans-serif",
           fontSize: "10pt",
-          lineHeight: "1.4",
+          lineHeight: "1.35",
           color: "#000",
           backgroundColor: "#fff",
         }}
       >
         {/* ===== HEADER ===== */}
-        <header style={{ textAlign: "center", paddingBottom: "0.3cm", borderBottom: "1px solid #000", marginBottom: "0.4cm" }}>
-          <h1 style={{ fontSize: "19pt", fontWeight: 700, letterSpacing: "0.02em", margin: 0 }}>
+        <header style={{ textAlign: "center", paddingBottom: "6pt", borderBottom: "2px solid #000", marginBottom: "6pt" }}>
+          <h1 style={{ fontSize: "18pt", fontWeight: 700, letterSpacing: "0.03em", margin: 0 }}>
             {data.header.name || "Your Name"}
           </h1>
           {data.header.title && (
-            <p style={{ fontSize: "11.5pt", fontWeight: 700, margin: "0.15cm 0 0 0" }}>
+            <p style={{ fontSize: "11pt", fontWeight: 600, margin: "3pt 0 0 0", color: "#333" }}>
               {data.header.title}
             </p>
           )}
-          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: "0 0.4cm", marginTop: "0.2cm", fontSize: "10pt" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: "0 12pt", marginTop: "4pt", fontSize: "9.5pt" }}>
             {data.header.location && (
               <>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: "3px" }}>
-                  <MapPin size={11} strokeWidth={2} /> {data.header.location}
+                  <MapPin size={10} strokeWidth={2} /> {data.header.location}
                 </span>
-                {(data.header.email || data.header.phone || data.header.linkedin) && <span style={{ color: "#666" }}>|</span>}
+                {(data.header.email || data.header.phone || data.header.linkedin) && <span style={{ color: "#999" }}>|</span>}
               </>
             )}
             {data.header.email && (
               <>
                 <a href={`mailto:${data.header.email}`} style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: "#000", textDecoration: "none" }}>
-                  <Mail size={11} strokeWidth={2} /> {data.header.email}
+                  <Mail size={10} strokeWidth={2} /> {data.header.email}
                 </a>
-                {(data.header.phone || data.header.linkedin) && <span style={{ color: "#666" }}>|</span>}
+                {(data.header.phone || data.header.linkedin) && <span style={{ color: "#999" }}>|</span>}
               </>
             )}
             {data.header.phone && (
               <>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: "3px" }}>
-                  <Phone size={11} strokeWidth={2} /> {data.header.phone}
+                  <Phone size={10} strokeWidth={2} /> {data.header.phone}
                 </span>
-                {data.header.linkedin && <span style={{ color: "#666" }}>|</span>}
+                {data.header.linkedin && <span style={{ color: "#999" }}>|</span>}
               </>
             )}
             {data.header.linkedin && (
@@ -78,7 +93,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
                 rel="noopener noreferrer"
                 style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: "#000", textDecoration: "none" }}
               >
-                <Linkedin size={11} strokeWidth={2} /> LinkedIn
+                <Linkedin size={10} strokeWidth={2} /> LinkedIn
               </a>
             )}
           </div>
@@ -86,36 +101,32 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
 
         {/* ===== SUMMARY ===== */}
         {data.summary && (
-          <section style={{ marginBottom: "0.4cm" }}>
-            <h2 style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #000", paddingBottom: "0.1cm", marginTop: "0.3cm", marginBottom: "0.2cm" }}>
-              Summary
-            </h2>
-            <p style={{ textAlign: "justify", lineHeight: "1.5", margin: 0 }}>{data.summary}</p>
+          <section style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>Summary</h2>
+            <p style={{ textAlign: "justify", lineHeight: "1.4", margin: 0, fontSize: "10pt" }}>{data.summary}</p>
           </section>
         )}
 
         {/* ===== EXPERIENCE ===== */}
         {validExperience.length > 0 && (
-          <section style={{ marginBottom: "0.4cm" }}>
-            <h2 style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #000", paddingBottom: "0.1cm", marginTop: "0.3cm", marginBottom: "0.2cm" }}>
-              Experience
-            </h2>
+          <section style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>Professional Experience</h2>
             {validExperience.map((exp) => (
-              <div key={exp.id} style={{ marginBottom: "0.35cm" }}>
+              <div key={exp.id} style={{ marginBottom: "8pt" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ fontWeight: 700, fontSize: "10pt" }}>{exp.role || "Role"}</span>
-                  <span style={{ fontSize: "10pt", flexShrink: 0 }}>
-                    {exp.start_date || "Start"} — {exp.end_date || "End"}
+                  <span style={{ fontWeight: 700, fontSize: "10pt" }}>{exp.role}</span>
+                  <span style={{ fontSize: "9.5pt", flexShrink: 0 }}>
+                    {exp.start_date} — {exp.end_date}
                   </span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontStyle: "italic", fontSize: "10pt" }}>{exp.company_or_client}</span>
-                  {exp.location && <span style={{ fontSize: "10pt", flexShrink: 0 }}>{exp.location}</span>}
+                  {exp.location && <span style={{ fontSize: "9.5pt", flexShrink: 0 }}>{exp.location}</span>}
                 </div>
                 {exp.bullets.length > 0 && (
-                  <ul style={{ margin: "0.1cm 0 0 15pt", padding: 0, listStyleType: "disc" }}>
+                  <ul style={{ margin: "3pt 0 0 16pt", padding: 0, listStyleType: "disc" }}>
                     {exp.bullets.map((bullet, idx) => (
-                      <li key={idx} style={{ paddingLeft: "3pt", marginBottom: "1pt", fontSize: "10pt" }}>{bullet}</li>
+                      <li key={idx} style={{ paddingLeft: "2pt", marginBottom: "1pt", fontSize: "10pt", lineHeight: "1.35" }}>{bullet}</li>
                     ))}
                   </ul>
                 )}
@@ -126,12 +137,10 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
 
         {/* ===== EDUCATION ===== */}
         {validEducation.length > 0 && (
-          <section style={{ marginBottom: "0.4cm" }}>
-            <h2 style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #000", paddingBottom: "0.1cm", marginTop: "0.3cm", marginBottom: "0.2cm" }}>
-              Education
-            </h2>
+          <section style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>Education</h2>
             {validEducation.map((edu) => (
-              <div key={edu.id} style={{ marginBottom: "0.15cm" }}>
+              <div key={edu.id} style={{ marginBottom: "4pt" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontSize: "10pt" }}>
                     <strong>
@@ -140,29 +149,11 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
                     {edu.institution && <span>, {edu.institution}</span>}
                     {edu.gpa && <span> (GPA: {edu.gpa})</span>}
                   </span>
-                  <span style={{ fontSize: "10pt", flexShrink: 0 }}>{edu.graduation_date}</span>
+                  <span style={{ fontSize: "9.5pt", flexShrink: 0 }}>{edu.graduation_date}</span>
                 </div>
                 {edu.location && (
-                  <div style={{ textAlign: "right", fontSize: "10pt" }}>{edu.location}</div>
+                  <div style={{ textAlign: "right", fontSize: "9.5pt" }}>{edu.location}</div>
                 )}
-              </div>
-            ))}
-          </section>
-        )}
-
-        {/* ===== CERTIFICATIONS ===== */}
-        {validCerts.length > 0 && (
-          <section style={{ marginBottom: "0.4cm" }}>
-            <h2 style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #000", paddingBottom: "0.1cm", marginTop: "0.3cm", marginBottom: "0.2cm" }}>
-              Certifications
-            </h2>
-            {validCerts.map((cert) => (
-              <div key={cert.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "2pt" }}>
-                <span style={{ fontSize: "10pt" }}>
-                  <span style={{ color: "#2563eb", fontWeight: 700 }}>{cert.name}</span>
-                  {cert.issuer && <span>, {cert.issuer}</span>}
-                </span>
-                <span style={{ fontSize: "10pt", flexShrink: 0 }}>{cert.date}</span>
               </div>
             ))}
           </section>
@@ -170,10 +161,8 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
 
         {/* ===== SKILLS ===== */}
         {skillCategories.length > 0 && (
-          <section style={{ marginBottom: "0.4cm" }}>
-            <h2 style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #000", paddingBottom: "0.1cm", marginTop: "0.3cm", marginBottom: "0.2cm" }}>
-              Skills
-            </h2>
+          <section style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>Technical Skills</h2>
             {skillCategories.map((sc, idx) => (
               <p key={idx} style={{ margin: "0 0 2pt 0", fontSize: "10pt" }}>
                 <strong>{sc.category}:</strong> {sc.skills.join(", ")}
@@ -182,29 +171,98 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
           </section>
         )}
 
+        {/* ===== CERTIFICATIONS ===== */}
+        {validCerts.length > 0 && (
+          <section style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>Certifications</h2>
+            {validCerts.map((cert) => (
+              <div key={cert.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "2pt" }}>
+                <span style={{ fontSize: "10pt" }}>
+                  <strong>{cert.name}</strong>
+                  {cert.issuer && <span>, {cert.issuer}</span>}
+                </span>
+                <span style={{ fontSize: "9.5pt", flexShrink: 0 }}>{cert.date}</span>
+              </div>
+            ))}
+          </section>
+        )}
+
         {/* ===== PROJECTS ===== */}
         {validProjects.length > 0 && (
-          <section style={{ marginBottom: "0.4cm" }}>
-            <h2 style={{ fontSize: "14pt", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #000", paddingBottom: "0.1cm", marginTop: "0.3cm", marginBottom: "0.2cm" }}>
-              Projects
-            </h2>
+          <section style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>Projects</h2>
             {validProjects.map((project) => (
-              <div key={project.id} style={{ marginBottom: "0.25cm" }}>
+              <div key={project.id} style={{ marginBottom: "6pt" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontWeight: 700, fontSize: "10pt" }}>{project.title}</span>
                   {project.date && (
-                    <span style={{ fontStyle: "italic", fontSize: "10pt", flexShrink: 0 }}>
+                    <span style={{ fontStyle: "italic", fontSize: "9.5pt", flexShrink: 0 }}>
                       {project.organization && `${project.organization} — `}{project.date}
                     </span>
                   )}
                 </div>
                 {project.bullets.length > 0 && (
-                  <ul style={{ margin: "0.05cm 0 0 15pt", padding: 0, listStyleType: "disc" }}>
+                  <ul style={{ margin: "2pt 0 0 16pt", padding: 0, listStyleType: "disc" }}>
                     {project.bullets.map((bullet, idx) => (
-                      <li key={idx} style={{ paddingLeft: "3pt", fontSize: "10pt" }}>{bullet}</li>
+                      <li key={idx} style={{ paddingLeft: "2pt", fontSize: "10pt", lineHeight: "1.35" }}>{bullet}</li>
                     ))}
                   </ul>
                 )}
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* ===== LANGUAGES ===== */}
+        {validLanguages.length > 0 && (
+          <section style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>Languages</h2>
+            <p style={{ margin: 0, fontSize: "10pt" }}>
+              {validLanguages.map((l, idx) => (
+                <span key={l.id}>
+                  <strong>{l.language}</strong>
+                  {l.proficiency && ` (${l.proficiency})`}
+                  {idx < validLanguages.length - 1 && " | "}
+                </span>
+              ))}
+            </p>
+          </section>
+        )}
+
+        {/* ===== VOLUNTEER EXPERIENCE ===== */}
+        {validVolunteer.length > 0 && (
+          <section style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>Volunteer Experience</h2>
+            {validVolunteer.map((vol) => (
+              <div key={vol.id} style={{ marginBottom: "6pt" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontWeight: 700, fontSize: "10pt" }}>{vol.role || "Volunteer"}</span>
+                  {vol.date && <span style={{ fontSize: "9.5pt", flexShrink: 0 }}>{vol.date}</span>}
+                </div>
+                <div><span style={{ fontStyle: "italic", fontSize: "10pt" }}>{vol.organization}</span></div>
+                {vol.bullets.length > 0 && (
+                  <ul style={{ margin: "2pt 0 0 16pt", padding: 0, listStyleType: "disc" }}>
+                    {vol.bullets.map((bullet, idx) => (
+                      <li key={idx} style={{ paddingLeft: "2pt", fontSize: "10pt", lineHeight: "1.35" }}>{bullet}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* ===== AWARDS & PUBLICATIONS ===== */}
+        {validAwards.length > 0 && (
+          <section style={{ marginBottom: "4pt" }}>
+            <h2 style={sectionHeadingStyle}>Awards & Publications</h2>
+            {validAwards.map((award) => (
+              <div key={award.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "2pt" }}>
+                <span style={{ fontSize: "10pt" }}>
+                  <strong>{award.title}</strong>
+                  {award.issuer && <span>, {award.issuer}</span>}
+                </span>
+                <span style={{ fontSize: "9.5pt", flexShrink: 0 }}>{award.date}</span>
               </div>
             ))}
           </section>

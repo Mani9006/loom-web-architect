@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useResumeExport } from "@/hooks/use-resume-export";
@@ -8,9 +8,13 @@ import {
   EducationEntry,
   CertificationEntry,
   ProjectEntry,
+  LanguageEntry,
+  VolunteerEntry,
+  AwardEntry,
   SKILL_CATEGORY_LABELS,
   createEmptyResumeJSON,
 } from "@/types/resume";
+import { calculateATSScore, buildSectionFixPrompt, ATSScore, ATSIssue } from "@/lib/ats-scorer";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ResumeFormSkeleton } from "@/components/resume/ResumeFormSkeleton";
@@ -46,6 +50,8 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  Info,
   Printer,
   Cloud,
   CloudOff,
@@ -57,6 +63,10 @@ import {
   Zap,
   Copy,
   Check,
+  Globe,
+  Heart,
+  Trophy,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +79,10 @@ export type SectionId =
   | "education"
   | "skills"
   | "projects"
-  | "certifications";
+  | "certifications"
+  | "languages"
+  | "volunteer"
+  | "awards";
 
 interface SectionConfig {
   id: SectionId;
@@ -191,6 +204,39 @@ const SECTIONS: SectionConfig[] = [
       return 100;
     },
   },
+  {
+    id: "languages",
+    label: "Languages",
+    icon: <Globe className="h-4 w-4" />,
+    getCount: (d) => (d.languages || []).filter((l) => l.language).length,
+    getCompleteness: (d) => {
+      const valid = (d.languages || []).filter((l) => l.language);
+      if (valid.length === 0) return 0;
+      return valid.every((l) => l.proficiency) ? 100 : 60;
+    },
+  },
+  {
+    id: "volunteer",
+    label: "Volunteer Experience",
+    icon: <Heart className="h-4 w-4" />,
+    getCount: (d) => (d.volunteer || []).filter((v) => v.organization).length,
+    getCompleteness: (d) => {
+      const valid = (d.volunteer || []).filter((v) => v.organization);
+      if (valid.length === 0) return 0;
+      return valid.every((v) => v.role && v.bullets.length > 0) ? 100 : 50;
+    },
+  },
+  {
+    id: "awards",
+    label: "Awards & Publications",
+    icon: <Trophy className="h-4 w-4" />,
+    getCount: (d) => (d.awards || []).filter((a) => a.title).length,
+    getCompleteness: (d) => {
+      const valid = (d.awards || []).filter((a) => a.title);
+      if (valid.length === 0) return 0;
+      return 100;
+    },
+  },
 ];
 
 // ─── Robust AI response parser ──────────────────────────────────────────────
@@ -278,12 +324,39 @@ export default function ResumeBuilder() {
   const [currentSkillCategory, setCurrentSkillCategory] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [mobileView, setMobileView] = useState<"editor" | "preview">("editor");
+  const [expandedExpId, setExpandedExpId] = useState<string | null>(null);
+  const [expandedEduId, setExpandedEduId] = useState<string | null>(null);
+  const [expandedProjIdx, setExpandedProjIdx] = useState<number | null>(null);
+  const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
   const [jobDescription, setJobDescription] = useState("");
   const [showJobTarget, setShowJobTarget] = useState(false);
   const [isTailoring, setIsTailoring] = useState(false);
   const [keywordMatches, setKeywordMatches] = useState<{ matched: string[]; missing: string[] } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [expandedLangId, setExpandedLangId] = useState<string | null>(null);
+  const [expandedVolId, setExpandedVolId] = useState<string | null>(null);
+  const [expandedAwardId, setExpandedAwardId] = useState<string | null>(null);
+  const [showATSDetails, setShowATSDetails] = useState(false);
+  const [aiFixingSection, setAiFixingSection] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // ── ATS Score (live, memoized) ──────────────────────────────────────────
+  const atsScore = useMemo(() => calculateATSScore(data), [data]);
+  const atsColor = atsScore.overall >= 80 ? "text-green-500" : atsScore.overall >= 60 ? "text-yellow-500" : "text-red-500";
+  const atsBgColor = atsScore.overall >= 80 ? "bg-green-500" : atsScore.overall >= 60 ? "bg-yellow-500" : "bg-red-500";
+  const getIssuesForSection = (sectionName: string) => atsScore.issues.filter((i) => i.section === sectionName);
+
+  // Map our section IDs to ATS section names
+  const sectionToATSName: Record<string, string> = {
+    personal: "Personal Info",
+    summary: "Summary",
+    experience: "Experience",
+    education: "Education",
+    skills: "Skills",
+    projects: "Projects",
+    certifications: "Certifications",
+    formatting: "Formatting",
+  };
 
   // ── Load saved resume ──────────────────────────────────────────────────
   useEffect(() => {
@@ -306,6 +379,9 @@ export default function ResumeBuilder() {
           certifications: Array.isArray(r.certifications) ? r.certifications : [],
           skills: r.skills && typeof r.skills === "object" && !Array.isArray(r.skills) ? r.skills : {},
           projects: Array.isArray(r.projects) ? r.projects : [],
+          languages: Array.isArray(r.languages) ? r.languages : [],
+          volunteer: Array.isArray(r.volunteer) ? r.volunteer : [],
+          awards: Array.isArray(r.awards) ? r.awards : [],
         });
       }
       setIsLoaded(true);
@@ -547,8 +623,64 @@ export default function ResumeBuilder() {
   const updateProject = (index: number, updates: Partial<ProjectEntry>) => setData((prev) => ({ ...prev, projects: prev.projects.map((p, i) => (i === index ? { ...p, ...updates } : p)) }));
   const addSkillToCategory = (category: string, skill: string) => { if (!skill.trim()) return; const current = data.skills[category] || []; if (!current.includes(skill.trim())) setData((prev) => ({ ...prev, skills: { ...prev.skills, [category]: [...current, skill.trim()] } })); };
   const removeSkillFromCategory = (category: string, skill: string) => setData((prev) => ({ ...prev, skills: { ...prev.skills, [category]: (prev.skills[category] || []).filter((s) => s !== skill) } }));
+  const addLanguage = () => setData((prev) => ({ ...prev, languages: [...(prev.languages || []), { id: crypto.randomUUID(), language: "", proficiency: "Professional" }] }));
+  const removeLanguage = (id: string) => setData((prev) => ({ ...prev, languages: (prev.languages || []).filter((l) => l.id !== id) }));
+  const updateLanguage = (id: string, field: keyof LanguageEntry, value: string) => setData((prev) => ({ ...prev, languages: (prev.languages || []).map((l) => (l.id === id ? { ...l, [field]: value } : l)) }));
+  const addVolunteer = () => setData((prev) => ({ ...prev, volunteer: [...(prev.volunteer || []), { id: crypto.randomUUID(), role: "", organization: "", date: "", bullets: [] }] }));
+  const removeVolunteer = (id: string) => setData((prev) => ({ ...prev, volunteer: (prev.volunteer || []).filter((v) => v.id !== id) }));
+  const updateVolunteer = (id: string, field: keyof VolunteerEntry, value: any) => setData((prev) => ({ ...prev, volunteer: (prev.volunteer || []).map((v) => (v.id === id ? { ...v, [field]: value } : v)) }));
+  const addAward = () => setData((prev) => ({ ...prev, awards: [...(prev.awards || []), { id: crypto.randomUUID(), title: "", issuer: "", date: "" }] }));
+  const removeAward = (id: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).filter((a) => a.id !== id) }));
+  const updateAward = (id: string, field: keyof AwardEntry, value: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).map((a) => (a.id === id ? { ...a, [field]: value } : a)) }));
   const toggleSectionVisibility = (sectionId: SectionId) => setHiddenSections((prev) => { const next = new Set(prev); next.has(sectionId) ? next.delete(sectionId) : next.add(sectionId); return next; });
   const resetResume = () => { setData(createEmptyResumeJSON()); setHiddenSections(new Set()); setCurrentResumeId(null); toast({ title: "Resume cleared" }); };
+
+  // ── AI Fix Section Issues ─────────────────────────────────────────────
+  const aiFixSection = async (sectionName: string) => {
+    const issues = getIssuesForSection(sectionName);
+    if (issues.length === 0) return;
+    setAiFixingSection(sectionName);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session) throw new Error("Not authenticated");
+      const prompt = buildSectionFixPrompt(sectionName, data, issues);
+      const result = await streamAIText(session.session.access_token, [
+        { role: "system", content: prompt },
+        { role: "user", content: "Fix the issues and return the improved content." },
+      ]);
+
+      if (sectionName === "Summary") {
+        const cleaned = result.replace(/^["']|["']$/g, "").replace(/```/g, "").trim();
+        if (cleaned) setData((prev) => ({ ...prev, summary: cleaned }));
+      } else if (sectionName === "Experience") {
+        const parsed = parseAIResponse(result);
+        if (parsed && Array.isArray(parsed)) {
+          setData((prev) => ({
+            ...prev,
+            experience: parsed.map((e: any, idx: number) => ({
+              id: prev.experience[idx]?.id || crypto.randomUUID(),
+              role: e.role || prev.experience[idx]?.role || "",
+              company_or_client: e.company_or_client || prev.experience[idx]?.company_or_client || "",
+              start_date: e.start_date || prev.experience[idx]?.start_date || "",
+              end_date: e.end_date || prev.experience[idx]?.end_date || "",
+              location: e.location || prev.experience[idx]?.location || "",
+              bullets: Array.isArray(e.bullets) ? e.bullets : prev.experience[idx]?.bullets || [],
+            })),
+          }));
+        }
+      } else if (sectionName === "Skills") {
+        const parsed = parseAIResponse(result);
+        if (parsed && typeof parsed === "object") {
+          setData((prev) => ({ ...prev, skills: { ...prev.skills, ...parsed } }));
+        }
+      }
+      toast({ title: `${sectionName} improved!`, description: "AI has fixed the ATS issues." });
+    } catch {
+      toast({ title: "AI fix failed", variant: "destructive" });
+    } finally {
+      setAiFixingSection(null);
+    }
+  };
 
   // ── Preview data with hidden sections stripped ─────────────────────────
   const previewData: ResumeJSON = {
@@ -559,6 +691,9 @@ export default function ResumeBuilder() {
     skills: hiddenSections.has("skills") ? {} : data.skills,
     projects: hiddenSections.has("projects") ? [] : data.projects,
     certifications: hiddenSections.has("certifications") ? [] : data.certifications,
+    languages: hiddenSections.has("languages") ? [] : data.languages,
+    volunteer: hiddenSections.has("volunteer") ? [] : data.volunteer,
+    awards: hiddenSections.has("awards") ? [] : data.awards,
   };
 
   const fileName = data.header.name ? `${data.header.name.replace(/\s+/g, "_")}_Resume` : "Resume";
@@ -571,7 +706,7 @@ export default function ResumeBuilder() {
   return (
     <div className="flex h-[calc(100vh-68px)] w-full overflow-hidden bg-background">
       {/* ─── LEFT PANEL: Accordion editor ─────────────────────────────── */}
-      <div className={cn("w-full lg:w-[45%] lg:min-w-[380px] flex flex-col border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
+      <div className={cn("w-full lg:w-[38%] lg:min-w-[340px] lg:max-w-[440px] flex flex-col border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card">
           <h1 className="text-sm font-bold flex-1">Resume Builder</h1>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -703,157 +838,345 @@ export default function ResumeBuilder() {
                       </AccordionTrigger>
                       <Tooltip><TooltipTrigger asChild><button onClick={(e) => { e.stopPropagation(); toggleSectionVisibility(section.id); }} className="p-1.5 mr-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">{isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button></TooltipTrigger><TooltipContent>{isHidden ? "Show on resume" : "Hide from resume"}</TooltipContent></Tooltip>
                     </div>
-                    <AccordionContent className="px-2 pb-4">
+                    <AccordionContent className="px-2 pb-2 pt-0">
+                      {/* ── Personal Info: compact 3-col grid ── */}
                       {section.id === "personal" && (
-                        <div className="grid grid-cols-2 gap-3">
-                          {([{ field: "name" as const, label: "Full Name *", placeholder: "John Doe" }, { field: "title" as const, label: "Job Title", placeholder: "Data Engineer" }, { field: "email" as const, label: "Email *", placeholder: "john@email.com", type: "email" }, { field: "phone" as const, label: "Phone", placeholder: "+1 555-123-4567" }, { field: "location" as const, label: "Location", placeholder: "Dallas, TX" }, { field: "linkedin" as const, label: "LinkedIn", placeholder: "linkedin.com/in/johndoe" }] as const).map(({ field, label, placeholder, type }) => (
-                            <div key={field} className="space-y-1"><Label className="text-xs text-muted-foreground">{label}</Label><Input type={type || "text"} placeholder={placeholder} value={data.header[field]} onChange={(e) => updateHeader(field, e.target.value)} className="bg-background h-9 text-sm" /></div>
+                        <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
+                          {([{ field: "name" as const, label: "Name", placeholder: "John Doe" }, { field: "title" as const, label: "Title", placeholder: "Data Engineer" }, { field: "email" as const, label: "Email", placeholder: "john@email.com", type: "email" }, { field: "phone" as const, label: "Phone", placeholder: "+1 555-123-4567" }, { field: "location" as const, label: "Location", placeholder: "Dallas, TX" }, { field: "linkedin" as const, label: "LinkedIn", placeholder: "linkedin.com/in/..." }] as const).map(({ field, label, placeholder, type }) => (
+                            <div key={field}>
+                              <Input type={type || "text"} placeholder={`${label}: ${placeholder}`} value={data.header[field]} onChange={(e) => updateHeader(field, e.target.value)} className="bg-background h-7 text-xs" />
+                            </div>
                           ))}
                         </div>
                       )}
+
+                      {/* ── Summary: compact textarea ── */}
                       {section.id === "summary" && (
-                        <div className="space-y-2">
-                          <Textarea placeholder="Brief professional summary..." value={data.summary} onChange={(e) => setData((prev) => ({ ...prev, summary: e.target.value }))} className="bg-background text-sm min-h-[100px]" />
+                        <div className="space-y-1.5">
+                          <Textarea placeholder="Brief professional summary..." value={data.summary} onChange={(e) => setData((prev) => ({ ...prev, summary: e.target.value }))} className="bg-background text-xs min-h-[60px] resize-y" />
                           <div className="flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">{data.summary.length} chars{data.summary.length > 0 && data.summary.length < 50 && " - too short"}</span>
-                            <Button type="button" variant="outline" size="sm" onClick={enhanceSummaryWithAI} disabled={aiEnhancingSection === "summary"} className="h-7 text-xs gap-1.5">
-                              {aiEnhancingSection === "summary" ? <><Loader2 className="h-3 w-3 animate-spin" /> Enhancing...</> : <><Sparkles className="h-3 w-3" /> {data.summary ? "Enhance with AI" : "Generate with AI"}</>}
+                            <span className="text-[10px] text-muted-foreground">{data.summary.length} chars</span>
+                            <Button type="button" variant="ghost" size="sm" onClick={enhanceSummaryWithAI} disabled={aiEnhancingSection === "summary"} className="h-6 text-[10px] gap-1 px-2">
+                              {aiEnhancingSection === "summary" ? <><Loader2 className="h-3 w-3 animate-spin" /> Enhancing...</> : <><Sparkles className="h-3 w-3" /> {data.summary ? "Enhance" : "Generate"}</>}
                             </Button>
                           </div>
                         </div>
                       )}
+
+                      {/* ── Experience: collapsed rows, click to expand ── */}
                       {section.id === "experience" && (
-                        <div className="space-y-4">
+                        <div className="space-y-1">
                           {data.experience.map((exp, index) => (
-                            <div key={exp.id} className="p-3 bg-muted/40 rounded-lg space-y-3 border border-border/30">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1">
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Experience {index + 1}</p>
-                                  {data.experience.length > 1 && (
-                                    <div className="flex items-center ml-1">
-                                      <button type="button" onClick={() => moveExperience(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronUp className="h-3 w-3" /></button>
-                                      <button type="button" onClick={() => moveExperience(index, "down")} disabled={index === data.experience.length - 1} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronDown className="h-3 w-3" /></button>
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  {exp.bullets.length > 0 && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => enhanceBulletsWithAI(exp.id)} disabled={aiEnhancingSection === `exp-${exp.id}`} className="h-6 w-6 text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</Button></TooltipTrigger><TooltipContent>Enhance bullets with AI</TooltipContent></Tooltip>}
-                                  {data.experience.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => removeExperience(exp.id)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>}
+                            <div key={exp.id} className="rounded border border-border/40 overflow-hidden">
+                              {/* Summary row - always visible */}
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedExpId === exp.id && "bg-muted/40")}
+                                onClick={() => setExpandedExpId(expandedExpId === exp.id ? null : exp.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedExpId === exp.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">
+                                  {exp.role || exp.company_or_client ? `${exp.role || "Role"}${exp.company_or_client ? ` @ ${exp.company_or_client}` : ""}` : `Experience ${index + 1}`}
+                                </span>
+                                {exp.start_date && <span className="text-[10px] text-muted-foreground shrink-0">{exp.start_date}{exp.end_date ? ` - ${exp.end_date}` : ""}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {data.experience.length > 1 && <>
+                                    <button type="button" onClick={() => moveExperience(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
+                                    <button type="button" onClick={() => moveExperience(index, "down")} disabled={index === data.experience.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronDown className="h-3 w-3" /></button>
+                                  </>}
+                                  {exp.bullets.length > 0 && <button type="button" onClick={() => enhanceBulletsWithAI(exp.id)} disabled={aiEnhancingSection === `exp-${exp.id}`} className="p-0.5 rounded hover:bg-muted text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</button>}
+                                  {data.experience.length > 1 && <button type="button" onClick={() => removeExperience(exp.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
                                 </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Company *</Label><Input placeholder="Company Inc." value={exp.company_or_client} onChange={(e) => updateExperience(exp.id, "company_or_client", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Role *</Label><Input placeholder="Data Engineer" value={exp.role} onChange={(e) => updateExperience(exp.id, "role", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Start Date</Label><Input placeholder="Feb 2024" value={exp.start_date} onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">End Date</Label><Input placeholder="Present" value={exp.end_date} onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1 col-span-2"><Label className="text-xs text-muted-foreground">Location</Label><Input placeholder="Dallas, TX" value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                              </div>
-                              <div className="space-y-1"><Label className="text-xs text-muted-foreground">Bullet Points (one per line)</Label><Textarea placeholder={"• Designed ETL pipelines\n• Led data migration"} value={exp.bullets.join("\n")} onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split("\n").filter((b) => b.trim()))} className="bg-background text-sm min-h-[80px]" /></div>
+                              {/* Expanded form */}
+                              {expandedExpId === exp.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Company *" value={exp.company_or_client} onChange={(e) => updateExperience(exp.id, "company_or_client", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Role *" value={exp.role} onChange={(e) => updateExperience(exp.id, "role", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Start date" value={exp.start_date} onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="End date" value={exp.end_date} onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                  <Input placeholder="Location" value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} className="bg-background h-7 text-xs" />
+                                  <Textarea placeholder={"Bullet points (one per line)\n- Designed ETL pipelines...\n- Led data migration..."} value={exp.bullets.join("\n")} onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split("\n").filter((b) => b.trim()))} className="bg-background text-xs min-h-[60px] resize-y" />
+                                </div>
+                              )}
                             </div>
                           ))}
-                          <Button type="button" variant="outline" size="sm" onClick={addExperience} className="w-full gap-2 border-dashed"><Plus className="h-3 w-3" /> Add Experience</Button>
+                          <button type="button" onClick={addExperience} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Experience</button>
                         </div>
                       )}
+
+                      {/* ── Education: collapsed rows ── */}
                       {section.id === "education" && (
-                        <div className="space-y-3">
+                        <div className="space-y-1">
                           {data.education.map((edu, eduIndex) => (
-                            <div key={edu.id} className="p-3 bg-muted/40 rounded-lg space-y-2 relative border border-border/30">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Education {eduIndex + 1}</span>
-                                  {data.education.length > 1 && (
-                                    <div className="flex items-center ml-1">
-                                      <button type="button" onClick={() => moveEducation(eduIndex, "up")} disabled={eduIndex === 0} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronUp className="h-3 w-3" /></button>
-                                      <button type="button" onClick={() => moveEducation(eduIndex, "down")} disabled={eduIndex === data.education.length - 1} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronDown className="h-3 w-3" /></button>
-                                    </div>
-                                  )}
+                            <div key={edu.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedEduId === edu.id && "bg-muted/40")}
+                                onClick={() => setExpandedEduId(expandedEduId === edu.id ? null : edu.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedEduId === edu.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">
+                                  {edu.institution || edu.degree ? `${edu.degree || "Degree"}${edu.institution ? ` - ${edu.institution}` : ""}` : `Education ${eduIndex + 1}`}
+                                </span>
+                                {edu.graduation_date && <span className="text-[10px] text-muted-foreground shrink-0">{edu.graduation_date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {data.education.length > 1 && <>
+                                    <button type="button" onClick={() => moveEducation(eduIndex, "up")} disabled={eduIndex === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
+                                    <button type="button" onClick={() => moveEducation(eduIndex, "down")} disabled={eduIndex === data.education.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronDown className="h-3 w-3" /></button>
+                                  </>}
+                                  {data.education.length > 1 && <button type="button" onClick={() => removeEducation(edu.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
                                 </div>
-                                {data.education.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => removeEducation(edu.id)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>}
                               </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Institution</Label><Input placeholder="University of..." value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Degree</Label><Input placeholder="Master's" value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Field</Label><Input placeholder="Computer Science" value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Graduation</Label><Input placeholder="May 2023" value={edu.graduation_date} onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                              </div>
+                              {expandedEduId === edu.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Institution" value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Degree" value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Field" value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Graduation date" value={edu.graduation_date} onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
-                          <Button type="button" variant="outline" size="sm" onClick={addEducation} className="w-full gap-2 border-dashed"><Plus className="h-3 w-3" /> Add Education</Button>
+                          <button type="button" onClick={addEducation} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Education</button>
                         </div>
                       )}
+
+                      {/* ── Skills: compact badges with inline add ── */}
                       {section.id === "skills" && (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           {Object.entries(data.skills).map(([categoryKey, skills]) => (
-                            <div key={categoryKey} className="p-3 bg-muted/40 rounded-lg space-y-2 border border-border/30">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{SKILL_CATEGORY_LABELS[categoryKey] || categoryKey.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}</span>
-                                <Button type="button" variant="ghost" size="sm" onClick={() => { const s = { ...data.skills }; delete s[categoryKey]; setData((p) => ({ ...p, skills: s })); }} className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>
+                            <div key={categoryKey} className="space-y-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex-1">{SKILL_CATEGORY_LABELS[categoryKey] || categoryKey.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}</span>
+                                <button type="button" onClick={() => { const s = { ...data.skills }; delete s[categoryKey]; setData((p) => ({ ...p, skills: s })); }} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
                               </div>
-                              <div className="flex gap-2">
-                                <Input placeholder="Add skill..." value={currentSkillCategory === categoryKey ? skillInput : ""} onChange={(e) => { setCurrentSkillCategory(categoryKey); setSkillInput(e.target.value); }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkillToCategory(categoryKey, skillInput); setSkillInput(""); } }} className="bg-background h-7 text-sm" />
-                                <Button type="button" variant="outline" size="sm" onClick={() => { addSkillToCategory(categoryKey, skillInput); setSkillInput(""); }} className="h-7 text-xs">Add</Button>
+                              <div className="flex flex-wrap gap-1">
+                                {skills.map((skill) => <Badge key={skill} variant="secondary" className="text-[10px] h-5 gap-0.5 px-1.5">{skill}<button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)} className="hover:text-destructive ml-0.5"><X className="h-2 w-2" /></button></Badge>)}
+                                <Input placeholder="+ Add" value={currentSkillCategory === categoryKey ? skillInput : ""} onChange={(e) => { setCurrentSkillCategory(categoryKey); setSkillInput(e.target.value); }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkillToCategory(categoryKey, skillInput); setSkillInput(""); } }} className="bg-background h-5 text-[10px] w-20 min-w-0 px-1.5 border-dashed" />
                               </div>
-                              {skills.length > 0 && <div className="flex flex-wrap gap-1.5">{skills.map((skill) => <Badge key={skill} variant="secondary" className="text-xs gap-1 cursor-default">{skill}<button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)} className="hover:text-destructive"><X className="h-2.5 w-2.5" /></button></Badge>)}</div>}
                             </div>
                           ))}
-                          <div className="p-3 border-2 border-dashed border-muted-foreground/20 rounded-lg space-y-2">
-                            <span className="text-xs text-muted-foreground">Add New Skill Category</span>
-                            <div className="flex gap-2">
-                              <Input placeholder="e.g., Cloud Platforms" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="bg-background h-7 text-sm" onKeyDown={(e) => { if (e.key === "Enter" && newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} />
-                              <Button type="button" variant="outline" size="sm" onClick={() => { if (newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} className="h-7"><Plus className="h-3 w-3" /></Button>
-                            </div>
+                          <div className="flex gap-1.5 items-center">
+                            <Input placeholder="New category name..." value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="bg-background h-6 text-[10px] flex-1" onKeyDown={(e) => { if (e.key === "Enter" && newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} />
+                            <button type="button" onClick={() => { if (newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} className="text-xs text-muted-foreground hover:text-foreground"><Plus className="h-3 w-3" /></button>
                           </div>
-                          {Object.keys(data.skills).length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No skills yet. Upload a resume or add categories above.</p>}
+                          {Object.keys(data.skills).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No skills yet. Upload a resume or add above.</p>}
                         </div>
                       )}
+
+                      {/* ── Projects: collapsed rows ── */}
                       {section.id === "projects" && (
-                        <div className="space-y-4">
+                        <div className="space-y-1">
                           {data.projects.map((project, index) => (
-                            <div key={project.id} className="p-3 bg-muted/40 rounded-lg space-y-3 border border-border/30">
-                              <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Project {index + 1}</span>
-                                  {data.projects.length > 1 && (
-                                    <div className="flex items-center ml-1">
-                                      <button type="button" onClick={() => moveProject(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronUp className="h-3 w-3" /></button>
-                                      <button type="button" onClick={() => moveProject(index, "down")} disabled={index === data.projects.length - 1} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronDown className="h-3 w-3" /></button>
-                                    </div>
-                                  )}
-                                </div>
-                                <Button type="button" variant="ghost" size="icon" onClick={() => removeProject(index)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>
-                              </div>
-                              <div className="grid gap-3">
-                                <div><Label className="text-xs text-muted-foreground">Project Name</Label><Input value={project.title} onChange={(e) => updateProject(index, { title: e.target.value })} placeholder="e.g., AI-Powered Chatbot" className="h-8 text-sm" /></div>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div><Label className="text-xs text-muted-foreground">Organization</Label><Input value={project.organization} onChange={(e) => updateProject(index, { organization: e.target.value })} placeholder="e.g., MIT" className="h-8 text-sm" /></div>
-                                  <div><Label className="text-xs text-muted-foreground">Date</Label><Input value={project.date} onChange={(e) => updateProject(index, { date: e.target.value })} placeholder="May 2024" className="h-8 text-sm" /></div>
-                                </div>
-                                <div>
-                                  <div className="flex justify-between items-center mb-1"><Label className="text-xs text-muted-foreground">Key Points</Label><Button type="button" variant="ghost" size="sm" onClick={() => updateProject(index, { bullets: [...project.bullets, ""] })} className="h-5 text-[10px] gap-1"><Plus className="h-2.5 w-2.5" /> Add</Button></div>
-                                  <div className="space-y-2">{project.bullets.map((bullet, bulletIdx) => (<div key={bulletIdx} className="flex gap-2 items-start"><span className="text-muted-foreground text-xs mt-2.5">&#8226;</span><Textarea value={bullet} onChange={(e) => { const b = [...project.bullets]; b[bulletIdx] = e.target.value; updateProject(index, { bullets: b }); }} placeholder="Describe what you built..." className="min-h-[50px] text-sm" /><Button type="button" variant="ghost" size="sm" onClick={() => updateProject(index, { bullets: project.bullets.filter((_, i) => i !== bulletIdx) })} className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"><X className="h-3 w-3" /></Button></div>))}</div>
+                            <div key={project.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedProjIdx === index && "bg-muted/40")}
+                                onClick={() => setExpandedProjIdx(expandedProjIdx === index ? null : index)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedProjIdx === index && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">{project.title || `Project ${index + 1}`}</span>
+                                {project.date && <span className="text-[10px] text-muted-foreground shrink-0">{project.date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {data.projects.length > 1 && <>
+                                    <button type="button" onClick={() => moveProject(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
+                                    <button type="button" onClick={() => moveProject(index, "down")} disabled={index === data.projects.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronDown className="h-3 w-3" /></button>
+                                  </>}
+                                  <button type="button" onClick={() => removeProject(index)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
                               </div>
+                              {expandedProjIdx === index && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <Input placeholder="Project Name" value={project.title} onChange={(e) => updateProject(index, { title: e.target.value })} className="bg-background h-7 text-xs" />
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Organization" value={project.organization} onChange={(e) => updateProject(index, { organization: e.target.value })} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Date" value={project.date} onChange={(e) => updateProject(index, { date: e.target.value })} className="bg-background h-7 text-xs" />
+                                  </div>
+                                  <Textarea placeholder={"Key points (one per line)\n- Built a chatbot...\n- Implemented ML pipeline..."} value={project.bullets.join("\n")} onChange={(e) => updateProject(index, { bullets: e.target.value.split("\n") })} className="bg-background text-xs min-h-[50px] resize-y" />
+                                </div>
+                              )}
                             </div>
                           ))}
-                          <Button type="button" variant="outline" size="sm" onClick={addProject} className="w-full gap-2 border-dashed"><Plus className="h-3 w-3" /> Add Project</Button>
+                          <button type="button" onClick={addProject} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Project</button>
                         </div>
                       )}
+
+                      {/* ── Certifications: collapsed rows ── */}
                       {section.id === "certifications" && (
-                        <div className="space-y-3">
+                        <div className="space-y-1">
                           {data.certifications.map((cert) => (
-                            <div key={cert.id} className="p-3 bg-muted/40 rounded-lg space-y-2 relative border border-border/30">
-                              <Button type="button" variant="ghost" size="icon" onClick={() => removeCertification(cert.id)} className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>
-                              <div className="grid grid-cols-3 gap-2">
-                                <div className="space-y-1 col-span-2"><Label className="text-xs text-muted-foreground">Certification Name</Label><Input placeholder="AWS Certified..." value={cert.name} onChange={(e) => updateCertification(cert.id, "name", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Date</Label><Input placeholder="Sep 2024" value={cert.date} onChange={(e) => updateCertification(cert.id, "date", e.target.value)} className="bg-background h-8 text-sm" /></div>
+                            <div key={cert.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedCertId === cert.id && "bg-muted/40")}
+                                onClick={() => setExpandedCertId(expandedCertId === cert.id ? null : cert.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedCertId === cert.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">{cert.name || "New Certification"}</span>
+                                {cert.date && <span className="text-[10px] text-muted-foreground shrink-0">{cert.date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" onClick={() => removeCertification(cert.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                </div>
                               </div>
-                              <div className="space-y-1"><Label className="text-xs text-muted-foreground">Issuer</Label><Input placeholder="Amazon Web Services" value={cert.issuer} onChange={(e) => updateCertification(cert.id, "issuer", e.target.value)} className="bg-background h-8 text-sm" /></div>
+                              {expandedCertId === cert.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-3 gap-1.5">
+                                    <Input placeholder="Certification Name" value={cert.name} onChange={(e) => updateCertification(cert.id, "name", e.target.value)} className="bg-background h-7 text-xs col-span-2" />
+                                    <Input placeholder="Date" value={cert.date} onChange={(e) => updateCertification(cert.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                  <Input placeholder="Issuer (e.g., AWS)" value={cert.issuer} onChange={(e) => updateCertification(cert.id, "issuer", e.target.value)} className="bg-background h-7 text-xs" />
+                                </div>
+                              )}
                             </div>
                           ))}
-                          {data.certifications.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No certifications added yet</p>}
-                          <Button type="button" variant="outline" size="sm" onClick={addCertification} className="w-full gap-2 border-dashed"><Plus className="h-3 w-3" /> Add Certification</Button>
+                          {data.certifications.length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No certifications added yet</p>}
+                          <button type="button" onClick={addCertification} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Certification</button>
                         </div>
                       )}
+                      {/* ── Languages: collapsible rows ── */}
+                      {section.id === "languages" && (
+                        <div className="space-y-1">
+                          {(data.languages || []).map((lang) => (
+                            <div key={lang.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedLangId === lang.id && "bg-muted/40")}
+                                onClick={() => setExpandedLangId(expandedLangId === lang.id ? null : lang.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedLangId === lang.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">{lang.language || "New Language"}</span>
+                                {lang.proficiency && <Badge variant="secondary" className="text-[10px] h-5">{lang.proficiency}</Badge>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" onClick={() => removeLanguage(lang.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                </div>
+                              </div>
+                              {expandedLangId === lang.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Language" value={lang.language} onChange={(e) => updateLanguage(lang.id, "language", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <select value={lang.proficiency} onChange={(e) => updateLanguage(lang.id, "proficiency", e.target.value)} className="h-7 text-xs rounded-md border border-input bg-background px-2">
+                                      {["Native", "Fluent", "Professional", "Conversational", "Basic"].map((p) => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {(data.languages || []).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No languages added yet</p>}
+                          <button type="button" onClick={addLanguage} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Language</button>
+                        </div>
+                      )}
+
+                      {/* ── Volunteer: collapsible rows ── */}
+                      {section.id === "volunteer" && (
+                        <div className="space-y-1">
+                          {(data.volunteer || []).map((vol) => (
+                            <div key={vol.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedVolId === vol.id && "bg-muted/40")}
+                                onClick={() => setExpandedVolId(expandedVolId === vol.id ? null : vol.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedVolId === vol.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">
+                                  {vol.role || vol.organization ? `${vol.role || "Role"}${vol.organization ? ` @ ${vol.organization}` : ""}` : "New Volunteer Experience"}
+                                </span>
+                                {vol.date && <span className="text-[10px] text-muted-foreground shrink-0">{vol.date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" onClick={() => removeVolunteer(vol.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                </div>
+                              </div>
+                              {expandedVolId === vol.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Organization" value={vol.organization} onChange={(e) => updateVolunteer(vol.id, "organization", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Role" value={vol.role} onChange={(e) => updateVolunteer(vol.id, "role", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                  <Input placeholder="Date range" value={vol.date} onChange={(e) => updateVolunteer(vol.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  <Textarea placeholder={"Key contributions (one per line)"} value={vol.bullets.join("\n")} onChange={(e) => updateVolunteer(vol.id, "bullets", e.target.value.split("\n").filter((b: string) => b.trim()))} className="bg-background text-xs min-h-[50px] resize-y" />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {(data.volunteer || []).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No volunteer experience added yet</p>}
+                          <button type="button" onClick={addVolunteer} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Volunteer Experience</button>
+                        </div>
+                      )}
+
+                      {/* ── Awards & Publications: collapsible rows ── */}
+                      {section.id === "awards" && (
+                        <div className="space-y-1">
+                          {(data.awards || []).map((award) => (
+                            <div key={award.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedAwardId === award.id && "bg-muted/40")}
+                                onClick={() => setExpandedAwardId(expandedAwardId === award.id ? null : award.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedAwardId === award.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">{award.title || "New Award"}</span>
+                                {award.date && <span className="text-[10px] text-muted-foreground shrink-0">{award.date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" onClick={() => removeAward(award.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                </div>
+                              </div>
+                              {expandedAwardId === award.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <Input placeholder="Award/Publication Title" value={award.title} onChange={(e) => updateAward(award.id, "title", e.target.value)} className="bg-background h-7 text-xs" />
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Issuer/Publisher" value={award.issuer} onChange={(e) => updateAward(award.id, "issuer", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Date" value={award.date} onChange={(e) => updateAward(award.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {(data.awards || []).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No awards or publications added yet</p>}
+                          <button type="button" onClick={addAward} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Award/Publication</button>
+                        </div>
+                      )}
+
+                      {/* ── Per-section ATS Issues ── */}
+                      {(() => {
+                        const atsName = sectionToATSName[section.id];
+                        if (!atsName) return null;
+                        const sectionIssues = getIssuesForSection(atsName);
+                        if (sectionIssues.length === 0) return null;
+                        return (
+                          <div className="mt-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                <Shield className="h-3 w-3" /> ATS Issues ({sectionIssues.length})
+                              </span>
+                              {(atsName === "Summary" || atsName === "Experience" || atsName === "Skills") && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => aiFixSection(atsName)}
+                                  disabled={aiFixingSection === atsName}
+                                  className="h-5 text-[10px] gap-1 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                                >
+                                  {aiFixingSection === atsName ? <><Loader2 className="h-2.5 w-2.5 animate-spin" /> Fixing...</> : <><Wand2 className="h-2.5 w-2.5" /> AI Fix All</>}
+                                </Button>
+                              )}
+                            </div>
+                            {sectionIssues.map((issue) => (
+                              <div key={issue.id} className="flex items-start gap-1.5 text-[10px]">
+                                {issue.severity === "critical" ? <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" /> :
+                                 issue.severity === "warning" ? <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0 mt-0.5" /> :
+                                 <Info className="h-3 w-3 text-blue-400 shrink-0 mt-0.5" />}
+                                <div className="flex-1 min-w-0">
+                                  <span className={cn("font-medium",
+                                    issue.severity === "critical" ? "text-red-600 dark:text-red-400" :
+                                    issue.severity === "warning" ? "text-yellow-600 dark:text-yellow-400" :
+                                    "text-blue-600 dark:text-blue-400"
+                                  )}>{issue.title}</span>
+                                  <span className="text-muted-foreground ml-1">{issue.description}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </AccordionContent>
                   </AccordionItem>
                 );
@@ -867,9 +1190,24 @@ export default function ResumeBuilder() {
       <div className={cn("flex-1 flex flex-col min-w-0 bg-muted/20", mobileView !== "preview" && "hidden lg:flex")}>
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setMobileView("editor")} className="h-7 text-xs lg:hidden">← Editor</Button>
+            <Button variant="outline" size="sm" onClick={() => setMobileView("editor")} className="h-7 text-xs lg:hidden">&larr; Editor</Button>
             <h2 className="text-sm font-bold">Preview</h2>
             {hiddenSections.size > 0 && <Badge variant="outline" className="text-[10px] h-5">{hiddenSections.size} hidden</Badge>}
+            {/* ATS Score Badge */}
+            <button
+              type="button"
+              onClick={() => setShowATSDetails(!showATSDetails)}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer",
+                atsScore.overall >= 80 ? "bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400 hover:bg-green-500/20" :
+                atsScore.overall >= 60 ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/20" :
+                "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/20"
+              )}
+            >
+              <Shield className="h-3.5 w-3.5" />
+              ATS: {atsScore.overall}%
+              {atsScore.issues.length > 0 && <span className="text-[10px] font-normal opacity-70">({atsScore.issues.filter(i => i.severity === "critical").length} critical)</span>}
+            </button>
           </div>
           <div className="flex items-center gap-1.5">
             <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={handlePrintView} disabled={isExporting} className="h-8 gap-1.5"><Printer className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Print</span></Button></TooltipTrigger><TooltipContent>Print-friendly view</TooltipContent></Tooltip>
@@ -878,6 +1216,63 @@ export default function ResumeBuilder() {
             <Button size="sm" onClick={handleDownloadPDF} disabled={isExporting} className="h-8 gap-1.5">{isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Download PDF</Button>
           </div>
         </div>
+
+        {/* ATS Score Expandable Details */}
+        {showATSDetails && (
+          <div className="border-b border-border bg-card px-4 py-3 space-y-3 max-h-[50vh] overflow-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={cn("text-3xl font-black", atsColor)}>{atsScore.overall}</div>
+                <div>
+                  <div className="text-sm font-semibold">{atsScore.passesATS ? "ATS Compatible" : "Needs Improvement"}</div>
+                  <div className="text-[10px] text-muted-foreground">{atsScore.issues.length} issues found ({atsScore.issues.filter(i => i.severity === "critical").length} critical, {atsScore.issues.filter(i => i.severity === "warning").length} warnings)</div>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowATSDetails(false)} className="p-1 rounded hover:bg-muted"><X className="h-4 w-4" /></button>
+            </div>
+
+            {/* Section scores */}
+            <div className="grid grid-cols-4 gap-2">
+              {atsScore.sections.map((s) => (
+                <div key={s.section} className="text-center p-2 rounded-lg bg-muted/40">
+                  <div className={cn("text-lg font-bold", s.score / s.maxScore >= 0.7 ? "text-green-500" : s.score / s.maxScore >= 0.4 ? "text-yellow-500" : "text-red-500")}>
+                    {Math.round((s.score / s.maxScore) * 100)}%
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">{s.section}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* All issues */}
+            <div className="space-y-1.5">
+              <div className="text-xs font-semibold">All Issues</div>
+              {atsScore.issues.map((issue) => (
+                <div key={issue.id} className="flex items-start gap-2 text-xs p-2 rounded-lg bg-muted/30">
+                  {issue.severity === "critical" ? <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" /> :
+                   issue.severity === "warning" ? <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 shrink-0 mt-0.5" /> :
+                   <Info className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className="text-[9px] h-4">{issue.section}</Badge>
+                      <span className={cn("font-medium",
+                        issue.severity === "critical" ? "text-red-600 dark:text-red-400" :
+                        issue.severity === "warning" ? "text-yellow-600 dark:text-yellow-400" :
+                        "text-blue-600 dark:text-blue-400"
+                      )}>{issue.title}</span>
+                    </div>
+                    <p className="text-muted-foreground mt-0.5">{issue.description}</p>
+                  </div>
+                </div>
+              ))}
+              {atsScore.issues.length === 0 && (
+                <div className="text-center py-4 text-sm text-green-500 font-medium flex items-center justify-center gap-2">
+                  <CheckCircle2 className="h-5 w-5" /> No ATS issues found! Your resume looks great.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto p-6">
           <div className="mx-auto shadow-xl relative" style={{ width: "fit-content" }}>
             <ResumeTemplate ref={resumeRef} data={previewData} />
