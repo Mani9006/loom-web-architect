@@ -11,6 +11,8 @@ import {
   LanguageEntry,
   VolunteerEntry,
   AwardEntry,
+  CustomSection,
+  CustomSectionEntry,
   SKILL_CATEGORY_LABELS,
   createEmptyResumeJSON,
 } from "@/types/resume";
@@ -67,12 +69,15 @@ import {
   Heart,
   Trophy,
   Shield,
+  Pencil,
+  Trash2,
+  LayoutList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type SectionId =
+export type BuiltInSectionId =
   | "personal"
   | "summary"
   | "experience"
@@ -84,160 +89,65 @@ export type SectionId =
   | "volunteer"
   | "awards";
 
-interface SectionConfig {
+// A section can be a built-in type or a custom section (prefixed with "custom_")
+export type SectionId = BuiltInSectionId | string;
+
+interface ActiveSection {
   id: SectionId;
   label: string;
-  icon: React.ReactNode;
-  getCount: (data: ResumeJSON) => number;
-  getCompleteness: (data: ResumeJSON) => number;
+  builtIn: boolean; // false for custom sections
 }
 
-// ─── Section definitions with completeness scoring ──────────────────────────
+// Built-in section metadata (icon lookup, count functions)
+const BUILT_IN_ICONS: Record<BuiltInSectionId, React.ReactNode> = {
+  personal: <UserIcon className="h-4 w-4" />,
+  summary: <FileText className="h-4 w-4" />,
+  experience: <Briefcase className="h-4 w-4" />,
+  education: <GraduationCap className="h-4 w-4" />,
+  skills: <Wrench className="h-4 w-4" />,
+  projects: <FolderKanban className="h-4 w-4" />,
+  certifications: <Award className="h-4 w-4" />,
+  languages: <Globe className="h-4 w-4" />,
+  volunteer: <Heart className="h-4 w-4" />,
+  awards: <Trophy className="h-4 w-4" />,
+};
 
-const SECTIONS: SectionConfig[] = [
-  {
-    id: "personal",
-    label: "Personal Information",
-    icon: <UserIcon className="h-4 w-4" />,
-    getCount: (d) => {
-      const h = d.header;
-      return [h.name, h.title, h.email, h.phone, h.location, h.linkedin].filter(Boolean).length;
-    },
-    getCompleteness: (d) => {
-      const h = d.header;
-      const filled = [h.name, h.email, h.phone, h.location, h.title, h.linkedin].filter(Boolean).length;
-      return Math.round((filled / 6) * 100);
-    },
-  },
-  {
-    id: "summary",
-    label: "Professional Summary",
-    icon: <FileText className="h-4 w-4" />,
-    getCount: (d) => (d.summary ? 1 : 0),
-    getCompleteness: (d) => {
-      if (!d.summary) return 0;
-      if (d.summary.length < 50) return 30;
-      if (d.summary.length < 150) return 60;
-      return 100;
-    },
-  },
-  {
-    id: "experience",
-    label: "Work Experience",
-    icon: <Briefcase className="h-4 w-4" />,
-    getCount: (d) => d.experience.filter((e) => e.company_or_client).length,
-    getCompleteness: (d) => {
-      const valid = d.experience.filter((e) => e.company_or_client);
-      if (valid.length === 0) return 0;
-      const scores = valid.map((e) => {
-        let s = 0;
-        if (e.company_or_client) s += 20;
-        if (e.role) s += 20;
-        if (e.start_date) s += 15;
-        if (e.end_date) s += 15;
-        if (e.bullets.length >= 3) s += 30;
-        else if (e.bullets.length > 0) s += 15;
-        return s;
-      });
-      return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-    },
-  },
-  {
-    id: "education",
-    label: "Education",
-    icon: <GraduationCap className="h-4 w-4" />,
-    getCount: (d) => d.education.filter((e) => e.institution).length,
-    getCompleteness: (d) => {
-      const valid = d.education.filter((e) => e.institution);
-      if (valid.length === 0) return 0;
-      const scores = valid.map((e) => {
-        let s = 0;
-        if (e.institution) s += 30;
-        if (e.degree) s += 25;
-        if (e.field) s += 25;
-        if (e.graduation_date) s += 20;
-        return s;
-      });
-      return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-    },
-  },
-  {
-    id: "skills",
-    label: "Skills & Interests",
-    icon: <Wrench className="h-4 w-4" />,
-    getCount: (d) => Object.values(d.skills).flat().length,
-    getCompleteness: (d) => {
-      const total = Object.values(d.skills).flat().length;
-      if (total === 0) return 0;
-      if (total < 5) return 30;
-      if (total < 10) return 60;
-      return 100;
-    },
-  },
-  {
-    id: "projects",
-    label: "Projects",
-    icon: <FolderKanban className="h-4 w-4" />,
-    getCount: (d) => d.projects.filter((p) => p.title).length,
-    getCompleteness: (d) => {
-      const valid = d.projects.filter((p) => p.title);
-      if (valid.length === 0) return 0;
-      const scores = valid.map((p) => {
-        let s = 0;
-        if (p.title) s += 30;
-        if (p.organization) s += 20;
-        if (p.bullets.length >= 2) s += 50;
-        else if (p.bullets.length > 0) s += 25;
-        return s;
-      });
-      return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-    },
-  },
-  {
-    id: "certifications",
-    label: "Certifications",
-    icon: <Award className="h-4 w-4" />,
-    getCount: (d) => d.certifications.filter((c) => c.name).length,
-    getCompleteness: (d) => {
-      const valid = d.certifications.filter((c) => c.name);
-      if (valid.length === 0) return 0;
-      return 100;
-    },
-  },
-  {
-    id: "languages",
-    label: "Languages",
-    icon: <Globe className="h-4 w-4" />,
-    getCount: (d) => (d.languages || []).filter((l) => l.language).length,
-    getCompleteness: (d) => {
-      const valid = (d.languages || []).filter((l) => l.language);
-      if (valid.length === 0) return 0;
-      return valid.every((l) => l.proficiency) ? 100 : 60;
-    },
-  },
-  {
-    id: "volunteer",
-    label: "Volunteer Experience",
-    icon: <Heart className="h-4 w-4" />,
-    getCount: (d) => (d.volunteer || []).filter((v) => v.organization).length,
-    getCompleteness: (d) => {
-      const valid = (d.volunteer || []).filter((v) => v.organization);
-      if (valid.length === 0) return 0;
-      return valid.every((v) => v.role && v.bullets.length > 0) ? 100 : 50;
-    },
-  },
-  {
-    id: "awards",
-    label: "Awards & Publications",
-    icon: <Trophy className="h-4 w-4" />,
-    getCount: (d) => (d.awards || []).filter((a) => a.title).length,
-    getCompleteness: (d) => {
-      const valid = (d.awards || []).filter((a) => a.title);
-      if (valid.length === 0) return 0;
-      return 100;
-    },
-  },
+const DEFAULT_SECTIONS: ActiveSection[] = [
+  { id: "personal", label: "Personal Information", builtIn: true },
+  { id: "summary", label: "Professional Summary", builtIn: true },
+  { id: "experience", label: "Work Experience", builtIn: true },
+  { id: "education", label: "Education", builtIn: true },
+  { id: "skills", label: "Skills", builtIn: true },
+  { id: "projects", label: "Projects", builtIn: true },
+  { id: "certifications", label: "Certifications", builtIn: true },
 ];
+
+// All available built-in sections (for the "Add Section" picker)
+const ALL_BUILT_IN_SECTIONS: ActiveSection[] = [
+  ...DEFAULT_SECTIONS,
+  { id: "languages", label: "Languages", builtIn: true },
+  { id: "volunteer", label: "Volunteer Experience", builtIn: true },
+  { id: "awards", label: "Awards & Publications", builtIn: true },
+];
+
+function getSectionCount(id: SectionId, data: ResumeJSON): number {
+  switch (id) {
+    case "personal": return [data.header.name, data.header.title, data.header.email, data.header.phone, data.header.location, data.header.linkedin].filter(Boolean).length;
+    case "summary": return data.summary ? 1 : 0;
+    case "experience": return data.experience.filter((e) => e.company_or_client).length;
+    case "education": return data.education.filter((e) => e.institution).length;
+    case "skills": return Object.values(data.skills).flat().length;
+    case "projects": return data.projects.filter((p) => p.title).length;
+    case "certifications": return data.certifications.filter((c) => c.name).length;
+    case "languages": return (data.languages || []).filter((l) => l.language).length;
+    case "volunteer": return (data.volunteer || []).filter((v) => v.organization).length;
+    case "awards": return (data.awards || []).filter((a) => a.title).length;
+    default: {
+      const cs = (data.customSections || []).find((s) => s.id === id);
+      return cs ? cs.entries.filter((e) => e.title).length : 0;
+    }
+  }
+}
 
 // ─── Robust AI response parser ──────────────────────────────────────────────
 
@@ -318,6 +228,11 @@ export default function ResumeBuilder() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [currentResumeId, setCurrentResumeId] = useState<string | null>(null);
+  const [activeSections, setActiveSections] = useState<ActiveSection[]>(DEFAULT_SECTIONS);
+  const [showAddSection, setShowAddSection] = useState(false);
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editingSectionLabel, setEditingSectionLabel] = useState("");
+  const [expandedCustomId, setExpandedCustomId] = useState<string | null>(null);
   const [hiddenSections, setHiddenSections] = useState<Set<SectionId>>(new Set());
   const [aiEnhancingSection, setAiEnhancingSection] = useState<string | null>(null);
   const [skillInput, setSkillInput] = useState("");
@@ -420,8 +335,12 @@ export default function ResumeBuilder() {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [data, saveToSupabase, isLoaded]);
 
-  // ── Completeness ──────────────────────────────────────────────────────
-  const completeness = Math.round(SECTIONS.reduce((sum, s) => sum + s.getCompleteness(data), 0) / SECTIONS.length);
+  // ── Completeness (simplified: based on how many active sections have content) ─
+  const completeness = useMemo(() => {
+    if (activeSections.length === 0) return 0;
+    const filled = activeSections.filter((s) => getSectionCount(s.id, data) > 0).length;
+    return Math.round((filled / activeSections.length) * 100);
+  }, [activeSections, data]);
   const completenessColor = completeness >= 80 ? "text-green-500" : completeness >= 50 ? "text-yellow-500" : "text-red-400";
   const completenessLabel = completeness >= 80 ? "Excellent" : completeness >= 50 ? "Good start" : "Needs work";
 
@@ -633,7 +552,60 @@ export default function ResumeBuilder() {
   const removeAward = (id: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).filter((a) => a.id !== id) }));
   const updateAward = (id: string, field: keyof AwardEntry, value: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).map((a) => (a.id === id ? { ...a, [field]: value } : a)) }));
   const toggleSectionVisibility = (sectionId: SectionId) => setHiddenSections((prev) => { const next = new Set(prev); next.has(sectionId) ? next.delete(sectionId) : next.add(sectionId); return next; });
-  const resetResume = () => { setData(createEmptyResumeJSON()); setHiddenSections(new Set()); setCurrentResumeId(null); toast({ title: "Resume cleared" }); };
+
+  // ── Section management ────────────────────────────────────────────────
+  const removeSection = (sectionId: SectionId) => {
+    setActiveSections((prev) => prev.filter((s) => s.id !== sectionId));
+    // If it's a custom section, also remove data
+    if (sectionId.startsWith("custom_")) {
+      setData((prev) => ({ ...prev, customSections: (prev.customSections || []).filter((s) => s.id !== sectionId) }));
+    }
+  };
+  const addBuiltInSection = (sectionId: BuiltInSectionId) => {
+    const existing = ALL_BUILT_IN_SECTIONS.find((s) => s.id === sectionId);
+    if (existing && !activeSections.some((s) => s.id === sectionId)) {
+      setActiveSections((prev) => [...prev, existing]);
+    }
+    setShowAddSection(false);
+  };
+  const addCustomSection = (name: string) => {
+    const id = `custom_${crypto.randomUUID().slice(0, 8)}`;
+    setActiveSections((prev) => [...prev, { id, label: name, builtIn: false }]);
+    setData((prev) => ({ ...prev, customSections: [...(prev.customSections || []), { id, name, entries: [] }] }));
+    setShowAddSection(false);
+  };
+  const renameSection = (sectionId: SectionId, newLabel: string) => {
+    setActiveSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, label: newLabel } : s)));
+    if (sectionId.startsWith("custom_")) {
+      setData((prev) => ({ ...prev, customSections: (prev.customSections || []).map((s) => (s.id === sectionId ? { ...s, name: newLabel } : s)) }));
+    }
+    setEditingSectionId(null);
+  };
+  const addCustomEntry = (sectionId: string) => {
+    setData((prev) => ({
+      ...prev,
+      customSections: (prev.customSections || []).map((s) =>
+        s.id === sectionId ? { ...s, entries: [...s.entries, { id: crypto.randomUUID(), title: "", subtitle: "", date: "", bullets: [] }] } : s
+      ),
+    }));
+  };
+  const removeCustomEntry = (sectionId: string, entryId: string) => {
+    setData((prev) => ({
+      ...prev,
+      customSections: (prev.customSections || []).map((s) =>
+        s.id === sectionId ? { ...s, entries: s.entries.filter((e) => e.id !== entryId) } : s
+      ),
+    }));
+  };
+  const updateCustomEntry = (sectionId: string, entryId: string, field: keyof CustomSectionEntry, value: any) => {
+    setData((prev) => ({
+      ...prev,
+      customSections: (prev.customSections || []).map((s) =>
+        s.id === sectionId ? { ...s, entries: s.entries.map((e) => (e.id === entryId ? { ...e, [field]: value } : e)) } : s
+      ),
+    }));
+  };
+  const resetResume = () => { setData(createEmptyResumeJSON()); setHiddenSections(new Set()); setActiveSections(DEFAULT_SECTIONS); setCurrentResumeId(null); toast({ title: "Resume cleared" }); };
 
   // ── AI Fix Section Issues ─────────────────────────────────────────────
   const aiFixSection = async (sectionName: string) => {
@@ -694,6 +666,7 @@ export default function ResumeBuilder() {
     languages: hiddenSections.has("languages") ? [] : data.languages,
     volunteer: hiddenSections.has("volunteer") ? [] : data.volunteer,
     awards: hiddenSections.has("awards") ? [] : data.awards,
+    customSections: data.customSections?.filter((cs) => !hiddenSections.has(cs.id)),
   };
 
   const fileName = data.header.name ? `${data.header.name.replace(/\s+/g, "_")}_Resume` : "Resume";
@@ -820,23 +793,44 @@ export default function ResumeBuilder() {
 
           <div className={isParsingResume ? "opacity-30 pointer-events-none" : ""}>
             <Accordion type="multiple" defaultValue={["personal", "summary"]} className="px-3 py-1">
-              {SECTIONS.map((section) => {
-                const count = section.getCount(data);
-                const sectionCompleteness = section.getCompleteness(data);
+              {activeSections.map((section) => {
+                const count = getSectionCount(section.id, data);
                 const isHidden = hiddenSections.has(section.id);
+                const sectionIcon = section.builtIn ? BUILT_IN_ICONS[section.id as BuiltInSectionId] : <LayoutList className="h-4 w-4" />;
                 return (
                   <AccordionItem key={section.id} value={section.id} className="border-b border-border/40">
                     <div className="flex items-center group">
                       <AccordionTrigger className="flex-1 py-3 px-2 text-sm hover:no-underline gap-2 [&>svg]:order-first [&>svg]:text-muted-foreground">
                         <span className="flex items-center gap-2 flex-1 min-w-0">
-                          <span className={isHidden ? "opacity-40" : ""}>{section.icon}</span>
-                          <span className={`font-medium truncate ${isHidden ? "opacity-40 line-through" : ""}`}>{section.label}</span>
+                          <span className={isHidden ? "opacity-40" : ""}>{sectionIcon}</span>
+                          {editingSectionId === section.id ? (
+                            <input
+                              autoFocus
+                              value={editingSectionLabel}
+                              onChange={(e) => setEditingSectionLabel(e.target.value)}
+                              onBlur={() => { if (editingSectionLabel.trim()) renameSection(section.id, editingSectionLabel.trim()); else setEditingSectionId(null); }}
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (editingSectionLabel.trim()) renameSection(section.id, editingSectionLabel.trim()); } if (e.key === "Escape") setEditingSectionId(null); }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="font-medium text-sm bg-background border border-primary/30 rounded px-1.5 py-0.5 outline-none focus:border-primary w-full max-w-[180px]"
+                            />
+                          ) : (
+                            <span
+                              className={`font-medium truncate ${isHidden ? "opacity-40 line-through" : ""}`}
+                              onDoubleClick={(e) => { e.stopPropagation(); setEditingSectionId(section.id); setEditingSectionLabel(section.label); }}
+                            >
+                              {section.label}
+                            </span>
+                          )}
                           {count > 0 && <Badge variant="secondary" className="ml-auto text-[10px] h-5 shrink-0">{count}</Badge>}
-                          {sectionCompleteness > 0 && sectionCompleteness < 100 && <Tooltip><TooltipTrigger asChild><AlertCircle className="h-3 w-3 text-yellow-500 shrink-0" /></TooltipTrigger><TooltipContent>{sectionCompleteness}% complete</TooltipContent></Tooltip>}
-                          {sectionCompleteness === 100 && <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />}
                         </span>
                       </AccordionTrigger>
-                      <Tooltip><TooltipTrigger asChild><button onClick={(e) => { e.stopPropagation(); toggleSectionVisibility(section.id); }} className="p-1.5 mr-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">{isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button></TooltipTrigger><TooltipContent>{isHidden ? "Show on resume" : "Hide from resume"}</TooltipContent></Tooltip>
+                      <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <Tooltip><TooltipTrigger asChild><button onClick={(e) => { e.stopPropagation(); setEditingSectionId(section.id); setEditingSectionLabel(section.label); }} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Pencil className="h-3 w-3" /></button></TooltipTrigger><TooltipContent>Rename section</TooltipContent></Tooltip>
+                        <Tooltip><TooltipTrigger asChild><button onClick={(e) => { e.stopPropagation(); toggleSectionVisibility(section.id); }} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">{isHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}</button></TooltipTrigger><TooltipContent>{isHidden ? "Show on resume" : "Hide from resume"}</TooltipContent></Tooltip>
+                        {(section.id !== "personal" && section.id !== "summary") && (
+                          <Tooltip><TooltipTrigger asChild><button onClick={(e) => { e.stopPropagation(); removeSection(section.id); }} className="p-1 mr-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"><Trash2 className="h-3 w-3" /></button></TooltipTrigger><TooltipContent>Remove section</TooltipContent></Tooltip>
+                        )}
+                      </div>
                     </div>
                     <AccordionContent className="px-2 pb-2 pt-0">
                       {/* ── Personal Info: compact 3-col grid ── */}
@@ -1134,6 +1128,42 @@ export default function ResumeBuilder() {
                         </div>
                       )}
 
+                      {/* ── Custom section editor ── */}
+                      {section.id.startsWith("custom_") && (() => {
+                        const cs = (data.customSections || []).find((s) => s.id === section.id);
+                        if (!cs) return null;
+                        return (
+                          <div className="space-y-1">
+                            {cs.entries.map((entry) => (
+                              <div key={entry.id} className="rounded border border-border/40 overflow-hidden">
+                                <div
+                                  className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedCustomId === entry.id && "bg-muted/40")}
+                                  onClick={() => setExpandedCustomId(expandedCustomId === entry.id ? null : entry.id)}
+                                >
+                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedCustomId === entry.id && "rotate-180")} />
+                                  <span className="text-xs font-medium truncate flex-1">{entry.title || "New Entry"}</span>
+                                  {entry.date && <span className="text-[10px] text-muted-foreground shrink-0">{entry.date}</span>}
+                                  <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    <button type="button" onClick={() => removeCustomEntry(section.id, entry.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                  </div>
+                                </div>
+                                {expandedCustomId === entry.id && (
+                                  <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                    <Input placeholder="Title" value={entry.title} onChange={(e) => updateCustomEntry(section.id, entry.id, "title", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      <Input placeholder="Subtitle / Organization" value={entry.subtitle} onChange={(e) => updateCustomEntry(section.id, entry.id, "subtitle", e.target.value)} className="bg-background h-7 text-xs" />
+                                      <Input placeholder="Date" value={entry.date} onChange={(e) => updateCustomEntry(section.id, entry.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
+                                    </div>
+                                    <Textarea placeholder={"Details (one per line)"} value={entry.bullets.join("\n")} onChange={(e) => updateCustomEntry(section.id, entry.id, "bullets", e.target.value.split("\n").filter((b: string) => b.trim()))} className="bg-background text-xs min-h-[50px] resize-y" />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                            <button type="button" onClick={() => addCustomEntry(section.id)} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Entry</button>
+                          </div>
+                        );
+                      })()}
+
                       {/* ── Per-section ATS Issues ── */}
                       {(() => {
                         const atsName = sectionToATSName[section.id];
@@ -1182,6 +1212,73 @@ export default function ResumeBuilder() {
                 );
               })}
             </Accordion>
+
+            {/* ── Add Section Button ── */}
+            <div className="px-3 pb-3">
+              {!showAddSection ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAddSection(true)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-medium text-primary hover:text-primary/80 border-2 border-dashed border-primary/20 rounded-lg hover:border-primary/40 hover:bg-primary/5 transition-all"
+                >
+                  <Plus className="h-4 w-4" /> Add Section
+                </button>
+              ) : (
+                <div className="p-3 bg-muted/40 rounded-lg border border-border/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold">Add Section</span>
+                    <button type="button" onClick={() => setShowAddSection(false)} className="p-0.5 rounded hover:bg-muted"><X className="h-3.5 w-3.5" /></button>
+                  </div>
+                  {/* Built-in sections not yet active */}
+                  {ALL_BUILT_IN_SECTIONS.filter((s) => !activeSections.some((a) => a.id === s.id)).length > 0 && (
+                    <div>
+                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Standard Sections</span>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {ALL_BUILT_IN_SECTIONS.filter((s) => !activeSections.some((a) => a.id === s.id)).map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => addBuiltInSection(s.id as BuiltInSectionId)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-border/50 bg-background hover:bg-muted hover:border-primary/30 transition-colors"
+                          >
+                            {BUILT_IN_ICONS[s.id as BuiltInSectionId]}
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Custom section */}
+                  <div>
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Custom Section</span>
+                    <div className="flex gap-1.5 mt-1">
+                      <Input
+                        placeholder="Section name (e.g., Hobbies, References, Publications...)"
+                        className="bg-background h-7 text-xs flex-1"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
+                            addCustomSection((e.target as HTMLInputElement).value.trim());
+                            (e.target as HTMLInputElement).value = "";
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs px-2"
+                        onClick={(e) => {
+                          const input = (e.target as HTMLElement).parentElement?.querySelector("input");
+                          if (input && input.value.trim()) { addCustomSection(input.value.trim()); input.value = ""; }
+                        }}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </ScrollArea>
       </div>

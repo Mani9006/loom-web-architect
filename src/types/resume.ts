@@ -141,6 +141,22 @@ export interface AwardEntry {
   date: string;
 }
 
+// Custom section entry (user-defined sections)
+export interface CustomSectionEntry {
+  id: string;
+  title: string;
+  subtitle: string;
+  date: string;
+  bullets: string[];
+}
+
+// Custom section definition
+export interface CustomSection {
+  id: string;
+  name: string; // Display name (editable by user)
+  entries: CustomSectionEntry[];
+}
+
 // Main Resume JSON Schema
 export interface ResumeJSON {
   header: ResumeHeader;
@@ -153,6 +169,7 @@ export interface ResumeJSON {
   languages?: LanguageEntry[];
   volunteer?: VolunteerEntry[];
   awards?: AwardEntry[];
+  customSections?: CustomSection[];
 }
 
 // Template configuration
