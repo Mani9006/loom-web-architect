@@ -51,7 +51,7 @@ async function searchMemories(apiKey: string, userId: string, query: string): Pr
     }
 
     const data = await response.json();
-    const memories = Array.isArray(data) ? data : data.results || data.memories || [];
+    const memories = Array.isArray(data) ? data : (data.results || data.memories || []);
     return memories.map((m: Memory) => m.memory || m.content).filter(Boolean);
   } catch (e) {
     console.error("Mem0 search error:", e);
@@ -59,12 +59,7 @@ async function searchMemories(apiKey: string, userId: string, query: string): Pr
   }
 }
 
-async function addMemory(
-  apiKey: string,
-  userId: string,
-  messages: Message[],
-  metadata?: Record<string, unknown>,
-): Promise<void> {
+async function addMemory(apiKey: string, userId: string, messages: Message[], metadata?: Record<string, unknown>): Promise<void> {
   try {
     await fetch("https://api.mem0.ai/v1/memories/", {
       method: "POST",
@@ -90,19 +85,15 @@ function extractResumeInfo(resumeText: string): { jobTitle: string; skills: stri
 
   // Pattern 2: Bold title line (e.g., "**Senior Data Scientist**")
   if (!jobTitle) {
-    const boldMatch = resumeText.match(
-      /\*\*([^*]+(?:Engineer|Developer|Scientist|Analyst|Manager|Designer|Architect|Lead|Director|Consultant|Specialist)[^*]*)\*\*/i,
-    );
+    const boldMatch = resumeText.match(/\*\*([^*]+(?:Engineer|Developer|Scientist|Analyst|Manager|Designer|Architect|Lead|Director|Consultant|Specialist)[^*]*)\*\*/i);
     if (boldMatch) jobTitle = boldMatch[1].trim();
   }
 
   // Pattern 3: Common title patterns in the first few lines
   if (!jobTitle) {
-    const lines = resumeText.split("\n").slice(0, 10);
+    const lines = resumeText.split('\n').slice(0, 10);
     for (const line of lines) {
-      const match = line.match(
-        /(?:Senior|Junior|Lead|Staff|Principal|Sr\.?|Jr\.?)?\s*(?:Data|Software|Machine Learning|ML|AI|Full[- ]?Stack|Front[- ]?end|Back[- ]?end|Cloud|DevOps|Platform|Product|Project|Program|QA|Test|Security|Network|Systems?|Database|ETL|BI|Business|UX|UI)\s*(?:Engineer|Developer|Scientist|Analyst|Manager|Designer|Architect|Lead|Director|Consultant|Specialist|Researcher)/i,
-      );
+      const match = line.match(/(?:Senior|Junior|Lead|Staff|Principal|Sr\.?|Jr\.?)?\s*(?:Data|Software|Machine Learning|ML|AI|Full[- ]?Stack|Front[- ]?end|Back[- ]?end|Cloud|DevOps|Platform|Product|Project|Program|QA|Test|Security|Network|Systems?|Database|ETL|BI|Business|UX|UI)\s*(?:Engineer|Developer|Scientist|Analyst|Manager|Designer|Architect|Lead|Director|Consultant|Specialist|Researcher)/i);
       if (match) {
         jobTitle = match[0].trim();
         break;
@@ -114,12 +105,7 @@ function extractResumeInfo(resumeText: string): { jobTitle: string; skills: stri
 
   // Extract skills
   const skillsMatch = resumeText.match(/(?:skills?|technologies?|expertise|proficien)[\s:]+([^\n]+(?:\n[^\n#]*)*)/gi);
-  const skills = skillsMatch
-    ? skillsMatch
-        .map((s) => s.replace(/(?:skills?|technologies?|expertise|proficien)[\s:]*/i, ""))
-        .join(", ")
-        .substring(0, 300)
-    : "";
+  const skills = skillsMatch ? skillsMatch.map(s => s.replace(/(?:skills?|technologies?|expertise|proficien)[\s:]*/i, '')).join(', ').substring(0, 300) : "";
 
   // Extract experience summary
   const expMatch = resumeText.match(/(?:experience|work history|employment)[\s\S]{0,500}/i);
@@ -142,7 +128,7 @@ async function searchJobsWithExa(apiKey: string, resumeText: string, filters?: J
 
     // Secondary query: skills-based search
     if (skills) {
-      const topSkills = skills.split(",").slice(0, 5).join(" ").trim();
+      const topSkills = skills.split(',').slice(0, 5).join(' ').trim();
       if (topSkills.length > 10) {
         queries.push(`${topSkills} jobs hiring ${country}`);
       }
@@ -153,23 +139,16 @@ async function searchJobsWithExa(apiKey: string, resumeText: string, filters?: J
       queries[0] += " remote";
     }
     if (filters?.jobType && filters.jobType !== "all") {
-      const typeLabel =
-        filters.jobType === "fulltime" ? "full-time" : filters.jobType === "parttime" ? "part-time" : filters.jobType;
+      const typeLabel = filters.jobType === "fulltime" ? "full-time" :
+                       filters.jobType === "parttime" ? "part-time" : filters.jobType;
       queries[0] += ` ${typeLabel}`;
     }
     if (filters?.experienceLevel && filters.experienceLevel !== "all") {
-      const levelLabel =
-        filters.experienceLevel === "entry"
-          ? "entry level junior"
-          : filters.experienceLevel === "mid"
-            ? "mid level"
-            : filters.experienceLevel === "senior"
-              ? "senior"
-              : filters.experienceLevel === "director"
-                ? "director lead"
-                : filters.experienceLevel === "executive"
-                  ? "executive VP"
-                  : "";
+      const levelLabel = filters.experienceLevel === "entry" ? "entry level junior" :
+                         filters.experienceLevel === "mid" ? "mid level" :
+                         filters.experienceLevel === "senior" ? "senior" :
+                         filters.experienceLevel === "director" ? "director lead" :
+                         filters.experienceLevel === "executive" ? "executive VP" : "";
       if (levelLabel) queries[0] += ` ${levelLabel}`;
     }
 
@@ -179,7 +158,7 @@ async function searchJobsWithExa(apiKey: string, resumeText: string, filters?: J
     const seenUrls = new Set<string>();
 
     // Run searches in parallel for speed
-    const searchPromises = queries.map((query) =>
+    const searchPromises = queries.map(query =>
       fetch("https://api.exa.ai/search", {
         method: "POST",
         headers: {
@@ -218,19 +197,17 @@ async function searchJobsWithExa(apiKey: string, resumeText: string, filters?: J
           ],
           ...(getExaDateFilter(filters) ? { startPublishedDate: getExaDateFilter(filters) } : {}),
         }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          console.error(`Exa API error for query "${query}":`, res.status);
+          return [];
+        }
+        const data = await res.json();
+        return (data.results || []) as ExaResult[];
+      }).catch(e => {
+        console.error("Exa search error:", e);
+        return [] as ExaResult[];
       })
-        .then(async (res) => {
-          if (!res.ok) {
-            console.error(`Exa API error for query "${query}":`, res.status);
-            return [];
-          }
-          const data = await res.json();
-          return (data.results || []) as ExaResult[];
-        })
-        .catch((e) => {
-          console.error("Exa search error:", e);
-          return [] as ExaResult[];
-        }),
     );
 
     const resultSets = await Promise.all(searchPromises);
@@ -256,15 +233,13 @@ async function searchJobsWithExa(apiKey: string, resumeText: string, filters?: J
 function formatExaResults(results: ExaResult[]): string {
   if (results.length === 0) return "";
 
-  const formatted = results
-    .map((result, index) => {
-      return `${index + 1}. **${result.title}**
+  const formatted = results.map((result, index) => {
+    return `${index + 1}. **${result.title}**
    VERIFIED URL: ${result.url}
    Published: ${result.publishedDate || "Recently"}
    ${result.text ? `Description: ${result.text.substring(0, 400)}` : ""}
    ${result.highlights ? `Key Points: ${result.highlights.slice(0, 3).join(" | ")}` : ""}`;
-    })
-    .join("\n\n");
+  }).join("\n\n");
 
   return formatted;
 }
@@ -351,21 +326,13 @@ function getRecencyFilter(filters?: JobFilters): string | undefined {
 
 // Build the user-facing search query
 function buildJobSearchQuery(resumeText: string, filters?: JobFilters, previousJobs?: string[]): string {
-  const exclusions =
-    previousJobs && previousJobs.length > 0
-      ? `\n\nDO NOT suggest these jobs that were already shown: ${previousJobs.slice(0, 10).join(", ")}`
-      : "";
+  const exclusions = previousJobs && previousJobs.length > 0
+    ? `\n\nDO NOT suggest these jobs that were already shown: ${previousJobs.slice(0, 10).join(", ")}`
+    : "";
 
   const filterString = buildFilterString(filters);
   const datePosted = filters?.datePosted || "24h";
-  const dateLabel =
-    datePosted === "24h"
-      ? "last 24 hours"
-      : datePosted === "week"
-        ? "past week"
-        : datePosted === "month"
-          ? "past month"
-          : "any time";
+  const dateLabel = datePosted === "24h" ? "last 24 hours" : datePosted === "week" ? "past week" : datePosted === "month" ? "past month" : "any time";
   const country = filters?.country || "USA";
   const countryLabel = country === "USA" ? "United States (USA)" : country;
 
@@ -402,9 +369,11 @@ serve(async (req: Request) => {
       });
     }
 
-    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
 
     const token = authHeader.replace("Bearer ", "");
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
@@ -448,23 +417,16 @@ serve(async (req: Request) => {
       if (memories.length > 0) {
         console.log(`[JobSearch] Found ${memories.length} relevant memories`);
         previousJobs = memories
-          .filter((m) => m.includes("job") || m.includes("position") || m.includes("role"))
+          .filter(m => m.includes("job") || m.includes("position") || m.includes("role"))
           .slice(0, 15);
-        userContext = memories.map((m) => `- ${m}`).join("\n");
+        userContext = memories.map(m => `- ${m}`).join("\n");
       }
     }
 
     // Build the search query with filters
     const searchQuery = buildJobSearchQuery(resumeText, filters, previousJobs);
     const recencyFilter = getRecencyFilter(filters);
-    const dateLabel =
-      filters?.datePosted === "all"
-        ? "any time"
-        : filters?.datePosted === "week"
-          ? "past week"
-          : filters?.datePosted === "month"
-            ? "past month"
-            : "last 24 hours";
+    const dateLabel = filters?.datePosted === "all" ? "any time" : filters?.datePosted === "week" ? "past week" : filters?.datePosted === "month" ? "past month" : "last 24 hours";
     const country = filters?.country || "USA";
     const countryLabel = country === "USA" ? "United States (USA)" : country;
 
@@ -514,6 +476,7 @@ Select the 5 most relevant jobs. If fewer than 5 verified listings match, show w
 ${userContext ? `\nUSER CONTEXT:\n${userContext}` : ""}
 
 ALL jobs MUST be in the ${countryLabel}. Follow all candidate filters strictly.`
+
       : `You are an expert job search assistant with real-time web access.
 
 YOUR TASK: Find 5 REAL, CURRENTLY OPEN job postings in the ${countryLabel} matching this candidate.
@@ -545,9 +508,7 @@ ALL jobs MUST be in the ${countryLabel}. ${dateLabel !== "any time" ? `Only jobs
 
     // Try Perplexity first, then OpenAI as fallback
     if (PERPLEXITY_API_KEY) {
-      console.log(
-        `[JobSearch] Using Perplexity sonar-pro to analyze ${exaResults.length} Exa results, recency: ${recencyFilter}...`,
-      );
+      console.log(`[JobSearch] Using Perplexity sonar-pro to analyze ${exaResults.length} Exa results, recency: ${recencyFilter}...`);
 
       const perplexityResponse = await fetch("https://api.perplexity.ai/chat/completions", {
         method: "POST",
@@ -623,20 +584,15 @@ ALL jobs MUST be in the ${countryLabel}. ${dateLabel !== "any time" ? `Only jobs
       // Store search in memory (fire and forget)
       if (MEM0_API_KEY) {
         const filterSummary = filters ? JSON.stringify(filters) : "no filters";
-        addMemory(
-          MEM0_API_KEY,
-          userId,
-          [
-            { role: "user", content: `Job search request: ${resumeText?.substring(0, 500)}` },
-            { role: "assistant", content: `Searching for jobs with filters: ${filterSummary}` },
-          ],
-          {
-            type: "job_search",
-            timestamp: new Date().toISOString(),
-            hasResume: !!resumeText,
-            filters: filters || {},
-          },
-        );
+        addMemory(MEM0_API_KEY, userId, [
+          { role: "user", content: `Job search request: ${resumeText?.substring(0, 500)}` },
+          { role: "assistant", content: `Searching for jobs with filters: ${filterSummary}` },
+        ], {
+          type: "job_search",
+          timestamp: new Date().toISOString(),
+          hasResume: !!resumeText,
+          filters: filters || {},
+        });
       }
 
       console.log("[JobSearch] Streaming response...");
@@ -646,9 +602,10 @@ ALL jobs MUST be in the ${countryLabel}. ${dateLabel !== "any time" ? `Only jobs
           ...corsHeaders,
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
-          Connection: "keep-alive",
+          "Connection": "keep-alive",
         },
       });
+
     } else if (OPENAI_API_KEY) {
       // Use OpenAI directly with Exa results
       console.log("[JobSearch] Using OpenAI with Exa results...");
@@ -691,9 +648,12 @@ ALL jobs MUST be in the ${countryLabel}. ${dateLabel !== "any time" ? `Only jobs
     }
   } catch (error) {
     console.error("Job search error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   }
 });

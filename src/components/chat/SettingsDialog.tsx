@@ -1,21 +1,20 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { User, Moon, Sun, MessageSquare, ExternalLink, History, LayoutDashboard, Trash2, Sparkles } from "lucide-react";
+import {
+  User, Moon, Sun, MessageSquare, ExternalLink,
+  History, LayoutDashboard, Trash2, Sparkles,
+} from "lucide-react";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -24,11 +23,8 @@ interface SettingsDialogProps {
   conversationCount?: number;
 }
 
-export function SettingsDialog({
-  open,
-  onOpenChange,
-  onClearAllConversations,
-  conversationCount = 0,
+export function SettingsDialog({ 
+  open, onOpenChange, onClearAllConversations, conversationCount = 0,
 }: SettingsDialogProps) {
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(() => {
@@ -48,15 +44,8 @@ export function SettingsDialog({
     }
   };
 
-  const handleNavigation = (path: string) => {
-    onOpenChange(false);
-    navigate(path);
-  };
-  const handleClearAll = () => {
-    setClearConfirmOpen(false);
-    onOpenChange(false);
-    onClearAllConversations?.();
-  };
+  const handleNavigation = (path: string) => { onOpenChange(false); navigate(path); };
+  const handleClearAll = () => { setClearConfirmOpen(false); onOpenChange(false); onClearAllConversations?.(); };
 
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
     <div className="space-y-1">
@@ -65,17 +54,7 @@ export function SettingsDialog({
     </div>
   );
 
-  const NavButton = ({
-    icon: Icon,
-    label,
-    onClick,
-    destructive,
-  }: {
-    icon: any;
-    label: string;
-    onClick: () => void;
-    destructive?: boolean;
-  }) => (
+  const NavButton = ({ icon: Icon, label, onClick, destructive }: { icon: any; label: string; onClick: () => void; destructive?: boolean }) => (
     <Button
       variant="ghost"
       className={`w-full justify-start gap-3 h-11 font-medium ${destructive ? "text-destructive hover:text-destructive hover:bg-destructive/10" : ""}`}
@@ -109,9 +88,7 @@ export function SettingsDialog({
               <div className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-accent transition-colors">
                 <div className="flex items-center gap-3">
                   {darkMode ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                  <Label htmlFor="dark-mode" className="cursor-pointer font-medium">
-                    Dark Mode
-                  </Label>
+                  <Label htmlFor="dark-mode" className="cursor-pointer font-medium">Dark Mode</Label>
                 </div>
                 <Switch id="dark-mode" checked={darkMode} onCheckedChange={toggleDarkMode} />
               </div>
@@ -156,16 +133,12 @@ export function SettingsDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Clear all conversations?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all {conversationCount} conversation{conversationCount !== 1 ? "s" : ""} and
-              their messages. This action cannot be undone.
+              This will permanently delete all {conversationCount} conversation{conversationCount !== 1 ? "s" : ""} and their messages. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleClearAll}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={handleClearAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete All
             </AlertDialogAction>
           </AlertDialogFooter>

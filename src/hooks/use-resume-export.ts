@@ -38,13 +38,13 @@ const FS = {
 
 // Spacing constants in points — matches ResumeTemplate.tsx SPACING object
 const SP = {
-  sectionMarginTop: 10, // Space above each section heading
-  sectionGapAfterRule: 4, // Space below section heading underline
-  entryGap: 6, // Space between experience/project entries
-  bulletAfter: 1.5, // Space after each bullet point
-  compactEntryGap: 3, // For education/cert entries
-  skillLineGap: 2, // Space between skill category lines
-  headerBottomRule: 4, // Space after header bottom rule
+  sectionMarginTop: 10,      // Space above each section heading
+  sectionGapAfterRule: 4,    // Space below section heading underline
+  entryGap: 6,               // Space between experience/project entries
+  bulletAfter: 1.5,          // Space after each bullet point
+  compactEntryGap: 3,        // For education/cert entries
+  skillLineGap: 2,           // Space between skill category lines
+  headerBottomRule: 4,       // Space after header bottom rule
 } as const;
 
 const LINE_HEIGHT = 1.35;
@@ -652,8 +652,7 @@ export function useResumeExport() {
   const exportToWord = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
-      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ExternalHyperlink } =
-        await import("docx");
+      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ExternalHyperlink } = await import("docx");
       const { saveAs } = await import("file-saver");
 
       const children: any[] = [];
@@ -999,7 +998,7 @@ export function useResumeExport() {
               tabStops: [{ type: "right" as any, position: 9360 }],
               children: [
                 projTitleChild,
-                project.date || project.organization
+                (project.date || project.organization)
                   ? new TextRun({
                       text: `\t${project.organization ? `${project.organization} \u2014 ` : ""}${project.date || ""}`,
                       italics: true,
@@ -1090,7 +1089,9 @@ export function useResumeExport() {
               new Paragraph({
                 bullet: { level: 0 },
                 spacing: { before: 30 },
-                children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })],
+                children: [
+                  new TextRun({ text: bullet, size: 20, font: "Calibri" }),
+                ],
               }),
             );
           });
@@ -1145,47 +1146,49 @@ export function useResumeExport() {
       const validCustom = (data.customSections || []).filter((cs) => cs.entries.some((e) => e.title));
       validCustom.forEach((cs) => {
         children.push(sectionHeading(cs.name));
-        cs.entries
-          .filter((e) => e.title)
-          .forEach((entry) => {
-            const entryTitleChild = entry.url
-              ? new ExternalHyperlink({
-                  link: entry.url.startsWith("http") ? entry.url : `https://${entry.url}`,
-                  children: [
-                    new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri", color: "000000" }),
-                  ],
-                })
-              : new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri" });
+        cs.entries.filter((e) => e.title).forEach((entry) => {
+          const entryTitleChild = entry.url
+            ? new ExternalHyperlink({
+                link: entry.url.startsWith("http") ? entry.url : `https://${entry.url}`,
+                children: [
+                  new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri", color: "000000" }),
+                ],
+              })
+            : new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri" });
 
+          children.push(
+            new Paragraph({
+              spacing: { before: 100 },
+              tabStops: [{ type: "right" as any, position: 9360 }],
+              children: [
+                entryTitleChild,
+                entry.date
+                  ? new TextRun({ text: `\t${entry.date}`, size: 19, font: "Calibri" })
+                  : new TextRun({ text: "" }),
+              ],
+            }),
+          );
+          if (entry.subtitle) {
             children.push(
               new Paragraph({
-                spacing: { before: 100 },
-                tabStops: [{ type: "right" as any, position: 9360 }],
                 children: [
-                  entryTitleChild,
-                  entry.date
-                    ? new TextRun({ text: `\t${entry.date}`, size: 19, font: "Calibri" })
-                    : new TextRun({ text: "" }),
+                  new TextRun({ text: entry.subtitle, italics: true, size: 20, font: "Calibri" }),
                 ],
               }),
             );
-            if (entry.subtitle) {
-              children.push(
-                new Paragraph({
-                  children: [new TextRun({ text: entry.subtitle, italics: true, size: 20, font: "Calibri" })],
-                }),
-              );
-            }
-            entry.bullets.forEach((bullet) => {
-              children.push(
-                new Paragraph({
-                  bullet: { level: 0 },
-                  spacing: { before: 30 },
-                  children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })],
-                }),
-              );
-            });
+          }
+          entry.bullets.forEach((bullet) => {
+            children.push(
+              new Paragraph({
+                bullet: { level: 0 },
+                spacing: { before: 30 },
+                children: [
+                  new TextRun({ text: bullet, size: 20, font: "Calibri" }),
+                ],
+              }),
+            );
           });
+        });
       });
 
       const doc = new Document({
@@ -1194,7 +1197,7 @@ export function useResumeExport() {
             properties: {
               page: {
                 margin: {
-                  top: 720, // 0.5 inch (720 twips)
+                  top: 720,  // 0.5 inch (720 twips)
                   right: 864, // 0.6 inch (matching PDF/template)
                   bottom: 720,
                   left: 864,

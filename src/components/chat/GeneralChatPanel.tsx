@@ -42,7 +42,7 @@ export function GeneralChatPanel({
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (scrollAreaRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector("[data-radix-scroll-area-viewport]");
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
@@ -98,7 +98,10 @@ export function GeneralChatPanel({
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={cn("flex gap-3 animate-fade-in", message.role === "user" && "justify-end")}
+                className={cn(
+                  "flex gap-3 animate-fade-in",
+                  message.role === "user" && "justify-end"
+                )}
               >
                 {/* AI Avatar */}
                 {message.role === "assistant" && (
@@ -111,7 +114,9 @@ export function GeneralChatPanel({
                 <div
                   className={cn(
                     "max-w-[85%] min-w-0",
-                    message.role === "user" ? "bg-muted rounded-2xl rounded-br-md px-4 py-3" : "flex-1",
+                    message.role === "user"
+                      ? "bg-muted rounded-2xl rounded-br-md px-4 py-3"
+                      : "flex-1"
                   )}
                 >
                   {message.content ? (
@@ -119,34 +124,16 @@ export function GeneralChatPanel({
                   ) : message.isThinking ? (
                     <div className="flex items-center gap-1.5 py-2">
                       <div className="flex gap-1">
-                        <span
-                          className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce"
-                          style={{ animationDelay: "0ms" }}
-                        />
-                        <span
-                          className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce"
-                          style={{ animationDelay: "150ms" }}
-                        />
-                        <span
-                          className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce"
-                          style={{ animationDelay: "300ms" }}
-                        />
+                        <span className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <span className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "300ms" }} />
                       </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5 py-1">
-                      <span
-                        className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse"
-                        style={{ animationDelay: "0ms" }}
-                      />
-                      <span
-                        className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse"
-                        style={{ animationDelay: "150ms" }}
-                      />
-                      <span
-                        className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse"
-                        style={{ animationDelay: "300ms" }}
-                      />
+                      <span className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse" style={{ animationDelay: "0ms" }} />
+                      <span className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse" style={{ animationDelay: "150ms" }} />
+                      <span className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse" style={{ animationDelay: "300ms" }} />
                     </div>
                   )}
                 </div>
@@ -162,7 +149,12 @@ export function GeneralChatPanel({
           <div className="max-w-3xl mx-auto">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-medium">Upload a document</span>
-              <Button variant="ghost" size="icon" onClick={() => setShowUpload(false)} className="h-6 w-6">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowUpload(false)}
+                className="h-6 w-6"
+              >
                 <X className="h-4 w-4" />
               </Button>
             </div>

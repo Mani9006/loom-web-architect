@@ -70,8 +70,12 @@ export function ChatWelcome({
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center mx-auto mb-4">
             <BriefcaseBusiness className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold mb-2">Hi {displayName}</h1>
-          <p className="text-muted-foreground text-base">How can I help with your career today?</p>
+          <h1 className="text-2xl sm:text-3xl font-semibold mb-2">
+            Hi {displayName}
+          </h1>
+          <p className="text-muted-foreground text-base">
+            How can I help with your career today?
+          </p>
         </div>
 
         {/* Quick Tools — Navigate to dedicated pages */}
