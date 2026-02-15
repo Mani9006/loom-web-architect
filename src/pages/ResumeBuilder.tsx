@@ -2042,6 +2042,12 @@ export default function ResumeBuilder() {
                                         className="bg-background h-7 text-xs"
                                       />
                                     </div>
+                                    <Input
+                                      placeholder="Link URL (e.g., https://github.com/...)"
+                                      value={project.url || ""}
+                                      onChange={(e) => updateProject(index, { url: e.target.value })}
+                                      className="bg-background h-7 text-xs"
+                                    />
                                     <Textarea
                                       placeholder={
                                         "Key points (one per line)\n- Built a chatbot...\n- Implemented ML pipeline..."
@@ -2119,6 +2125,12 @@ export default function ResumeBuilder() {
                                     placeholder="Issuer (e.g., AWS)"
                                     value={cert.issuer}
                                     onChange={(e) => updateCertification(cert.id, "issuer", e.target.value)}
+                                    className="bg-background h-7 text-xs"
+                                  />
+                                  <Input
+                                    placeholder="Credential URL (e.g., https://credly.com/...)"
+                                    value={cert.url || ""}
+                                    onChange={(e) => updateCertification(cert.id, "url", e.target.value)}
                                     className="bg-background h-7 text-xs"
                                   />
                                 </div>
@@ -2358,6 +2370,12 @@ export default function ResumeBuilder() {
                                       className="bg-background h-7 text-xs"
                                     />
                                   </div>
+                                  <Input
+                                    placeholder="Link URL (e.g., https://...)"
+                                    value={award.url || ""}
+                                    onChange={(e) => updateAward(award.id, "url", e.target.value)}
+                                    className="bg-background h-7 text-xs"
+                                  />
                                 </div>
                               )}
                             </div>
@@ -2443,6 +2461,12 @@ export default function ResumeBuilder() {
                                           className="bg-background h-7 text-xs"
                                         />
                                       </div>
+                                      <Input
+                                        placeholder="Link URL (e.g., https://...)"
+                                        value={entry.url || ""}
+                                        onChange={(e) => updateCustomEntry(section.id, entry.id, "url", e.target.value)}
+                                        className="bg-background h-7 text-xs"
+                                      />
                                       <Textarea
                                         placeholder={"Details (one per line)"}
                                         value={entry.bullets.join("\n")}
