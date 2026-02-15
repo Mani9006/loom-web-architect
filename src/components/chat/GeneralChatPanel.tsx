@@ -1,14 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Sparkles, User, Paperclip, X } from "lucide-react";
+import { Send, Sparkles, User, Paperclip, X, ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { AIMessageContent } from "@/components/chat/AIMessageContent";
-import { ModelSelector } from "@/components/resume/ModelSelector";
-import { VoiceControls } from "@/components/chat/VoiceControls";
-import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
-import { useTextToSpeech } from "@/hooks/use-text-to-speech";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { useToast } from "@/hooks/use-toast";
 
@@ -39,98 +35,37 @@ export function GeneralChatPanel({
 }: GeneralChatPanelProps) {
   const [input, setInput] = useState("");
   const [showUpload, setShowUpload] = useState(false);
-  const [autoSpeak, setAutoSpeak] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const lastAssistantMessageRef = useRef<string>("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
-
-  // Voice recognition hook
-  const { 
-    isListening, 
-    transcript, 
-    startListening, 
-    stopListening, 
-    isSupported: isRecognitionSupported 
-  } = useSpeechRecognition({
-    onResult: (result) => {
-      setInput((prev) => prev ? `${prev} ${result}` : result);
-    },
-    onError: (error) => {
-      toast({
-        title: "Voice input error",
-        description: error,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Text-to-speech hook
-  const { 
-    isSpeaking, 
-    speak, 
-    stop: stopSpeaking, 
-    isSupported: isSpeechSupported 
-  } = useTextToSpeech({
-    onError: (error) => {
-      toast({
-        title: "Speech error",
-        description: error,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Update input with live transcript
-  useEffect(() => {
-    if (transcript && isListening) {
-      setInput((prev) => {
-        // Replace the last transcript with the new one
-        const lastSpaceIndex = prev.lastIndexOf(" ");
-        if (lastSpaceIndex > -1) {
-          return `${prev.substring(0, lastSpaceIndex + 1)}${transcript}`;
-        }
-        return transcript;
-      });
-    }
-  }, [transcript, isListening]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (scrollAreaRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      const scrollContainer = scrollAreaRef.current.querySelector("[data-radix-scroll-area-viewport]");
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
     }
   }, [messages]);
 
-  // Auto-speak new assistant messages
+  // Auto-resize textarea
   useEffect(() => {
-    if (!autoSpeak || !isSpeechSupported) return;
-
-    const lastMessage = messages[messages.length - 1];
-    if (
-      lastMessage?.role === "assistant" &&
-      lastMessage.content &&
-      !lastMessage.isThinking &&
-      lastMessage.content !== lastAssistantMessageRef.current
-    ) {
-      lastAssistantMessageRef.current = lastMessage.content;
-      speak(lastMessage.content);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + "px";
     }
-  }, [messages, autoSpeak, isSpeechSupported, speak]);
+  }, [input]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    
-    // Stop listening if active
-    if (isListening) {
-      stopListening();
-    }
-    
     onSendMessage(input.trim());
     setInput("");
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -139,26 +74,6 @@ export function GeneralChatPanel({
       handleSubmit(e);
     }
   };
-
-  const handleToggleListen = useCallback(() => {
-    if (isListening) {
-      stopListening();
-    } else {
-      startListening();
-    }
-  }, [isListening, startListening, stopListening]);
-
-  const handleToggleSpeech = useCallback(() => {
-    if (isSpeaking) {
-      stopSpeaking();
-    } else {
-      // Speak the last assistant message
-      const lastAssistantMessage = [...messages].reverse().find((m) => m.role === "assistant");
-      if (lastAssistantMessage?.content) {
-        speak(lastAssistantMessage.content);
-      }
-    }
-  }, [isSpeaking, stopSpeaking, speak, messages]);
 
   const handleDocumentExtracted = (text: string, fileName: string) => {
     setInput((prev) => {
@@ -173,56 +88,68 @@ export function GeneralChatPanel({
   };
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto w-full">
+    <div className="flex flex-col h-full w-full">
       {/* Messages Area */}
-      <ScrollArea className="flex-1 px-4" ref={scrollAreaRef}>
+      <ScrollArea className="flex-1" ref={scrollAreaRef}>
         {messages.length === 0 && welcomeComponent ? (
           welcomeComponent
         ) : (
-          <div className="py-6 space-y-6">
+          <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={cn(
-                  "flex gap-4 animate-fade-in",
-                  message.role === "user" && "justify-end"
-                )}
+                className={cn("flex gap-3 animate-fade-in", message.role === "user" && "justify-end")}
               >
+                {/* AI Avatar */}
                 {message.role === "assistant" && (
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shrink-0 mt-0.5">
                     <Sparkles className="w-4 h-4 text-white" />
                   </div>
                 )}
 
+                {/* Message Content */}
                 <div
                   className={cn(
-                    "max-w-[80%] rounded-2xl px-4 py-3",
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
+                    "max-w-[85%] min-w-0",
+                    message.role === "user" ? "bg-muted rounded-2xl rounded-br-md px-4 py-3" : "flex-1",
                   )}
                 >
                   {message.content ? (
                     <AIMessageContent content={message.content} />
                   ) : message.isThinking ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                      <span className="text-sm">Thinking...</span>
+                    <div className="flex items-center gap-1.5 py-2">
+                      <div className="flex gap-1">
+                        <span
+                          className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce"
+                          style={{ animationDelay: "0ms" }}
+                        />
+                        <span
+                          className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce"
+                          style={{ animationDelay: "150ms" }}
+                        />
+                        <span
+                          className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce"
+                          style={{ animationDelay: "300ms" }}
+                        />
+                      </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5 py-1">
-                      <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "0ms" }} />
-                      <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "150ms" }} />
-                      <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "300ms" }} />
+                      <span
+                        className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse"
+                        style={{ animationDelay: "0ms" }}
+                      />
+                      <span
+                        className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse"
+                        style={{ animationDelay: "150ms" }}
+                      />
+                      <span
+                        className="w-2 h-2 rounded-full bg-muted-foreground/30 animate-pulse"
+                        style={{ animationDelay: "300ms" }}
+                      />
                     </div>
                   )}
                 </div>
-
-                {message.role === "user" && (
-                  <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center shrink-0">
-                    <User className="w-4 h-4 text-accent-foreground" />
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -235,12 +162,7 @@ export function GeneralChatPanel({
           <div className="max-w-3xl mx-auto">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-medium">Upload a document</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowUpload(false)}
-                className="h-6 w-6"
-              >
+              <Button variant="ghost" size="icon" onClick={() => setShowUpload(false)} className="h-6 w-6">
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -253,21 +175,19 @@ export function GeneralChatPanel({
         </div>
       )}
 
-      {/* Input Area */}
-      <div className="shrink-0 p-4 border-t border-border bg-background/80 backdrop-blur-sm">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-          <div className="flex gap-3 items-end">
-            <div className="flex-1 relative">
+      {/* Input Area — Clean, minimal like Claude */}
+      <div className="shrink-0 pb-4 pt-2 px-4">
+        <div className="max-w-3xl mx-auto">
+          <form onSubmit={handleSubmit}>
+            <div className="relative rounded-2xl border border-border bg-muted/50 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all shadow-sm">
               <Textarea
+                ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isListening ? "Listening..." : "Message..."}
+                placeholder="Ask anything about careers, jobs, interviews, resumes..."
                 disabled={isLoading}
-                className={cn(
-                  "min-h-[52px] max-h-40 resize-none pr-36 rounded-xl bg-muted border-0 focus-visible:ring-1",
-                  isListening && "ring-2 ring-destructive"
-                )}
+                className="min-h-[52px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 pr-24 pl-4 py-3.5 text-sm placeholder:text-muted-foreground/60"
                 rows={1}
               />
               <div className="absolute right-2 bottom-2 flex items-center gap-1">
@@ -277,43 +197,28 @@ export function GeneralChatPanel({
                   variant="ghost"
                   size="icon"
                   onClick={() => setShowUpload(!showUpload)}
-                  className="h-8 w-8"
+                  className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
                   disabled={isLoading}
                 >
                   <Paperclip className="h-4 w-4" />
                 </Button>
 
-                {/* Voice controls */}
-                <VoiceControls
-                  isListening={isListening}
-                  isSpeaking={isSpeaking}
-                  onToggleListen={handleToggleListen}
-                  onToggleSpeech={handleToggleSpeech}
-                  isProcessing={isLoading}
-                  isRecognitionSupported={isRecognitionSupported}
-                  isSpeechSupported={isSpeechSupported}
-                  autoSpeak={autoSpeak}
-                  onAutoSpeakToggle={() => setAutoSpeak(!autoSpeak)}
-                />
-
-                <ModelSelector
-                  value={selectedModel}
-                  onChange={onModelChange}
-                  disabled={isLoading}
-                  compact
-                />
+                {/* Send button */}
                 <Button
                   type="submit"
                   size="icon"
                   disabled={!input.trim() || isLoading}
-                  className="h-8 w-8 rounded-lg"
+                  className="h-8 w-8 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-30"
                 >
-                  <Send className="h-4 w-4" />
+                  <ArrowUp className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-          </div>
-        </form>
+          </form>
+          <p className="text-[11px] text-muted-foreground/50 text-center mt-2">
+            AI can make mistakes. Verify important information.
+          </p>
+        </div>
       </div>
     </div>
   );
