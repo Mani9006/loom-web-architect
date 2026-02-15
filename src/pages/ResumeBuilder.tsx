@@ -51,6 +51,12 @@ import {
   CloudOff,
   Wand2,
   RotateCcw,
+  ChevronUp,
+  ChevronDown,
+  Target,
+  Zap,
+  Copy,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -272,6 +278,11 @@ export default function ResumeBuilder() {
   const [currentSkillCategory, setCurrentSkillCategory] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [mobileView, setMobileView] = useState<"editor" | "preview">("editor");
+  const [jobDescription, setJobDescription] = useState("");
+  const [showJobTarget, setShowJobTarget] = useState(false);
+  const [isTailoring, setIsTailoring] = useState(false);
+  const [keywordMatches, setKeywordMatches] = useState<{ matched: string[]; missing: string[] } | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Load saved resume ──────────────────────────────────────────────────
@@ -405,6 +416,121 @@ export default function ResumeBuilder() {
     finally { setAiEnhancingSection(null); }
   };
 
+  // ── Keyword analysis (local, instant) ────────────────────────────────
+  const analyzeKeywords = useCallback((jd: string) => {
+    if (!jd.trim()) { setKeywordMatches(null); return; }
+    const resumeText = [
+      data.summary,
+      ...data.experience.flatMap((e) => [e.role, e.company_or_client, ...e.bullets]),
+      ...data.education.map((e) => `${e.degree} ${e.field} ${e.institution}`),
+      ...Object.values(data.skills).flat(),
+      ...data.projects.flatMap((p) => [p.title, ...p.bullets]),
+    ].join(" ").toLowerCase();
+
+    const stopWords = new Set(["the", "a", "an", "and", "or", "is", "in", "to", "for", "of", "with", "on", "at", "by", "from", "as", "be", "are", "was", "were", "will", "can", "has", "have", "had", "do", "does", "this", "that", "it", "we", "you", "they", "our", "your", "their", "its", "not", "but", "if", "about", "all", "also", "into", "than", "then", "up", "out", "no", "so", "what", "which", "who", "how", "each", "she", "he", "my", "over"]);
+    const words = jd.toLowerCase().replace(/[^a-z0-9+#.\- ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !stopWords.has(w));
+    const uniqueKeywords = [...new Set(words)];
+
+    const matched: string[] = [];
+    const missing: string[] = [];
+    uniqueKeywords.forEach((kw) => {
+      if (resumeText.includes(kw)) matched.push(kw);
+      else missing.push(kw);
+    });
+    setKeywordMatches({ matched, missing });
+  }, [data]);
+
+  useEffect(() => {
+    if (jobDescription) analyzeKeywords(jobDescription);
+    else setKeywordMatches(null);
+  }, [jobDescription, analyzeKeywords]);
+
+  // ── AI Tailor resume to job description ─────────────────────────────
+  const tailorResumeToJob = async () => {
+    if (!jobDescription.trim()) { toast({ title: "Add a job description first", variant: "destructive" }); return; }
+    setIsTailoring(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session) throw new Error("Not authenticated");
+      const currentResume = JSON.stringify(data, null, 2);
+      const result = await streamAIText(session.session.access_token, [
+        { role: "system", content: `You are an expert resume tailoring assistant. Given a resume JSON and a job description, optimize the resume to better match the job. Improve the summary to target the role, enhance bullet points with relevant keywords, and reorder skills to prioritize job-relevant ones. Return ONLY valid JSON in the EXACT same schema as the input. Do NOT add fabricated experience or skills the person doesn't have - only reword and optimize existing content.` },
+        { role: "user", content: `JOB DESCRIPTION:\n${jobDescription}\n\nCURRENT RESUME:\n${currentResume}\n\nTailor this resume to the job description. Return the full JSON.` },
+      ], "google/gemini-2.5-pro");
+
+      const tailored = parseAIResponse(result);
+      if (!tailored) throw new Error("Could not parse tailored resume");
+      setData({
+        header: tailored.header || data.header,
+        summary: tailored.summary || data.summary,
+        experience: tailored.experience?.map((e: any) => ({ ...e, id: e.id || crypto.randomUUID(), bullets: Array.isArray(e.bullets) ? e.bullets : [] })) || data.experience,
+        education: tailored.education || data.education,
+        certifications: tailored.certifications || data.certifications,
+        skills: tailored.skills || data.skills,
+        projects: tailored.projects?.map((p: any) => ({ ...p, id: p.id || crypto.randomUUID(), bullets: Array.isArray(p.bullets) ? p.bullets : [] })) || data.projects,
+      });
+      toast({ title: "Resume tailored!", description: "Your resume has been optimized for this job." });
+    } catch { toast({ title: "Tailoring failed", variant: "destructive" }); }
+    finally { setIsTailoring(false); }
+  };
+
+  // ── Move items up/down helpers ──────────────────────────────────────
+  const moveExperience = (index: number, direction: "up" | "down") => {
+    const newIdx = direction === "up" ? index - 1 : index + 1;
+    if (newIdx < 0 || newIdx >= data.experience.length) return;
+    setData((prev) => {
+      const arr = [...prev.experience];
+      [arr[index], arr[newIdx]] = [arr[newIdx], arr[index]];
+      return { ...prev, experience: arr };
+    });
+  };
+  const moveEducation = (index: number, direction: "up" | "down") => {
+    const newIdx = direction === "up" ? index - 1 : index + 1;
+    if (newIdx < 0 || newIdx >= data.education.length) return;
+    setData((prev) => {
+      const arr = [...prev.education];
+      [arr[index], arr[newIdx]] = [arr[newIdx], arr[index]];
+      return { ...prev, education: arr };
+    });
+  };
+  const moveProject = (index: number, direction: "up" | "down") => {
+    const newIdx = direction === "up" ? index - 1 : index + 1;
+    if (newIdx < 0 || newIdx >= data.projects.length) return;
+    setData((prev) => {
+      const arr = [...prev.projects];
+      [arr[index], arr[newIdx]] = [arr[newIdx], arr[index]];
+      return { ...prev, projects: arr };
+    });
+  };
+
+  // ── Copy resume as plain text ───────────────────────────────────────
+  const copyAsPlainText = () => {
+    const lines: string[] = [];
+    if (data.header.name) lines.push(data.header.name);
+    if (data.header.title) lines.push(data.header.title);
+    const contact = [data.header.email, data.header.phone, data.header.location, data.header.linkedin].filter(Boolean).join(" | ");
+    if (contact) lines.push(contact);
+    if (data.summary) { lines.push("", "SUMMARY", data.summary); }
+    if (data.experience.some((e) => e.company_or_client)) {
+      lines.push("", "EXPERIENCE");
+      data.experience.filter((e) => e.company_or_client).forEach((e) => {
+        lines.push(`${e.role} | ${e.company_or_client} | ${e.start_date} - ${e.end_date}`);
+        e.bullets.forEach((b) => lines.push(`  - ${b}`));
+      });
+    }
+    if (data.education.some((e) => e.institution)) {
+      lines.push("", "EDUCATION");
+      data.education.filter((e) => e.institution).forEach((e) => lines.push(`${e.degree} in ${e.field}, ${e.institution} (${e.graduation_date})`));
+    }
+    if (Object.values(data.skills).flat().length > 0) {
+      lines.push("", "SKILLS");
+      Object.entries(data.skills).forEach(([k, v]) => { if (v.length > 0) lines.push(`${SKILL_CATEGORY_LABELS[k] || k}: ${v.join(", ")}`); });
+    }
+    navigator.clipboard.writeText(lines.join("\n"));
+    setCopiedField("resume");
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
   // ── Data mutation helpers ──────────────────────────────────────────────
   const updateHeader = (field: keyof ResumeJSON["header"], value: string) => setData((prev) => ({ ...prev, header: { ...prev.header, [field]: value } }));
   const addExperience = () => setData((prev) => ({ ...prev, experience: [...prev.experience, { id: crypto.randomUUID(), role: "", company_or_client: "", start_date: "", end_date: "", location: "", bullets: [] }] }));
@@ -480,6 +606,83 @@ export default function ResumeBuilder() {
         )}
 
         <ScrollArea className="flex-1">
+          {/* Job Description Targeting */}
+          <div className="px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setShowJobTarget(!showJobTarget)}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500/10 to-amber-500/10 hover:from-orange-500/15 hover:to-amber-500/15 border border-orange-500/20 text-orange-700 dark:text-orange-400 transition-colors"
+            >
+              <Target className="h-4 w-4" />
+              <span className="flex-1 text-left">Target a Job Description</span>
+              {keywordMatches && (
+                <Badge variant="outline" className="text-[10px] h-5 border-orange-500/30">
+                  {keywordMatches.matched.length}/{keywordMatches.matched.length + keywordMatches.missing.length} keywords
+                </Badge>
+              )}
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showJobTarget && "rotate-180")} />
+            </button>
+            {showJobTarget && (
+              <div className="mt-2 p-3 bg-muted/40 rounded-lg border border-border/30 space-y-3">
+                <Textarea
+                  placeholder="Paste a job description here to get keyword matching and AI-powered tailoring..."
+                  value={jobDescription}
+                  onChange={(e) => setJobDescription(e.target.value)}
+                  className="bg-background text-sm min-h-[100px] resize-y"
+                />
+                {keywordMatches && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-muted-foreground">Keyword Match</span>
+                          <span className={cn("text-xs font-bold",
+                            keywordMatches.matched.length / (keywordMatches.matched.length + keywordMatches.missing.length) >= 0.7 ? "text-green-500" :
+                            keywordMatches.matched.length / (keywordMatches.matched.length + keywordMatches.missing.length) >= 0.4 ? "text-yellow-500" : "text-red-400"
+                          )}>
+                            {Math.round((keywordMatches.matched.length / (keywordMatches.matched.length + keywordMatches.missing.length)) * 100)}%
+                          </span>
+                        </div>
+                        <Progress value={Math.round((keywordMatches.matched.length / (keywordMatches.matched.length + keywordMatches.missing.length)) * 100)} className="h-1.5" />
+                      </div>
+                    </div>
+                    {keywordMatches.missing.length > 0 && (
+                      <div>
+                        <span className="text-[10px] font-medium text-red-400 uppercase tracking-wider">Missing Keywords</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {keywordMatches.missing.slice(0, 20).map((kw) => (
+                            <Badge key={kw} variant="outline" className="text-[10px] border-red-500/30 text-red-500">{kw}</Badge>
+                          ))}
+                          {keywordMatches.missing.length > 20 && <span className="text-[10px] text-muted-foreground">+{keywordMatches.missing.length - 20} more</span>}
+                        </div>
+                      </div>
+                    )}
+                    {keywordMatches.matched.length > 0 && (
+                      <div>
+                        <span className="text-[10px] font-medium text-green-500 uppercase tracking-wider">Matched</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {keywordMatches.matched.slice(0, 15).map((kw) => (
+                            <Badge key={kw} variant="outline" className="text-[10px] border-green-500/30 text-green-500">{kw}</Badge>
+                          ))}
+                          {keywordMatches.matched.length > 15 && <span className="text-[10px] text-muted-foreground">+{keywordMatches.matched.length - 15} more</span>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={tailorResumeToJob}
+                  disabled={isTailoring || !jobDescription.trim()}
+                  className="w-full gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white"
+                >
+                  {isTailoring ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> AI is tailoring your resume...</> : <><Zap className="h-3.5 w-3.5" /> Tailor Resume to This Job</>}
+                </Button>
+              </div>
+            )}
+          </div>
+
           <div className={isParsingResume ? "opacity-30 pointer-events-none" : ""}>
             <Accordion type="multiple" defaultValue={["personal", "summary"]} className="px-3 py-1">
               {SECTIONS.map((section) => {
@@ -524,7 +727,15 @@ export default function ResumeBuilder() {
                           {data.experience.map((exp, index) => (
                             <div key={exp.id} className="p-3 bg-muted/40 rounded-lg space-y-3 border border-border/30">
                               <div className="flex items-center justify-between">
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Experience {index + 1}</p>
+                                <div className="flex items-center gap-1">
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Experience {index + 1}</p>
+                                  {data.experience.length > 1 && (
+                                    <div className="flex items-center ml-1">
+                                      <button type="button" onClick={() => moveExperience(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronUp className="h-3 w-3" /></button>
+                                      <button type="button" onClick={() => moveExperience(index, "down")} disabled={index === data.experience.length - 1} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronDown className="h-3 w-3" /></button>
+                                    </div>
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-1">
                                   {exp.bullets.length > 0 && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => enhanceBulletsWithAI(exp.id)} disabled={aiEnhancingSection === `exp-${exp.id}`} className="h-6 w-6 text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</Button></TooltipTrigger><TooltipContent>Enhance bullets with AI</TooltipContent></Tooltip>}
                                   {data.experience.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => removeExperience(exp.id)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>}
@@ -545,9 +756,20 @@ export default function ResumeBuilder() {
                       )}
                       {section.id === "education" && (
                         <div className="space-y-3">
-                          {data.education.map((edu) => (
+                          {data.education.map((edu, eduIndex) => (
                             <div key={edu.id} className="p-3 bg-muted/40 rounded-lg space-y-2 relative border border-border/30">
-                              {data.education.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => removeEducation(edu.id)} className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Education {eduIndex + 1}</span>
+                                  {data.education.length > 1 && (
+                                    <div className="flex items-center ml-1">
+                                      <button type="button" onClick={() => moveEducation(eduIndex, "up")} disabled={eduIndex === 0} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronUp className="h-3 w-3" /></button>
+                                      <button type="button" onClick={() => moveEducation(eduIndex, "down")} disabled={eduIndex === data.education.length - 1} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronDown className="h-3 w-3" /></button>
+                                    </div>
+                                  )}
+                                </div>
+                                {data.education.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => removeEducation(edu.id)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>}
+                              </div>
                               <div className="grid grid-cols-2 gap-2">
                                 <div className="space-y-1"><Label className="text-xs text-muted-foreground">Institution</Label><Input placeholder="University of..." value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} className="bg-background h-8 text-sm" /></div>
                                 <div className="space-y-1"><Label className="text-xs text-muted-foreground">Degree</Label><Input placeholder="Master's" value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} className="bg-background h-8 text-sm" /></div>
@@ -588,7 +810,18 @@ export default function ResumeBuilder() {
                         <div className="space-y-4">
                           {data.projects.map((project, index) => (
                             <div key={project.id} className="p-3 bg-muted/40 rounded-lg space-y-3 border border-border/30">
-                              <div className="flex justify-between items-center"><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Project {index + 1}</span><Button type="button" variant="ghost" size="icon" onClick={() => removeProject(index)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button></div>
+                              <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Project {index + 1}</span>
+                                  {data.projects.length > 1 && (
+                                    <div className="flex items-center ml-1">
+                                      <button type="button" onClick={() => moveProject(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronUp className="h-3 w-3" /></button>
+                                      <button type="button" onClick={() => moveProject(index, "down")} disabled={index === data.projects.length - 1} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronDown className="h-3 w-3" /></button>
+                                    </div>
+                                  )}
+                                </div>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => removeProject(index)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>
+                              </div>
                               <div className="grid gap-3">
                                 <div><Label className="text-xs text-muted-foreground">Project Name</Label><Input value={project.title} onChange={(e) => updateProject(index, { title: e.target.value })} placeholder="e.g., AI-Powered Chatbot" className="h-8 text-sm" /></div>
                                 <div className="grid grid-cols-2 gap-2">
@@ -641,6 +874,7 @@ export default function ResumeBuilder() {
           <div className="flex items-center gap-1.5">
             <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={handlePrintView} disabled={isExporting} className="h-8 gap-1.5"><Printer className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Print</span></Button></TooltipTrigger><TooltipContent>Print-friendly view</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={handleDownloadWord} disabled={isExporting} className="h-8 gap-1.5"><FileText className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Word</span></Button></TooltipTrigger><TooltipContent>Export as .docx</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={copyAsPlainText} className="h-8 gap-1.5">{copiedField === "resume" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />} <span className="hidden sm:inline">{copiedField === "resume" ? "Copied!" : "Copy"}</span></Button></TooltipTrigger><TooltipContent>Copy as plain text (for pasting into forms)</TooltipContent></Tooltip>
             <Button size="sm" onClick={handleDownloadPDF} disabled={isExporting} className="h-8 gap-1.5">{isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Download PDF</Button>
           </div>
         </div>
