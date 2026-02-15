@@ -286,7 +286,7 @@ export default function AppLayout() {
           </DropdownMenu>
         </header>
 
-        <main className="flex-1 overflow-y-auto mesh-bg">
+        <main className="flex-1 overflow-y-auto mesh-bg min-h-0">
           <Outlet />
         </main>
       </div>
