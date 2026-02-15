@@ -797,7 +797,7 @@ export default function ResumeBuilder() {
             <span className="text-sm font-medium">Import Resume</span>
             <Badge variant="secondary" className="text-[10px] h-5">AI-Powered</Badge>
           </div>
-          <DocumentUpload onTextExtracted={handleResumeImported} isLoading={isParsingResume} label={isParsingResume ? "AI is parsing your resume..." : "Drop any file here - PDF, Word, Image, Text"} />
+          <DocumentUpload onTextExtracted={handleResumeImported} isLoading={isParsingResume} persistToDocuments={true} label={isParsingResume ? "AI is parsing your resume..." : "Drop any file here - PDF, Word, Image, Text"} />
         </div>
 
         {isParsingResume && (

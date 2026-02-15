@@ -19,6 +19,12 @@ interface DocumentUploadProps {
   className?: string;
   accept?: string;
   label?: string;
+  /** When true, save a record to user_documents table and keep file in storage */
+  persistToDocuments?: boolean;
+  /** Called after the document record is saved to DB */
+  onDocumentSaved?: (doc: { id: string; storage_path: string }) => void;
+  /** Category for the persisted document record (default: "resume") */
+  documentCategory?: string;
 }
 
 const VALID_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"];
@@ -29,6 +35,9 @@ export function DocumentUpload({
   className,
   accept = ".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg,.webp",
   label = "Upload Document",
+  persistToDocuments = false,
+  onDocumentSaved,
+  documentCategory = "resume",
 }: DocumentUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<{ name: string; path: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -176,14 +185,42 @@ export function DocumentUpload({
       }
 
       onTextExtracted(extractedText, extractedFileName);
-      
+
       toast({
         title: "Document uploaded",
         description: `Successfully extracted text from ${file.name}`,
       });
 
-      // Clean up the file from storage after parsing
-      await supabase.storage.from("documents").remove([filePath]);
+      if (persistToDocuments) {
+        // Save record to user_documents and keep file in storage
+        const fileExt = file.name.split(".").pop()?.toLowerCase() || "pdf";
+        const fileTypeMap: Record<string, string> = {
+          pdf: "pdf", doc: "docx", docx: "docx", txt: "txt", md: "txt",
+          png: "image", jpg: "image", jpeg: "image", webp: "image",
+        };
+        const fileType = fileTypeMap[fileExt] || "other";
+
+        const { data: docRecord, error: dbError } = await supabase
+          .from("user_documents" as any)
+          .insert({
+            user_id: user.id,
+            file_name: file.name,
+            file_type: fileType,
+            category: documentCategory,
+            extracted_text: extractedText,
+            file_size: file.size,
+            storage_path: filePath,
+          } as any)
+          .select("id, storage_path")
+          .single();
+
+        if (!dbError && docRecord) {
+          onDocumentSaved?.({ id: (docRecord as any).id, storage_path: filePath });
+        }
+      } else {
+        // Legacy behavior: clean up the file from storage after parsing
+        await supabase.storage.from("documents").remove([filePath]);
+      }
       
     } catch (error) {
       console.error("Upload error:", error);
@@ -202,7 +239,7 @@ export function DocumentUpload({
         fileInputRef.current.value = "";
       }
     }
-  }, [validateFile, onTextExtracted, toast]);
+  }, [validateFile, onTextExtracted, toast, persistToDocuments, onDocumentSaved, documentCategory]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
