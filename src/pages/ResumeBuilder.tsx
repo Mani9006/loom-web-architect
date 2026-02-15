@@ -353,7 +353,7 @@ export default function ResumeBuilder() {
       const fullContent = await streamAIText(session.session.access_token, [
         { role: "system", content: `You are an expert resume parser. Extract ALL structured resume data.\nOUTPUT: Return ONLY valid JSON.\nSCHEMA: {"header":{"name":"","title":"","location":"","email":"","phone":"","linkedin":""},"summary":"","experience":[{"role":"","company_or_client":"","start_date":"","end_date":"","location":"","bullets":[]}],"education":[{"degree":"","field":"","institution":"","gpa":"","graduation_date":"","location":""}],"certifications":[{"name":"","issuer":"","date":""}],"skills":{},"projects":[{"title":"","organization":"","date":"","bullets":[]}]}\nRULES: Extract EVERY bullet point. Use lowercase_snake_case for skill category keys. Use "" for missing fields. Return ONLY JSON.` },
         { role: "user", content: `Parse this resume:\n\n${text}` },
-      ], "google/gemini-2.5-pro");
+      ], "resume_parse");
 
       const parsedData = parseAIResponse(fullContent);
       if (!parsedData) throw new Error("Could not extract structured data.");
@@ -384,7 +384,7 @@ export default function ResumeBuilder() {
       const result = await streamAIText(session.session.access_token, [
         { role: "system", content: "You are an expert resume writer. Generate a concise, impactful professional summary (2-4 sentences, under 80 words). Use strong action verbs, quantify achievements. Output ONLY the summary text." },
         { role: "user", content: data.summary ? `Improve this summary:\n\n"${data.summary}"\n\nContext:\n${context}` : `Write a professional summary for:\n${context}` },
-      ]);
+      ], "resume_enhance");
       const cleaned = result.replace(/^["']|["']$/g, "").trim();
       if (cleaned) { setData((prev) => ({ ...prev, summary: cleaned })); toast({ title: "Summary enhanced!" }); }
     } catch { toast({ title: "Enhancement failed", variant: "destructive" }); }
@@ -401,7 +401,7 @@ export default function ResumeBuilder() {
       const result = await streamAIText(session.session.access_token, [
         { role: "system", content: `Improve bullet points for ${exp.role} at ${exp.company_or_client}. Start with strong action verbs, add metrics. Return ONLY a JSON array of strings.` },
         { role: "user", content: `Improve:\n${exp.bullets.map((b, i) => `${i + 1}. ${b}`).join("\n")}` },
-      ]);
+      ], "resume_bullets");
       const enhanced = JSON.parse(result.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim());
       if (Array.isArray(enhanced) && enhanced.length > 0) {
         setData((prev) => ({ ...prev, experience: prev.experience.map((e) => (e.id === expId ? { ...e, bullets: enhanced } : e)) }));
@@ -451,7 +451,7 @@ export default function ResumeBuilder() {
       const result = await streamAIText(session.session.access_token, [
         { role: "system", content: `You are an expert resume tailoring assistant. Given a resume JSON and a job description, optimize the resume to better match the job. Improve the summary to target the role, enhance bullet points with relevant keywords, and reorder skills to prioritize job-relevant ones. Return ONLY valid JSON in the EXACT same schema as the input. Do NOT add fabricated experience or skills the person doesn't have - only reword and optimize existing content.` },
         { role: "user", content: `JOB DESCRIPTION:\n${jobDescription}\n\nCURRENT RESUME:\n${currentResume}\n\nTailor this resume to the job description. Return the full JSON.` },
-      ], "google/gemini-2.5-pro");
+      ], "resume_fix");
 
       const tailored = parseAIResponse(result);
       if (!tailored) throw new Error("Could not parse tailored resume");
@@ -619,7 +619,7 @@ export default function ResumeBuilder() {
       const result = await streamAIText(session.session.access_token, [
         { role: "system", content: prompt },
         { role: "user", content: "Fix the issues and return the improved content." },
-      ]);
+      ], "resume_fix");
 
       if (sectionName === "Summary") {
         const cleaned = result.replace(/^["']|["']$/g, "").replace(/```/g, "").trim();

@@ -141,24 +141,42 @@ async function addToMem0(apiKey: string, userId: string, messages: any[]): Promi
   }
 }
 
-// Model configuration - using OpenAI for best quality
+// ── 3-Tier Model Strategy ──────────────────────────────────────────
+// Tier 1 (Premium)  – gpt-4o        : best quality, higher cost
+//   → ATS analysis, resume rewriting, cover letters, AI fix-all
+// Tier 2 (Standard) – gpt-4o-mini   : great quality, low cost
+//   → Interview prep, job search, summary enhancement, bullet rewrite
+// Tier 3 (Economy)  – gpt-3.5-turbo : cheapest, fastest
+//   → General chat, simple Q&A, quick suggestions
 const OPENAI_MODELS = {
-  premium: "gpt-4o",      // Best for complex tasks like ATS, cover letters
-  fast: "gpt-4o-mini",    // Good for general chat, quick responses
+  premium:  "gpt-4o",          // ~$5/1M input  | complex reasoning, long context
+  standard: "gpt-4o-mini",     // ~$0.15/1M input | great for most tasks
+  economy:  "gpt-3.5-turbo",   // ~$0.50/1M input | simple/fast tasks
 };
 
 // Select model based on task complexity
 function getModelForMode(mode: string): string {
   switch (mode) {
+    // Tier 1 – Premium: complex writing, analysis, rewriting
     case "ats":
     case "cover_letter":
-    case "resume":
+    case "resume_parse":
+    case "resume_fix":
       return OPENAI_MODELS.premium;
+
+    // Tier 2 – Standard: structured generation, enhancement
+    case "resume":
+    case "resume_enhance":
+    case "resume_bullets":
     case "interview":
     case "job_search":
+      return OPENAI_MODELS.standard;
+
+    // Tier 3 – Economy: simple chat, quick answers
     case "general":
+    case "quick":
     default:
-      return OPENAI_MODELS.fast;
+      return OPENAI_MODELS.economy;
   }
 }
 
