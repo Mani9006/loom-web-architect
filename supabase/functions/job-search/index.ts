@@ -372,12 +372,19 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 - **Posted:** [e.g., "2 hours ago", "Today"]
 - **Why You're a Match:** [1-2 sentences connecting their SKILLS to this role - be specific about which skills match]
 - **Key Requirements:** [2-3 bullet points]
-- **Apply Now:** [Apply on LinkedIn](https://www.linkedin.com/jobs/view/...) or [Apply on Indeed](https://www.indeed.com/...)
+- **Apply Now:** [Apply Here](ACTUAL_FULL_URL_TO_JOB_POSTING)
 
 ---
 
 ## 2. 🎯 [Next Job Title] at [Company]
 ... and so on for all 5 jobs
+
+CRITICAL RULE FOR APPLY LINKS:
+- NEVER use placeholder URLs with "..." or example.com
+- ONLY include a link if you have the REAL, FULL URL to the actual job posting
+- The URL must be a complete, working link (e.g., https://www.linkedin.com/jobs/view/1234567890)
+- If you cannot find the actual URL, instead write: **Apply Now:** Search for "[Job Title] at [Company]" on LinkedIn/Indeed
+- Do NOT fabricate or guess URLs — broken links are worse than no links
 
 ${userContext ? `\nUSER CONTEXT FROM PREVIOUS INTERACTIONS:\n${userContext}` : ""}
 ${exaResults ? `\nREFERENCE JOBS FROM EXA.AI (use these as additional sources):\n${exaResults}` : ""}
@@ -425,9 +432,11 @@ IMPORTANT: Every job listing MUST have a working clickable link. Use markdown li
 ${exaResults ? `Review these job listings and format them nicely with direct apply links. Add insights about why the candidate is a good match for each role.${exaContext}` : `Help them by:
 1. Identifying the best job titles to search for
 2. Recommending specific companies that typically hire for these roles
-3. Providing direct links to job boards with pre-filled searches
+3. Providing direct links to job boards with pre-filled searches (use real search URLs like https://www.linkedin.com/jobs/search/?keywords=ENCODED_KEYWORDS)
 4. Suggesting networking strategies
 5. Listing keywords to use in their search`}
+
+CRITICAL: NEVER use placeholder URLs with "..." or made-up URLs. Only include links if they are REAL, working URLs. If you don't have the actual job posting URL, tell the user to search for the job title on LinkedIn/Indeed instead.
 
 Format with clear headings and actionable advice.`,
               },
