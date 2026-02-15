@@ -63,7 +63,14 @@ class PDFResumeRenderer {
     return this.doc.splitTextToSize(text, maxWidth) as string[];
   }
 
-  private text(str: string, x: number, y: number, size: number, style: FontStyle = "normal", align: "left" | "center" | "right" = "left") {
+  private text(
+    str: string,
+    x: number,
+    y: number,
+    size: number,
+    style: FontStyle = "normal",
+    align: "left" | "center" | "right" = "left",
+  ) {
     this.setFont(size, style);
     this.doc.text(str, x, y, { align });
   }
@@ -188,7 +195,13 @@ class PDFResumeRenderer {
     if (valid.length === 0) return;
     this.sectionHeading("Professional Experience");
     valid.forEach((exp, idx) => {
-      this.flexRow(exp.role || "Role", `${exp.start_date || "Start"} \u2014 ${exp.end_date || "Present"}`, FS.body, "bold", FS.small);
+      this.flexRow(
+        exp.role || "Role",
+        `${exp.start_date || "Start"} \u2014 ${exp.end_date || "Present"}`,
+        FS.body,
+        "bold",
+        FS.small,
+      );
       this.flexRow(exp.company_or_client, exp.location || "", FS.body, "italic", FS.small);
       exp.bullets.forEach((b) => this.bulletPoint(b));
       if (idx < valid.length - 1) this.y += ptToIn(4);
@@ -407,7 +420,7 @@ export function useResumeExport() {
               font: "Georgia",
             }),
           ],
-        })
+        }),
       );
 
       // Title
@@ -424,7 +437,7 @@ export function useResumeExport() {
                 font: "Georgia",
               }),
             ],
-          })
+          }),
         );
       }
 
@@ -450,7 +463,7 @@ export function useResumeExport() {
                 font: "Georgia",
               }),
             ],
-          })
+          }),
         );
       }
 
@@ -471,7 +484,7 @@ export function useResumeExport() {
                 font: "Georgia",
               }),
             ],
-          })
+          }),
         );
         children.push(
           new Paragraph({
@@ -483,12 +496,12 @@ export function useResumeExport() {
                 font: "Georgia",
               }),
             ],
-          })
+          }),
         );
       }
 
       // Experience Section
-      const validExperience = data.experience.filter(e => e.company_or_client);
+      const validExperience = data.experience.filter((e) => e.company_or_client);
       if (validExperience.length > 0) {
         children.push(
           new Paragraph({
@@ -505,7 +518,7 @@ export function useResumeExport() {
                 font: "Georgia",
               }),
             ],
-          })
+          }),
         );
 
         validExperience.forEach((exp) => {
@@ -525,7 +538,7 @@ export function useResumeExport() {
                   font: "Georgia",
                 }),
               ],
-            })
+            }),
           );
 
           children.push(
@@ -537,13 +550,15 @@ export function useResumeExport() {
                   size: 20,
                   font: "Georgia",
                 }),
-                exp.location ? new TextRun({
-                  text: `\t${exp.location}`,
-                  size: 20,
-                  font: "Georgia",
-                }) : new TextRun({ text: "" }),
+                exp.location
+                  ? new TextRun({
+                      text: `\t${exp.location}`,
+                      size: 20,
+                      font: "Georgia",
+                    })
+                  : new TextRun({ text: "" }),
               ],
-            })
+            }),
           );
 
           exp.bullets.forEach((bullet) => {
@@ -558,14 +573,14 @@ export function useResumeExport() {
                     font: "Georgia",
                   }),
                 ],
-              })
+              }),
             );
           });
         });
       }
 
       // Education Section
-      const validEducation = data.education.filter(e => e.institution);
+      const validEducation = data.education.filter((e) => e.institution);
       if (validEducation.length > 0) {
         children.push(
           new Paragraph({
@@ -582,13 +597,12 @@ export function useResumeExport() {
                 font: "Georgia",
               }),
             ],
-          })
+          }),
         );
 
         validEducation.forEach((edu) => {
-          const degreeText = edu.degree && edu.field
-            ? `${edu.degree} in ${edu.field}`
-            : edu.degree || edu.field || "Degree";
+          const degreeText =
+            edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree";
 
           children.push(
             new Paragraph({
@@ -600,29 +614,33 @@ export function useResumeExport() {
                   size: 20,
                   font: "Georgia",
                 }),
-                edu.institution ? new TextRun({
-                  text: `, ${edu.institution}`,
-                  size: 20,
-                  font: "Georgia",
-                }) : new TextRun({ text: "" }),
-                edu.gpa ? new TextRun({
-                  text: ` (GPA: ${edu.gpa})`,
-                  size: 20,
-                  font: "Georgia",
-                }) : new TextRun({ text: "" }),
+                edu.institution
+                  ? new TextRun({
+                      text: `, ${edu.institution}`,
+                      size: 20,
+                      font: "Georgia",
+                    })
+                  : new TextRun({ text: "" }),
+                edu.gpa
+                  ? new TextRun({
+                      text: ` (GPA: ${edu.gpa})`,
+                      size: 20,
+                      font: "Georgia",
+                    })
+                  : new TextRun({ text: "" }),
                 new TextRun({
                   text: `\t${edu.graduation_date || ""}`,
                   size: 20,
                   font: "Georgia",
                 }),
               ],
-            })
+            }),
           );
         });
       }
 
       // Certifications Section
-      const validCerts = data.certifications.filter(c => c.name);
+      const validCerts = data.certifications.filter((c) => c.name);
       if (validCerts.length > 0) {
         children.push(
           new Paragraph({
@@ -639,7 +657,7 @@ export function useResumeExport() {
                 font: "Georgia",
               }),
             ],
-          })
+          }),
         );
 
         validCerts.forEach((cert) => {
@@ -653,18 +671,20 @@ export function useResumeExport() {
                   size: 20,
                   font: "Georgia",
                 }),
-                cert.issuer ? new TextRun({
-                  text: `, ${cert.issuer}`,
-                  size: 20,
-                  font: "Georgia",
-                }) : new TextRun({ text: "" }),
+                cert.issuer
+                  ? new TextRun({
+                      text: `, ${cert.issuer}`,
+                      size: 20,
+                      font: "Georgia",
+                    })
+                  : new TextRun({ text: "" }),
                 new TextRun({
                   text: `\t${cert.date || ""}`,
                   size: 20,
                   font: "Georgia",
                 }),
               ],
-            })
+            }),
           );
         });
       }
@@ -673,7 +693,7 @@ export function useResumeExport() {
       const skillCategories = Object.entries(data.skills)
         .filter(([_, skills]) => skills.length > 0)
         .map(([key, skills]) => ({
-          category: SKILL_CATEGORY_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          category: SKILL_CATEGORY_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
           skills,
         }));
 
@@ -693,7 +713,7 @@ export function useResumeExport() {
                 font: "Georgia",
               }),
             ],
-          })
+          }),
         );
 
         skillCategories.forEach((sc) => {
@@ -713,13 +733,13 @@ export function useResumeExport() {
                   font: "Georgia",
                 }),
               ],
-            })
+            }),
           );
         });
       }
 
       // Projects Section
-      const validProjects = data.projects?.filter(p => p.title) || [];
+      const validProjects = data.projects?.filter((p) => p.title) || [];
       if (validProjects.length > 0) {
         children.push(
           new Paragraph({
@@ -736,7 +756,7 @@ export function useResumeExport() {
                 font: "Georgia",
               }),
             ],
-          })
+          }),
         );
 
         validProjects.forEach((project) => {
@@ -750,14 +770,16 @@ export function useResumeExport() {
                   size: 20,
                   font: "Georgia",
                 }),
-                project.date ? new TextRun({
-                  text: `\t${project.organization ? `${project.organization} — ` : ""}${project.date}`,
-                  italics: true,
-                  size: 20,
-                  font: "Georgia",
-                }) : new TextRun({ text: "" }),
+                project.date
+                  ? new TextRun({
+                      text: `\t${project.organization ? `${project.organization} — ` : ""}${project.date}`,
+                      italics: true,
+                      size: 20,
+                      font: "Georgia",
+                    })
+                  : new TextRun({ text: "" }),
               ],
-            })
+            }),
           );
 
           project.bullets.forEach((bullet) => {
@@ -772,26 +794,28 @@ export function useResumeExport() {
                     font: "Georgia",
                   }),
                 ],
-              })
+              }),
             );
           });
         });
       }
 
       const doc = new Document({
-        sections: [{
-          properties: {
-            page: {
-              margin: {
-                top: 720, // 0.5 inch
-                right: 1080, // 0.75 inch
-                bottom: 720,
-                left: 1080,
+        sections: [
+          {
+            properties: {
+              page: {
+                margin: {
+                  top: 720, // 0.5 inch
+                  right: 1080, // 0.75 inch
+                  bottom: 720,
+                  left: 1080,
+                },
               },
             },
+            children,
           },
-          children,
-        }],
+        ],
       });
 
       const blob = await Packer.toBlob(doc);
