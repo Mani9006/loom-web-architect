@@ -117,6 +117,30 @@ export interface ProjectEntry {
   bullets: string[];
 }
 
+// Language entry
+export interface LanguageEntry {
+  id: string;
+  language: string;
+  proficiency: string; // Native, Fluent, Professional, Conversational, Basic
+}
+
+// Volunteer entry
+export interface VolunteerEntry {
+  id: string;
+  role: string;
+  organization: string;
+  date: string;
+  bullets: string[];
+}
+
+// Award/Publication entry
+export interface AwardEntry {
+  id: string;
+  title: string;
+  issuer: string;
+  date: string;
+}
+
 // Main Resume JSON Schema
 export interface ResumeJSON {
   header: ResumeHeader;
@@ -126,6 +150,9 @@ export interface ResumeJSON {
   certifications: CertificationEntry[];
   skills: SkillsObject;
   projects: ProjectEntry[];
+  languages?: LanguageEntry[];
+  volunteer?: VolunteerEntry[];
+  awards?: AwardEntry[];
 }
 
 // Template configuration

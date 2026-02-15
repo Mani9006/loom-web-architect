@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useResumeExport } from "@/hooks/use-resume-export";
@@ -8,9 +8,13 @@ import {
   EducationEntry,
   CertificationEntry,
   ProjectEntry,
+  LanguageEntry,
+  VolunteerEntry,
+  AwardEntry,
   SKILL_CATEGORY_LABELS,
   createEmptyResumeJSON,
 } from "@/types/resume";
+import { calculateATSScore, buildSectionFixPrompt, ATSScore, ATSIssue } from "@/lib/ats-scorer";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ResumeFormSkeleton } from "@/components/resume/ResumeFormSkeleton";
@@ -46,6 +50,8 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  Info,
   Printer,
   Cloud,
   CloudOff,
@@ -57,6 +63,10 @@ import {
   Zap,
   Copy,
   Check,
+  Globe,
+  Heart,
+  Trophy,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +79,10 @@ export type SectionId =
   | "education"
   | "skills"
   | "projects"
-  | "certifications";
+  | "certifications"
+  | "languages"
+  | "volunteer"
+  | "awards";
 
 interface SectionConfig {
   id: SectionId;
@@ -191,6 +204,39 @@ const SECTIONS: SectionConfig[] = [
       return 100;
     },
   },
+  {
+    id: "languages",
+    label: "Languages",
+    icon: <Globe className="h-4 w-4" />,
+    getCount: (d) => (d.languages || []).filter((l) => l.language).length,
+    getCompleteness: (d) => {
+      const valid = (d.languages || []).filter((l) => l.language);
+      if (valid.length === 0) return 0;
+      return valid.every((l) => l.proficiency) ? 100 : 60;
+    },
+  },
+  {
+    id: "volunteer",
+    label: "Volunteer Experience",
+    icon: <Heart className="h-4 w-4" />,
+    getCount: (d) => (d.volunteer || []).filter((v) => v.organization).length,
+    getCompleteness: (d) => {
+      const valid = (d.volunteer || []).filter((v) => v.organization);
+      if (valid.length === 0) return 0;
+      return valid.every((v) => v.role && v.bullets.length > 0) ? 100 : 50;
+    },
+  },
+  {
+    id: "awards",
+    label: "Awards & Publications",
+    icon: <Trophy className="h-4 w-4" />,
+    getCount: (d) => (d.awards || []).filter((a) => a.title).length,
+    getCompleteness: (d) => {
+      const valid = (d.awards || []).filter((a) => a.title);
+      if (valid.length === 0) return 0;
+      return 100;
+    },
+  },
 ];
 
 // ─── Robust AI response parser ──────────────────────────────────────────────
@@ -287,7 +333,30 @@ export default function ResumeBuilder() {
   const [isTailoring, setIsTailoring] = useState(false);
   const [keywordMatches, setKeywordMatches] = useState<{ matched: string[]; missing: string[] } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [expandedLangId, setExpandedLangId] = useState<string | null>(null);
+  const [expandedVolId, setExpandedVolId] = useState<string | null>(null);
+  const [expandedAwardId, setExpandedAwardId] = useState<string | null>(null);
+  const [showATSDetails, setShowATSDetails] = useState(false);
+  const [aiFixingSection, setAiFixingSection] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // ── ATS Score (live, memoized) ──────────────────────────────────────────
+  const atsScore = useMemo(() => calculateATSScore(data), [data]);
+  const atsColor = atsScore.overall >= 80 ? "text-green-500" : atsScore.overall >= 60 ? "text-yellow-500" : "text-red-500";
+  const atsBgColor = atsScore.overall >= 80 ? "bg-green-500" : atsScore.overall >= 60 ? "bg-yellow-500" : "bg-red-500";
+  const getIssuesForSection = (sectionName: string) => atsScore.issues.filter((i) => i.section === sectionName);
+
+  // Map our section IDs to ATS section names
+  const sectionToATSName: Record<string, string> = {
+    personal: "Personal Info",
+    summary: "Summary",
+    experience: "Experience",
+    education: "Education",
+    skills: "Skills",
+    projects: "Projects",
+    certifications: "Certifications",
+    formatting: "Formatting",
+  };
 
   // ── Load saved resume ──────────────────────────────────────────────────
   useEffect(() => {
@@ -310,6 +379,9 @@ export default function ResumeBuilder() {
           certifications: Array.isArray(r.certifications) ? r.certifications : [],
           skills: r.skills && typeof r.skills === "object" && !Array.isArray(r.skills) ? r.skills : {},
           projects: Array.isArray(r.projects) ? r.projects : [],
+          languages: Array.isArray(r.languages) ? r.languages : [],
+          volunteer: Array.isArray(r.volunteer) ? r.volunteer : [],
+          awards: Array.isArray(r.awards) ? r.awards : [],
         });
       }
       setIsLoaded(true);
@@ -551,8 +623,64 @@ export default function ResumeBuilder() {
   const updateProject = (index: number, updates: Partial<ProjectEntry>) => setData((prev) => ({ ...prev, projects: prev.projects.map((p, i) => (i === index ? { ...p, ...updates } : p)) }));
   const addSkillToCategory = (category: string, skill: string) => { if (!skill.trim()) return; const current = data.skills[category] || []; if (!current.includes(skill.trim())) setData((prev) => ({ ...prev, skills: { ...prev.skills, [category]: [...current, skill.trim()] } })); };
   const removeSkillFromCategory = (category: string, skill: string) => setData((prev) => ({ ...prev, skills: { ...prev.skills, [category]: (prev.skills[category] || []).filter((s) => s !== skill) } }));
+  const addLanguage = () => setData((prev) => ({ ...prev, languages: [...(prev.languages || []), { id: crypto.randomUUID(), language: "", proficiency: "Professional" }] }));
+  const removeLanguage = (id: string) => setData((prev) => ({ ...prev, languages: (prev.languages || []).filter((l) => l.id !== id) }));
+  const updateLanguage = (id: string, field: keyof LanguageEntry, value: string) => setData((prev) => ({ ...prev, languages: (prev.languages || []).map((l) => (l.id === id ? { ...l, [field]: value } : l)) }));
+  const addVolunteer = () => setData((prev) => ({ ...prev, volunteer: [...(prev.volunteer || []), { id: crypto.randomUUID(), role: "", organization: "", date: "", bullets: [] }] }));
+  const removeVolunteer = (id: string) => setData((prev) => ({ ...prev, volunteer: (prev.volunteer || []).filter((v) => v.id !== id) }));
+  const updateVolunteer = (id: string, field: keyof VolunteerEntry, value: any) => setData((prev) => ({ ...prev, volunteer: (prev.volunteer || []).map((v) => (v.id === id ? { ...v, [field]: value } : v)) }));
+  const addAward = () => setData((prev) => ({ ...prev, awards: [...(prev.awards || []), { id: crypto.randomUUID(), title: "", issuer: "", date: "" }] }));
+  const removeAward = (id: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).filter((a) => a.id !== id) }));
+  const updateAward = (id: string, field: keyof AwardEntry, value: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).map((a) => (a.id === id ? { ...a, [field]: value } : a)) }));
   const toggleSectionVisibility = (sectionId: SectionId) => setHiddenSections((prev) => { const next = new Set(prev); next.has(sectionId) ? next.delete(sectionId) : next.add(sectionId); return next; });
   const resetResume = () => { setData(createEmptyResumeJSON()); setHiddenSections(new Set()); setCurrentResumeId(null); toast({ title: "Resume cleared" }); };
+
+  // ── AI Fix Section Issues ─────────────────────────────────────────────
+  const aiFixSection = async (sectionName: string) => {
+    const issues = getIssuesForSection(sectionName);
+    if (issues.length === 0) return;
+    setAiFixingSection(sectionName);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session) throw new Error("Not authenticated");
+      const prompt = buildSectionFixPrompt(sectionName, data, issues);
+      const result = await streamAIText(session.session.access_token, [
+        { role: "system", content: prompt },
+        { role: "user", content: "Fix the issues and return the improved content." },
+      ]);
+
+      if (sectionName === "Summary") {
+        const cleaned = result.replace(/^["']|["']$/g, "").replace(/```/g, "").trim();
+        if (cleaned) setData((prev) => ({ ...prev, summary: cleaned }));
+      } else if (sectionName === "Experience") {
+        const parsed = parseAIResponse(result);
+        if (parsed && Array.isArray(parsed)) {
+          setData((prev) => ({
+            ...prev,
+            experience: parsed.map((e: any, idx: number) => ({
+              id: prev.experience[idx]?.id || crypto.randomUUID(),
+              role: e.role || prev.experience[idx]?.role || "",
+              company_or_client: e.company_or_client || prev.experience[idx]?.company_or_client || "",
+              start_date: e.start_date || prev.experience[idx]?.start_date || "",
+              end_date: e.end_date || prev.experience[idx]?.end_date || "",
+              location: e.location || prev.experience[idx]?.location || "",
+              bullets: Array.isArray(e.bullets) ? e.bullets : prev.experience[idx]?.bullets || [],
+            })),
+          }));
+        }
+      } else if (sectionName === "Skills") {
+        const parsed = parseAIResponse(result);
+        if (parsed && typeof parsed === "object") {
+          setData((prev) => ({ ...prev, skills: { ...prev.skills, ...parsed } }));
+        }
+      }
+      toast({ title: `${sectionName} improved!`, description: "AI has fixed the ATS issues." });
+    } catch {
+      toast({ title: "AI fix failed", variant: "destructive" });
+    } finally {
+      setAiFixingSection(null);
+    }
+  };
 
   // ── Preview data with hidden sections stripped ─────────────────────────
   const previewData: ResumeJSON = {
@@ -563,6 +691,9 @@ export default function ResumeBuilder() {
     skills: hiddenSections.has("skills") ? {} : data.skills,
     projects: hiddenSections.has("projects") ? [] : data.projects,
     certifications: hiddenSections.has("certifications") ? [] : data.certifications,
+    languages: hiddenSections.has("languages") ? [] : data.languages,
+    volunteer: hiddenSections.has("volunteer") ? [] : data.volunteer,
+    awards: hiddenSections.has("awards") ? [] : data.awards,
   };
 
   const fileName = data.header.name ? `${data.header.name.replace(/\s+/g, "_")}_Resume` : "Resume";
@@ -903,6 +1034,149 @@ export default function ResumeBuilder() {
                           <button type="button" onClick={addCertification} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Certification</button>
                         </div>
                       )}
+                      {/* ── Languages: collapsible rows ── */}
+                      {section.id === "languages" && (
+                        <div className="space-y-1">
+                          {(data.languages || []).map((lang) => (
+                            <div key={lang.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedLangId === lang.id && "bg-muted/40")}
+                                onClick={() => setExpandedLangId(expandedLangId === lang.id ? null : lang.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedLangId === lang.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">{lang.language || "New Language"}</span>
+                                {lang.proficiency && <Badge variant="secondary" className="text-[10px] h-5">{lang.proficiency}</Badge>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" onClick={() => removeLanguage(lang.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                </div>
+                              </div>
+                              {expandedLangId === lang.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Language" value={lang.language} onChange={(e) => updateLanguage(lang.id, "language", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <select value={lang.proficiency} onChange={(e) => updateLanguage(lang.id, "proficiency", e.target.value)} className="h-7 text-xs rounded-md border border-input bg-background px-2">
+                                      {["Native", "Fluent", "Professional", "Conversational", "Basic"].map((p) => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {(data.languages || []).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No languages added yet</p>}
+                          <button type="button" onClick={addLanguage} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Language</button>
+                        </div>
+                      )}
+
+                      {/* ── Volunteer: collapsible rows ── */}
+                      {section.id === "volunteer" && (
+                        <div className="space-y-1">
+                          {(data.volunteer || []).map((vol) => (
+                            <div key={vol.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedVolId === vol.id && "bg-muted/40")}
+                                onClick={() => setExpandedVolId(expandedVolId === vol.id ? null : vol.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedVolId === vol.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">
+                                  {vol.role || vol.organization ? `${vol.role || "Role"}${vol.organization ? ` @ ${vol.organization}` : ""}` : "New Volunteer Experience"}
+                                </span>
+                                {vol.date && <span className="text-[10px] text-muted-foreground shrink-0">{vol.date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" onClick={() => removeVolunteer(vol.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                </div>
+                              </div>
+                              {expandedVolId === vol.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Organization" value={vol.organization} onChange={(e) => updateVolunteer(vol.id, "organization", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Role" value={vol.role} onChange={(e) => updateVolunteer(vol.id, "role", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                  <Input placeholder="Date range" value={vol.date} onChange={(e) => updateVolunteer(vol.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  <Textarea placeholder={"Key contributions (one per line)"} value={vol.bullets.join("\n")} onChange={(e) => updateVolunteer(vol.id, "bullets", e.target.value.split("\n").filter((b: string) => b.trim()))} className="bg-background text-xs min-h-[50px] resize-y" />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {(data.volunteer || []).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No volunteer experience added yet</p>}
+                          <button type="button" onClick={addVolunteer} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Volunteer Experience</button>
+                        </div>
+                      )}
+
+                      {/* ── Awards & Publications: collapsible rows ── */}
+                      {section.id === "awards" && (
+                        <div className="space-y-1">
+                          {(data.awards || []).map((award) => (
+                            <div key={award.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedAwardId === award.id && "bg-muted/40")}
+                                onClick={() => setExpandedAwardId(expandedAwardId === award.id ? null : award.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedAwardId === award.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">{award.title || "New Award"}</span>
+                                {award.date && <span className="text-[10px] text-muted-foreground shrink-0">{award.date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" onClick={() => removeAward(award.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                </div>
+                              </div>
+                              {expandedAwardId === award.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <Input placeholder="Award/Publication Title" value={award.title} onChange={(e) => updateAward(award.id, "title", e.target.value)} className="bg-background h-7 text-xs" />
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Issuer/Publisher" value={award.issuer} onChange={(e) => updateAward(award.id, "issuer", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Date" value={award.date} onChange={(e) => updateAward(award.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {(data.awards || []).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No awards or publications added yet</p>}
+                          <button type="button" onClick={addAward} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Award/Publication</button>
+                        </div>
+                      )}
+
+                      {/* ── Per-section ATS Issues ── */}
+                      {(() => {
+                        const atsName = sectionToATSName[section.id];
+                        if (!atsName) return null;
+                        const sectionIssues = getIssuesForSection(atsName);
+                        if (sectionIssues.length === 0) return null;
+                        return (
+                          <div className="mt-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                <Shield className="h-3 w-3" /> ATS Issues ({sectionIssues.length})
+                              </span>
+                              {(atsName === "Summary" || atsName === "Experience" || atsName === "Skills") && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => aiFixSection(atsName)}
+                                  disabled={aiFixingSection === atsName}
+                                  className="h-5 text-[10px] gap-1 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                                >
+                                  {aiFixingSection === atsName ? <><Loader2 className="h-2.5 w-2.5 animate-spin" /> Fixing...</> : <><Wand2 className="h-2.5 w-2.5" /> AI Fix All</>}
+                                </Button>
+                              )}
+                            </div>
+                            {sectionIssues.map((issue) => (
+                              <div key={issue.id} className="flex items-start gap-1.5 text-[10px]">
+                                {issue.severity === "critical" ? <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" /> :
+                                 issue.severity === "warning" ? <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0 mt-0.5" /> :
+                                 <Info className="h-3 w-3 text-blue-400 shrink-0 mt-0.5" />}
+                                <div className="flex-1 min-w-0">
+                                  <span className={cn("font-medium",
+                                    issue.severity === "critical" ? "text-red-600 dark:text-red-400" :
+                                    issue.severity === "warning" ? "text-yellow-600 dark:text-yellow-400" :
+                                    "text-blue-600 dark:text-blue-400"
+                                  )}>{issue.title}</span>
+                                  <span className="text-muted-foreground ml-1">{issue.description}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </AccordionContent>
                   </AccordionItem>
                 );
@@ -916,9 +1190,24 @@ export default function ResumeBuilder() {
       <div className={cn("flex-1 flex flex-col min-w-0 bg-muted/20", mobileView !== "preview" && "hidden lg:flex")}>
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setMobileView("editor")} className="h-7 text-xs lg:hidden">← Editor</Button>
+            <Button variant="outline" size="sm" onClick={() => setMobileView("editor")} className="h-7 text-xs lg:hidden">&larr; Editor</Button>
             <h2 className="text-sm font-bold">Preview</h2>
             {hiddenSections.size > 0 && <Badge variant="outline" className="text-[10px] h-5">{hiddenSections.size} hidden</Badge>}
+            {/* ATS Score Badge */}
+            <button
+              type="button"
+              onClick={() => setShowATSDetails(!showATSDetails)}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer",
+                atsScore.overall >= 80 ? "bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400 hover:bg-green-500/20" :
+                atsScore.overall >= 60 ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/20" :
+                "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/20"
+              )}
+            >
+              <Shield className="h-3.5 w-3.5" />
+              ATS: {atsScore.overall}%
+              {atsScore.issues.length > 0 && <span className="text-[10px] font-normal opacity-70">({atsScore.issues.filter(i => i.severity === "critical").length} critical)</span>}
+            </button>
           </div>
           <div className="flex items-center gap-1.5">
             <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={handlePrintView} disabled={isExporting} className="h-8 gap-1.5"><Printer className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Print</span></Button></TooltipTrigger><TooltipContent>Print-friendly view</TooltipContent></Tooltip>
@@ -927,6 +1216,63 @@ export default function ResumeBuilder() {
             <Button size="sm" onClick={handleDownloadPDF} disabled={isExporting} className="h-8 gap-1.5">{isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Download PDF</Button>
           </div>
         </div>
+
+        {/* ATS Score Expandable Details */}
+        {showATSDetails && (
+          <div className="border-b border-border bg-card px-4 py-3 space-y-3 max-h-[50vh] overflow-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={cn("text-3xl font-black", atsColor)}>{atsScore.overall}</div>
+                <div>
+                  <div className="text-sm font-semibold">{atsScore.passesATS ? "ATS Compatible" : "Needs Improvement"}</div>
+                  <div className="text-[10px] text-muted-foreground">{atsScore.issues.length} issues found ({atsScore.issues.filter(i => i.severity === "critical").length} critical, {atsScore.issues.filter(i => i.severity === "warning").length} warnings)</div>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowATSDetails(false)} className="p-1 rounded hover:bg-muted"><X className="h-4 w-4" /></button>
+            </div>
+
+            {/* Section scores */}
+            <div className="grid grid-cols-4 gap-2">
+              {atsScore.sections.map((s) => (
+                <div key={s.section} className="text-center p-2 rounded-lg bg-muted/40">
+                  <div className={cn("text-lg font-bold", s.score / s.maxScore >= 0.7 ? "text-green-500" : s.score / s.maxScore >= 0.4 ? "text-yellow-500" : "text-red-500")}>
+                    {Math.round((s.score / s.maxScore) * 100)}%
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">{s.section}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* All issues */}
+            <div className="space-y-1.5">
+              <div className="text-xs font-semibold">All Issues</div>
+              {atsScore.issues.map((issue) => (
+                <div key={issue.id} className="flex items-start gap-2 text-xs p-2 rounded-lg bg-muted/30">
+                  {issue.severity === "critical" ? <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" /> :
+                   issue.severity === "warning" ? <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 shrink-0 mt-0.5" /> :
+                   <Info className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className="text-[9px] h-4">{issue.section}</Badge>
+                      <span className={cn("font-medium",
+                        issue.severity === "critical" ? "text-red-600 dark:text-red-400" :
+                        issue.severity === "warning" ? "text-yellow-600 dark:text-yellow-400" :
+                        "text-blue-600 dark:text-blue-400"
+                      )}>{issue.title}</span>
+                    </div>
+                    <p className="text-muted-foreground mt-0.5">{issue.description}</p>
+                  </div>
+                </div>
+              ))}
+              {atsScore.issues.length === 0 && (
+                <div className="text-center py-4 text-sm text-green-500 font-medium flex items-center justify-center gap-2">
+                  <CheckCircle2 className="h-5 w-5" /> No ATS issues found! Your resume looks great.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto p-6">
           <div className="mx-auto shadow-xl relative" style={{ width: "fit-content" }}>
             <ResumeTemplate ref={resumeRef} data={previewData} />
