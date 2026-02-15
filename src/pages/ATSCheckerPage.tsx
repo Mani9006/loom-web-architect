@@ -1,21 +1,13 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ATSCheckerPanel, ATSMessage } from "@/components/chat/ATSCheckerPanel";
 import { useToast } from "@/hooks/use-toast";
 
 export default function ATSCheckerPage() {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [messages, setMessages] = useState<ATSMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState("gemini-flash");
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) navigate("/auth");
-    });
-  }, [navigate]);
 
   const handleAnalyze = async (resumeText: string, jobDescription?: string) => {
     const { data: sessionData } = await supabase.auth.getSession();

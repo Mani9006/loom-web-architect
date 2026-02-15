@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Home, Search, FileText, Columns3, Mic, MessageCircle,
   FolderOpen, ChevronDown, ChevronRight, LogOut,
-  Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp
+  Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp, Target
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -18,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useIsMobile } from "@/hooks/use-mobile";
 import Logo from "@/components/shared/Logo";
+import { supabase } from "@/integrations/supabase/client";
 
 interface NavItem {
   label: string;
@@ -32,6 +32,7 @@ const mainNav: NavItem[] = [
   { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
   { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
   { label: "Cover Letter", icon: FolderOpen, path: "/cover-letter" },
+  { label: "ATS Checker", icon: Target, path: "/ats-checker" },
   { label: "Job Tracker", icon: Columns3, path: "/job-tracker" },
   { label: "Interviews", icon: Mic, path: "/interview-prep" },
   { label: "AI Chat", icon: MessageCircle, path: "/chat" },
@@ -69,7 +70,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, signOut } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -79,24 +80,12 @@ export default function AppLayout() {
   useEffect(() => { if (isMobile) setSidebarOpen(true); }, [isMobile]);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      if (event === "SIGNED_OUT") navigate("/auth");
-    });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) navigate("/auth");
-    });
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  useEffect(() => {
     if (!user) return;
     supabase.from("profiles").select("full_name").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { setDisplayName(data?.full_name || user.email?.split("@")[0] || "User"); });
-  }, [user]);
+  }, [user?.id]);
 
-  const handleSignOut = async () => { await supabase.auth.signOut(); navigate("/auth"); };
+  const handleSignOut = async () => { await signOut(); navigate("/auth"); };
   const toggleMenu = (label: string) => {
     setExpandedMenus((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
   };
@@ -186,7 +175,6 @@ export default function AppLayout() {
         isMobile ? "w-[260px]" : sidebarOpen ? "w-[240px]" : "w-[68px]"
       )}
     >
-      {/* Logo */}
       <div className="h-[68px] flex items-center justify-between px-4">
         <Logo size={showText ? "md" : "sm"} dark />
         {isMobile && (
@@ -196,30 +184,18 @@ export default function AppLayout() {
         )}
       </div>
 
-      {/* Main Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
         {showText && (
-          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-sidebar-foreground/40 px-3 mb-2">
-            Main
-          </p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-sidebar-foreground/40 px-3 mb-2">Main</p>
         )}
-        <div className="space-y-1">
-          {mainNav.map(renderNavItem)}
-        </div>
-
+        <div className="space-y-1">{mainNav.map(renderNavItem)}</div>
         <div className="my-5 mx-3 h-px bg-sidebar-border/50" />
-
         {showText && (
-          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-sidebar-foreground/40 px-3 mb-2">
-            Tools
-          </p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-sidebar-foreground/40 px-3 mb-2">Tools</p>
         )}
-        <div className="space-y-1">
-          {secondaryNav.map(renderNavItem)}
-        </div>
+        <div className="space-y-1">{secondaryNav.map(renderNavItem)}</div>
       </nav>
 
-      {/* Bottom User Section */}
       <div className="border-t border-sidebar-border/50 p-3">
         <button
           onClick={() => handleNavigate("/profile")}
