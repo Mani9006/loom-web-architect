@@ -10,11 +10,19 @@ export function useResumeExport() {
     try {
       const html2pdf = (await import("html2pdf.js")).default;
 
-      // html2pdf captures the element as-is via html2canvas.
-      // The template already has 0.5in/0.6in padding built in, so we use margin:0
-      // to avoid double margins. The template padding IS the page margin.
+      // Temporarily strip the template's own padding so html2pdf's margin
+      // controls all page margins (top/bottom/left/right) on EVERY page.
+      // Without this, only page 1 gets top padding; subsequent pages start
+      // at the very top with no margin.
+      const savedPadding = resumeElement.style.padding;
+      const savedWidth = resumeElement.style.width;
+      const savedMinHeight = resumeElement.style.minHeight;
+      resumeElement.style.padding = "0";
+      resumeElement.style.width = "7.3in"; // 8.5 - 0.6*2 = content width
+      resumeElement.style.minHeight = "auto";
+
       const opt = {
-        margin: 0,
+        margin: [0.5, 0.6, 0.5, 0.6], // top, right, bottom, left in inches
         filename: `${fileName}.pdf`,
         image: { type: "png" as const, quality: 1 },
         html2canvas: {
@@ -35,6 +43,12 @@ export function useResumeExport() {
       };
 
       await html2pdf().set(opt).from(resumeElement).save();
+
+      // Restore original styles so the live preview is unaffected
+      resumeElement.style.padding = savedPadding;
+      resumeElement.style.width = savedWidth;
+      resumeElement.style.minHeight = savedMinHeight;
+
       toast.success("Resume exported as PDF!");
     } catch (error) {
       console.error("PDF export error:", error);
