@@ -1,4 +1,4 @@
-import { Sparkles, FileText, MessageSquare, Target, Search, Mail } from "lucide-react";
+import { Sparkles, FileText, MessageSquare, Target, Search, Mail, BriefcaseBusiness } from "lucide-react";
 
 interface ChatWelcomeProps {
   displayName: string;
@@ -11,53 +11,48 @@ interface ChatWelcomeProps {
 }
 
 const quickActions = [
-  { 
-    icon: FileText, 
-    label: "Build Resume", 
-    description: "Create an ATS-optimized resume with AI assistance",
+  {
+    icon: FileText,
+    label: "Build Resume",
+    description: "Create an ATS-optimized resume",
     action: "resume",
-    gradient: "from-blue-500 to-blue-600",
   },
-  { 
-    icon: Mail, 
-    label: "Cover Letter", 
-    description: "Generate a tailored cover letter for any job",
+  {
+    icon: Mail,
+    label: "Cover Letter",
+    description: "Generate a tailored cover letter",
     action: "cover-letter",
-    gradient: "from-emerald-500 to-emerald-600",
   },
-  { 
-    icon: Target, 
-    label: "ATS Score Checker", 
-    description: "Analyze your resume's ATS compatibility score",
+  {
+    icon: Target,
+    label: "ATS Checker",
+    description: "Check resume ATS compatibility",
     action: "ats-check",
-    gradient: "from-purple-500 to-purple-600",
   },
-  { 
-    icon: Search, 
-    label: "Find Jobs", 
-    description: "AI-powered job search based on your skills",
+  {
+    icon: Search,
+    label: "Find Jobs",
+    description: "AI-powered job search",
     action: "job-search",
-    gradient: "from-orange-500 to-orange-600",
   },
-  { 
-    icon: MessageSquare, 
-    label: "Interview Prep", 
-    description: "Practice with AI-generated mock questions",
+  {
+    icon: MessageSquare,
+    label: "Interview Prep",
+    description: "Practice mock interviews",
     action: "interview-prep",
-    gradient: "from-pink-500 to-pink-600",
   },
 ];
 
 const quickPrompts = [
-  "How do I negotiate salary?",
-  "Review my cover letter",
-  "Career change advice",
-  "LinkedIn profile tips",
+  "How do I negotiate a higher salary?",
+  "Tips for career change to tech",
+  "Improve my LinkedIn profile",
+  "How to prepare for behavioral interviews?",
 ];
 
-export function ChatWelcome({ 
-  displayName, 
-  onSuggestionClick, 
+export function ChatWelcome({
+  displayName,
+  onSuggestionClick,
   onStartResume,
   onStartATSCheck,
   onStartJobSearch,
@@ -66,63 +61,61 @@ export function ChatWelcome({
 }: ChatWelcomeProps) {
   const handleAction = (action: string) => {
     switch (action) {
-      case "resume": onStartResume(); break;
-      case "ats-check": onStartATSCheck(); break;
-      case "job-search": onStartJobSearch(); break;
-      case "cover-letter": onStartCoverLetter(); break;
-      case "interview-prep": onStartInterviewPrep(); break;
+      case "resume":
+        onStartResume();
+        break;
+      case "ats-check":
+        onStartATSCheck();
+        break;
+      case "job-search":
+        onStartJobSearch();
+        break;
+      case "cover-letter":
+        onStartCoverLetter();
+        break;
+      case "interview-prep":
+        onStartInterviewPrep();
+        break;
     }
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-4 pb-16">
-      <div className="text-center max-w-3xl w-full">
-        {/* Greeting */}
-        <div className="mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-primary/20">
-            <Sparkles className="w-8 h-8 text-primary-foreground" />
+    <div className="flex-1 flex flex-col items-center justify-center px-4 pb-20">
+      <div className="text-center max-w-2xl w-full">
+        {/* Simple Greeting */}
+        <div className="mb-10">
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center mx-auto mb-4">
+            <BriefcaseBusiness className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-lg text-muted-foreground mb-1">
-            Hi {displayName} 👋
-          </h1>
-          <h2 className="text-3xl sm:text-4xl font-bold leading-tight">
-            What would you like to do?
-          </h2>
+          <h1 className="text-2xl sm:text-3xl font-semibold mb-2">Hi {displayName}</h1>
+          <p className="text-muted-foreground text-base">How can I help with your career today?</p>
         </div>
 
-        {/* Action Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-3xl mx-auto mb-10">
+        {/* Quick Tools — Compact Pill Buttons */}
+        <div className="flex flex-wrap justify-center gap-2 mb-8">
           {quickActions.map((action) => (
             <button
               key={action.label}
               onClick={() => handleAction(action.action)}
-              className="flex items-start gap-3.5 p-4 rounded-xl bg-card hover:bg-accent border border-border transition-all hover:border-primary/30 hover:shadow-md text-left group"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-border bg-background hover:bg-accent hover:border-primary/30 transition-all text-sm font-medium group"
             >
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${action.gradient} flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform`}>
-                <action.icon className="w-5 h-5 text-white" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="font-semibold text-sm mb-0.5">{action.label}</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">{action.description}</p>
-              </div>
+              <action.icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+              {action.label}
             </button>
           ))}
         </div>
 
-        {/* Quick prompts */}
-        <div>
-          <p className="text-sm text-muted-foreground mb-3">Or ask me anything:</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {quickPrompts.map((prompt) => (
-              <button
-                key={prompt}
-                onClick={() => onSuggestionClick(prompt)}
-                className="px-4 py-2 rounded-full bg-muted hover:bg-accent border border-border transition-all hover:border-primary/30 text-sm font-medium"
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
+        {/* Suggestion Prompts */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl mx-auto">
+          {quickPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              onClick={() => onSuggestionClick(prompt)}
+              className="px-4 py-3 rounded-xl border border-border bg-background hover:bg-accent hover:border-primary/30 transition-all text-sm text-left text-muted-foreground hover:text-foreground"
+            >
+              {prompt}
+            </button>
+          ))}
         </div>
       </div>
     </div>
