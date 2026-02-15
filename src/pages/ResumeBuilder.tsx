@@ -278,6 +278,10 @@ export default function ResumeBuilder() {
   const [currentSkillCategory, setCurrentSkillCategory] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [mobileView, setMobileView] = useState<"editor" | "preview">("editor");
+  const [expandedExpId, setExpandedExpId] = useState<string | null>(null);
+  const [expandedEduId, setExpandedEduId] = useState<string | null>(null);
+  const [expandedProjIdx, setExpandedProjIdx] = useState<number | null>(null);
+  const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
   const [jobDescription, setJobDescription] = useState("");
   const [showJobTarget, setShowJobTarget] = useState(false);
   const [isTailoring, setIsTailoring] = useState(false);
@@ -571,7 +575,7 @@ export default function ResumeBuilder() {
   return (
     <div className="flex h-[calc(100vh-68px)] w-full overflow-hidden bg-background">
       {/* ─── LEFT PANEL: Accordion editor ─────────────────────────────── */}
-      <div className={cn("w-full lg:w-[45%] lg:min-w-[380px] flex flex-col border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
+      <div className={cn("w-full lg:w-[38%] lg:min-w-[340px] lg:max-w-[440px] flex flex-col border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card">
           <h1 className="text-sm font-bold flex-1">Resume Builder</h1>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -703,155 +707,200 @@ export default function ResumeBuilder() {
                       </AccordionTrigger>
                       <Tooltip><TooltipTrigger asChild><button onClick={(e) => { e.stopPropagation(); toggleSectionVisibility(section.id); }} className="p-1.5 mr-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">{isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button></TooltipTrigger><TooltipContent>{isHidden ? "Show on resume" : "Hide from resume"}</TooltipContent></Tooltip>
                     </div>
-                    <AccordionContent className="px-2 pb-4">
+                    <AccordionContent className="px-2 pb-2 pt-0">
+                      {/* ── Personal Info: compact 3-col grid ── */}
                       {section.id === "personal" && (
-                        <div className="grid grid-cols-2 gap-3">
-                          {([{ field: "name" as const, label: "Full Name *", placeholder: "John Doe" }, { field: "title" as const, label: "Job Title", placeholder: "Data Engineer" }, { field: "email" as const, label: "Email *", placeholder: "john@email.com", type: "email" }, { field: "phone" as const, label: "Phone", placeholder: "+1 555-123-4567" }, { field: "location" as const, label: "Location", placeholder: "Dallas, TX" }, { field: "linkedin" as const, label: "LinkedIn", placeholder: "linkedin.com/in/johndoe" }] as const).map(({ field, label, placeholder, type }) => (
-                            <div key={field} className="space-y-1"><Label className="text-xs text-muted-foreground">{label}</Label><Input type={type || "text"} placeholder={placeholder} value={data.header[field]} onChange={(e) => updateHeader(field, e.target.value)} className="bg-background h-9 text-sm" /></div>
+                        <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
+                          {([{ field: "name" as const, label: "Name", placeholder: "John Doe" }, { field: "title" as const, label: "Title", placeholder: "Data Engineer" }, { field: "email" as const, label: "Email", placeholder: "john@email.com", type: "email" }, { field: "phone" as const, label: "Phone", placeholder: "+1 555-123-4567" }, { field: "location" as const, label: "Location", placeholder: "Dallas, TX" }, { field: "linkedin" as const, label: "LinkedIn", placeholder: "linkedin.com/in/..." }] as const).map(({ field, label, placeholder, type }) => (
+                            <div key={field}>
+                              <Input type={type || "text"} placeholder={`${label}: ${placeholder}`} value={data.header[field]} onChange={(e) => updateHeader(field, e.target.value)} className="bg-background h-7 text-xs" />
+                            </div>
                           ))}
                         </div>
                       )}
+
+                      {/* ── Summary: compact textarea ── */}
                       {section.id === "summary" && (
-                        <div className="space-y-2">
-                          <Textarea placeholder="Brief professional summary..." value={data.summary} onChange={(e) => setData((prev) => ({ ...prev, summary: e.target.value }))} className="bg-background text-sm min-h-[100px]" />
+                        <div className="space-y-1.5">
+                          <Textarea placeholder="Brief professional summary..." value={data.summary} onChange={(e) => setData((prev) => ({ ...prev, summary: e.target.value }))} className="bg-background text-xs min-h-[60px] resize-y" />
                           <div className="flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">{data.summary.length} chars{data.summary.length > 0 && data.summary.length < 50 && " - too short"}</span>
-                            <Button type="button" variant="outline" size="sm" onClick={enhanceSummaryWithAI} disabled={aiEnhancingSection === "summary"} className="h-7 text-xs gap-1.5">
-                              {aiEnhancingSection === "summary" ? <><Loader2 className="h-3 w-3 animate-spin" /> Enhancing...</> : <><Sparkles className="h-3 w-3" /> {data.summary ? "Enhance with AI" : "Generate with AI"}</>}
+                            <span className="text-[10px] text-muted-foreground">{data.summary.length} chars</span>
+                            <Button type="button" variant="ghost" size="sm" onClick={enhanceSummaryWithAI} disabled={aiEnhancingSection === "summary"} className="h-6 text-[10px] gap-1 px-2">
+                              {aiEnhancingSection === "summary" ? <><Loader2 className="h-3 w-3 animate-spin" /> Enhancing...</> : <><Sparkles className="h-3 w-3" /> {data.summary ? "Enhance" : "Generate"}</>}
                             </Button>
                           </div>
                         </div>
                       )}
+
+                      {/* ── Experience: collapsed rows, click to expand ── */}
                       {section.id === "experience" && (
-                        <div className="space-y-4">
+                        <div className="space-y-1">
                           {data.experience.map((exp, index) => (
-                            <div key={exp.id} className="p-3 bg-muted/40 rounded-lg space-y-3 border border-border/30">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1">
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Experience {index + 1}</p>
-                                  {data.experience.length > 1 && (
-                                    <div className="flex items-center ml-1">
-                                      <button type="button" onClick={() => moveExperience(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronUp className="h-3 w-3" /></button>
-                                      <button type="button" onClick={() => moveExperience(index, "down")} disabled={index === data.experience.length - 1} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronDown className="h-3 w-3" /></button>
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  {exp.bullets.length > 0 && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => enhanceBulletsWithAI(exp.id)} disabled={aiEnhancingSection === `exp-${exp.id}`} className="h-6 w-6 text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</Button></TooltipTrigger><TooltipContent>Enhance bullets with AI</TooltipContent></Tooltip>}
-                                  {data.experience.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => removeExperience(exp.id)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>}
+                            <div key={exp.id} className="rounded border border-border/40 overflow-hidden">
+                              {/* Summary row - always visible */}
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedExpId === exp.id && "bg-muted/40")}
+                                onClick={() => setExpandedExpId(expandedExpId === exp.id ? null : exp.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedExpId === exp.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">
+                                  {exp.role || exp.company_or_client ? `${exp.role || "Role"}${exp.company_or_client ? ` @ ${exp.company_or_client}` : ""}` : `Experience ${index + 1}`}
+                                </span>
+                                {exp.start_date && <span className="text-[10px] text-muted-foreground shrink-0">{exp.start_date}{exp.end_date ? ` - ${exp.end_date}` : ""}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {data.experience.length > 1 && <>
+                                    <button type="button" onClick={() => moveExperience(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
+                                    <button type="button" onClick={() => moveExperience(index, "down")} disabled={index === data.experience.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronDown className="h-3 w-3" /></button>
+                                  </>}
+                                  {exp.bullets.length > 0 && <button type="button" onClick={() => enhanceBulletsWithAI(exp.id)} disabled={aiEnhancingSection === `exp-${exp.id}`} className="p-0.5 rounded hover:bg-muted text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</button>}
+                                  {data.experience.length > 1 && <button type="button" onClick={() => removeExperience(exp.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
                                 </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Company *</Label><Input placeholder="Company Inc." value={exp.company_or_client} onChange={(e) => updateExperience(exp.id, "company_or_client", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Role *</Label><Input placeholder="Data Engineer" value={exp.role} onChange={(e) => updateExperience(exp.id, "role", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Start Date</Label><Input placeholder="Feb 2024" value={exp.start_date} onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">End Date</Label><Input placeholder="Present" value={exp.end_date} onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1 col-span-2"><Label className="text-xs text-muted-foreground">Location</Label><Input placeholder="Dallas, TX" value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                              </div>
-                              <div className="space-y-1"><Label className="text-xs text-muted-foreground">Bullet Points (one per line)</Label><Textarea placeholder={"• Designed ETL pipelines\n• Led data migration"} value={exp.bullets.join("\n")} onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split("\n").filter((b) => b.trim()))} className="bg-background text-sm min-h-[80px]" /></div>
+                              {/* Expanded form */}
+                              {expandedExpId === exp.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Company *" value={exp.company_or_client} onChange={(e) => updateExperience(exp.id, "company_or_client", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Role *" value={exp.role} onChange={(e) => updateExperience(exp.id, "role", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Start date" value={exp.start_date} onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="End date" value={exp.end_date} onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                  <Input placeholder="Location" value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} className="bg-background h-7 text-xs" />
+                                  <Textarea placeholder={"Bullet points (one per line)\n- Designed ETL pipelines...\n- Led data migration..."} value={exp.bullets.join("\n")} onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split("\n").filter((b) => b.trim()))} className="bg-background text-xs min-h-[60px] resize-y" />
+                                </div>
+                              )}
                             </div>
                           ))}
-                          <Button type="button" variant="outline" size="sm" onClick={addExperience} className="w-full gap-2 border-dashed"><Plus className="h-3 w-3" /> Add Experience</Button>
+                          <button type="button" onClick={addExperience} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Experience</button>
                         </div>
                       )}
+
+                      {/* ── Education: collapsed rows ── */}
                       {section.id === "education" && (
-                        <div className="space-y-3">
+                        <div className="space-y-1">
                           {data.education.map((edu, eduIndex) => (
-                            <div key={edu.id} className="p-3 bg-muted/40 rounded-lg space-y-2 relative border border-border/30">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Education {eduIndex + 1}</span>
-                                  {data.education.length > 1 && (
-                                    <div className="flex items-center ml-1">
-                                      <button type="button" onClick={() => moveEducation(eduIndex, "up")} disabled={eduIndex === 0} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronUp className="h-3 w-3" /></button>
-                                      <button type="button" onClick={() => moveEducation(eduIndex, "down")} disabled={eduIndex === data.education.length - 1} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronDown className="h-3 w-3" /></button>
-                                    </div>
-                                  )}
+                            <div key={edu.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedEduId === edu.id && "bg-muted/40")}
+                                onClick={() => setExpandedEduId(expandedEduId === edu.id ? null : edu.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedEduId === edu.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">
+                                  {edu.institution || edu.degree ? `${edu.degree || "Degree"}${edu.institution ? ` - ${edu.institution}` : ""}` : `Education ${eduIndex + 1}`}
+                                </span>
+                                {edu.graduation_date && <span className="text-[10px] text-muted-foreground shrink-0">{edu.graduation_date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {data.education.length > 1 && <>
+                                    <button type="button" onClick={() => moveEducation(eduIndex, "up")} disabled={eduIndex === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
+                                    <button type="button" onClick={() => moveEducation(eduIndex, "down")} disabled={eduIndex === data.education.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronDown className="h-3 w-3" /></button>
+                                  </>}
+                                  {data.education.length > 1 && <button type="button" onClick={() => removeEducation(edu.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
                                 </div>
-                                {data.education.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => removeEducation(edu.id)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>}
                               </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Institution</Label><Input placeholder="University of..." value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Degree</Label><Input placeholder="Master's" value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Field</Label><Input placeholder="Computer Science" value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Graduation</Label><Input placeholder="May 2023" value={edu.graduation_date} onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                              </div>
+                              {expandedEduId === edu.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Institution" value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Degree" value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Field" value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Graduation date" value={edu.graduation_date} onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
-                          <Button type="button" variant="outline" size="sm" onClick={addEducation} className="w-full gap-2 border-dashed"><Plus className="h-3 w-3" /> Add Education</Button>
+                          <button type="button" onClick={addEducation} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Education</button>
                         </div>
                       )}
+
+                      {/* ── Skills: compact badges with inline add ── */}
                       {section.id === "skills" && (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           {Object.entries(data.skills).map(([categoryKey, skills]) => (
-                            <div key={categoryKey} className="p-3 bg-muted/40 rounded-lg space-y-2 border border-border/30">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{SKILL_CATEGORY_LABELS[categoryKey] || categoryKey.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}</span>
-                                <Button type="button" variant="ghost" size="sm" onClick={() => { const s = { ...data.skills }; delete s[categoryKey]; setData((p) => ({ ...p, skills: s })); }} className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>
+                            <div key={categoryKey} className="space-y-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex-1">{SKILL_CATEGORY_LABELS[categoryKey] || categoryKey.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}</span>
+                                <button type="button" onClick={() => { const s = { ...data.skills }; delete s[categoryKey]; setData((p) => ({ ...p, skills: s })); }} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
                               </div>
-                              <div className="flex gap-2">
-                                <Input placeholder="Add skill..." value={currentSkillCategory === categoryKey ? skillInput : ""} onChange={(e) => { setCurrentSkillCategory(categoryKey); setSkillInput(e.target.value); }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkillToCategory(categoryKey, skillInput); setSkillInput(""); } }} className="bg-background h-7 text-sm" />
-                                <Button type="button" variant="outline" size="sm" onClick={() => { addSkillToCategory(categoryKey, skillInput); setSkillInput(""); }} className="h-7 text-xs">Add</Button>
+                              <div className="flex flex-wrap gap-1">
+                                {skills.map((skill) => <Badge key={skill} variant="secondary" className="text-[10px] h-5 gap-0.5 px-1.5">{skill}<button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)} className="hover:text-destructive ml-0.5"><X className="h-2 w-2" /></button></Badge>)}
+                                <Input placeholder="+ Add" value={currentSkillCategory === categoryKey ? skillInput : ""} onChange={(e) => { setCurrentSkillCategory(categoryKey); setSkillInput(e.target.value); }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkillToCategory(categoryKey, skillInput); setSkillInput(""); } }} className="bg-background h-5 text-[10px] w-20 min-w-0 px-1.5 border-dashed" />
                               </div>
-                              {skills.length > 0 && <div className="flex flex-wrap gap-1.5">{skills.map((skill) => <Badge key={skill} variant="secondary" className="text-xs gap-1 cursor-default">{skill}<button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)} className="hover:text-destructive"><X className="h-2.5 w-2.5" /></button></Badge>)}</div>}
                             </div>
                           ))}
-                          <div className="p-3 border-2 border-dashed border-muted-foreground/20 rounded-lg space-y-2">
-                            <span className="text-xs text-muted-foreground">Add New Skill Category</span>
-                            <div className="flex gap-2">
-                              <Input placeholder="e.g., Cloud Platforms" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="bg-background h-7 text-sm" onKeyDown={(e) => { if (e.key === "Enter" && newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} />
-                              <Button type="button" variant="outline" size="sm" onClick={() => { if (newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} className="h-7"><Plus className="h-3 w-3" /></Button>
-                            </div>
+                          <div className="flex gap-1.5 items-center">
+                            <Input placeholder="New category name..." value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="bg-background h-6 text-[10px] flex-1" onKeyDown={(e) => { if (e.key === "Enter" && newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} />
+                            <button type="button" onClick={() => { if (newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} className="text-xs text-muted-foreground hover:text-foreground"><Plus className="h-3 w-3" /></button>
                           </div>
-                          {Object.keys(data.skills).length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No skills yet. Upload a resume or add categories above.</p>}
+                          {Object.keys(data.skills).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No skills yet. Upload a resume or add above.</p>}
                         </div>
                       )}
+
+                      {/* ── Projects: collapsed rows ── */}
                       {section.id === "projects" && (
-                        <div className="space-y-4">
+                        <div className="space-y-1">
                           {data.projects.map((project, index) => (
-                            <div key={project.id} className="p-3 bg-muted/40 rounded-lg space-y-3 border border-border/30">
-                              <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Project {index + 1}</span>
-                                  {data.projects.length > 1 && (
-                                    <div className="flex items-center ml-1">
-                                      <button type="button" onClick={() => moveProject(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronUp className="h-3 w-3" /></button>
-                                      <button type="button" onClick={() => moveProject(index, "down")} disabled={index === data.projects.length - 1} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"><ChevronDown className="h-3 w-3" /></button>
-                                    </div>
-                                  )}
-                                </div>
-                                <Button type="button" variant="ghost" size="icon" onClick={() => removeProject(index)} className="h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>
-                              </div>
-                              <div className="grid gap-3">
-                                <div><Label className="text-xs text-muted-foreground">Project Name</Label><Input value={project.title} onChange={(e) => updateProject(index, { title: e.target.value })} placeholder="e.g., AI-Powered Chatbot" className="h-8 text-sm" /></div>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div><Label className="text-xs text-muted-foreground">Organization</Label><Input value={project.organization} onChange={(e) => updateProject(index, { organization: e.target.value })} placeholder="e.g., MIT" className="h-8 text-sm" /></div>
-                                  <div><Label className="text-xs text-muted-foreground">Date</Label><Input value={project.date} onChange={(e) => updateProject(index, { date: e.target.value })} placeholder="May 2024" className="h-8 text-sm" /></div>
-                                </div>
-                                <div>
-                                  <div className="flex justify-between items-center mb-1"><Label className="text-xs text-muted-foreground">Key Points</Label><Button type="button" variant="ghost" size="sm" onClick={() => updateProject(index, { bullets: [...project.bullets, ""] })} className="h-5 text-[10px] gap-1"><Plus className="h-2.5 w-2.5" /> Add</Button></div>
-                                  <div className="space-y-2">{project.bullets.map((bullet, bulletIdx) => (<div key={bulletIdx} className="flex gap-2 items-start"><span className="text-muted-foreground text-xs mt-2.5">&#8226;</span><Textarea value={bullet} onChange={(e) => { const b = [...project.bullets]; b[bulletIdx] = e.target.value; updateProject(index, { bullets: b }); }} placeholder="Describe what you built..." className="min-h-[50px] text-sm" /><Button type="button" variant="ghost" size="sm" onClick={() => updateProject(index, { bullets: project.bullets.filter((_, i) => i !== bulletIdx) })} className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"><X className="h-3 w-3" /></Button></div>))}</div>
+                            <div key={project.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedProjIdx === index && "bg-muted/40")}
+                                onClick={() => setExpandedProjIdx(expandedProjIdx === index ? null : index)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedProjIdx === index && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">{project.title || `Project ${index + 1}`}</span>
+                                {project.date && <span className="text-[10px] text-muted-foreground shrink-0">{project.date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {data.projects.length > 1 && <>
+                                    <button type="button" onClick={() => moveProject(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
+                                    <button type="button" onClick={() => moveProject(index, "down")} disabled={index === data.projects.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronDown className="h-3 w-3" /></button>
+                                  </>}
+                                  <button type="button" onClick={() => removeProject(index)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
                               </div>
+                              {expandedProjIdx === index && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <Input placeholder="Project Name" value={project.title} onChange={(e) => updateProject(index, { title: e.target.value })} className="bg-background h-7 text-xs" />
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <Input placeholder="Organization" value={project.organization} onChange={(e) => updateProject(index, { organization: e.target.value })} className="bg-background h-7 text-xs" />
+                                    <Input placeholder="Date" value={project.date} onChange={(e) => updateProject(index, { date: e.target.value })} className="bg-background h-7 text-xs" />
+                                  </div>
+                                  <Textarea placeholder={"Key points (one per line)\n- Built a chatbot...\n- Implemented ML pipeline..."} value={project.bullets.join("\n")} onChange={(e) => updateProject(index, { bullets: e.target.value.split("\n") })} className="bg-background text-xs min-h-[50px] resize-y" />
+                                </div>
+                              )}
                             </div>
                           ))}
-                          <Button type="button" variant="outline" size="sm" onClick={addProject} className="w-full gap-2 border-dashed"><Plus className="h-3 w-3" /> Add Project</Button>
+                          <button type="button" onClick={addProject} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Project</button>
                         </div>
                       )}
+
+                      {/* ── Certifications: collapsed rows ── */}
                       {section.id === "certifications" && (
-                        <div className="space-y-3">
+                        <div className="space-y-1">
                           {data.certifications.map((cert) => (
-                            <div key={cert.id} className="p-3 bg-muted/40 rounded-lg space-y-2 relative border border-border/30">
-                              <Button type="button" variant="ghost" size="icon" onClick={() => removeCertification(cert.id)} className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></Button>
-                              <div className="grid grid-cols-3 gap-2">
-                                <div className="space-y-1 col-span-2"><Label className="text-xs text-muted-foreground">Certification Name</Label><Input placeholder="AWS Certified..." value={cert.name} onChange={(e) => updateCertification(cert.id, "name", e.target.value)} className="bg-background h-8 text-sm" /></div>
-                                <div className="space-y-1"><Label className="text-xs text-muted-foreground">Date</Label><Input placeholder="Sep 2024" value={cert.date} onChange={(e) => updateCertification(cert.id, "date", e.target.value)} className="bg-background h-8 text-sm" /></div>
+                            <div key={cert.id} className="rounded border border-border/40 overflow-hidden">
+                              <div
+                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedCertId === cert.id && "bg-muted/40")}
+                                onClick={() => setExpandedCertId(expandedCertId === cert.id ? null : cert.id)}
+                              >
+                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedCertId === cert.id && "rotate-180")} />
+                                <span className="text-xs font-medium truncate flex-1">{cert.name || "New Certification"}</span>
+                                {cert.date && <span className="text-[10px] text-muted-foreground shrink-0">{cert.date}</span>}
+                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" onClick={() => removeCertification(cert.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                </div>
                               </div>
-                              <div className="space-y-1"><Label className="text-xs text-muted-foreground">Issuer</Label><Input placeholder="Amazon Web Services" value={cert.issuer} onChange={(e) => updateCertification(cert.id, "issuer", e.target.value)} className="bg-background h-8 text-sm" /></div>
+                              {expandedCertId === cert.id && (
+                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                  <div className="grid grid-cols-3 gap-1.5">
+                                    <Input placeholder="Certification Name" value={cert.name} onChange={(e) => updateCertification(cert.id, "name", e.target.value)} className="bg-background h-7 text-xs col-span-2" />
+                                    <Input placeholder="Date" value={cert.date} onChange={(e) => updateCertification(cert.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
+                                  </div>
+                                  <Input placeholder="Issuer (e.g., AWS)" value={cert.issuer} onChange={(e) => updateCertification(cert.id, "issuer", e.target.value)} className="bg-background h-7 text-xs" />
+                                </div>
+                              )}
                             </div>
                           ))}
-                          {data.certifications.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No certifications added yet</p>}
-                          <Button type="button" variant="outline" size="sm" onClick={addCertification} className="w-full gap-2 border-dashed"><Plus className="h-3 w-3" /> Add Certification</Button>
+                          {data.certifications.length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No certifications added yet</p>}
+                          <button type="button" onClick={addCertification} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Certification</button>
                         </div>
                       )}
                     </AccordionContent>
