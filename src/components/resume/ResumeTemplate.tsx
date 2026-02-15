@@ -66,6 +66,15 @@ const rightMetaStyle: React.CSSProperties = {
   marginLeft: "8pt",
 };
 
+// Hyperlinked title style — looks identical to normal bold text for ATS/print,
+// but is a real <a> tag so PDF/screen readers can follow the link
+const linkedTitleStyle: React.CSSProperties = {
+  color: "#000",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: "10pt",
+};
+
 // Page height constant for page break indicators (matches PDF: 11in letter)
 const PAGE_HEIGHT_IN = 11;
 
@@ -301,7 +310,18 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
             {validCerts.map((cert) => (
               <div key={cert.id} style={{ ...flexRowStyle, marginBottom: SPACING.compactEntryMargin }}>
                 <span style={{ fontSize: "10pt" }}>
-                  <strong>{cert.name}</strong>
+                  {cert.url ? (
+                    <a
+                      href={cert.url.startsWith("http") ? cert.url : `https://${cert.url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={linkedTitleStyle}
+                    >
+                      {cert.name}
+                    </a>
+                  ) : (
+                    <strong>{cert.name}</strong>
+                  )}
                   {cert.issuer && <span> — {cert.issuer}</span>}
                 </span>
                 <span style={rightMetaStyle}>{cert.date}</span>
@@ -320,7 +340,18 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                 style={{ marginBottom: idx < validProjects.length - 1 ? SPACING.entryMarginBottom : 0 }}
               >
                 <div style={flexRowStyle}>
-                  <span style={{ fontWeight: 700, fontSize: "10pt" }}>{project.title}</span>
+                  {project.url ? (
+                    <a
+                      href={project.url.startsWith("http") ? project.url : `https://${project.url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={linkedTitleStyle}
+                    >
+                      {project.title}
+                    </a>
+                  ) : (
+                    <span style={{ fontWeight: 700, fontSize: "10pt" }}>{project.title}</span>
+                  )}
                   {(project.organization || project.date) && (
                     <span style={{ ...rightMetaStyle, fontStyle: "italic" }}>
                       {project.organization && `${project.organization} — `}
@@ -395,7 +426,18 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
             {validAwards.map((award) => (
               <div key={award.id} style={{ ...flexRowStyle, marginBottom: SPACING.compactEntryMargin }}>
                 <span style={{ fontSize: "10pt" }}>
-                  <strong>{award.title}</strong>
+                  {award.url ? (
+                    <a
+                      href={award.url.startsWith("http") ? award.url : `https://${award.url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={linkedTitleStyle}
+                    >
+                      {award.title}
+                    </a>
+                  ) : (
+                    <strong>{award.title}</strong>
+                  )}
                   {award.issuer && <span> — {award.issuer}</span>}
                 </span>
                 <span style={rightMetaStyle}>{award.date}</span>
@@ -415,7 +457,18 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                 .map((entry, idx, arr) => (
                   <div key={entry.id} style={{ marginBottom: idx < arr.length - 1 ? SPACING.entryMarginBottom : 0 }}>
                     <div style={flexRowStyle}>
-                      <span style={{ fontWeight: 700, fontSize: "10pt" }}>{entry.title}</span>
+                      {entry.url ? (
+                        <a
+                          href={entry.url.startsWith("http") ? entry.url : `https://${entry.url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={linkedTitleStyle}
+                        >
+                          {entry.title}
+                        </a>
+                      ) : (
+                        <span style={{ fontWeight: 700, fontSize: "10pt" }}>{entry.title}</span>
+                      )}
                       {entry.date && <span style={rightMetaStyle}>{entry.date}</span>}
                     </div>
                     {entry.subtitle && (
