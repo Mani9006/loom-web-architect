@@ -674,10 +674,10 @@ export default function ResumeBuilder() {
   const handleDownloadWord = () => exportToWord(data, fileName);
   const handlePrintView = () => { localStorage.setItem("printResumeData", JSON.stringify(data)); window.open("/print-resume", "_blank"); };
 
-  if (!isLoaded) return <div className="flex h-[calc(100vh-68px)] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  if (!isLoaded) return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   return (
-    <div className="flex h-[calc(100vh-68px)] w-full overflow-hidden bg-background">
+    <div className="flex h-full w-full overflow-hidden bg-background">
       {/* ─── LEFT PANEL: Accordion editor ─────────────────────────────── */}
       <div className={cn("w-full lg:w-[38%] lg:min-w-[340px] lg:max-w-[440px] flex flex-col border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card">
