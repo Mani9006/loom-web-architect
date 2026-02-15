@@ -29,8 +29,8 @@ export function useResumeExport() {
           orientation: "portrait" as const,
         },
         pagebreak: {
-          mode: ["avoid-all", "css", "legacy"] as string[],
-          avoid: [".pdf-no-break", "li", "tr"],
+          mode: ["css", "legacy"] as string[],
+          avoid: [".pdf-no-break"],
         },
       };
 

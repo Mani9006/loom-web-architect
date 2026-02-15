@@ -16,8 +16,6 @@ const sectionHeadingStyle: React.CSSProperties = {
   paddingBottom: "2pt",
   marginTop: "8pt",
   marginBottom: "5pt",
-  pageBreakAfter: "avoid",
-  breakAfter: "avoid",
 };
 
 // Prevent page-break inside individual entries (each experience block, project, etc.)
@@ -61,14 +59,11 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
       >
         {/* ===== HEADER ===== */}
         <header
-          className="pdf-no-break"
           style={{
             textAlign: "center",
             paddingBottom: "5pt",
             borderBottom: "2px solid #000",
             marginBottom: "4pt",
-            pageBreakInside: "avoid",
-            breakInside: "avoid",
           }}
         >
           <h1 style={{ fontSize: "18pt", fontWeight: 700, letterSpacing: "0.03em", margin: 0 }}>
@@ -124,7 +119,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
 
         {/* ===== SUMMARY ===== */}
         {data.summary && (
-          <section className="pdf-no-break" style={{ marginBottom: "4pt", pageBreakInside: "avoid", breakInside: "avoid" }}>
+          <section style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>Summary</h2>
             <p style={{ textAlign: "justify", lineHeight: "1.35", margin: 0, fontSize: "10pt" }}>{data.summary}</p>
           </section>
@@ -162,7 +157,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
 
         {/* ===== EDUCATION ===== */}
         {validEducation.length > 0 && (
-          <section className="pdf-no-break" style={{ marginBottom: "4pt", pageBreakInside: "avoid", breakInside: "avoid" }}>
+          <section style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>Education</h2>
             {validEducation.map((edu) => (
               <div key={edu.id} style={{ marginBottom: "3pt" }}>
@@ -186,7 +181,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
 
         {/* ===== SKILLS ===== */}
         {skillCategories.length > 0 && (
-          <section className="pdf-no-break" style={{ marginBottom: "4pt", pageBreakInside: "avoid", breakInside: "avoid" }}>
+          <section style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>Technical Skills</h2>
             {skillCategories.map((sc, idx) => (
               <p key={idx} style={{ margin: "0 0 1pt 0", fontSize: "10pt", lineHeight: "1.3" }}>
@@ -198,7 +193,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
 
         {/* ===== CERTIFICATIONS ===== */}
         {validCerts.length > 0 && (
-          <section className="pdf-no-break" style={{ marginBottom: "4pt", pageBreakInside: "avoid", breakInside: "avoid" }}>
+          <section style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>Certifications</h2>
             {validCerts.map((cert) => (
               <div key={cert.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "2pt" }}>
@@ -240,7 +235,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
 
         {/* ===== LANGUAGES ===== */}
         {validLanguages.length > 0 && (
-          <section className="pdf-no-break" style={{ marginBottom: "4pt", pageBreakInside: "avoid", breakInside: "avoid" }}>
+          <section style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>Languages</h2>
             <p style={{ margin: 0, fontSize: "10pt" }}>
               {validLanguages.map((l, idx) => (
@@ -281,7 +276,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
 
         {/* ===== AWARDS & PUBLICATIONS ===== */}
         {validAwards.length > 0 && (
-          <section className="pdf-no-break" style={{ marginBottom: "4pt", pageBreakInside: "avoid", breakInside: "avoid" }}>
+          <section style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>Awards & Publications</h2>
             {validAwards.map((award) => (
               <div key={award.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "2pt" }}>
