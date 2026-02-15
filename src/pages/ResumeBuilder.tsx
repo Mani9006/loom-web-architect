@@ -72,6 +72,7 @@ import {
   Pencil,
   Trash2,
   LayoutList,
+  Linkedin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -253,6 +254,9 @@ export default function ResumeBuilder() {
   const [expandedAwardId, setExpandedAwardId] = useState<string | null>(null);
   const [showATSDetails, setShowATSDetails] = useState(false);
   const [aiFixingSection, setAiFixingSection] = useState<string | null>(null);
+  const [showLinkedInImport, setShowLinkedInImport] = useState(false);
+  const [linkedInText, setLinkedInText] = useState("");
+  const [isParsingLinkedIn, setIsParsingLinkedIn] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // ── ATS Score (live, memoized) ──────────────────────────────────────────
@@ -608,6 +612,39 @@ export default function ResumeBuilder() {
   };
   const resetResume = () => { setData(createEmptyResumeJSON()); setHiddenSections(new Set()); setActiveSections(DEFAULT_SECTIONS); setCurrentResumeId(null); toast({ title: "Resume cleared" }); };
 
+  // ── LinkedIn import ─────────────────────────────────────────────────
+  const handleLinkedInImport = async () => {
+    if (!linkedInText.trim()) { toast({ title: "Paste your LinkedIn profile content", variant: "destructive" }); return; }
+    setIsParsingLinkedIn(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session) throw new Error("Not authenticated");
+      const fullContent = await streamAIText(session.session.access_token, [
+        { role: "system", content: `You are an expert at parsing LinkedIn profile data into a structured resume JSON. Extract ALL information from the provided LinkedIn profile text.\nOUTPUT: Return ONLY valid JSON.\nSCHEMA: {"header":{"name":"","title":"","location":"","email":"","phone":"","linkedin":""},"summary":"","experience":[{"role":"","company_or_client":"","start_date":"","end_date":"","location":"","bullets":[]}],"education":[{"degree":"","field":"","institution":"","gpa":"","graduation_date":"","location":""}],"certifications":[{"name":"","issuer":"","date":""}],"skills":{},"projects":[{"title":"","organization":"","date":"","bullets":[]}],"languages":[{"language":"","proficiency":""}]}\nRULES:\n- Extract EVERY role, education entry, skill, certification, and project\n- For experience bullets, convert LinkedIn descriptions into achievement-oriented bullet points starting with action verbs\n- Group skills into logical categories using lowercase_snake_case keys (e.g. programming_languages, frameworks, cloud_platforms)\n- If a LinkedIn URL is present, include it in header.linkedin\n- Use "" for missing fields, never null\n- Return ONLY JSON, no markdown or explanation` },
+        { role: "user", content: `Parse this LinkedIn profile into resume JSON:\n\n${linkedInText}` },
+      ], "resume_parse");
+
+      const parsedData = parseAIResponse(fullContent);
+      if (!parsedData) throw new Error("Could not extract structured data from LinkedIn profile.");
+
+      setData({
+        header: { name: parsedData.header?.name || data.header.name, title: parsedData.header?.title || data.header.title, email: parsedData.header?.email || data.header.email, phone: parsedData.header?.phone || data.header.phone, location: parsedData.header?.location || data.header.location, linkedin: parsedData.header?.linkedin || data.header.linkedin },
+        summary: parsedData.summary || data.summary,
+        experience: parsedData.experience?.length > 0 ? parsedData.experience.map((e: any) => ({ id: crypto.randomUUID(), role: e.role || "", company_or_client: e.company_or_client || "", start_date: e.start_date || "", end_date: e.end_date || "", location: e.location || "", bullets: Array.isArray(e.bullets) ? e.bullets : formatBullets(e.bullets || "") })) : data.experience,
+        education: parsedData.education?.length > 0 ? parsedData.education.map((e: any) => ({ id: crypto.randomUUID(), degree: e.degree || "", field: e.field || "", institution: e.institution || "", gpa: e.gpa || "", graduation_date: e.graduation_date || "", location: e.location || "" })) : data.education,
+        certifications: parsedData.certifications?.length > 0 ? parsedData.certifications.map((c: any) => ({ id: crypto.randomUUID(), name: c.name || "", issuer: c.issuer || "", date: c.date || "" })) : data.certifications,
+        skills: parsedData.skills && typeof parsedData.skills === "object" ? { ...data.skills, ...parsedData.skills } : data.skills,
+        projects: parsedData.projects?.length > 0 ? parsedData.projects.map((p: any) => ({ id: crypto.randomUUID(), title: p.title || "", organization: p.organization || "", date: p.date || "", bullets: Array.isArray(p.bullets) ? p.bullets : [] })) : data.projects,
+        languages: parsedData.languages?.length > 0 ? parsedData.languages.map((l: any) => ({ id: crypto.randomUUID(), language: l.language || "", proficiency: l.proficiency || "" })) : data.languages,
+      });
+      setShowLinkedInImport(false);
+      setLinkedInText("");
+      toast({ title: "LinkedIn profile imported!", description: "Your resume has been populated from your LinkedIn data." });
+    } catch (error) {
+      toast({ title: "LinkedIn import failed", description: error instanceof Error ? error.message : "Failed to parse LinkedIn data", variant: "destructive" });
+    } finally { setIsParsingLinkedIn(false); }
+  };
+
   // ── AI Fix Section Issues ─────────────────────────────────────────────
   const aiFixSection = async (sectionName: string) => {
     const issues = getIssuesForSection(sectionName);
@@ -685,7 +722,44 @@ export default function ResumeBuilder() {
           <h1 className="text-sm font-bold flex-1">Resume Builder</h1>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             {isSaving ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving...</> : lastSaved ? <><Cloud className="h-3 w-3 text-green-500" /> Saved</> : <><CloudOff className="h-3 w-3" /> Not saved</>}
-          </div>
+        </div>
+
+        {/* LinkedIn Import */}
+        <div className="px-4 py-2.5 border-b border-border">
+          <button
+            type="button"
+            onClick={() => setShowLinkedInImport(!showLinkedInImport)}
+            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium bg-[#0077B5]/10 hover:bg-[#0077B5]/15 border border-[#0077B5]/20 text-[#0077B5] transition-colors"
+          >
+            <Linkedin className="h-4 w-4" />
+            <span className="flex-1 text-left">Import from LinkedIn</span>
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showLinkedInImport && "rotate-180")} />
+          </button>
+          {showLinkedInImport && (
+            <div className="mt-2 p-3 bg-muted/40 rounded-lg border border-border/30 space-y-3">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  Copy your LinkedIn profile page content (Ctrl+A → Ctrl+C on your LinkedIn profile) and paste it below. AI will extract your experience, education, skills, and more.
+                </p>
+              </div>
+              <Textarea
+                placeholder="Paste your LinkedIn profile content here...&#10;&#10;Tip: Visit your LinkedIn profile, select all text (Ctrl+A), copy (Ctrl+C), then paste here."
+                value={linkedInText}
+                onChange={(e) => setLinkedInText(e.target.value)}
+                className="bg-background text-sm min-h-[120px] resize-y"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleLinkedInImport}
+                disabled={isParsingLinkedIn || !linkedInText.trim()}
+                className="w-full gap-2 bg-[#0077B5] hover:bg-[#006097] text-white"
+              >
+                {isParsingLinkedIn ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> AI is parsing your LinkedIn profile...</> : <><Linkedin className="h-3.5 w-3.5" /> Import LinkedIn Profile</>}
+              </Button>
+            </div>
+          )}
+        </div>
           <Button variant="outline" size="sm" onClick={() => setMobileView("preview")} className="h-7 text-xs lg:hidden">Preview</Button>
           <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={resetResume} className="h-8 w-8 shrink-0 text-muted-foreground"><RotateCcw className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Reset all fields</TooltipContent></Tooltip>
         </div>
