@@ -9,24 +9,49 @@ export function useResumeExport() {
     setIsExporting(true);
     try {
       const html2pdf = (await import("html2pdf.js")).default;
-      
+
+      // Clone element so we can adjust styles for PDF without affecting the live preview
+      const clone = resumeElement.cloneNode(true) as HTMLElement;
+
+      // Remove the template's own padding — html2pdf margin handles page margins instead.
+      // This avoids double-margins (template padding + html2pdf margin).
+      clone.style.padding = "0";
+      clone.style.width = "7.3in"; // 8.5in - 0.6in*2 = content width inside margins
+      clone.style.minHeight = "auto";
+      clone.style.backgroundColor = "#fff";
+      clone.style.boxSizing = "border-box";
+
+      // Place offscreen so html2canvas can capture it
+      clone.style.position = "absolute";
+      clone.style.left = "-9999px";
+      clone.style.top = "0";
+      document.body.appendChild(clone);
+
       const opt = {
-        margin: 0,
+        margin: [0.5, 0.6, 0.5, 0.6], // top, right, bottom, left in inches
         filename: `${fileName}.pdf`,
-        image: { type: "jpeg" as const, quality: 0.98 },
-        html2canvas: { 
+        image: { type: "png" as const, quality: 1 },
+        html2canvas: {
           scale: 2,
           useCORS: true,
           letterRendering: true,
+          backgroundColor: "#ffffff",
         },
-        jsPDF: { 
-          unit: "in" as const, 
-          format: "letter" as const, 
+        jsPDF: {
+          unit: "in" as const,
+          format: "letter" as const,
           orientation: "portrait" as const,
+        },
+        pagebreak: {
+          mode: ["avoid-all", "css", "legacy"] as string[],
+          avoid: [".pdf-no-break", "li", "tr"],
         },
       };
 
-      await html2pdf().set(opt).from(resumeElement).save();
+      await html2pdf().set(opt).from(clone).save();
+
+      // Clean up
+      document.body.removeChild(clone);
       toast.success("Resume exported as PDF!");
     } catch (error) {
       console.error("PDF export error:", error);
