@@ -18,11 +18,8 @@ const sectionHeadingStyle: React.CSSProperties = {
   marginBottom: "5pt",
 };
 
-// Prevent page-break inside individual entries (each experience block, project, etc.)
-const entryNoBreak: React.CSSProperties = {
-  pageBreakInside: "avoid",
-  breakInside: "avoid",
-};
+// No page-break-inside:avoid — let html2pdf split content naturally across pages
+// to avoid large whitespace gaps at the bottom of pages.
 
 export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
   ({ data, className }, ref) => {
@@ -130,7 +127,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
           <section style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>Professional Experience</h2>
             {validExperience.map((exp) => (
-              <div key={exp.id} className="pdf-no-break" style={{ ...entryNoBreak, marginBottom: "7pt" }}>
+              <div key={exp.id} style={{ marginBottom: "7pt" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontWeight: 700, fontSize: "10pt" }}>{exp.role}</span>
                   <span style={{ fontSize: "9.5pt", flexShrink: 0, whiteSpace: "nowrap", marginLeft: "8pt" }}>
@@ -212,7 +209,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
           <section style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>Projects</h2>
             {validProjects.map((project) => (
-              <div key={project.id} className="pdf-no-break" style={{ ...entryNoBreak, marginBottom: "5pt" }}>
+              <div key={project.id} style={{ marginBottom: "5pt" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontWeight: 700, fontSize: "10pt" }}>{project.title}</span>
                   {(project.organization || project.date) && (
@@ -254,7 +251,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
           <section style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>Volunteer Experience</h2>
             {validVolunteer.map((vol) => (
-              <div key={vol.id} className="pdf-no-break" style={{ ...entryNoBreak, marginBottom: "5pt" }}>
+              <div key={vol.id} style={{ marginBottom: "5pt" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontWeight: 700, fontSize: "10pt" }}>{vol.role || "Volunteer"}</span>
                   {vol.date && (
@@ -295,7 +292,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(
           <section key={cs.id} style={{ marginBottom: "4pt" }}>
             <h2 style={sectionHeadingStyle}>{cs.name}</h2>
             {cs.entries.filter((e) => e.title).map((entry) => (
-              <div key={entry.id} className="pdf-no-break" style={{ ...entryNoBreak, marginBottom: "5pt" }}>
+              <div key={entry.id} style={{ marginBottom: "5pt" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontWeight: 700, fontSize: "10pt" }}>{entry.title}</span>
                   {entry.date && (
