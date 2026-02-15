@@ -384,20 +384,18 @@ function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
       className="group relative rounded-xl border border-border bg-card overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all cursor-pointer"
       onClick={onClick}
     >
-      {/* Thumbnail — zoomed to show top portion of resume */}
-      <div className="relative h-52 overflow-hidden bg-white border-b border-border">
+      {/* Thumbnail — zoomed to show top portion of resume, centered */}
+      <div className="relative h-52 overflow-hidden bg-white border-b border-border flex items-start justify-center">
         <div
-          className="absolute inset-0 pointer-events-none select-none"
+          className="pointer-events-none select-none shrink-0"
           style={{
-            transform: "scale(0.42)",
+            width: "816px",
+            transform: "scale(0.48)",
             transformOrigin: "top center",
-            width: "238%",
-            left: "-69%",
+            marginTop: "-4px",
           }}
         >
-          <div style={{ width: "8.5in" }}>
-            <ResumeTemplate data={resumeData} />
-          </div>
+          <ResumeTemplate data={resumeData} />
         </div>
 
         {/* ATS Score Badge */}
