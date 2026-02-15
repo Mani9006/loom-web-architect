@@ -28,7 +28,7 @@ export default function ATSCheckerPage() {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
-        body: JSON.stringify({ messages: [{ role: "user", content: userContent }], mode: "ats-check" }),
+        body: JSON.stringify({ messages: [{ role: "user", content: userContent }], mode: "ats" }),
       });
 
       if (!response.ok) throw new Error("Failed");
@@ -84,7 +84,7 @@ export default function ATSCheckerPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
         body: JSON.stringify({
           messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
-          mode: "ats-check",
+          mode: "ats",
         }),
       });
 

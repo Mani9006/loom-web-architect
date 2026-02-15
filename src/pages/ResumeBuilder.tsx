@@ -315,7 +315,8 @@ export default function ResumeBuilder() {
         personal_info: resumeJson.header as any, summary: resumeJson.summary,
         experience: resumeJson.experience as any, education: resumeJson.education as any,
         skills: resumeJson.skills as any, projects: resumeJson.projects as any,
-        certifications: resumeJson.certifications as any, template: "professional",
+        certifications: resumeJson.certifications as any, languages: resumeJson.languages as any,
+        template: "professional",
       };
       if (currentResumeId) {
         await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
