@@ -233,7 +233,13 @@ serve(async (req) => {
     const userQuery = latestUserMessage?.content || "";
 
     // Select appropriate system prompt based on mode
-    const chatMode = mode || "general";
+    // Normalize mode aliases
+    const modeAliases: Record<string, string> = {
+      "cover-letter": "cover_letter",
+      "ats-check": "ats",
+      "interview-prep": "interview",
+    };
+    const chatMode = modeAliases[mode] || mode || "general";
 
     // Only use memory for specific career-focused modes
     const memoryEnabledModes = ["interview", "job_search", "resume"];
