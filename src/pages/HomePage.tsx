@@ -27,11 +27,11 @@ const fadeUp = {
 };
 
 const quickActions = [
-  { label: "Resume Builder", icon: FileText, path: "/resume-builder", desc: "AI-optimized resumes", gradient: "from-primary/10 to-accent/5" },
-  { label: "Job Search", icon: Search, path: "/jobs", desc: "AI-matched roles", gradient: "from-accent/10 to-primary/5" },
+  { label: "Resume Builder", icon: FileText, path: "/chat?mode=resume-form", desc: "AI-optimized resumes", gradient: "from-primary/10 to-accent/5" },
+  { label: "Job Search", icon: Search, path: "/chat?mode=job-search", desc: "AI-matched roles", gradient: "from-accent/10 to-primary/5" },
   { label: "Job Tracker", icon: Columns3, path: "/job-tracker", desc: "Kanban pipeline", gradient: "from-primary/10 to-accent/5" },
-  { label: "Mock Interview", icon: Mic, path: "/mock-interviews", desc: "Voice practice", gradient: "from-accent/10 to-primary/5" },
-  { label: "Cover Letter", icon: Mail, path: "/cover-letters", desc: "Tailored letters", gradient: "from-primary/10 to-accent/5" },
+  { label: "Mock Interview", icon: Mic, path: "/chat?mode=interview-prep", desc: "Voice practice", gradient: "from-accent/10 to-primary/5" },
+  { label: "Cover Letter", icon: Mail, path: "/chat?mode=cover-letter", desc: "Tailored letters", gradient: "from-primary/10 to-accent/5" },
   { label: "AI Toolbox", icon: Wand2, path: "/ai-toolbox", desc: "6 career tools", gradient: "from-accent/10 to-primary/5" },
 ];
 
@@ -108,7 +108,7 @@ export default function HomePage() {
               <Button onClick={() => navigate("/jobs")} className="gap-2 rounded-2xl shadow-lg shadow-primary/15 h-11">
                 <Zap className="w-4 h-4" /> Find Jobs
               </Button>
-              <Button variant="outline" onClick={() => navigate("/resume-builder")} className="gap-2 rounded-2xl h-11 glass-card border-border/50">
+              <Button variant="outline" onClick={() => navigate("/chat?mode=resume-form")} className="gap-2 rounded-2xl h-11 glass-card border-border/50">
                 <FileText className="w-4 h-4" /> Build Resume
               </Button>
             </div>

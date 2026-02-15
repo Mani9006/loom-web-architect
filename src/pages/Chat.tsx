@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User, Session } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
@@ -53,6 +53,7 @@ export default function Chat() {
   const [selectedModel, setSelectedModel] = useState("gemini-flash");
   const navigate = useNavigate();
   const { conversationId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
 
   // Resume parser for live preview updates
@@ -108,21 +109,21 @@ export default function Chat() {
   const userInitializedRef = useRef<string | null>(null);
   
   useEffect(() => {
-    // Only reset state when switching to a different user or on initial load
-    // Don't reset on token refresh (same user.id)
     if (conversationId && user) {
       loadConversation(conversationId);
       setChatMode("resume-chat");
     } else if (!conversationId) {
-      // Only reset to welcome if this is a NEW user or we haven't initialized yet
-      if (user && userInitializedRef.current !== user.id) {
+      // Check for mode query param
+      const modeParam = searchParams.get("mode") as ChatMode | null;
+      const validModes: ChatMode[] = ["resume-form", "resume-chat", "ats-check", "job-search", "cover-letter", "interview-prep", "general"];
+      
+      if (modeParam && validModes.includes(modeParam)) {
+        setChatMode(modeParam);
+        // Clear the query param so it doesn't persist on refresh
+        setSearchParams({}, { replace: true });
+      } else if (user && userInitializedRef.current !== user.id) {
         userInitializedRef.current = user.id;
-        // Don't reset if already in a mode (prevents tab-switch reset)
-        if (chatMode === "welcome") {
-          // Keep welcome state, don't reset
-        }
       } else if (!user) {
-        // No user, reset everything
         setCurrentConversation(null);
         setChatMessages([]);
         setGeneralMessages([]);
@@ -132,7 +133,7 @@ export default function Chat() {
         userInitializedRef.current = null;
       }
     }
-  }, [conversationId, user?.id]); // Only depend on user.id, not the whole user object
+  }, [conversationId, user?.id, searchParams]);
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -1689,25 +1690,8 @@ ${experienceSummary}
   const displayName = profile?.full_name || profile?.email?.split("@")[0] || "there";
 
   return (
-    <SidebarProvider>
-      <div className="flex h-full w-full overflow-hidden bg-background">
-        <ChatSidebar
-          conversations={conversations}
-          currentConversationId={currentConversation?.id}
-          folders={folders}
-          onNewChat={handleNewChat}
-          onSelectConversation={(id) => navigate(`/c/${id}`)}
-          onDeleteConversation={handleDeleteConversation}
-          onRenameConversation={handleRenameConversation}
-          onCreateFolder={handleCreateFolder}
-          onDeleteFolder={handleDeleteFolder}
-          onMoveToFolder={handleMoveToFolder}
-          onClearAllConversations={handleClearAllConversations}
-        />
-
-        <div className="flex-1 flex flex-col min-w-0">
-
-          <main className="flex-1 flex overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden">
+      <main className="flex-1 flex overflow-hidden">
             {/* Welcome / General Chat Mode */}
             {(chatMode === "welcome" || chatMode === "general") && (
               <div className="flex-1">
@@ -1835,9 +1819,7 @@ ${experienceSummary}
                 </div>
               </>
             )}
-          </main>
-        </div>
-      </div>
-    </SidebarProvider>
+      </main>
+    </div>
   );
 }
