@@ -20,8 +20,12 @@ export default function ResetPassword() {
   const { toast } = useToast();
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") { /* ready */ }
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        /* ready */
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -46,7 +50,7 @@ export default function ResetPassword() {
       } else {
         setSuccess(true);
         toast({ title: "Password updated", description: "Your password has been successfully reset." });
-        setTimeout(() => navigate("/chat"), 2000);
+        setTimeout(() => navigate("/home"), 2000);
       }
     } catch {
       toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" });
@@ -77,7 +81,9 @@ export default function ResetPassword() {
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold">CareerPrep<span className="text-primary">.ai</span></span>
+            <span className="text-xl font-bold">
+              CareerPrep<span className="text-primary">.ai</span>
+            </span>
           </div>
           <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
             <ShieldCheck className="w-7 h-7 text-primary" />
@@ -96,7 +102,10 @@ export default function ResetPassword() {
                 type="password"
                 placeholder="••••••••"
                 value={password}
-                onChange={(e) => { setPassword(e.target.value); setErrors((p) => ({ ...p, password: undefined })); }}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setErrors((p) => ({ ...p, password: undefined }));
+                }}
                 className="pl-10 h-12"
               />
             </div>
@@ -112,7 +121,10 @@ export default function ResetPassword() {
                 type="password"
                 placeholder="••••••••"
                 value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setErrors((p) => ({ ...p, confirm: undefined })); }}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setErrors((p) => ({ ...p, confirm: undefined }));
+                }}
                 className="pl-10 h-12"
               />
             </div>
