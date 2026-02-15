@@ -199,6 +199,7 @@ export type Database = {
           location: string | null
           onboarding_completed: boolean
           phone: string | null
+          resume_json: Json | null
           target_role: string | null
           updated_at: string
           user_id: string
@@ -213,6 +214,7 @@ export type Database = {
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
+          resume_json?: Json | null
           target_role?: string | null
           updated_at?: string
           user_id: string
@@ -227,6 +229,7 @@ export type Database = {
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
+          resume_json?: Json | null
           target_role?: string | null
           updated_at?: string
           user_id?: string
