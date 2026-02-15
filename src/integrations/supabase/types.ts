@@ -224,6 +224,57 @@ export type Database = {
         }
         Relationships: []
       }
+      resumes: {
+        Row: {
+          certifications: Json
+          created_at: string
+          education: Json
+          experience: Json
+          id: string
+          languages: Json
+          personal_info: Json
+          projects: Json
+          skills: Json
+          summary: string
+          template: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          certifications?: Json
+          created_at?: string
+          education?: Json
+          experience?: Json
+          id?: string
+          languages?: Json
+          personal_info?: Json
+          projects?: Json
+          skills?: Json
+          summary?: string
+          template?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          certifications?: Json
+          created_at?: string
+          education?: Json
+          experience?: Json
+          id?: string
+          languages?: Json
+          personal_info?: Json
+          projects?: Json
+          skills?: Json
+          summary?: string
+          template?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tracked_jobs: {
         Row: {
           company: string

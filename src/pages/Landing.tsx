@@ -44,6 +44,31 @@ export default function Landing() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
+    // SEO meta tags
+    document.title = "ResumePreps - AI-Powered Resume Builder & Career Platform";
+    const setMeta = (name: string, content: string) => {
+      let el = document.querySelector(`meta[name="${name}"]`) || document.querySelector(`meta[property="${name}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute(name.startsWith("og:") ? "property" : "name", name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+    setMeta("description", "Build ATS-optimized resumes, generate tailored cover letters, practice voice interviews, and discover matching jobs — all in one AI-powered platform.");
+    setMeta("og:title", "ResumePreps - AI-Powered Resume Builder & Career Platform");
+    setMeta("og:description", "Build ATS-optimized resumes, generate tailored cover letters, practice voice interviews, and discover matching jobs.");
+    setMeta("og:type", "website");
+    setMeta("og:url", window.location.origin);
+
+    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      document.head.appendChild(canonical);
+    }
+    canonical.href = window.location.origin;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) setIsLoggedIn(true);
     });

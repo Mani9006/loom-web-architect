@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,7 +69,7 @@ const DEFAULT_SECTIONS: SectionConfig[] = [
 ];
 
 export default function ResumeBuilder() {
-  const navigate = useNavigate();
+  
   const { toast } = useToast();
   const [resumeData, setResumeData] = useState<ResumeJSON>(createEmptyResumeJSON());
   const [openSections, setOpenSections] = useState<SectionId[]>(["personal", "summary", "experience"]);
@@ -83,27 +82,71 @@ export default function ResumeBuilder() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isMobilePreview, setIsMobilePreview] = useState(false);
 
-  // Auth check
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) navigate("/auth");
-    });
-  }, [navigate]);
+  const [currentResumeId, setCurrentResumeId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Auto-save to localStorage
+  // Load resume from Supabase on mount
   useEffect(() => {
-    const saved = localStorage.getItem("resumeBuilderData");
-    if (saved) {
-      try { setResumeData(JSON.parse(saved)); } catch {}
-    }
+    const loadResume = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Try to load most recent resume
+      const { data: resumes } = await supabase
+        .from("resumes" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(1);
+
+      if (resumes && resumes.length > 0) {
+        const r = resumes[0] as any;
+        setCurrentResumeId(r.id);
+        setResumeData({
+          header: r.personal_info || createEmptyResumeJSON().header,
+          summary: r.summary || "",
+          experience: Array.isArray(r.experience) ? r.experience : [],
+          education: Array.isArray(r.education) ? r.education : [],
+          certifications: Array.isArray(r.certifications) ? r.certifications : [],
+          skills: r.skills && typeof r.skills === "object" && !Array.isArray(r.skills) ? r.skills : {},
+          projects: Array.isArray(r.projects) ? r.projects : [],
+        });
+        if (r.template) setSelectedTemplate(r.template);
+      }
+    };
+    loadResume();
   }, []);
 
+  // Auto-save to Supabase (debounced)
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      localStorage.setItem("resumeBuilderData", JSON.stringify(resumeData));
-    }, 500);
+    const timeout = setTimeout(async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      setIsSaving(true);
+      const payload = {
+        user_id: user.id,
+        title: resumeData.header.name ? `${resumeData.header.name}'s Resume` : "Untitled Resume",
+        personal_info: resumeData.header as any,
+        summary: resumeData.summary,
+        experience: resumeData.experience as any,
+        education: resumeData.education as any,
+        skills: resumeData.skills as any,
+        projects: resumeData.projects as any,
+        certifications: resumeData.certifications as any,
+        template: selectedTemplate,
+      };
+
+      if (currentResumeId) {
+        await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
+      } else {
+        const { data } = await supabase.from("resumes" as any).insert(payload).select("id").single();
+        if (data) setCurrentResumeId((data as any).id);
+      }
+      setIsSaving(false);
+    }, 1500);
     return () => clearTimeout(timeout);
-  }, [resumeData]);
+  }, [resumeData, selectedTemplate]);
 
   const toggleSection = (id: SectionId) => {
     setOpenSections((prev) =>
@@ -497,6 +540,7 @@ Extract EVERY bullet point. Use lowercase_snake_case for skill category keys mat
             <div className="flex items-center justify-between">
               <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <FileText className="w-5 h-5 text-primary" /> Resume Builder
+                {isSaving && <span className="text-xs font-normal text-muted-foreground animate-pulse">Saving...</span>}
               </h1>
               <div className="flex items-center gap-2 md:hidden">
                 <Button variant="outline" size="sm" onClick={() => setIsMobilePreview(!isMobilePreview)}>

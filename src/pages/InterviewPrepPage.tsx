@@ -14,10 +14,9 @@ export default function InterviewPrepPage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (!s?.user) navigate("/auth");
-      else setSession(s);
+      setSession(s);
     });
-  }, [navigate]);
+  }, []);
 
   const handleGenerate = async (resumeText: string, jobDescription: string, companyName: string, jobTitle: string, interviewType: string) => {
     if (!session) return;

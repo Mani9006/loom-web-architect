@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { CoverLetterPanel, CoverLetterMessage } from "@/components/chat/CoverLetterPanel";
@@ -11,12 +11,6 @@ export default function CoverLetterPage() {
   const [messages, setMessages] = useState<CoverLetterMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState("gemini-flash");
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) navigate("/auth");
-    });
-  }, [navigate]);
 
   const handleGenerate = async (resumeText: string, jobDescription: string, companyName: string, jobTitle: string, template: CoverLetterTemplate) => {
     const { data: sessionData } = await supabase.auth.getSession();
