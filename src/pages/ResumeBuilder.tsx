@@ -59,7 +59,7 @@ import {
   CloudOff,
   Wand2,
   RotateCcw,
-  ChevronUp,
+  GripVertical,
   ChevronDown,
   Target,
   Zap,
@@ -74,6 +74,7 @@ import {
   LayoutList,
   Linkedin,
 } from "lucide-react";
+import { Reorder } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -717,7 +718,7 @@ export default function ResumeBuilder() {
   return (
     <div className="flex h-full w-full overflow-hidden bg-background">
       {/* ─── LEFT PANEL: Accordion editor ─────────────────────────────── */}
-      <div className={cn("w-full lg:w-[38%] lg:min-w-[340px] lg:max-w-[440px] flex flex-col min-h-0 border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
+      <div className={cn("w-full lg:w-[48%] lg:min-w-[380px] lg:max-w-[520px] flex flex-col min-h-0 border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card">
           <h1 className="text-sm font-bold flex-1">Resume Builder</h1>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -932,45 +933,44 @@ export default function ResumeBuilder() {
                         </div>
                       )}
 
-                      {/* ── Experience: collapsed rows, click to expand ── */}
+                      {/* ── Experience: drag-to-reorder rows ── */}
                       {section.id === "experience" && (
                         <div className="space-y-1">
-                          {data.experience.map((exp, index) => (
-                            <div key={exp.id} className="rounded border border-border/40">
-                              {/* Summary row - always visible */}
-                              <div
-                                className={cn("flex items-center gap-1 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedExpId === exp.id && "bg-muted/40")}
-                                onClick={() => setExpandedExpId(expandedExpId === exp.id ? null : exp.id)}
-                              >
-                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedExpId === exp.id && "rotate-180")} />
-                                <span className="text-xs font-medium truncate flex-1 min-w-0">
-                                  {exp.role || exp.company_or_client ? `${exp.role || "Role"}${exp.company_or_client ? ` @ ${exp.company_or_client}` : ""}` : `Experience ${index + 1}`}
-                                </span>
-                                {exp.start_date && <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline">{exp.start_date}{exp.end_date ? ` - ${exp.end_date}` : ""}</span>}
-                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  {data.experience.length > 1 && <>
-                                    <button type="button" onClick={() => moveExperience(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
-                                    <button type="button" onClick={() => moveExperience(index, "down")} disabled={index === data.experience.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronDown className="h-3 w-3" /></button>
-                                  </>}
-                                  {exp.bullets.length > 0 && <button type="button" onClick={() => enhanceBulletsWithAI(exp.id)} disabled={aiEnhancingSection === `exp-${exp.id}`} className="p-0.5 rounded hover:bg-muted text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</button>}
-                                  {data.experience.length > 1 && <button type="button" onClick={() => removeExperience(exp.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
-                                </div>
-                              </div>
-                              {/* Expanded form */}
-                              {expandedExpId === exp.id && (
-                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
-                                  <div className="grid grid-cols-2 gap-1.5">
-                                    <Input placeholder="Company *" value={exp.company_or_client} onChange={(e) => updateExperience(exp.id, "company_or_client", e.target.value)} className="bg-background h-7 text-xs" />
-                                    <Input placeholder="Role *" value={exp.role} onChange={(e) => updateExperience(exp.id, "role", e.target.value)} className="bg-background h-7 text-xs" />
-                                    <Input placeholder="Start date" value={exp.start_date} onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)} className="bg-background h-7 text-xs" />
-                                    <Input placeholder="End date" value={exp.end_date} onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)} className="bg-background h-7 text-xs" />
+                          <Reorder.Group axis="y" values={data.experience} onReorder={(newOrder) => setData((prev) => ({ ...prev, experience: newOrder }))} className="space-y-1">
+                            {data.experience.map((exp, index) => (
+                              <Reorder.Item key={exp.id} value={exp} className="rounded border border-border/40 list-none">
+                                {/* Summary row - always visible */}
+                                <div
+                                  className={cn("flex items-center gap-1 px-1 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedExpId === exp.id && "bg-muted/40")}
+                                  onClick={() => setExpandedExpId(expandedExpId === exp.id ? null : exp.id)}
+                                >
+                                  {data.experience.length > 1 && <div className="cursor-grab active:cursor-grabbing shrink-0 touch-none" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}><GripVertical className="h-3.5 w-3.5 text-muted-foreground" /></div>}
+                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedExpId === exp.id && "rotate-180")} />
+                                  <span className="text-xs font-medium truncate flex-1 min-w-0">
+                                    {exp.role || exp.company_or_client ? `${exp.role || "Role"}${exp.company_or_client ? ` @ ${exp.company_or_client}` : ""}` : `Experience ${index + 1}`}
+                                  </span>
+                                  {exp.start_date && <span className="text-[10px] text-muted-foreground shrink-0">{exp.start_date}{exp.end_date ? ` - ${exp.end_date}` : ""}</span>}
+                                  <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    {exp.bullets.length > 0 && <button type="button" onClick={() => enhanceBulletsWithAI(exp.id)} disabled={aiEnhancingSection === `exp-${exp.id}`} className="p-0.5 rounded hover:bg-muted text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</button>}
+                                    {data.experience.length > 1 && <button type="button" onClick={() => removeExperience(exp.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
                                   </div>
-                                  <Input placeholder="Location" value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} className="bg-background h-7 text-xs" />
-                                  <Textarea placeholder={"Bullet points (one per line)\n- Designed ETL pipelines...\n- Led data migration..."} value={exp.bullets.join("\n")} onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split("\n").filter((b) => b.trim()))} className="bg-background text-xs min-h-[60px] resize-y" />
                                 </div>
-                              )}
-                            </div>
-                          ))}
+                                {/* Expanded form */}
+                                {expandedExpId === exp.id && (
+                                  <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      <Input placeholder="Company *" value={exp.company_or_client} onChange={(e) => updateExperience(exp.id, "company_or_client", e.target.value)} className="bg-background h-7 text-xs" />
+                                      <Input placeholder="Role *" value={exp.role} onChange={(e) => updateExperience(exp.id, "role", e.target.value)} className="bg-background h-7 text-xs" />
+                                      <Input placeholder="Start date" value={exp.start_date} onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                      <Input placeholder="End date" value={exp.end_date} onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                    </div>
+                                    <Input placeholder="Location" value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <Textarea placeholder={"Bullet points (one per line)\n- Designed ETL pipelines...\n- Led data migration..."} value={exp.bullets.join("\n")} onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split("\n").filter((b) => b.trim()))} className="bg-background text-xs min-h-[60px] resize-y" />
+                                  </div>
+                                )}
+                              </Reorder.Item>
+                            ))}
+                          </Reorder.Group>
                           <button type="button" onClick={addExperience} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Experience</button>
                         </div>
                       )}
@@ -978,37 +978,36 @@ export default function ResumeBuilder() {
                       {/* ── Education: collapsed rows ── */}
                       {section.id === "education" && (
                         <div className="space-y-1">
-                          {data.education.map((edu, eduIndex) => (
-                            <div key={edu.id} className="rounded border border-border/40">
-                              <div
-                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedEduId === edu.id && "bg-muted/40")}
-                                onClick={() => setExpandedEduId(expandedEduId === edu.id ? null : edu.id)}
-                              >
-                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedEduId === edu.id && "rotate-180")} />
-                                <span className="text-xs font-medium truncate flex-1">
-                                  {edu.institution || edu.degree ? `${edu.degree || "Degree"}${edu.institution ? ` - ${edu.institution}` : ""}` : `Education ${eduIndex + 1}`}
-                                </span>
-                                {edu.graduation_date && <span className="text-[10px] text-muted-foreground shrink-0">{edu.graduation_date}</span>}
-                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  {data.education.length > 1 && <>
-                                    <button type="button" onClick={() => moveEducation(eduIndex, "up")} disabled={eduIndex === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
-                                    <button type="button" onClick={() => moveEducation(eduIndex, "down")} disabled={eduIndex === data.education.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronDown className="h-3 w-3" /></button>
-                                  </>}
-                                  {data.education.length > 1 && <button type="button" onClick={() => removeEducation(edu.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
-                                </div>
-                              </div>
-                              {expandedEduId === edu.id && (
-                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
-                                  <div className="grid grid-cols-2 gap-1.5">
-                                    <Input placeholder="Institution" value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} className="bg-background h-7 text-xs" />
-                                    <Input placeholder="Degree" value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} className="bg-background h-7 text-xs" />
-                                    <Input placeholder="Field" value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} className="bg-background h-7 text-xs" />
-                                    <Input placeholder="Graduation date" value={edu.graduation_date} onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)} className="bg-background h-7 text-xs" />
+                          <Reorder.Group axis="y" values={data.education} onReorder={(newOrder) => setData((prev) => ({ ...prev, education: newOrder }))} className="space-y-1">
+                            {data.education.map((edu, eduIndex) => (
+                              <Reorder.Item key={edu.id} value={edu} className="rounded border border-border/40 list-none">
+                                <div
+                                  className={cn("flex items-center gap-1 px-1 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedEduId === edu.id && "bg-muted/40")}
+                                  onClick={() => setExpandedEduId(expandedEduId === edu.id ? null : edu.id)}
+                                >
+                                  {data.education.length > 1 && <div className="cursor-grab active:cursor-grabbing shrink-0 touch-none" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}><GripVertical className="h-3.5 w-3.5 text-muted-foreground" /></div>}
+                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedEduId === edu.id && "rotate-180")} />
+                                  <span className="text-xs font-medium truncate flex-1 min-w-0">
+                                    {edu.institution || edu.degree ? `${edu.degree || "Degree"}${edu.institution ? ` - ${edu.institution}` : ""}` : `Education ${eduIndex + 1}`}
+                                  </span>
+                                  {edu.graduation_date && <span className="text-[10px] text-muted-foreground shrink-0">{edu.graduation_date}</span>}
+                                  <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    {data.education.length > 1 && <button type="button" onClick={() => removeEducation(edu.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
                                   </div>
                                 </div>
-                              )}
-                            </div>
-                          ))}
+                                {expandedEduId === edu.id && (
+                                  <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      <Input placeholder="Institution" value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} className="bg-background h-7 text-xs" />
+                                      <Input placeholder="Degree" value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} className="bg-background h-7 text-xs" />
+                                      <Input placeholder="Field" value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} className="bg-background h-7 text-xs" />
+                                      <Input placeholder="Graduation date" value={edu.graduation_date} onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                    </div>
+                                  </div>
+                                )}
+                              </Reorder.Item>
+                            ))}
+                          </Reorder.Group>
                           <button type="button" onClick={addEducation} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Education</button>
                         </div>
                       )}
@@ -1039,35 +1038,34 @@ export default function ResumeBuilder() {
                       {/* ── Projects: collapsed rows ── */}
                       {section.id === "projects" && (
                         <div className="space-y-1">
-                          {data.projects.map((project, index) => (
-                            <div key={project.id} className="rounded border border-border/40">
-                              <div
-                                className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedProjIdx === index && "bg-muted/40")}
-                                onClick={() => setExpandedProjIdx(expandedProjIdx === index ? null : index)}
-                              >
-                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedProjIdx === index && "rotate-180")} />
-                                <span className="text-xs font-medium truncate flex-1">{project.title || `Project ${index + 1}`}</span>
-                                {project.date && <span className="text-[10px] text-muted-foreground shrink-0">{project.date}</span>}
-                                <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  {data.projects.length > 1 && <>
-                                    <button type="button" onClick={() => moveProject(index, "up")} disabled={index === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
-                                    <button type="button" onClick={() => moveProject(index, "down")} disabled={index === data.projects.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30"><ChevronDown className="h-3 w-3" /></button>
-                                  </>}
-                                  <button type="button" onClick={() => removeProject(index)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
-                                </div>
-                              </div>
-                              {expandedProjIdx === index && (
-                                <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
-                                  <Input placeholder="Project Name" value={project.title} onChange={(e) => updateProject(index, { title: e.target.value })} className="bg-background h-7 text-xs" />
-                                  <div className="grid grid-cols-2 gap-1.5">
-                                    <Input placeholder="Organization" value={project.organization} onChange={(e) => updateProject(index, { organization: e.target.value })} className="bg-background h-7 text-xs" />
-                                    <Input placeholder="Date" value={project.date} onChange={(e) => updateProject(index, { date: e.target.value })} className="bg-background h-7 text-xs" />
+                          <Reorder.Group axis="y" values={data.projects} onReorder={(newOrder) => setData((prev) => ({ ...prev, projects: newOrder }))} className="space-y-1">
+                            {data.projects.map((project, index) => (
+                              <Reorder.Item key={project.id} value={project} className="rounded border border-border/40 list-none">
+                                <div
+                                  className={cn("flex items-center gap-1 px-1 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedProjIdx === index && "bg-muted/40")}
+                                  onClick={() => setExpandedProjIdx(expandedProjIdx === index ? null : index)}
+                                >
+                                  {data.projects.length > 1 && <div className="cursor-grab active:cursor-grabbing shrink-0 touch-none" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}><GripVertical className="h-3.5 w-3.5 text-muted-foreground" /></div>}
+                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedProjIdx === index && "rotate-180")} />
+                                  <span className="text-xs font-medium truncate flex-1 min-w-0">{project.title || `Project ${index + 1}`}</span>
+                                  {project.date && <span className="text-[10px] text-muted-foreground shrink-0">{project.date}</span>}
+                                  <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    <button type="button" onClick={() => removeProject(index)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                   </div>
-                                  <Textarea placeholder={"Key points (one per line)\n- Built a chatbot...\n- Implemented ML pipeline..."} value={project.bullets.join("\n")} onChange={(e) => updateProject(index, { bullets: e.target.value.split("\n") })} className="bg-background text-xs min-h-[50px] resize-y" />
                                 </div>
-                              )}
-                            </div>
-                          ))}
+                                {expandedProjIdx === index && (
+                                  <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                    <Input placeholder="Project Name" value={project.title} onChange={(e) => updateProject(index, { title: e.target.value })} className="bg-background h-7 text-xs" />
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      <Input placeholder="Organization" value={project.organization} onChange={(e) => updateProject(index, { organization: e.target.value })} className="bg-background h-7 text-xs" />
+                                      <Input placeholder="Date" value={project.date} onChange={(e) => updateProject(index, { date: e.target.value })} className="bg-background h-7 text-xs" />
+                                    </div>
+                                    <Textarea placeholder={"Key points (one per line)\n- Built a chatbot...\n- Implemented ML pipeline..."} value={project.bullets.join("\n")} onChange={(e) => updateProject(index, { bullets: e.target.value.split("\n") })} className="bg-background text-xs min-h-[50px] resize-y" />
+                                  </div>
+                                )}
+                              </Reorder.Item>
+                            ))}
+                          </Reorder.Group>
                           <button type="button" onClick={addProject} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Project</button>
                         </div>
                       )}
