@@ -183,14 +183,14 @@ function formatBullets(responsibilities: string | string[]): string[] {
 async function streamAIText(
   accessToken: string,
   messages: { role: string; content: string }[],
-  model = "google/gemini-2.5-flash",
+  mode = "resume",
 ): Promise<string> {
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ messages, model }),
+      body: JSON.stringify({ messages, mode }),
     },
   );
   if (!response.ok) throw new Error("AI request failed");
