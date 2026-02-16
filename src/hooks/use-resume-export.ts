@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ResumeJSON, SKILL_CATEGORY_LABELS } from "@/types/resume";
+import { ResumeJSON, getSkillCategoryLabel } from "@/types/resume";
 import { toast } from "sonner";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -394,7 +394,7 @@ class PDFResumeRenderer {
     const cats = Object.entries(skills)
       .filter(([_, s]) => s.length > 0)
       .map(([key, s]) => ({
-        label: SKILL_CATEGORY_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
+        label: getSkillCategoryLabel(key),
         skills: s,
       }));
     if (cats.length === 0) return;
@@ -887,7 +887,7 @@ export function useResumeExport() {
       const skillCategories = Object.entries(data.skills)
         .filter(([_, skills]) => skills.length > 0)
         .map(([key, skills]) => ({
-          category: SKILL_CATEGORY_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
+          category: getSkillCategoryLabel(key),
           skills,
         }));
 

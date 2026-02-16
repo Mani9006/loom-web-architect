@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, X, Sparkles, Loader2 } from "lucide-react";
 import {
   ResumeJSON, ExperienceEntry, EducationEntry,
-  CertificationEntry, ProjectEntry, SKILL_CATEGORY_LABELS,
+  CertificationEntry, ProjectEntry, getSkillCategoryLabel,
 } from "@/types/resume";
 import { SectionId } from "./SectionNavigator";
 import { supabase } from "@/integrations/supabase/client";
@@ -305,7 +305,7 @@ function SkillsEditor({ data, onChange }: { data: ResumeJSON; onChange: (d: Resu
       {Object.entries(data.skills).map(([catKey, skills]) => (
         <div key={catKey} className="p-3 rounded-xl border border-border bg-card space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">{SKILL_CATEGORY_LABELS[catKey] || catKey.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}</span>
+            <span className="text-sm font-medium">{getSkillCategoryLabel(catKey)}</span>
             <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => removeCat(catKey)}><X className="h-3 w-3" /></Button>
           </div>
           <div className="flex gap-2">

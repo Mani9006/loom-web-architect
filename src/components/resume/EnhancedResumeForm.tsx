@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, X, Sparkles, Loader2, FileText, Briefcase, GraduationCap, Award, Wrench, Upload, FolderKanban } from "lucide-react";
-import { ResumeJSON, ExperienceEntry, EducationEntry, CertificationEntry, ProjectEntry, SKILL_CATEGORY_LABELS, DEFAULT_SKILL_CATEGORIES, createEmptyResumeJSON } from "@/types/resume";
+import { ResumeJSON, ExperienceEntry, EducationEntry, CertificationEntry, ProjectEntry, DEFAULT_SKILL_CATEGORIES, createEmptyResumeJSON, getSkillCategoryLabel } from "@/types/resume";
 import { TemplateSelector } from "./TemplateSelector";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ResumeFormSkeleton } from "./ResumeFormSkeleton";
@@ -869,7 +869,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                   <div key={categoryKey} className="p-3 bg-muted/50 rounded-lg space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">
-                        {SKILL_CATEGORY_LABELS[categoryKey] || categoryKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        {getSkillCategoryLabel(categoryKey)}
                       </span>
                       <Button
                         type="button"

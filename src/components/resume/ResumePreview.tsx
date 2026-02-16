@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { ResumeJSON, SKILL_CATEGORY_LABELS } from "@/types/resume";
+import { ResumeJSON, getSkillCategoryLabel } from "@/types/resume";
 import { Loader2, FileDown, FileText, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useResumeExport } from "@/hooks/use-resume-export";
@@ -41,7 +41,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
   const skillCategories = Object.entries(data.skills)
     .filter(([_, skills]) => skills.length > 0)
     .map(([key, skills]) => ({
-      category: SKILL_CATEGORY_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      category: getSkillCategoryLabel(key),
       skills,
     }));
 

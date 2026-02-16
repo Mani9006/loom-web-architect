@@ -154,7 +154,7 @@ SCHEMA:
     }
   ],
   "skills": {
-    "actual_category_name_from_resume": ["ALL skills exactly as listed under this category"]
+    "canonical_category_key": ["ALL skills exactly as listed"]
   },
   "projects": [
     {
@@ -170,7 +170,21 @@ CRITICAL RULES:
 1. Extract ONLY the person's name in header.name
 2. bullets must be an array of strings - EXTRACT EVERY SINGLE BULLET POINT, do not truncate or summarize
 3. For experience and projects: include ALL bullet points exactly as written, even if there are 10+ bullets per entry
-4. SKILLS EXTRACTION: Use the EXACT category names from the resume (converted to lowercase_snake_case). DO NOT invent categories.
+4. SKILLS EXTRACTION: Map skills to these STANDARD category keys (use lowercase_snake_case):
+   - "generative_ai" for GenAI, LLM, AI tools, prompt engineering
+   - "nlp" for ALL NLP-related skills (NLP tools, NLP frameworks, text processing, NLP technologies)
+   - "machine_learning" for ML frameworks, ML modeling, statistical modeling, predictive analytics
+   - "deep_learning" for neural networks, deep learning frameworks
+   - "programming_languages" for all programming/scripting languages
+   - "data_engineering_etl" for ETL, data pipelines, data processing tools
+   - "visualization" for data visualization, BI tools, dashboards, reporting
+   - "cloud_mlops" for cloud platforms (AWS/GCP/Azure), MLOps, cloud services
+   - "devops" for CI/CD, containerization, infrastructure tools
+   - "databases" for SQL, NoSQL, database management
+   - "frameworks" for web/backend/frontend frameworks
+   - "collaboration_tools" for project management, agile, team tools
+   - "big_data" for Hadoop, Spark, distributed computing
+   DO NOT create categories like "nlp_tools", "nlp_technologies", "cloud_platforms", "cloud_and_devops", "visualization_bi", "ml_frameworks", "ml_modeling" etc. Merge them into the standard categories above.
 5. Use empty string "" for missing fields, never null
 6. Return ONLY the JSON object`,
 };
@@ -227,43 +241,155 @@ async function addToMem0(apiKey: string, userId: string, messages: any[]): Promi
   }
 }
 
-// ── 3-Tier Model Strategy ──────────────────────────────────────────
-// Tier 1 (Premium)  – gpt-4o        : best quality, higher cost
-//   → ATS analysis, resume rewriting, cover letters, AI fix-all
-// Tier 2 (Standard) – gpt-4o-mini   : great quality, low cost
-//   → Interview prep, job search, summary enhancement, bullet rewrite
-// Tier 3 (Economy)  – gpt-3.5-turbo : cheapest, fastest
-//   → General chat, simple Q&A, quick suggestions
-const OPENAI_MODELS = {
-  premium:  "gpt-4o",          // ~$5/1M input  | complex reasoning, long context
-  standard: "gpt-4o-mini",     // ~$0.15/1M input | great for most tasks
-  economy:  "gpt-3.5-turbo",   // ~$0.50/1M input | simple/fast tasks
-};
+// ── Multi-Provider Model Strategy ─────────────────────────────────
+// Uses both OpenAI and Claude (Anthropic) for optimal quality + cost
+//
+// OpenAI:
+//   GPT-4.1       – best for complex writing, editing, JSON output (1M context)
+//   GPT-4.1-mini  – beats GPT-4o at 83% lower cost, great for most tasks
+//   GPT-4.1-nano  – fastest/cheapest, good for simple tasks
+//
+// Claude (Anthropic):
+//   claude-sonnet-4-20250514 – excellent for nuanced text editing/rewriting
+//   claude-3-5-haiku-20241022 – fast, token-efficient for structured extraction
+//
+// Provider selection: Claude excels at nuanced writing quality and editing,
+// while OpenAI GPT-4.1 excels at JSON output and instruction following.
 
-// Select model based on task complexity
-function getModelForMode(mode: string): string {
+type AIProvider = "openai" | "anthropic";
+
+interface ModelConfig {
+  provider: AIProvider;
+  model: string;
+}
+
+// Model configurations per task type
+function getModelConfig(mode: string): ModelConfig {
+  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+  const hasClaude = !!ANTHROPIC_API_KEY;
+
   switch (mode) {
-    // Tier 1 – Premium: complex writing, analysis, rewriting
-    case "ats":
-    case "cover_letter":
+    // Resume parsing – needs strict JSON output → GPT-4.1 (best at instruction following + JSON)
     case "resume_parse":
-    case "resume_fix":
-      return OPENAI_MODELS.premium;
+      return { provider: "openai", model: "gpt-4.1" };
 
-    // Tier 2 – Standard: structured generation, enhancement
-    case "resume":
+    // Resume fix/rewrite – needs nuanced understanding, no fabrication → Claude Sonnet (best at writing quality)
+    case "resume_fix":
+      return hasClaude
+        ? { provider: "anthropic", model: "claude-sonnet-4-20250514" }
+        : { provider: "openai", model: "gpt-4.1" };
+
+    // Cover letter – creative writing → Claude Sonnet (more natural, human-like)
+    case "cover_letter":
+      return hasClaude
+        ? { provider: "anthropic", model: "claude-sonnet-4-20250514" }
+        : { provider: "openai", model: "gpt-4.1" };
+
+    // ATS analysis – structured scoring → GPT-4.1 (great at structured output)
+    case "ats":
+      return { provider: "openai", model: "gpt-4.1" };
+
+    // Summary/bullet enhancement – writing quality matters → Claude Sonnet
     case "resume_enhance":
     case "resume_bullets":
+      return hasClaude
+        ? { provider: "anthropic", model: "claude-sonnet-4-20250514" }
+        : { provider: "openai", model: "gpt-4.1-mini" };
+
+    // Interview/job search – structured advice → GPT-4.1-mini (fast, cost-effective)
+    case "resume":
     case "interview":
     case "job_search":
-      return OPENAI_MODELS.standard;
+      return { provider: "openai", model: "gpt-4.1-mini" };
 
-    // Tier 3 – Economy: simple chat, quick answers
+    // General chat – fast responses → GPT-4.1-nano or Claude Haiku
     case "general":
     case "quick":
     default:
-      return OPENAI_MODELS.economy;
+      return hasClaude
+        ? { provider: "anthropic", model: "claude-3-5-haiku-20241022" }
+        : { provider: "openai", model: "gpt-4.1-nano" };
   }
+}
+
+// ── Anthropic API call ───────────────────────────────────────────────
+async function callAnthropicAPI(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  messages: any[],
+): Promise<Response> {
+  // Convert OpenAI-style messages to Anthropic format
+  // Anthropic uses "system" as a top-level parameter, not in messages
+  const anthropicMessages = messages
+    .filter((m: any) => m.role !== "system")
+    .map((m: any) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: m.content,
+    }));
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 8192,
+      system: systemPrompt,
+      messages: anthropicMessages,
+      stream: true,
+    }),
+  });
+
+  return response;
+}
+
+// ── Convert Anthropic SSE stream to OpenAI-compatible SSE stream ───
+function convertAnthropicStream(anthropicBody: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  const reader = anthropicBody.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+          return;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              // Anthropic content_block_delta events
+              if (data.type === "content_block_delta" && data.delta?.text) {
+                const openaiFormat = {
+                  choices: [{ delta: { content: data.delta.text } }],
+                };
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(openaiFormat)}\n\n`));
+              }
+              // Anthropic message_stop event
+              if (data.type === "message_stop") {
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              }
+            } catch {}
+          }
+        }
+      } catch (e) {
+        console.error("Stream conversion error:", e);
+        controller.close();
+      }
+    },
+  });
 }
 
 serve(async (req) => {
@@ -304,10 +430,11 @@ serve(async (req) => {
     }
 
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const MEM0_API_KEY = Deno.env.get("MEM0_API_KEY");
 
-    if (!OPENAI_API_KEY) {
-      console.error("OPENAI_API_KEY is not configured");
+    if (!OPENAI_API_KEY && !ANTHROPIC_API_KEY) {
+      console.error("No AI API keys configured (need OPENAI_API_KEY or ANTHROPIC_API_KEY)");
       return new Response(JSON.stringify({ error: "AI service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -327,8 +454,8 @@ serve(async (req) => {
     };
     const chatMode = modeAliases[mode] || mode || "general";
 
-    // Only use memory for specific career-focused modes
-    const memoryEnabledModes = ["interview", "job_search", "resume"];
+    // Use memory for career-focused modes + resume editing modes for better context
+    const memoryEnabledModes = ["interview", "job_search", "resume", "resume_fix", "resume_enhance", "resume_bullets", "cover_letter", "ats"];
     const shouldUseMemory = memoryEnabledModes.includes(chatMode);
 
     // Search for relevant memories only for specific modes
@@ -350,9 +477,25 @@ serve(async (req) => {
 
     console.log(`[Chat] Mode: ${chatMode}, Messages: ${messages.length}, dedicated prompt: ${hasDedicatedPrompt}`);
 
-    // Select optimal model - use OpenAI models
-    const selectedModel = requestedModel || getModelForMode(chatMode);
-    console.log(`[Chat] Using OpenAI model: ${selectedModel} for mode: ${chatMode}`);
+    // Select optimal model and provider
+    const modelConfig = getModelConfig(chatMode);
+
+    // Allow frontend to override model, but keep provider routing
+    const effectiveModel = requestedModel || modelConfig.model;
+    const effectiveProvider = requestedModel ? "openai" : modelConfig.provider;
+
+    // Fallback: if chosen provider's key isn't available, fall back to the other
+    const finalProvider = (effectiveProvider === "anthropic" && !ANTHROPIC_API_KEY)
+      ? "openai"
+      : (effectiveProvider === "openai" && !OPENAI_API_KEY)
+        ? "anthropic"
+        : effectiveProvider;
+
+    const finalModel = finalProvider !== effectiveProvider
+      ? (finalProvider === "openai" ? "gpt-4.1" : "claude-sonnet-4-20250514")
+      : effectiveModel;
+
+    console.log(`[Chat] Using ${finalProvider} model: ${finalModel} for mode: ${chatMode}`);
 
     // When the backend has a dedicated system prompt for this mode, strip frontend system messages
     // to avoid conflicting/duplicate instructions. Otherwise, keep them (the frontend provides the prompt).
@@ -360,25 +503,40 @@ serve(async (req) => {
       ? messages.filter((m: any) => m.role !== "system")
       : messages;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...userMessages,
-        ],
-        stream: true,
-      }),
-    });
+    let response: Response;
+    let usedProvider: AIProvider = finalProvider;
+
+    if (finalProvider === "anthropic" && ANTHROPIC_API_KEY) {
+      // ── Call Anthropic Claude API ──
+      response = await callAnthropicAPI(
+        ANTHROPIC_API_KEY,
+        finalModel,
+        systemPrompt,
+        userMessages,
+      );
+    } else {
+      // ── Call OpenAI API ──
+      usedProvider = "openai";
+      response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: finalModel,
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...userMessages,
+          ],
+          stream: true,
+        }),
+      });
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("OpenAI API error:", response.status, errorText);
+      console.error(`${usedProvider} API error:`, response.status, errorText);
 
       if (response.status === 429) {
         return new Response(
@@ -387,11 +545,60 @@ serve(async (req) => {
         );
       }
 
-      return new Response(JSON.stringify({ error: "AI service error" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      // If primary provider fails, try fallback provider
+      if (usedProvider === "anthropic" && OPENAI_API_KEY) {
+        console.log(`[Chat] Anthropic failed, falling back to OpenAI gpt-4.1`);
+        usedProvider = "openai";
+        response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1",
+            messages: [
+              { role: "system", content: systemPrompt },
+              ...userMessages,
+            ],
+            stream: true,
+          }),
+        });
+
+        if (!response.ok) {
+          return new Response(JSON.stringify({ error: "AI service error" }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } else if (usedProvider === "openai" && ANTHROPIC_API_KEY) {
+        console.log(`[Chat] OpenAI failed, falling back to Anthropic claude-sonnet-4-20250514`);
+        usedProvider = "anthropic";
+        response = await callAnthropicAPI(
+          ANTHROPIC_API_KEY,
+          "claude-sonnet-4-20250514",
+          systemPrompt,
+          userMessages,
+        );
+
+        if (!response.ok) {
+          return new Response(JSON.stringify({ error: "AI service error" }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } else {
+        return new Response(JSON.stringify({ error: "AI service error" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
+
+    // Convert Anthropic stream format to OpenAI-compatible format if needed
+    const responseBody = usedProvider === "anthropic"
+      ? convertAnthropicStream(response.body!)
+      : response.body;
 
     // Add to memory in background only for career-focused modes
     if (MEM0_API_KEY && messages.length > 0 && shouldUseMemory) {
@@ -403,7 +610,7 @@ serve(async (req) => {
       console.log(`[Chat] Storing memory for mode: ${chatMode}`);
     }
 
-    return new Response(response.body, {
+    return new Response(responseBody, {
       headers: {
         ...corsHeaders,
         "Content-Type": "text/event-stream",

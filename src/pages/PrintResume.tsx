@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ResumeJSON, SKILL_CATEGORY_LABELS } from "@/types/resume";
+import { ResumeJSON, getSkillCategoryLabel } from "@/types/resume";
 
 export default function PrintResume() {
   const [data, setData] = useState<ResumeJSON | null>(null);
@@ -33,7 +33,7 @@ export default function PrintResume() {
   const skillCategories = Object.entries(data.skills)
     .filter(([_, skills]) => skills.length > 0)
     .map(([key, skills]) => ({
-      category: SKILL_CATEGORY_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
+      category: getSkillCategoryLabel(key),
       skills,
     }));
 
