@@ -315,7 +315,7 @@ export default function ResumeBuilder() {
         experience: Array.isArray(r.experience) ? r.experience : [],
         education: Array.isArray(r.education) ? r.education : [],
         certifications: Array.isArray(r.certifications) ? r.certifications : [],
-        skills: r.skills && typeof r.skills === "object" && !Array.isArray(r.skills) ? r.skills : {},
+        skills: r.skills && typeof r.skills === "object" && !Array.isArray(r.skills) ? normalizeAndDeduplicateSkills(r.skills) : {},
         projects: Array.isArray(r.projects) ? r.projects : [],
         languages: Array.isArray(r.languages) ? r.languages : [],
         volunteer: Array.isArray(r.volunteer) ? r.volunteer : [],
