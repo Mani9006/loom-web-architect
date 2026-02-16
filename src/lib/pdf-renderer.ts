@@ -9,7 +9,7 @@
  */
 
 import type { ResumeJSON } from "@/types/resume";
-import { SKILL_CATEGORY_LABELS } from "@/types/resume";
+import { getSkillCategoryLabel } from "@/types/resume";
 
 // ─── Page & layout constants (match ResumeTemplate.tsx) ──────────────
 const PAGE = {
@@ -287,10 +287,7 @@ export class PDFResumeRenderer {
       .filter(([_, s]) => s.length > 0)
       .map(([key, s]) => ({
         label:
-          SKILL_CATEGORY_LABELS[key] ||
-          key
-            .replace(/_/g, " ")
-            .replace(/\b\w/g, (l) => l.toUpperCase()),
+          getSkillCategoryLabel(key),
         skills: s,
       }));
     if (categories.length === 0) return;

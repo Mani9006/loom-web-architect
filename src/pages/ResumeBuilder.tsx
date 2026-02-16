@@ -14,9 +14,11 @@ import {
   AwardEntry,
   CustomSection,
   CustomSectionEntry,
-  SKILL_CATEGORY_LABELS,
   createEmptyResumeJSON,
+  getSkillCategoryLabel,
+  normalizeSkillCategory,
 } from "@/types/resume";
+import { mergeAndDeduplicateSkills, normalizeAndDeduplicateSkills } from "@/lib/ai-resume-parser";
 import { calculateATSScore, buildSectionFixPrompt, ATSScore, ATSIssue } from "@/lib/ats-scorer";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
@@ -385,7 +387,7 @@ export default function ResumeBuilder() {
         experience: parsedData.experience?.length > 0 ? parsedData.experience.map((e: any) => ({ id: crypto.randomUUID(), role: e.role || "", company_or_client: e.company_or_client || "", start_date: e.start_date || "", end_date: e.end_date || "", location: e.location || "", bullets: Array.isArray(e.bullets) ? e.bullets : formatBullets(e.bullets || "") })) : data.experience,
         education: parsedData.education?.length > 0 ? parsedData.education.map((e: any) => ({ id: crypto.randomUUID(), degree: e.degree || "", field: e.field || "", institution: e.institution || "", gpa: e.gpa || "", graduation_date: e.graduation_date || "", location: e.location || "" })) : data.education,
         certifications: parsedData.certifications?.length > 0 ? parsedData.certifications.map((c: any) => ({ id: crypto.randomUUID(), name: c.name || "", issuer: c.issuer || "", date: c.date || "" })) : data.certifications,
-        skills: { ...data.skills, ...parsedData.skills },
+        skills: mergeAndDeduplicateSkills(data.skills, parsedData.skills || {}),
         projects: parsedData.projects?.length > 0 ? parsedData.projects.map((p: any) => ({ id: crypto.randomUUID(), title: p.title || "", organization: p.organization || "", date: p.date || "", bullets: Array.isArray(p.bullets) ? p.bullets : [] })) : data.projects,
       });
       toast({ title: "Resume imported!", description: `Extracted data from ${fileName}.` });
@@ -482,7 +484,7 @@ export default function ResumeBuilder() {
         experience: tailored.experience?.map((e: any) => ({ ...e, id: e.id || crypto.randomUUID(), bullets: Array.isArray(e.bullets) ? e.bullets : [] })) || data.experience,
         education: tailored.education || data.education,
         certifications: tailored.certifications || data.certifications,
-        skills: tailored.skills || data.skills,
+        skills: tailored.skills ? normalizeAndDeduplicateSkills(tailored.skills) : data.skills,
         projects: tailored.projects?.map((p: any) => ({ ...p, id: p.id || crypto.randomUUID(), bullets: Array.isArray(p.bullets) ? p.bullets : [] })) || data.projects,
       });
       toast({ title: "Resume tailored!", description: "Your resume has been optimized for this job." });
@@ -540,7 +542,7 @@ export default function ResumeBuilder() {
     }
     if (Object.values(data.skills).flat().length > 0) {
       lines.push("", "SKILLS");
-      Object.entries(data.skills).forEach(([k, v]) => { if (v.length > 0) lines.push(`${SKILL_CATEGORY_LABELS[k] || k}: ${v.join(", ")}`); });
+      Object.entries(data.skills).forEach(([k, v]) => { if (v.length > 0) lines.push(`${getSkillCategoryLabel(k)}: ${v.join(", ")}`); });
     }
     navigator.clipboard.writeText(lines.join("\n"));
     setCopiedField("resume");
@@ -649,7 +651,7 @@ export default function ResumeBuilder() {
         experience: parsedData.experience?.length > 0 ? parsedData.experience.map((e: any) => ({ id: crypto.randomUUID(), role: e.role || "", company_or_client: e.company_or_client || "", start_date: e.start_date || "", end_date: e.end_date || "", location: e.location || "", bullets: Array.isArray(e.bullets) ? e.bullets : formatBullets(e.bullets || "") })) : data.experience,
         education: parsedData.education?.length > 0 ? parsedData.education.map((e: any) => ({ id: crypto.randomUUID(), degree: e.degree || "", field: e.field || "", institution: e.institution || "", gpa: e.gpa || "", graduation_date: e.graduation_date || "", location: e.location || "" })) : data.education,
         certifications: parsedData.certifications?.length > 0 ? parsedData.certifications.map((c: any) => ({ id: crypto.randomUUID(), name: c.name || "", issuer: c.issuer || "", date: c.date || "" })) : data.certifications,
-        skills: parsedData.skills && typeof parsedData.skills === "object" ? { ...data.skills, ...parsedData.skills } : data.skills,
+        skills: parsedData.skills && typeof parsedData.skills === "object" ? mergeAndDeduplicateSkills(data.skills, parsedData.skills) : data.skills,
         projects: parsedData.projects?.length > 0 ? parsedData.projects.map((p: any) => ({ id: crypto.randomUUID(), title: p.title || "", organization: p.organization || "", date: p.date || "", bullets: Array.isArray(p.bullets) ? p.bullets : [] })) : data.projects,
         languages: parsedData.languages?.length > 0 ? parsedData.languages.map((l: any) => ({ id: crypto.randomUUID(), language: l.language || "", proficiency: l.proficiency || "" })) : data.languages,
       });
@@ -697,7 +699,7 @@ export default function ResumeBuilder() {
       } else if (sectionName === "Skills") {
         const parsed = parseAIResponse(result);
         if (parsed && typeof parsed === "object") {
-          setData((prev) => ({ ...prev, skills: { ...prev.skills, ...parsed } }));
+          setData((prev) => ({ ...prev, skills: mergeAndDeduplicateSkills(prev.skills, parsed as Record<string, string[]>) }));
         }
       }
       toast({ title: `${sectionName} improved!`, description: "AI has fixed the ATS issues." });
@@ -1036,7 +1038,7 @@ export default function ResumeBuilder() {
                           {Object.entries(data.skills).map(([categoryKey, skills]) => (
                             <div key={categoryKey} className="space-y-1">
                               <div className="flex items-center gap-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex-1">{SKILL_CATEGORY_LABELS[categoryKey] || categoryKey.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}</span>
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex-1">{getSkillCategoryLabel(categoryKey)}</span>
                                 <button type="button" onClick={() => { const s = { ...data.skills }; delete s[categoryKey]; setData((p) => ({ ...p, skills: s })); }} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
                               </div>
                               <div className="flex flex-wrap gap-1">
@@ -1046,8 +1048,8 @@ export default function ResumeBuilder() {
                             </div>
                           ))}
                           <div className="flex gap-1.5 items-center">
-                            <Input placeholder="New category name..." value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="bg-background h-6 text-[10px] flex-1" onKeyDown={(e) => { if (e.key === "Enter" && newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} />
-                            <button type="button" onClick={() => { if (newCategoryName.trim()) { const key = newCategoryName.trim().toLowerCase().replace(/\s+/g, "_").replace(/&/g, ""); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} className="text-xs text-muted-foreground hover:text-foreground"><Plus className="h-3 w-3" /></button>
+                            <Input placeholder="New category name..." value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="bg-background h-6 text-[10px] flex-1" onKeyDown={(e) => { if (e.key === "Enter" && newCategoryName.trim()) { const key = normalizeSkillCategory(newCategoryName); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} />
+                            <button type="button" onClick={() => { if (newCategoryName.trim()) { const key = normalizeSkillCategory(newCategoryName); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} className="text-xs text-muted-foreground hover:text-foreground"><Plus className="h-3 w-3" /></button>
                           </div>
                           {Object.keys(data.skills).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No skills yet. Upload a resume or add above.</p>}
                         </div>

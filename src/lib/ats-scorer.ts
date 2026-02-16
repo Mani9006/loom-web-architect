@@ -764,17 +764,89 @@ export function calculateATSScore(data: ResumeJSON, jobDescription?: string): AT
 export function buildSectionFixPrompt(section: string, data: ResumeJSON, issues: ATSIssue[]): string {
   const issueList = issues.map((i) => `- [${i.severity.toUpperCase()}] ${i.title}: ${i.description}`).join("\n");
 
+  // Build a full resume context so the AI understands the person's actual background
+  const resumeContext = `
+PERSON: ${data.header.name || "Unknown"}, ${data.header.title || "Professional"}
+LOCATION: ${data.header.location || "Not specified"}
+
+EXPERIENCE OVERVIEW:
+${data.experience.filter(e => e.company_or_client).map(e => `- ${e.role} at ${e.company_or_client} (${e.start_date} - ${e.end_date})`).join("\n")}
+
+KEY SKILLS: ${Object.values(data.skills).flat().slice(0, 20).join(", ")}
+
+EDUCATION: ${data.education.filter(e => e.institution).map(e => `${e.degree} in ${e.field} from ${e.institution}`).join("; ")}
+`.trim();
+
   switch (section) {
     case "Summary":
     case "Professional Summary":
-      return `You are an ATS-optimization expert. Fix this professional summary to resolve these ATS issues:\n\nISSUES:\n${issueList}\n\nCURRENT SUMMARY:\n"${data.summary}"\n\nCONTEXT: ${data.header.title || "Professional"} with experience at ${data.experience.filter(e => e.company_or_client).map(e => e.company_or_client).join(", ")}. Skills: ${Object.values(data.skills).flat().slice(0, 15).join(", ")}.\n\nRULES: No first-person pronouns. Include metrics. 30-60 words. Start with years of experience or key strength. Output ONLY the improved summary text, nothing else.`;
+      return `You are an ATS-optimization expert. Fix this professional summary to resolve these ATS issues.
+
+RESUME CONTEXT:
+${resumeContext}
+
+ISSUES TO FIX:
+${issueList}
+
+CURRENT SUMMARY:
+"${data.summary}"
+
+RULES:
+- No first-person pronouns (I, me, my)
+- 30-60 words maximum
+- Start with years of experience or key strength
+- ONLY include metrics/numbers that are actually present in the resume or can be reasonably inferred (e.g., years of experience from dates)
+- Do NOT invent percentages, dollar amounts, or team sizes that aren't in the original resume
+- Focus on improving clarity, action verbs, and keyword density
+- Output ONLY the improved summary text, nothing else.`;
 
     case "Experience":
     case "Work Experience":
-      return `You are an ATS-optimization expert. Improve these experience bullet points to resolve ATS issues:\n\nISSUES:\n${issueList}\n\nEXPERIENCE:\n${data.experience.filter(e => e.company_or_client).map(e => `${e.role} at ${e.company_or_client}:\n${e.bullets.map(b => `- ${b}`).join("\n")}`).join("\n\n")}\n\nRULES: Start every bullet with a strong action verb (Led, Developed, Optimized, etc). Add quantifiable metrics (percentages, numbers, dollar amounts). Keep each bullet under 25 words. Return ONLY a JSON array of experience objects with "role", "company_or_client", and "bullets" fields.`;
+      return `You are an ATS-optimization expert. Improve these experience bullet points to resolve ATS issues.
+
+FULL RESUME CONTEXT:
+${resumeContext}
+
+ISSUES TO FIX:
+${issueList}
+
+EXPERIENCE WITH BULLETS:
+${data.experience.filter(e => e.company_or_client).map(e => `${e.role} at ${e.company_or_client} (${e.start_date} - ${e.end_date}):
+${e.bullets.map(b => `- ${b}`).join("\n")}`).join("\n\n")}
+
+CRITICAL RULES:
+1. Start every bullet with a strong action verb (Led, Developed, Optimized, Implemented, etc.)
+2. PRESERVE all existing metrics, numbers, and quantified achievements exactly as they are
+3. DO NOT fabricate or invent ANY numbers, percentages, dollar amounts, or team sizes
+4. If a bullet has no metrics, improve the wording and action verb but DO NOT add fake statistics
+5. Only add metrics if they can be directly inferred from context (e.g., "team of 5" if mentioned elsewhere)
+6. Keep each bullet under 25 words
+7. Focus on making the ACTION and IMPACT clearer, not on inventing numbers
+8. Maintain the original meaning and scope of each bullet point
+9. Do NOT add "resulting in X% improvement" or "saving $X" unless those numbers exist in the original
+
+Return ONLY a JSON array of experience objects with "role", "company_or_client", and "bullets" fields. Preserve the same number of roles and similar bullet counts.`;
 
     case "Skills":
-      return `You are an ATS-optimization expert. The skills section has these issues:\n\nISSUES:\n${issueList}\n\nCURRENT SKILLS:\n${JSON.stringify(data.skills, null, 2)}\n\nCONTEXT: ${data.header.title || "Professional"} role. Experience includes: ${data.experience.filter(e => e.company_or_client).map(e => e.role).join(", ")}.\n\nRULES: Organize into clear categories. Add relevant technical skills based on experience. Keep skill names concise (1-3 words each). Return ONLY a JSON object with category keys and string array values.`;
+      return `You are an ATS-optimization expert. The skills section has these issues.
+
+RESUME CONTEXT:
+${resumeContext}
+
+ISSUES TO FIX:
+${issueList}
+
+CURRENT SKILLS:
+${JSON.stringify(data.skills, null, 2)}
+
+RULES:
+- Use these standard category keys: "generative_ai", "nlp", "machine_learning", "deep_learning", "programming_languages", "data_engineering_etl", "visualization", "cloud_mlops", "devops", "databases", "frameworks", "collaboration_tools", "big_data"
+- Merge duplicate/overlapping categories into the standard ones above
+- Keep skill names concise (1-3 words each)
+- Remove duplicate skills across categories
+- Only add skills that are mentioned in or strongly implied by the resume experience
+- Do NOT add skills the person doesn't have
+- Return ONLY a JSON object with category keys and string array values.`;
 
     default:
       return `Fix ATS issues for the ${section} section:\n${issueList}`;

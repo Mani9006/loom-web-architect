@@ -3,6 +3,8 @@
  * Extracted from ResumeBuilder.tsx to be reusable across the app.
  */
 
+import { normalizeSkillCategory, type SkillsObject } from "@/types/resume";
+
 // ── Robust JSON extractor from AI text ───────────────────────────────────────
 
 export function parseAIResponse(content: string): Record<string, any> | null {
@@ -97,7 +99,79 @@ export async function streamAIText(
 export const RESUME_PARSE_SYSTEM_PROMPT = `You are an expert resume parser. Extract ALL structured resume data.
 OUTPUT: Return ONLY valid JSON.
 SCHEMA: {"header":{"name":"","title":"","location":"","email":"","phone":"","linkedin":""},"summary":"","experience":[{"role":"","company_or_client":"","start_date":"","end_date":"","location":"","bullets":[]}],"education":[{"degree":"","field":"","institution":"","gpa":"","graduation_date":"","location":""}],"certifications":[{"name":"","issuer":"","date":""}],"skills":{},"projects":[{"title":"","organization":"","date":"","bullets":[]}]}
-RULES: Extract EVERY bullet point. Use lowercase_snake_case for skill category keys. Use "" for missing fields. Return ONLY JSON.`;
+RULES: Extract EVERY bullet point. Use "" for missing fields. Return ONLY JSON.
+SKILL CATEGORIES: Map all skills to these standard keys: "generative_ai", "nlp", "machine_learning", "deep_learning", "programming_languages", "data_engineering_etl", "visualization", "cloud_mlops", "devops", "databases", "frameworks", "collaboration_tools", "big_data". Do NOT create duplicates like "nlp_tools" or "cloud_platforms" - merge into the standard keys.`;
+
+// ── Skill normalization and deduplication ─────────────────────────────────────
+
+/**
+ * Normalizes skill category keys and merges duplicate categories.
+ * For example, "NLP Tools", "NLP", and "NLP Technologies" all merge into "nlp".
+ * Skills within merged categories are deduplicated (case-insensitive).
+ *
+ * @param rawSkills - The raw skills object from AI parsing or existing data
+ * @returns Normalized SkillsObject with deduplicated categories and skills
+ */
+export function normalizeAndDeduplicateSkills(rawSkills: Record<string, string[]>): SkillsObject {
+  const merged: SkillsObject = {};
+
+  for (const [rawKey, skills] of Object.entries(rawSkills)) {
+    if (!Array.isArray(skills) || skills.length === 0) continue;
+
+    const canonicalKey = normalizeSkillCategory(rawKey);
+
+    if (!merged[canonicalKey]) {
+      merged[canonicalKey] = [];
+    }
+
+    // Deduplicate skills (case-insensitive)
+    const existingLower = new Set(merged[canonicalKey].map((s) => s.toLowerCase().trim()));
+    for (const skill of skills) {
+      const trimmed = skill.trim();
+      if (trimmed && !existingLower.has(trimmed.toLowerCase())) {
+        merged[canonicalKey].push(trimmed);
+        existingLower.add(trimmed.toLowerCase());
+      }
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * Merges two skill objects, normalizing categories and deduplicating skills.
+ * This should be used instead of naive `{ ...existing, ...newSkills }` spreading.
+ *
+ * @param existing - The current skills in the resume
+ * @param incoming - New skills from AI parsing or other sources
+ * @returns Merged and deduplicated SkillsObject
+ */
+export function mergeAndDeduplicateSkills(
+  existing: Record<string, string[]>,
+  incoming: Record<string, string[]>,
+): SkillsObject {
+  // First normalize both inputs separately, then merge
+  const combined: Record<string, string[]> = {};
+
+  // Add existing skills first (normalize their keys)
+  for (const [key, skills] of Object.entries(existing)) {
+    if (!Array.isArray(skills)) continue;
+    const canonical = normalizeSkillCategory(key);
+    if (!combined[canonical]) combined[canonical] = [];
+    combined[canonical].push(...skills);
+  }
+
+  // Add incoming skills (normalize their keys)
+  for (const [key, skills] of Object.entries(incoming)) {
+    if (!Array.isArray(skills)) continue;
+    const canonical = normalizeSkillCategory(key);
+    if (!combined[canonical]) combined[canonical] = [];
+    combined[canonical].push(...skills);
+  }
+
+  // Now deduplicate within each category
+  return normalizeAndDeduplicateSkills(combined);
+}
 
 // ── Map AI parsed data to Supabase resume payload ────────────────────────────
 
@@ -147,7 +221,7 @@ export function mapParsedToResumePayload(parsedData: Record<string, any>) {
             date: c.date || "",
           }))
         : [],
-    skills: parsedData.skills || {},
+    skills: parsedData.skills ? normalizeAndDeduplicateSkills(parsedData.skills) : {},
     projects:
       parsedData.projects?.length > 0
         ? parsedData.projects.map((p: any) => ({
