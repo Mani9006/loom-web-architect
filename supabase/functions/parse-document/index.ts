@@ -16,13 +16,26 @@ async function parseDOCX(arrayBuffer: ArrayBuffer): Promise<string> {
   return result.value;
 }
 
-// Helper to extract text from PDF using basic parsing
-function extractTextFromPDF(uint8Array: Uint8Array): string {
+// Extract text from PDF using unpdf (handles compressed/FlateDecode streams properly)
+async function extractTextFromPDFWithUnpdf(uint8Array: Uint8Array): Promise<string> {
+  try {
+    const { extractText, getDocumentProxy } = await import("https://esm.sh/unpdf@0.12.1");
+    const pdf = await getDocumentProxy(uint8Array);
+    const { text } = await extractText(pdf, { mergePages: true });
+    return text || "";
+  } catch (error) {
+    console.error("unpdf extraction failed:", error);
+    return "";
+  }
+}
+
+// Fallback: basic regex-based text extraction for simple PDFs
+function extractTextFromPDFBasic(uint8Array: Uint8Array): string {
   const textDecoder = new TextDecoder('utf-8', { fatal: false });
   const pdfString = textDecoder.decode(uint8Array);
-  
+
   const textParts: string[] = [];
-  
+
   // Method 1: Look for text between parentheses
   const textMatches = pdfString.match(/\(([^)]+)\)/g);
   if (textMatches) {
@@ -33,7 +46,7 @@ function extractTextFromPDF(uint8Array: Uint8Array): string {
       }
     }
   }
-  
+
   // Method 2: Look for BT...ET text blocks
   const btBlocks = pdfString.match(/BT[\s\S]*?ET/g);
   if (btBlocks) {
@@ -65,6 +78,24 @@ function extractTextFromPDF(uint8Array: Uint8Array): string {
   }
 
   return textParts.join(" ");
+}
+
+// Main PDF extraction: try unpdf first, fall back to basic extraction
+async function extractTextFromPDF(uint8Array: Uint8Array): Promise<string> {
+  // Try unpdf first (handles compressed streams, FlateDecode, etc.)
+  console.log("Attempting PDF text extraction with unpdf...");
+  const unpdfText = await extractTextFromPDFWithUnpdf(uint8Array);
+  if (unpdfText && unpdfText.trim().length > 50) {
+    console.log("unpdf extraction successful, length:", unpdfText.length);
+    return unpdfText;
+  }
+
+  // Fall back to basic regex-based extraction
+  console.log("Falling back to basic PDF text extraction...");
+  const basicText = extractTextFromPDFBasic(uint8Array);
+  console.log("Basic extraction length:", basicText.length);
+
+  return basicText;
 }
 
 // Check if extracted text looks like valid resume content (not just PDF metadata)
@@ -322,8 +353,8 @@ serve(async (req: Request) => {
                 pageCount
               });
               
-              // Try basic text extraction first
-              extractedText = extractTextFromPDF(uint8Array);
+              // Try text extraction (unpdf first, then basic fallback)
+              extractedText = await extractTextFromPDF(uint8Array);
               
               // Check if extracted text is meaningful (not just PDF metadata or garbage)
               const needsOCR = extractedText.length < 100 || 
@@ -464,10 +495,10 @@ serve(async (req: Request) => {
         const uint8Array = new Uint8Array(arrayBuffer);
         const pageCount = countPDFPages(uint8Array);
         
-        // Try to extract text using basic parsing first
-        extractedText = extractTextFromPDF(uint8Array);
-        
-        console.log("Basic PDF text extraction length:", extractedText.length, "pages:", pageCount);
+        // Try text extraction (unpdf first, then basic fallback)
+        extractedText = await extractTextFromPDF(uint8Array);
+
+        console.log("PDF text extraction length:", extractedText.length, "pages:", pageCount);
 
         // Check if extracted text is meaningful (not just PDF metadata or garbage)
         const needsOCR = extractedText.length < 100 || !isValidResumeContent(extractedText);

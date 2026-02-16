@@ -371,8 +371,8 @@ export default function ResumeBuilder() {
     try {
       const { data: session } = await supabase.auth.getSession();
       if (!session.session) throw new Error("Not authenticated");
+      // System prompt is now defined server-side for mode "resume_parse"
       const fullContent = await streamAIText(session.session.access_token, [
-        { role: "system", content: `You are an expert resume parser. Extract ALL structured resume data.\nOUTPUT: Return ONLY valid JSON.\nSCHEMA: {"header":{"name":"","title":"","location":"","email":"","phone":"","linkedin":""},"summary":"","experience":[{"role":"","company_or_client":"","start_date":"","end_date":"","location":"","bullets":[]}],"education":[{"degree":"","field":"","institution":"","gpa":"","graduation_date":"","location":""}],"certifications":[{"name":"","issuer":"","date":""}],"skills":{},"projects":[{"title":"","organization":"","date":"","bullets":[]}]}\nRULES: Extract EVERY bullet point. Use lowercase_snake_case for skill category keys. Use "" for missing fields. Return ONLY JSON.` },
         { role: "user", content: `Parse this resume:\n\n${text}` },
       ], "resume_parse");
 

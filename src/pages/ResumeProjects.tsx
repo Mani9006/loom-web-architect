@@ -193,10 +193,10 @@ export default function ResumeProjects() {
         const { data: session } = await supabase.auth.getSession();
         if (!session.session) throw new Error("Not authenticated");
 
+        // System prompt is now defined server-side for mode "resume_parse"
         const fullContent = await streamAIText(
           session.session.access_token,
           [
-            { role: "system", content: RESUME_PARSE_SYSTEM_PROMPT },
             { role: "user", content: `Parse this resume:\n\n${textToParse}` },
           ],
           "resume_parse",

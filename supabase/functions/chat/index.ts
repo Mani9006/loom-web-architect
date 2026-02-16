@@ -110,6 +110,69 @@ Specific talking points for this role
 What to avoid
 
 Use clear formatting with headings and bullet points.`,
+
+  resume_parse: `You are an expert resume parser. Extract ALL structured resume data from the provided text.
+
+OUTPUT: Return ONLY valid JSON (no markdown, no backticks, no explanations).
+
+SCHEMA:
+{
+  "header": {
+    "name": "Full Name",
+    "title": "Job Title",
+    "location": "City, State",
+    "email": "email@domain.com",
+    "phone": "phone number",
+    "linkedin": "LinkedIn URL"
+  },
+  "summary": "Professional summary text",
+  "experience": [
+    {
+      "role": "Job Title",
+      "company_or_client": "Company Name",
+      "start_date": "Mon YYYY",
+      "end_date": "Mon YYYY or Present",
+      "location": "City, State",
+      "bullets": ["...ALL bullet points from this role..."]
+    }
+  ],
+  "education": [
+    {
+      "degree": "Degree Type",
+      "field": "Field of Study",
+      "institution": "School Name",
+      "gpa": "GPA if mentioned",
+      "graduation_date": "YYYY or Mon YYYY",
+      "location": "City, State"
+    }
+  ],
+  "certifications": [
+    {
+      "name": "Certification Name",
+      "issuer": "Issuing Organization",
+      "date": "Date obtained"
+    }
+  ],
+  "skills": {
+    "actual_category_name_from_resume": ["ALL skills exactly as listed under this category"]
+  },
+  "projects": [
+    {
+      "title": "Project Name",
+      "organization": "Organization",
+      "date": "Date",
+      "bullets": ["...ALL bullet points from this project..."]
+    }
+  ]
+}
+
+CRITICAL RULES:
+1. Extract ONLY the person's name in header.name
+2. bullets must be an array of strings - EXTRACT EVERY SINGLE BULLET POINT, do not truncate or summarize
+3. For experience and projects: include ALL bullet points exactly as written, even if there are 10+ bullets per entry
+4. SKILLS EXTRACTION: Use the EXACT category names from the resume (converted to lowercase_snake_case). DO NOT invent categories.
+5. Use empty string "" for missing fields, never null
+6. Return ONLY the JSON object`,
 };
 
 // Mem0 API functions - Following official v2 API
@@ -280,14 +343,22 @@ serve(async (req) => {
       console.log(`[Chat] Memory disabled for mode: ${chatMode}`);
     }
 
+    // Check if we have a dedicated system prompt for this mode
+    const hasDedicatedPrompt = chatMode in SYSTEM_PROMPTS;
     const basePrompt = SYSTEM_PROMPTS[chatMode] || SYSTEM_PROMPTS.general;
     const systemPrompt = basePrompt + memoryContext;
 
-    console.log(`[Chat] Mode: ${chatMode}, Messages: ${messages.length}`);
+    console.log(`[Chat] Mode: ${chatMode}, Messages: ${messages.length}, dedicated prompt: ${hasDedicatedPrompt}`);
 
     // Select optimal model - use OpenAI models
     const selectedModel = requestedModel || getModelForMode(chatMode);
     console.log(`[Chat] Using OpenAI model: ${selectedModel} for mode: ${chatMode}`);
+
+    // When the backend has a dedicated system prompt for this mode, strip frontend system messages
+    // to avoid conflicting/duplicate instructions. Otherwise, keep them (the frontend provides the prompt).
+    const userMessages = hasDedicatedPrompt
+      ? messages.filter((m: any) => m.role !== "system")
+      : messages;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -299,7 +370,7 @@ serve(async (req) => {
         model: selectedModel,
         messages: [
           { role: "system", content: systemPrompt },
-          ...messages,
+          ...userMessages,
         ],
         stream: true,
       }),

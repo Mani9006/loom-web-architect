@@ -235,6 +235,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
       }
 
       // Call AI to parse the resume text into structured data
+      // System prompt is now defined server-side for mode "resume_parse"
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
         {
@@ -246,88 +247,11 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
           body: JSON.stringify({
             messages: [
               {
-                role: "system",
-                content: `You are an expert resume parser. Extract ALL structured resume data from the provided text.
-
-OUTPUT: Return ONLY valid JSON (no markdown, no backticks, no explanations).
-
-SCHEMA:
-{
-  "header": {
-    "name": "Full Name",
-    "title": "Job Title",
-    "location": "City, State",
-    "email": "email@domain.com",
-    "phone": "phone number",
-    "linkedin": "LinkedIn URL"
-  },
-  "summary": "Professional summary text",
-  "experience": [
-    {
-      "role": "Job Title",
-      "company_or_client": "Company Name",
-      "start_date": "Mon YYYY",
-      "end_date": "Mon YYYY or Present",
-      "location": "City, State",
-      "bullets": ["...ALL bullet points from this role..."]
-    }
-  ],
-  "education": [
-    {
-      "degree": "Degree Type",
-      "field": "Field of Study",
-      "institution": "School Name",
-      "gpa": "GPA if mentioned",
-      "graduation_date": "YYYY or Mon YYYY",
-      "location": "City, State"
-    }
-  ],
-  "certifications": [
-    {
-      "name": "Certification Name",
-      "issuer": "Issuing Organization",
-      "date": "Date obtained"
-    }
-  ],
-  "skills": {
-    "actual_category_name_from_resume": ["ALL skills exactly as listed under this category"]
-  },
-  "projects": [
-    {
-      "title": "Project Name",
-      "organization": "Organization",
-      "date": "Date",
-      "bullets": ["...ALL bullet points from this project..."]
-    }
-  ]
-}
-
-CRITICAL RULES:
-1. Extract ONLY the person's name in header.name
-2. bullets must be an array of strings - EXTRACT EVERY SINGLE BULLET POINT, do not truncate or summarize
-3. For experience and projects: include ALL bullet points exactly as written, even if there are 10+ bullets per entry
-   - NEVER limit bullets to 3/5/7; include every bullet from the resume
-   - Preserve order; do not dedupe; keep even short bullets
-4. SKILLS EXTRACTION IS CRITICAL:
-   - READ the skills section of the resume CAREFULLY
-   - Use the EXACT category names as they appear in the resume document (converted to lowercase_snake_case)
-   - If you cannot find category names in the resume, return an EMPTY skills object {}
-   - DO NOT invent categories like "programming_languages", "machine_learning", "nlp", "generative_ai" unless they actually appear in the resume
-   - DO NOT rename categories - if the resume says "Programming & Querying", use "programming_querying", NOT "programming_languages"
-   - If resume says "Cloud Platforms", use "cloud_platforms", NOT "cloud_mlops"
-   - If resume says "Databases & Storage", use "databases_storage"
-   - If resume says "Reporting & Analytics", use "reporting_analytics"
-   - If resume says "DevOps & Automation", use "devops_automation"
-   - Extract ALL skills listed under each category
-5. Use empty string "" for missing fields, never null
-6. Return ONLY the JSON object`
-              },
-              {
                 role: "user",
                 content: `Parse this resume:\n\n${text}`
               }
             ],
-            mode: "resume",
+            mode: "resume_parse",
           }),
         }
       );
