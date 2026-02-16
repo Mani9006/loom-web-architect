@@ -245,16 +245,15 @@ async function addToMem0(apiKey: string, userId: string, messages: any[]): Promi
 // Uses both OpenAI and Claude (Anthropic) for optimal quality + cost
 //
 // OpenAI:
-//   GPT-4.1       – best for complex writing, editing, JSON output (1M context)
-//   GPT-4.1-mini  – beats GPT-4o at 83% lower cost, great for most tasks
-//   GPT-4.1-nano  – fastest/cheapest, good for simple tasks
+//   GPT-4o       – best for complex writing, editing, JSON output
+//   GPT-4o-mini  – cost-effective, great for most tasks
 //
 // Claude (Anthropic):
 //   claude-sonnet-4-20250514 – excellent for nuanced text editing/rewriting
 //   claude-3-5-haiku-20241022 – fast, token-efficient for structured extraction
 //
 // Provider selection: Claude excels at nuanced writing quality and editing,
-// while OpenAI GPT-4.1 excels at JSON output and instruction following.
+// while OpenAI GPT-4o excels at JSON output and instruction following.
 
 type AIProvider = "openai" | "anthropic";
 
@@ -269,46 +268,46 @@ function getModelConfig(mode: string): ModelConfig {
   const hasClaude = !!ANTHROPIC_API_KEY;
 
   switch (mode) {
-    // Resume parsing – needs strict JSON output → GPT-4.1 (best at instruction following + JSON)
+    // Resume parsing – needs strict JSON output → GPT-4o (best at instruction following + JSON)
     case "resume_parse":
-      return { provider: "openai", model: "gpt-4.1" };
+      return { provider: "openai", model: "gpt-4o" };
 
     // Resume fix/rewrite – needs nuanced understanding, no fabrication → Claude Sonnet (best at writing quality)
     case "resume_fix":
       return hasClaude
         ? { provider: "anthropic", model: "claude-sonnet-4-20250514" }
-        : { provider: "openai", model: "gpt-4.1" };
+        : { provider: "openai", model: "gpt-4o" };
 
     // Cover letter – creative writing → Claude Sonnet (more natural, human-like)
     case "cover_letter":
       return hasClaude
         ? { provider: "anthropic", model: "claude-sonnet-4-20250514" }
-        : { provider: "openai", model: "gpt-4.1" };
+        : { provider: "openai", model: "gpt-4o" };
 
-    // ATS analysis – structured scoring → GPT-4.1 (great at structured output)
+    // ATS analysis – structured scoring → GPT-4o (great at structured output)
     case "ats":
-      return { provider: "openai", model: "gpt-4.1" };
+      return { provider: "openai", model: "gpt-4o" };
 
     // Summary/bullet enhancement – writing quality matters → Claude Sonnet
     case "resume_enhance":
     case "resume_bullets":
       return hasClaude
         ? { provider: "anthropic", model: "claude-sonnet-4-20250514" }
-        : { provider: "openai", model: "gpt-4.1-mini" };
+        : { provider: "openai", model: "gpt-4o-mini" };
 
-    // Interview/job search – structured advice → GPT-4.1-mini (fast, cost-effective)
+    // Interview/job search – structured advice → GPT-4o-mini (fast, cost-effective)
     case "resume":
     case "interview":
     case "job_search":
-      return { provider: "openai", model: "gpt-4.1-mini" };
+      return { provider: "openai", model: "gpt-4o-mini" };
 
-    // General chat – fast responses → GPT-4.1-nano or Claude Haiku
+    // General chat – fast responses → GPT-4o-mini or Claude Haiku
     case "general":
     case "quick":
     default:
       return hasClaude
         ? { provider: "anthropic", model: "claude-3-5-haiku-20241022" }
-        : { provider: "openai", model: "gpt-4.1-nano" };
+        : { provider: "openai", model: "gpt-4o-mini" };
   }
 }
 
@@ -492,7 +491,7 @@ serve(async (req) => {
         : effectiveProvider;
 
     const finalModel = finalProvider !== effectiveProvider
-      ? (finalProvider === "openai" ? "gpt-4.1" : "claude-sonnet-4-20250514")
+      ? (finalProvider === "openai" ? "gpt-4o" : "claude-sonnet-4-20250514")
       : effectiveModel;
 
     console.log(`[Chat] Using ${finalProvider} model: ${finalModel} for mode: ${chatMode}`);
@@ -547,7 +546,7 @@ serve(async (req) => {
 
       // If primary provider fails, try fallback provider
       if (usedProvider === "anthropic" && OPENAI_API_KEY) {
-        console.log(`[Chat] Anthropic failed, falling back to OpenAI gpt-4.1`);
+        console.log(`[Chat] Anthropic failed, falling back to OpenAI gpt-4o`);
         usedProvider = "openai";
         response = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
@@ -556,7 +555,7 @@ serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-4.1",
+            model: "gpt-4o",
             messages: [
               { role: "system", content: systemPrompt },
               ...userMessages,
