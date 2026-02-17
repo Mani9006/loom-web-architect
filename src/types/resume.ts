@@ -161,6 +161,32 @@ export interface CustomSection {
   entries: CustomSectionEntry[];
 }
 
+// Section IDs for ordering (matches the built-in section IDs in ResumeBuilder)
+export type ResumeSectionId =
+  | "summary"
+  | "experience"
+  | "education"
+  | "skills"
+  | "projects"
+  | "certifications"
+  | "languages"
+  | "volunteer"
+  | "awards"
+  | string; // custom section IDs like "custom_abc12345"
+
+// Default section order used when none is specified
+export const DEFAULT_SECTION_ORDER: ResumeSectionId[] = [
+  "summary",
+  "experience",
+  "education",
+  "skills",
+  "certifications",
+  "projects",
+  "languages",
+  "volunteer",
+  "awards",
+];
+
 // Main Resume JSON Schema
 export interface ResumeJSON {
   header: ResumeHeader;
@@ -174,6 +200,7 @@ export interface ResumeJSON {
   volunteer?: VolunteerEntry[];
   awards?: AwardEntry[];
   customSections?: CustomSection[];
+  section_order?: ResumeSectionId[];
 }
 
 // Template configuration
@@ -221,6 +248,7 @@ export const createEmptyResumeJSON = (): ResumeJSON => ({
   certifications: [],
   skills: {},
   projects: [],
+  section_order: [...DEFAULT_SECTION_ORDER],
 });
 
 // Skill category display names for UI

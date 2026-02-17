@@ -9,7 +9,7 @@
  */
 
 import type { ResumeJSON } from "@/types/resume";
-import { getSkillCategoryLabel } from "@/types/resume";
+import { getSkillCategoryLabel, DEFAULT_SECTION_ORDER } from "@/types/resume";
 
 // ─── Page & layout constants (match ResumeTemplate.tsx) ──────────────
 const PAGE = {
@@ -472,18 +472,48 @@ export class PDFResumeRenderer {
     // Set default text color
     this.doc.setTextColor(0, 0, 0);
 
-    // Render all sections in the same order as ResumeTemplate.tsx
+    // Render header (always first)
     this.renderHeader(data.header);
-    if (data.summary) this.renderSummary(data.summary);
-    this.renderExperience(data.experience);
-    this.renderEducation(data.education);
-    this.renderSkills(data.skills);
-    this.renderCertifications(data.certifications);
-    this.renderProjects(data.projects);
-    this.renderLanguages(data.languages);
-    this.renderVolunteer(data.volunteer);
-    this.renderAwards(data.awards);
-    this.renderCustomSections(data.customSections);
+
+    // Render sections dynamically based on section_order
+    const sectionOrder = data.section_order || DEFAULT_SECTION_ORDER;
+    for (const sectionId of sectionOrder) {
+      switch (sectionId) {
+        case "summary":
+          if (data.summary) this.renderSummary(data.summary);
+          break;
+        case "experience":
+          this.renderExperience(data.experience);
+          break;
+        case "education":
+          this.renderEducation(data.education);
+          break;
+        case "skills":
+          this.renderSkills(data.skills);
+          break;
+        case "certifications":
+          this.renderCertifications(data.certifications);
+          break;
+        case "projects":
+          this.renderProjects(data.projects);
+          break;
+        case "languages":
+          this.renderLanguages(data.languages);
+          break;
+        case "volunteer":
+          this.renderVolunteer(data.volunteer);
+          break;
+        case "awards":
+          this.renderAwards(data.awards);
+          break;
+        default: {
+          // Custom sections
+          const cs = (data.customSections || []).find((s) => s.id === sectionId);
+          if (cs) this.renderCustomSections([cs]);
+          break;
+        }
+      }
+    }
 
     return this.doc;
   }

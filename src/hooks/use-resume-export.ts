@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ResumeJSON, getSkillCategoryLabel } from "@/types/resume";
+import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER } from "@/types/resume";
 import { toast } from "sonner";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -595,16 +595,45 @@ class PDFResumeRenderer {
     });
 
     this.renderHeader(data.header);
-    if (data.summary) this.renderSummary(data.summary);
-    this.renderExperience(data.experience);
-    this.renderEducation(data.education);
-    this.renderSkills(data.skills);
-    this.renderCertifications(data.certifications);
-    this.renderProjects(data.projects);
-    this.renderLanguages(data.languages);
-    this.renderVolunteer(data.volunteer);
-    this.renderAwards(data.awards);
-    this.renderCustomSections(data.customSections);
+
+    // Render sections dynamically based on section_order
+    const sectionOrder = data.section_order || DEFAULT_SECTION_ORDER;
+    for (const sectionId of sectionOrder) {
+      switch (sectionId) {
+        case "summary":
+          if (data.summary) this.renderSummary(data.summary);
+          break;
+        case "experience":
+          this.renderExperience(data.experience);
+          break;
+        case "education":
+          this.renderEducation(data.education);
+          break;
+        case "skills":
+          this.renderSkills(data.skills);
+          break;
+        case "certifications":
+          this.renderCertifications(data.certifications);
+          break;
+        case "projects":
+          this.renderProjects(data.projects);
+          break;
+        case "languages":
+          this.renderLanguages(data.languages);
+          break;
+        case "volunteer":
+          this.renderVolunteer(data.volunteer);
+          break;
+        case "awards":
+          this.renderAwards(data.awards);
+          break;
+        default: {
+          const cs = (data.customSections || []).find((s) => s.id === sectionId);
+          if (cs) this.renderCustomSections([cs]);
+          break;
+        }
+      }
+    }
 
     // Add page numbers for multi-page resumes
     const totalPages = this.doc.getNumberOfPages();
@@ -737,459 +766,133 @@ export function useResumeExport() {
           ],
         });
 
-      // ── Summary ─────────────────────────────────────────────────────
-      if (data.summary) {
-        children.push(sectionHeading("Professional Summary"));
-        children.push(
-          new Paragraph({
-            spacing: { after: 80 },
-            alignment: AlignmentType.JUSTIFIED,
-            children: [
-              new TextRun({
-                text: data.summary,
-                size: 20, // 10pt
-                font: "Calibri",
-              }),
-            ],
-          }),
-        );
-      }
+      // ── Section renderers (each returns an array of Paragraph objects) ──
 
-      // ── Experience ──────────────────────────────────────────────────
-      const validExperience = data.experience.filter((e) => e.company_or_client);
-      if (validExperience.length > 0) {
-        children.push(sectionHeading("Professional Experience"));
+      const renderWordSummary = (): any[] => {
+        if (!data.summary) return [];
+        return [
+          sectionHeading("Professional Summary"),
+          new Paragraph({ spacing: { after: 80 }, alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: data.summary, size: 20, font: "Calibri" })] }),
+        ];
+      };
 
-        validExperience.forEach((exp) => {
-          // Role + Dates
-          children.push(
-            new Paragraph({
-              spacing: { before: 120 },
-              tabStops: [{ type: "right" as any, position: 9360 }],
-              children: [
-                new TextRun({
-                  text: exp.role || "Role",
-                  bold: true,
-                  size: 20,
-                  font: "Calibri",
-                }),
-                new TextRun({
-                  text: `\t${exp.start_date || "Start"} \u2014 ${exp.end_date || "Present"}`,
-                  size: 19,
-                  font: "Calibri",
-                }),
-              ],
-            }),
-          );
-
-          // Company + Location
-          children.push(
-            new Paragraph({
-              tabStops: [{ type: "right" as any, position: 9360 }],
-              children: [
-                new TextRun({
-                  text: exp.company_or_client,
-                  italics: true,
-                  size: 20,
-                  font: "Calibri",
-                }),
-                exp.location
-                  ? new TextRun({
-                      text: `\t${exp.location}`,
-                      size: 19,
-                      font: "Calibri",
-                    })
-                  : new TextRun({ text: "" }),
-              ],
-            }),
-          );
-
-          // Bullets
-          exp.bullets.forEach((bullet) => {
-            children.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 30 },
-                children: [
-                  new TextRun({
-                    text: bullet,
-                    size: 20,
-                    font: "Calibri",
-                  }),
-                ],
-              }),
-            );
-          });
+      const renderWordExperience = (): any[] => {
+        const valid = data.experience.filter((e) => e.company_or_client);
+        if (valid.length === 0) return [];
+        const paragraphs: any[] = [sectionHeading("Professional Experience")];
+        valid.forEach((exp) => {
+          paragraphs.push(new Paragraph({ spacing: { before: 120 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: exp.role || "Role", bold: true, size: 20, font: "Calibri" }), new TextRun({ text: `\t${exp.start_date || "Start"} \u2014 ${exp.end_date || "Present"}`, size: 19, font: "Calibri" })] }));
+          paragraphs.push(new Paragraph({ tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: exp.company_or_client, italics: true, size: 20, font: "Calibri" }), exp.location ? new TextRun({ text: `\t${exp.location}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+          exp.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
         });
-      }
+        return paragraphs;
+      };
 
-      // ── Education ───────────────────────────────────────────────────
-      const validEducation = data.education.filter((e) => e.institution);
-      if (validEducation.length > 0) {
-        children.push(sectionHeading("Education"));
+      const renderWordEducation = (): any[] => {
+        const valid = data.education.filter((e) => e.institution);
+        if (valid.length === 0) return [];
+        const paragraphs: any[] = [sectionHeading("Education")];
+        valid.forEach((edu) => {
+          const degreeText = edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree";
+          paragraphs.push(new Paragraph({ spacing: { before: 80 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: degreeText, bold: true, size: 20, font: "Calibri" }), edu.institution ? new TextRun({ text: ` \u2014 ${edu.institution}`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), edu.gpa ? new TextRun({ text: ` (GPA: ${edu.gpa})`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), new TextRun({ text: `\t${edu.graduation_date || ""}`, size: 19, font: "Calibri" })] }));
+          if (edu.location) { paragraphs.push(new Paragraph({ children: [new TextRun({ text: edu.location, italics: true, size: 19, font: "Calibri" })] })); }
+        });
+        return paragraphs;
+      };
 
-        validEducation.forEach((edu) => {
-          const degreeText =
-            edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree";
+      const renderWordSkills = (): any[] => {
+        const cats = Object.entries(data.skills).filter(([_, skills]) => skills.length > 0).map(([key, skills]) => ({ category: getSkillCategoryLabel(key), skills }));
+        if (cats.length === 0) return [];
+        const paragraphs: any[] = [sectionHeading("Technical Skills")];
+        cats.forEach((sc) => { paragraphs.push(new Paragraph({ spacing: { before: 40 }, children: [new TextRun({ text: `${sc.category}: `, bold: true, size: 20, font: "Calibri" }), new TextRun({ text: sc.skills.join(", "), size: 20, font: "Calibri" })] })); });
+        return paragraphs;
+      };
 
-          children.push(
-            new Paragraph({
-              spacing: { before: 80 },
-              tabStops: [{ type: "right" as any, position: 9360 }],
-              children: [
-                new TextRun({
-                  text: degreeText,
-                  bold: true,
-                  size: 20,
-                  font: "Calibri",
-                }),
-                edu.institution
-                  ? new TextRun({
-                      text: ` \u2014 ${edu.institution}`,
-                      size: 20,
-                      font: "Calibri",
-                    })
-                  : new TextRun({ text: "" }),
-                edu.gpa
-                  ? new TextRun({
-                      text: ` (GPA: ${edu.gpa})`,
-                      size: 20,
-                      font: "Calibri",
-                    })
-                  : new TextRun({ text: "" }),
-                new TextRun({
-                  text: `\t${edu.graduation_date || ""}`,
-                  size: 19,
-                  font: "Calibri",
-                }),
-              ],
-            }),
-          );
+      const renderWordCertifications = (): any[] => {
+        const valid = data.certifications.filter((c) => c.name);
+        if (valid.length === 0) return [];
+        const paragraphs: any[] = [sectionHeading("Certifications")];
+        valid.forEach((cert) => {
+          const certNameChild = cert.url ? new ExternalHyperlink({ link: cert.url.startsWith("http") ? cert.url : `https://${cert.url}`, children: [new TextRun({ text: cert.name, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: cert.name, bold: true, size: 20, font: "Calibri" });
+          paragraphs.push(new Paragraph({ spacing: { before: 40 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [certNameChild, cert.issuer ? new TextRun({ text: ` \u2014 ${cert.issuer}`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), new TextRun({ text: `\t${cert.date || ""}`, size: 19, font: "Calibri" })] }));
+        });
+        return paragraphs;
+      };
 
-          if (edu.location) {
-            children.push(
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: edu.location,
-                    italics: true,
-                    size: 19,
-                    font: "Calibri",
-                  }),
-                ],
-              }),
-            );
+      const renderWordProjects = (): any[] => {
+        const valid = data.projects?.filter((p) => p.title) || [];
+        if (valid.length === 0) return [];
+        const paragraphs: any[] = [sectionHeading("Projects")];
+        valid.forEach((project) => {
+          const projTitleChild = project.url ? new ExternalHyperlink({ link: project.url.startsWith("http") ? project.url : `https://${project.url}`, children: [new TextRun({ text: project.title, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: project.title, bold: true, size: 20, font: "Calibri" });
+          paragraphs.push(new Paragraph({ spacing: { before: 100 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [projTitleChild, (project.date || project.organization) ? new TextRun({ text: `\t${project.organization ? `${project.organization} \u2014 ` : ""}${project.date || ""}`, italics: true, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+          project.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
+        });
+        return paragraphs;
+      };
+
+      const renderWordLanguages = (): any[] => {
+        const valid = (data.languages || []).filter((l) => l.language);
+        if (valid.length === 0) return [];
+        const langText = valid.map((l) => `${l.language}${l.proficiency ? ` (${l.proficiency})` : ""}`).join("  |  ");
+        return [sectionHeading("Languages"), new Paragraph({ spacing: { before: 40 }, children: [new TextRun({ text: langText, size: 20, font: "Calibri" })] })];
+      };
+
+      const renderWordVolunteer = (): any[] => {
+        const valid = (data.volunteer || []).filter((v) => v.organization);
+        if (valid.length === 0) return [];
+        const paragraphs: any[] = [sectionHeading("Volunteer Experience")];
+        valid.forEach((vol) => {
+          paragraphs.push(new Paragraph({ spacing: { before: 100 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: vol.role || "Volunteer", bold: true, size: 20, font: "Calibri" }), vol.date ? new TextRun({ text: `\t${vol.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+          paragraphs.push(new Paragraph({ children: [new TextRun({ text: vol.organization, italics: true, size: 20, font: "Calibri" })] }));
+          vol.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
+        });
+        return paragraphs;
+      };
+
+      const renderWordAwards = (): any[] => {
+        const valid = (data.awards || []).filter((a) => a.title);
+        if (valid.length === 0) return [];
+        const paragraphs: any[] = [sectionHeading("Awards & Publications")];
+        valid.forEach((award) => {
+          const awardTitleChild = award.url ? new ExternalHyperlink({ link: award.url.startsWith("http") ? award.url : `https://${award.url}`, children: [new TextRun({ text: award.title, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: award.title, bold: true, size: 20, font: "Calibri" });
+          paragraphs.push(new Paragraph({ spacing: { before: 40 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [awardTitleChild, award.issuer ? new TextRun({ text: ` \u2014 ${award.issuer}`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), award.date ? new TextRun({ text: `\t${award.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+        });
+        return paragraphs;
+      };
+
+      const renderWordCustomSection = (cs: any): any[] => {
+        if (!cs || !cs.entries.some((e: any) => e.title)) return [];
+        const paragraphs: any[] = [sectionHeading(cs.name)];
+        cs.entries.filter((e: any) => e.title).forEach((entry: any) => {
+          const entryTitleChild = entry.url ? new ExternalHyperlink({ link: entry.url.startsWith("http") ? entry.url : `https://${entry.url}`, children: [new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri" });
+          paragraphs.push(new Paragraph({ spacing: { before: 100 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [entryTitleChild, entry.date ? new TextRun({ text: `\t${entry.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+          if (entry.subtitle) { paragraphs.push(new Paragraph({ children: [new TextRun({ text: entry.subtitle, italics: true, size: 20, font: "Calibri" })] })); }
+          entry.bullets.forEach((bullet: string) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
+        });
+        return paragraphs;
+      };
+
+      // ── Render sections in dynamic order ─────────────────────────────
+      const sectionOrder = data.section_order || DEFAULT_SECTION_ORDER;
+      for (const sectionId of sectionOrder) {
+        switch (sectionId) {
+          case "summary": children.push(...renderWordSummary()); break;
+          case "experience": children.push(...renderWordExperience()); break;
+          case "education": children.push(...renderWordEducation()); break;
+          case "skills": children.push(...renderWordSkills()); break;
+          case "certifications": children.push(...renderWordCertifications()); break;
+          case "projects": children.push(...renderWordProjects()); break;
+          case "languages": children.push(...renderWordLanguages()); break;
+          case "volunteer": children.push(...renderWordVolunteer()); break;
+          case "awards": children.push(...renderWordAwards()); break;
+          default: {
+            const cs = (data.customSections || []).find((s) => s.id === sectionId);
+            if (cs) children.push(...renderWordCustomSection(cs));
+            break;
           }
-        });
+        }
       }
-
-      // ── Skills ──────────────────────────────────────────────────────
-      const skillCategories = Object.entries(data.skills)
-        .filter(([_, skills]) => skills.length > 0)
-        .map(([key, skills]) => ({
-          category: getSkillCategoryLabel(key),
-          skills,
-        }));
-
-      if (skillCategories.length > 0) {
-        children.push(sectionHeading("Technical Skills"));
-
-        skillCategories.forEach((sc) => {
-          children.push(
-            new Paragraph({
-              spacing: { before: 40 },
-              children: [
-                new TextRun({
-                  text: `${sc.category}: `,
-                  bold: true,
-                  size: 20,
-                  font: "Calibri",
-                }),
-                new TextRun({
-                  text: sc.skills.join(", "),
-                  size: 20,
-                  font: "Calibri",
-                }),
-              ],
-            }),
-          );
-        });
-      }
-
-      // ── Certifications ──────────────────────────────────────────────
-      const validCerts = data.certifications.filter((c) => c.name);
-      if (validCerts.length > 0) {
-        children.push(sectionHeading("Certifications"));
-
-        validCerts.forEach((cert) => {
-          const certNameChild = cert.url
-            ? new ExternalHyperlink({
-                link: cert.url.startsWith("http") ? cert.url : `https://${cert.url}`,
-                children: [
-                  new TextRun({
-                    text: cert.name,
-                    bold: true,
-                    size: 20,
-                    font: "Calibri",
-                    color: "000000",
-                  }),
-                ],
-              })
-            : new TextRun({
-                text: cert.name,
-                bold: true,
-                size: 20,
-                font: "Calibri",
-              });
-
-          children.push(
-            new Paragraph({
-              spacing: { before: 40 },
-              tabStops: [{ type: "right" as any, position: 9360 }],
-              children: [
-                certNameChild,
-                cert.issuer
-                  ? new TextRun({
-                      text: ` \u2014 ${cert.issuer}`,
-                      size: 20,
-                      font: "Calibri",
-                    })
-                  : new TextRun({ text: "" }),
-                new TextRun({
-                  text: `\t${cert.date || ""}`,
-                  size: 19,
-                  font: "Calibri",
-                }),
-              ],
-            }),
-          );
-        });
-      }
-
-      // ── Projects ────────────────────────────────────────────────────
-      const validProjects = data.projects?.filter((p) => p.title) || [];
-      if (validProjects.length > 0) {
-        children.push(sectionHeading("Projects"));
-
-        validProjects.forEach((project) => {
-          const projTitleChild = project.url
-            ? new ExternalHyperlink({
-                link: project.url.startsWith("http") ? project.url : `https://${project.url}`,
-                children: [
-                  new TextRun({
-                    text: project.title,
-                    bold: true,
-                    size: 20,
-                    font: "Calibri",
-                    color: "000000",
-                  }),
-                ],
-              })
-            : new TextRun({
-                text: project.title,
-                bold: true,
-                size: 20,
-                font: "Calibri",
-              });
-
-          children.push(
-            new Paragraph({
-              spacing: { before: 100 },
-              tabStops: [{ type: "right" as any, position: 9360 }],
-              children: [
-                projTitleChild,
-                (project.date || project.organization)
-                  ? new TextRun({
-                      text: `\t${project.organization ? `${project.organization} \u2014 ` : ""}${project.date || ""}`,
-                      italics: true,
-                      size: 19,
-                      font: "Calibri",
-                    })
-                  : new TextRun({ text: "" }),
-              ],
-            }),
-          );
-
-          project.bullets.forEach((bullet) => {
-            children.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 30 },
-                children: [
-                  new TextRun({
-                    text: bullet,
-                    size: 20,
-                    font: "Calibri",
-                  }),
-                ],
-              }),
-            );
-          });
-        });
-      }
-
-      // ── Languages ───────────────────────────────────────────────────
-      const validLanguages = (data.languages || []).filter((l) => l.language);
-      if (validLanguages.length > 0) {
-        children.push(sectionHeading("Languages"));
-        const langText = validLanguages
-          .map((l) => `${l.language}${l.proficiency ? ` (${l.proficiency})` : ""}`)
-          .join("  |  ");
-        children.push(
-          new Paragraph({
-            spacing: { before: 40 },
-            children: [
-              new TextRun({
-                text: langText,
-                size: 20,
-                font: "Calibri",
-              }),
-            ],
-          }),
-        );
-      }
-
-      // ── Volunteer ───────────────────────────────────────────────────
-      const validVolunteer = (data.volunteer || []).filter((v) => v.organization);
-      if (validVolunteer.length > 0) {
-        children.push(sectionHeading("Volunteer Experience"));
-
-        validVolunteer.forEach((vol) => {
-          children.push(
-            new Paragraph({
-              spacing: { before: 100 },
-              tabStops: [{ type: "right" as any, position: 9360 }],
-              children: [
-                new TextRun({
-                  text: vol.role || "Volunteer",
-                  bold: true,
-                  size: 20,
-                  font: "Calibri",
-                }),
-                vol.date
-                  ? new TextRun({ text: `\t${vol.date}`, size: 19, font: "Calibri" })
-                  : new TextRun({ text: "" }),
-              ],
-            }),
-          );
-          children.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: vol.organization,
-                  italics: true,
-                  size: 20,
-                  font: "Calibri",
-                }),
-              ],
-            }),
-          );
-          vol.bullets.forEach((bullet) => {
-            children.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 30 },
-                children: [
-                  new TextRun({ text: bullet, size: 20, font: "Calibri" }),
-                ],
-              }),
-            );
-          });
-        });
-      }
-
-      // ── Awards ──────────────────────────────────────────────────────
-      const validAwards = (data.awards || []).filter((a) => a.title);
-      if (validAwards.length > 0) {
-        children.push(sectionHeading("Awards & Publications"));
-
-        validAwards.forEach((award) => {
-          const awardTitleChild = award.url
-            ? new ExternalHyperlink({
-                link: award.url.startsWith("http") ? award.url : `https://${award.url}`,
-                children: [
-                  new TextRun({
-                    text: award.title,
-                    bold: true,
-                    size: 20,
-                    font: "Calibri",
-                    color: "000000",
-                  }),
-                ],
-              })
-            : new TextRun({
-                text: award.title,
-                bold: true,
-                size: 20,
-                font: "Calibri",
-              });
-
-          children.push(
-            new Paragraph({
-              spacing: { before: 40 },
-              tabStops: [{ type: "right" as any, position: 9360 }],
-              children: [
-                awardTitleChild,
-                award.issuer
-                  ? new TextRun({ text: ` \u2014 ${award.issuer}`, size: 20, font: "Calibri" })
-                  : new TextRun({ text: "" }),
-                award.date
-                  ? new TextRun({ text: `\t${award.date}`, size: 19, font: "Calibri" })
-                  : new TextRun({ text: "" }),
-              ],
-            }),
-          );
-        });
-      }
-
-      // ── Custom Sections ─────────────────────────────────────────────
-      const validCustom = (data.customSections || []).filter((cs) => cs.entries.some((e) => e.title));
-      validCustom.forEach((cs) => {
-        children.push(sectionHeading(cs.name));
-        cs.entries.filter((e) => e.title).forEach((entry) => {
-          const entryTitleChild = entry.url
-            ? new ExternalHyperlink({
-                link: entry.url.startsWith("http") ? entry.url : `https://${entry.url}`,
-                children: [
-                  new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri", color: "000000" }),
-                ],
-              })
-            : new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri" });
-
-          children.push(
-            new Paragraph({
-              spacing: { before: 100 },
-              tabStops: [{ type: "right" as any, position: 9360 }],
-              children: [
-                entryTitleChild,
-                entry.date
-                  ? new TextRun({ text: `\t${entry.date}`, size: 19, font: "Calibri" })
-                  : new TextRun({ text: "" }),
-              ],
-            }),
-          );
-          if (entry.subtitle) {
-            children.push(
-              new Paragraph({
-                children: [
-                  new TextRun({ text: entry.subtitle, italics: true, size: 20, font: "Calibri" }),
-                ],
-              }),
-            );
-          }
-          entry.bullets.forEach((bullet) => {
-            children.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 30 },
-                children: [
-                  new TextRun({ text: bullet, size: 20, font: "Calibri" }),
-                ],
-              }),
-            );
-          });
-        });
-      });
 
       const doc = new Document({
         sections: [

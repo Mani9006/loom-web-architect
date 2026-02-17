@@ -17,6 +17,8 @@ import {
   createEmptyResumeJSON,
   getSkillCategoryLabel,
   normalizeSkillCategory,
+  DEFAULT_SECTION_ORDER,
+  type ResumeSectionId,
 } from "@/types/resume";
 import { mergeAndDeduplicateSkills, normalizeAndDeduplicateSkills } from "@/lib/ai-resume-parser";
 import { calculateATSScore, buildSectionFixPrompt, ATSScore, ATSIssue } from "@/lib/ats-scorer";
@@ -259,6 +261,8 @@ export default function ResumeBuilder() {
   const [expandedLangId, setExpandedLangId] = useState<string | null>(null);
   const [expandedVolId, setExpandedVolId] = useState<string | null>(null);
   const [expandedAwardId, setExpandedAwardId] = useState<string | null>(null);
+  const [dragSectionIdx, setDragSectionIdx] = useState<number | null>(null);
+  const [dragOverSectionIdx, setDragOverSectionIdx] = useState<number | null>(null);
   const [showATSDetails, setShowATSDetails] = useState(false);
   const [aiFixingSection, setAiFixingSection] = useState<string | null>(null);
   const [showLinkedInImport, setShowLinkedInImport] = useState(false);
@@ -309,6 +313,7 @@ export default function ResumeBuilder() {
 
       const r = resume as any;
       setCurrentResumeId(r.id);
+      const savedOrder: ResumeSectionId[] | undefined = Array.isArray(r.section_order) ? r.section_order : undefined;
       setData({
         header: r.personal_info || createEmptyResumeJSON().header,
         summary: r.summary || "",
@@ -320,7 +325,24 @@ export default function ResumeBuilder() {
         languages: Array.isArray(r.languages) ? r.languages : [],
         volunteer: Array.isArray(r.volunteer) ? r.volunteer : [],
         awards: Array.isArray(r.awards) ? r.awards : [],
+        section_order: savedOrder,
       });
+      // Restore activeSections order from saved section_order
+      if (savedOrder && savedOrder.length > 0) {
+        setActiveSections((prev) => {
+          const personalSection = prev.find((s) => s.id === "personal");
+          const ordered: ActiveSection[] = personalSection ? [personalSection] : [];
+          for (const id of savedOrder) {
+            const found = prev.find((s) => s.id === id) || ALL_BUILT_IN_SECTIONS.find((s) => s.id === id);
+            if (found && !ordered.some((s) => s.id === id)) ordered.push(found);
+          }
+          // Append any sections in prev that weren't in savedOrder
+          for (const s of prev) {
+            if (!ordered.some((o) => o.id === s.id)) ordered.push(s);
+          }
+          return ordered;
+        });
+      }
       setIsLoaded(true);
     })();
   }, [resumeId]);
@@ -338,6 +360,7 @@ export default function ResumeBuilder() {
         experience: resumeJson.experience as any, education: resumeJson.education as any,
         skills: resumeJson.skills as any, projects: resumeJson.projects as any,
         certifications: resumeJson.certifications as any, languages: resumeJson.languages as any,
+        section_order: resumeJson.section_order as any,
         template: "professional",
       };
       if (currentResumeId) {
@@ -357,6 +380,21 @@ export default function ResumeBuilder() {
     saveTimerRef.current = setTimeout(() => saveToSupabase(data), 2000);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [data, saveToSupabase, isLoaded]);
+
+  // ── Sync section order from activeSections into resume data ──────────────
+  useEffect(() => {
+    if (!isLoaded) return;
+    // Extract section IDs excluding "personal" (header is always first, not reorderable in output)
+    const order = activeSections
+      .filter((s) => s.id !== "personal")
+      .map((s) => s.id as ResumeSectionId);
+    setData((prev) => {
+      // Only update if order actually changed to avoid infinite loops
+      const prevOrder = prev.section_order || [];
+      if (prevOrder.length === order.length && prevOrder.every((id, i) => id === order[i])) return prev;
+      return { ...prev, section_order: order };
+    });
+  }, [activeSections, isLoaded]);
 
   // ── Completeness (simplified: based on how many active sections have content) ─
   const completeness = useMemo(() => {
@@ -723,6 +761,7 @@ export default function ResumeBuilder() {
     volunteer: hiddenSections.has("volunteer") ? [] : data.volunteer,
     awards: hiddenSections.has("awards") ? [] : data.awards,
     customSections: data.customSections?.filter((cs) => !hiddenSections.has(cs.id)),
+    section_order: data.section_order?.filter((id) => !hiddenSections.has(id)),
   };
 
   const fileName = data.header.name ? `${data.header.name.replace(/\s+/g, "_")}_Resume` : "Resume";
@@ -889,14 +928,52 @@ export default function ResumeBuilder() {
 
           <div className={isParsingResume ? "opacity-30 pointer-events-none" : ""}>
             <Accordion type="multiple" defaultValue={["personal", "summary"]} className="px-3 py-1">
-              {activeSections.map((section) => {
+              {activeSections.map((section, sectionIdx) => {
                 const count = getSectionCount(section.id, data);
                 const isHidden = hiddenSections.has(section.id);
                 const sectionIcon = section.builtIn ? BUILT_IN_ICONS[section.id as BuiltInSectionId] : <LayoutList className="h-4 w-4" />;
                 return (
-                  <AccordionItem key={section.id} value={section.id} className="border-b border-border/40">
+                  <AccordionItem
+                    key={section.id}
+                    value={section.id}
+                    className={cn(
+                      "border-b border-border/40 transition-all",
+                      dragOverSectionIdx === sectionIdx && dragOverSectionIdx !== dragSectionIdx && "border-t-2 border-t-primary",
+                    )}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", String(sectionIdx));
+                      e.dataTransfer.effectAllowed = "move";
+                      setDragSectionIdx(sectionIdx);
+                    }}
+                    onDragEnd={() => { setDragSectionIdx(null); setDragOverSectionIdx(null); }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverSectionIdx(sectionIdx); }}
+                    onDragLeave={() => setDragOverSectionIdx(null)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const sourceIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                      if (!isNaN(sourceIdx) && sourceIdx !== sectionIdx) {
+                        setActiveSections((prev) => {
+                          const next = [...prev];
+                          const [moved] = next.splice(sourceIdx, 1);
+                          next.splice(sectionIdx, 0, moved);
+                          return next;
+                        });
+                      }
+                      setDragSectionIdx(null);
+                      setDragOverSectionIdx(null);
+                    }}
+                  >
                     <div className="flex items-center group">
-                      <AccordionTrigger className="flex-1 py-3 px-2 text-sm hover:no-underline gap-2 [&>svg]:order-first [&>svg]:text-muted-foreground">
+                      {/* Drag handle */}
+                      <div
+                        className="cursor-grab active:cursor-grabbing p-1 shrink-0 touch-none text-muted-foreground hover:text-foreground"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title="Drag to reorder section"
+                      >
+                        <GripVertical className="h-3.5 w-3.5" />
+                      </div>
+                      <AccordionTrigger className="flex-1 py-3 px-1 text-sm hover:no-underline gap-2 [&>svg]:order-first [&>svg]:text-muted-foreground">
                         <span className="flex items-center gap-2 flex-1 min-w-0">
                           <span className={isHidden ? "opacity-40" : ""}>{sectionIcon}</span>
                           {editingSectionId === section.id ? (
