@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { ResumeJSON, getSkillCategoryLabel } from "@/types/resume";
+import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER } from "@/types/resume";
 import { Loader2, FileDown, FileText, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useResumeExport } from "@/hooks/use-resume-export";
@@ -143,159 +143,120 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
           </div>
         </header>
 
-        {/* Summary Section */}
-        {data.summary && (
-          <section className="mb-4">
-            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
-              SUMMARY
-            </h2>
-            <p className="text-justify leading-relaxed" style={{ fontSize: "10pt" }}>
-              {data.summary}
-            </p>
-          </section>
-        )}
+        {/* Dynamic section rendering based on section_order */}
+        {(data.section_order || DEFAULT_SECTION_ORDER).map((sectionId) => {
+          switch (sectionId) {
+            case "summary":
+              return data.summary ? (
+                <section key="summary" className="mb-4">
+                  <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">SUMMARY</h2>
+                  <p className="text-justify leading-relaxed" style={{ fontSize: "10pt" }}>{data.summary}</p>
+                </section>
+              ) : null;
 
-        {/* Experience Section */}
-        {data.experience.length > 0 && data.experience.some(e => e.company_or_client) && (
-          <section className="mb-4">
-            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">
-              EXPERIENCE
-            </h2>
-            <div className="space-y-5">
-              {data.experience.filter(e => e.company_or_client).map((exp) => (
-                <div key={exp.id}>
-                  {/* Role and Dates on same line */}
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-bold" style={{ fontSize: "10pt" }}>
-                      {exp.role || "Role"}
-                    </span>
-                    <span className="text-sm">
-                      {exp.start_date || "Start"} -- {exp.end_date || "End"}
-                    </span>
+            case "experience":
+              return data.experience.length > 0 && data.experience.some(e => e.company_or_client) ? (
+                <section key="experience" className="mb-4">
+                  <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">EXPERIENCE</h2>
+                  <div className="space-y-5">
+                    {data.experience.filter(e => e.company_or_client).map((exp) => (
+                      <div key={exp.id}>
+                        <div className="flex justify-between items-baseline">
+                          <span className="font-bold" style={{ fontSize: "10pt" }}>{exp.role || "Role"}</span>
+                          <span className="text-sm">{exp.start_date || "Start"} -- {exp.end_date || "End"}</span>
+                        </div>
+                        <div className="flex justify-between items-baseline">
+                          <span className="italic" style={{ fontSize: "10pt" }}>{exp.company_or_client}</span>
+                          {exp.location && <span className="text-sm">{exp.location}</span>}
+                        </div>
+                        {exp.bullets.length > 0 && (
+                          <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
+                            {exp.bullets.map((bullet, idx) => (<li key={idx} className="pl-1">{bullet}</li>))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  
-                  {/* Company and Location */}
-                  <div className="flex justify-between items-baseline">
-                    <span className="italic" style={{ fontSize: "10pt" }}>
-                      {exp.company_or_client}
-                    </span>
-                    {exp.location && (
-                      <span className="text-sm">{exp.location}</span>
-                    )}
+                </section>
+              ) : null;
+
+            case "education":
+              return data.education.length > 0 && data.education.some(e => e.institution) ? (
+                <section key="education" className="mb-4">
+                  <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">EDUCATION</h2>
+                  <div className="space-y-2">
+                    {data.education.filter(e => e.institution).map((edu) => (
+                      <div key={edu.id}>
+                        <div className="flex justify-between items-baseline">
+                          <span style={{ fontSize: "10pt" }}>
+                            <span className="font-bold">{edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree"}</span>
+                            {edu.institution && <span>, {edu.institution}</span>}
+                            {edu.gpa && <span> (GPA: {edu.gpa})</span>}
+                          </span>
+                          <span className="text-sm">{edu.graduation_date}</span>
+                        </div>
+                        {edu.location && <div className="text-right text-sm">{edu.location}</div>}
+                      </div>
+                    ))}
                   </div>
-                  
-                  {/* Bullet Points */}
-                  {exp.bullets.length > 0 && (
-                    <ul className="mt-2 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
-                      {exp.bullets.map((bullet, idx) => (
-                        <li key={idx} className="pl-1">{bullet}</li>
+                </section>
+              ) : null;
+
+            case "certifications":
+              return data.certifications.length > 0 && data.certifications.some(c => c.name) ? (
+                <section key="certifications" className="mb-4">
+                  <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">CERTIFICATIONS</h2>
+                  <table className="w-full" style={{ fontSize: "10pt" }}>
+                    <tbody>
+                      {data.certifications.filter(c => c.name).map((cert) => (
+                        <tr key={cert.id}>
+                          <td className="py-0.5"><span className="text-primary font-bold">{cert.name}</span>{cert.issuer && <span>, {cert.issuer}</span>}</td>
+                          <td className="text-right py-0.5">{cert.date}</td>
+                        </tr>
                       ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+                    </tbody>
+                  </table>
+                </section>
+              ) : null;
 
-        {/* Education Section */}
-        {data.education.length > 0 && data.education.some(e => e.institution) && (
-          <section className="mb-4">
-            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
-              EDUCATION
-            </h2>
-            <div className="space-y-2">
-              {data.education.filter(e => e.institution).map((edu) => (
-                <div key={edu.id}>
-                  <div className="flex justify-between items-baseline">
-                    <span style={{ fontSize: "10pt" }}>
-                      <span className="font-bold">
-                        {edu.degree && edu.field 
-                          ? `${edu.degree} in ${edu.field}` 
-                          : edu.degree || edu.field || "Degree"}
-                      </span>
-                      {edu.institution && <span>, {edu.institution}</span>}
-                      {edu.gpa && <span> (GPA: {edu.gpa})</span>}
-                    </span>
-                    <span className="text-sm">{edu.graduation_date}</span>
+            case "skills":
+              return skillCategories.length > 0 ? (
+                <section key="skills" className="mb-4">
+                  <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">SKILLS</h2>
+                  <div className="space-y-1" style={{ fontSize: "10pt" }}>
+                    {skillCategories.map((sc, idx) => (
+                      <p key={idx}><span className="font-bold">{sc.category}:</span> <span>{sc.skills.join(", ")}</span></p>
+                    ))}
                   </div>
-                  {edu.location && (
-                    <div className="text-right text-sm">{edu.location}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+                </section>
+              ) : null;
 
-        {/* Certifications Section */}
-        {data.certifications.length > 0 && data.certifications.some(c => c.name) && (
-          <section className="mb-4">
-            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
-              CERTIFICATIONS
-            </h2>
-            <table className="w-full" style={{ fontSize: "10pt" }}>
-              <tbody>
-                {data.certifications.filter(c => c.name).map((cert) => (
-                  <tr key={cert.id}>
-                    <td className="py-0.5">
-                      <span className="text-primary font-bold">{cert.name}</span>
-                      {cert.issuer && <span>, {cert.issuer}</span>}
-                    </td>
-                    <td className="text-right py-0.5">{cert.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
-
-        {/* Skills Section */}
-        {skillCategories.length > 0 && (
-          <section className="mb-4">
-            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
-              SKILLS
-            </h2>
-            <div className="space-y-1" style={{ fontSize: "10pt" }}>
-              {skillCategories.map((sc, idx) => (
-                <p key={idx}>
-                  <span className="font-bold">{sc.category}:</span>{" "}
-                  <span>{sc.skills.join(", ")}</span>
-                </p>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Projects Section */}
-        {data.projects && data.projects.length > 0 && data.projects.some(p => p.title) && (
-          <section className="mb-4">
-            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">
-              PROJECTS
-            </h2>
-            <div className="space-y-3">
-              {data.projects.filter(p => p.title).map((project) => (
-                <div key={project.id}>
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-bold" style={{ fontSize: "10pt" }}>
-                      {project.title}
-                    </span>
-                    {project.date && (
-                      <span className="italic text-sm">{project.organization && `${project.organization} — `}{project.date}</span>
-                    )}
+            case "projects":
+              return data.projects && data.projects.length > 0 && data.projects.some(p => p.title) ? (
+                <section key="projects" className="mb-4">
+                  <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-3">PROJECTS</h2>
+                  <div className="space-y-3">
+                    {data.projects.filter(p => p.title).map((project) => (
+                      <div key={project.id}>
+                        <div className="flex justify-between items-baseline">
+                          <span className="font-bold" style={{ fontSize: "10pt" }}>{project.title}</span>
+                          {project.date && <span className="italic text-sm">{project.organization && `${project.organization} — `}{project.date}</span>}
+                        </div>
+                        {project.bullets.length > 0 && (
+                          <ul className="mt-1 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
+                            {project.bullets.map((bullet, idx) => (<li key={idx} className="pl-1">{bullet}</li>))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  {project.bullets.length > 0 && (
-                    <ul className="mt-1 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>
-                      {project.bullets.map((bullet, idx) => (
-                        <li key={idx} className="pl-1">{bullet}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+                </section>
+              ) : null;
+
+            default:
+              return null;
+          }
+        })}
 
         {/* Generating Overlay */}
         {isGenerating && (

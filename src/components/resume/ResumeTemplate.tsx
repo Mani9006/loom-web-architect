@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
-import { ResumeJSON, getSkillCategoryLabel } from "@/types/resume";
+import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER, type ResumeSectionId } from "@/types/resume";
 
 interface ResumeTemplateProps {
   data: ResumeJSON;
@@ -226,242 +226,220 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
         </div>
       </header>
 
-      {/* ===== SUMMARY ===== */}
-      {data.summary && (
-        <section>
-          <h2 style={sectionHeadingStyle}>Professional Summary</h2>
-          <p style={{ textAlign: "justify", lineHeight: "1.35", margin: 0, fontSize: "10pt" }}>{data.summary}</p>
-        </section>
-      )}
+      {/* ===== DYNAMIC SECTION RENDERING (respects section_order) ===== */}
+      {(data.section_order || DEFAULT_SECTION_ORDER).map((sectionId) => {
+        switch (sectionId) {
+          case "summary":
+            return data.summary ? (
+              <section key="summary">
+                <h2 style={sectionHeadingStyle}>Professional Summary</h2>
+                <p style={{ textAlign: "justify", lineHeight: "1.35", margin: 0, fontSize: "10pt" }}>{data.summary}</p>
+              </section>
+            ) : null;
 
-      {/* ===== EXPERIENCE ===== */}
-      {validExperience.length > 0 && (
-        <section>
-          <h2 style={sectionHeadingStyle}>Professional Experience</h2>
-          {validExperience.map((exp, idx) => (
-            <div key={exp.id} style={{ marginBottom: idx < validExperience.length - 1 ? SPACING.entryMarginBottom : 0 }}>
-              <div style={flexRowStyle}>
-                <span style={{ fontWeight: 700, fontSize: "10pt" }}>{exp.role}</span>
-                <span style={rightMetaStyle}>
-                  {exp.start_date} — {exp.end_date}
-                </span>
-              </div>
-              <div style={flexRowStyle}>
-                <span style={{ fontStyle: "italic", fontSize: "10pt" }}>{exp.company_or_client}</span>
-                {exp.location && <span style={rightMetaStyle}>{exp.location}</span>}
-              </div>
-              {exp.bullets.length > 0 && (
-                <ul style={bulletListStyle}>
-                  {exp.bullets.map((bullet, bIdx) => (
-                    <li key={bIdx} style={bulletItemStyle}>
-                      {bullet}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* ===== EDUCATION ===== */}
-      {validEducation.length > 0 && (
-        <section>
-          <h2 style={sectionHeadingStyle}>Education</h2>
-          {validEducation.map((edu) => (
-            <div key={edu.id} style={{ marginBottom: SPACING.compactEntryMargin }}>
-              <div style={flexRowStyle}>
-                <span style={{ fontSize: "10pt" }}>
-                  <strong>
-                    {edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree"}
-                  </strong>
-                  {edu.institution && <span> — {edu.institution}</span>}
-                  {edu.gpa && <span> (GPA: {edu.gpa})</span>}
-                </span>
-                <span style={rightMetaStyle}>
-                  {edu.graduation_date}
-                </span>
-              </div>
-              {edu.location && <div style={{ fontSize: "9.5pt", fontStyle: "italic" }}>{edu.location}</div>}
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* ===== SKILLS ===== */}
-      {skillCategories.length > 0 && (
-        <section>
-          <h2 style={sectionHeadingStyle}>Technical Skills</h2>
-          {skillCategories.map((sc, idx) => (
-            <p key={idx} style={{ margin: `0 0 ${SPACING.skillLineMargin} 0`, fontSize: "10pt", lineHeight: "1.35" }}>
-              <strong>{sc.category}:</strong> {sc.skills.join(", ")}
-            </p>
-          ))}
-        </section>
-      )}
-
-      {/* ===== CERTIFICATIONS ===== */}
-      {validCerts.length > 0 && (
-        <section>
-          <h2 style={sectionHeadingStyle}>Certifications</h2>
-          {validCerts.map((cert) => (
-            <div
-              key={cert.id}
-              style={{ ...flexRowStyle, marginBottom: SPACING.compactEntryMargin }}
-            >
-              <span style={{ fontSize: "10pt" }}>
-                {cert.url ? (
-                  <a href={cert.url.startsWith("http") ? cert.url : `https://${cert.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{cert.name}</a>
-                ) : (
-                  <strong>{cert.name}</strong>
-                )}
-                {cert.issuer && <span> — {cert.issuer}</span>}
-              </span>
-              <span style={rightMetaStyle}>
-                {cert.date}
-              </span>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* ===== PROJECTS ===== */}
-      {validProjects.length > 0 && (
-        <section>
-          <h2 style={sectionHeadingStyle}>Projects</h2>
-          {validProjects.map((project, idx) => (
-            <div key={project.id} style={{ marginBottom: idx < validProjects.length - 1 ? SPACING.entryMarginBottom : 0 }}>
-              <div style={flexRowStyle}>
-                {project.url ? (
-                  <a href={project.url.startsWith("http") ? project.url : `https://${project.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{project.title}</a>
-                ) : (
-                  <span style={{ fontWeight: 700, fontSize: "10pt" }}>{project.title}</span>
-                )}
-                {(project.organization || project.date) && (
-                  <span style={{ ...rightMetaStyle, fontStyle: "italic" }}>
-                    {project.organization && `${project.organization} — `}
-                    {project.date}
-                  </span>
-                )}
-              </div>
-              {project.bullets.length > 0 && (
-                <ul style={bulletListStyle}>
-                  {project.bullets.map((bullet, bIdx) => (
-                    <li key={bIdx} style={bulletItemStyle}>
-                      {bullet}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* ===== LANGUAGES ===== */}
-      {validLanguages.length > 0 && (
-        <section>
-          <h2 style={sectionHeadingStyle}>Languages</h2>
-          <p style={{ margin: 0, fontSize: "10pt", lineHeight: "1.35" }}>
-            {validLanguages.map((l, idx) => (
-              <span key={l.id}>
-                <strong>{l.language}</strong>
-                {l.proficiency && ` (${l.proficiency})`}
-                {idx < validLanguages.length - 1 && "  |  "}
-              </span>
-            ))}
-          </p>
-        </section>
-      )}
-
-      {/* ===== VOLUNTEER EXPERIENCE ===== */}
-      {validVolunteer.length > 0 && (
-        <section>
-          <h2 style={sectionHeadingStyle}>Volunteer Experience</h2>
-          {validVolunteer.map((vol, idx) => (
-            <div key={vol.id} style={{ marginBottom: idx < validVolunteer.length - 1 ? SPACING.entryMarginBottom : 0 }}>
-              <div style={flexRowStyle}>
-                <span style={{ fontWeight: 700, fontSize: "10pt" }}>{vol.role || "Volunteer"}</span>
-                {vol.date && <span style={rightMetaStyle}>{vol.date}</span>}
-              </div>
-              <div>
-                <span style={{ fontStyle: "italic", fontSize: "10pt" }}>{vol.organization}</span>
-              </div>
-              {vol.bullets.length > 0 && (
-                <ul style={bulletListStyle}>
-                  {vol.bullets.map((bullet, bIdx) => (
-                    <li key={bIdx} style={bulletItemStyle}>
-                      {bullet}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* ===== AWARDS & PUBLICATIONS ===== */}
-      {validAwards.length > 0 && (
-        <section>
-          <h2 style={sectionHeadingStyle}>Awards & Publications</h2>
-          {validAwards.map((award) => (
-            <div
-              key={award.id}
-              style={{ ...flexRowStyle, marginBottom: SPACING.compactEntryMargin }}
-            >
-              <span style={{ fontSize: "10pt" }}>
-                {award.url ? (
-                  <a href={award.url.startsWith("http") ? award.url : `https://${award.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{award.title}</a>
-                ) : (
-                  <strong>{award.title}</strong>
-                )}
-                {award.issuer && <span> — {award.issuer}</span>}
-              </span>
-              <span style={rightMetaStyle}>
-                {award.date}
-              </span>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* ===== CUSTOM SECTIONS ===== */}
-      {(data.customSections || [])
-        .filter((cs) => cs.entries.some((e) => e.title))
-        .map((cs) => (
-          <section key={cs.id}>
-            <h2 style={sectionHeadingStyle}>{cs.name}</h2>
-            {cs.entries
-              .filter((e) => e.title)
-              .map((entry, idx, arr) => (
-                <div key={entry.id} style={{ marginBottom: idx < arr.length - 1 ? SPACING.entryMarginBottom : 0 }}>
-                  <div style={flexRowStyle}>
-                    {entry.url ? (
-                      <a href={entry.url.startsWith("http") ? entry.url : `https://${entry.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{entry.title}</a>
-                    ) : (
-                      <span style={{ fontWeight: 700, fontSize: "10pt" }}>{entry.title}</span>
-                    )}
-                    {entry.date && <span style={rightMetaStyle}>{entry.date}</span>}
-                  </div>
-                  {entry.subtitle && (
-                    <div>
-                      <span style={{ fontStyle: "italic", fontSize: "10pt" }}>{entry.subtitle}</span>
+          case "experience":
+            return validExperience.length > 0 ? (
+              <section key="experience">
+                <h2 style={sectionHeadingStyle}>Professional Experience</h2>
+                {validExperience.map((exp, idx) => (
+                  <div key={exp.id} style={{ marginBottom: idx < validExperience.length - 1 ? SPACING.entryMarginBottom : 0 }}>
+                    <div style={flexRowStyle}>
+                      <span style={{ fontWeight: 700, fontSize: "10pt" }}>{exp.role}</span>
+                      <span style={rightMetaStyle}>{exp.start_date} — {exp.end_date}</span>
                     </div>
-                  )}
-                  {entry.bullets.length > 0 && (
-                    <ul style={bulletListStyle}>
-                      {entry.bullets.map((bullet, bIdx) => (
-                        <li key={bIdx} style={bulletItemStyle}>
-                          {bullet}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
-          </section>
-        ))}
+                    <div style={flexRowStyle}>
+                      <span style={{ fontStyle: "italic", fontSize: "10pt" }}>{exp.company_or_client}</span>
+                      {exp.location && <span style={rightMetaStyle}>{exp.location}</span>}
+                    </div>
+                    {exp.bullets.length > 0 && (
+                      <ul style={bulletListStyle}>
+                        {exp.bullets.map((bullet, bIdx) => (
+                          <li key={bIdx} style={bulletItemStyle}>{bullet}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </section>
+            ) : null;
+
+          case "education":
+            return validEducation.length > 0 ? (
+              <section key="education">
+                <h2 style={sectionHeadingStyle}>Education</h2>
+                {validEducation.map((edu) => (
+                  <div key={edu.id} style={{ marginBottom: SPACING.compactEntryMargin }}>
+                    <div style={flexRowStyle}>
+                      <span style={{ fontSize: "10pt" }}>
+                        <strong>{edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree"}</strong>
+                        {edu.institution && <span> — {edu.institution}</span>}
+                        {edu.gpa && <span> (GPA: {edu.gpa})</span>}
+                      </span>
+                      <span style={rightMetaStyle}>{edu.graduation_date}</span>
+                    </div>
+                    {edu.location && <div style={{ fontSize: "9.5pt", fontStyle: "italic" }}>{edu.location}</div>}
+                  </div>
+                ))}
+              </section>
+            ) : null;
+
+          case "skills":
+            return skillCategories.length > 0 ? (
+              <section key="skills">
+                <h2 style={sectionHeadingStyle}>Technical Skills</h2>
+                {skillCategories.map((sc, idx) => (
+                  <p key={idx} style={{ margin: `0 0 ${SPACING.skillLineMargin} 0`, fontSize: "10pt", lineHeight: "1.35" }}>
+                    <strong>{sc.category}:</strong> {sc.skills.join(", ")}
+                  </p>
+                ))}
+              </section>
+            ) : null;
+
+          case "certifications":
+            return validCerts.length > 0 ? (
+              <section key="certifications">
+                <h2 style={sectionHeadingStyle}>Certifications</h2>
+                {validCerts.map((cert) => (
+                  <div key={cert.id} style={{ ...flexRowStyle, marginBottom: SPACING.compactEntryMargin }}>
+                    <span style={{ fontSize: "10pt" }}>
+                      {cert.url ? (
+                        <a href={cert.url.startsWith("http") ? cert.url : `https://${cert.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{cert.name}</a>
+                      ) : (
+                        <strong>{cert.name}</strong>
+                      )}
+                      {cert.issuer && <span> — {cert.issuer}</span>}
+                    </span>
+                    <span style={rightMetaStyle}>{cert.date}</span>
+                  </div>
+                ))}
+              </section>
+            ) : null;
+
+          case "projects":
+            return validProjects.length > 0 ? (
+              <section key="projects">
+                <h2 style={sectionHeadingStyle}>Projects</h2>
+                {validProjects.map((project, idx) => (
+                  <div key={project.id} style={{ marginBottom: idx < validProjects.length - 1 ? SPACING.entryMarginBottom : 0 }}>
+                    <div style={flexRowStyle}>
+                      {project.url ? (
+                        <a href={project.url.startsWith("http") ? project.url : `https://${project.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{project.title}</a>
+                      ) : (
+                        <span style={{ fontWeight: 700, fontSize: "10pt" }}>{project.title}</span>
+                      )}
+                      {(project.organization || project.date) && (
+                        <span style={{ ...rightMetaStyle, fontStyle: "italic" }}>
+                          {project.organization && `${project.organization} — `}{project.date}
+                        </span>
+                      )}
+                    </div>
+                    {project.bullets.length > 0 && (
+                      <ul style={bulletListStyle}>
+                        {project.bullets.map((bullet, bIdx) => (
+                          <li key={bIdx} style={bulletItemStyle}>{bullet}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </section>
+            ) : null;
+
+          case "languages":
+            return validLanguages.length > 0 ? (
+              <section key="languages">
+                <h2 style={sectionHeadingStyle}>Languages</h2>
+                <p style={{ margin: 0, fontSize: "10pt", lineHeight: "1.35" }}>
+                  {validLanguages.map((l, idx) => (
+                    <span key={l.id}>
+                      <strong>{l.language}</strong>
+                      {l.proficiency && ` (${l.proficiency})`}
+                      {idx < validLanguages.length - 1 && "  |  "}
+                    </span>
+                  ))}
+                </p>
+              </section>
+            ) : null;
+
+          case "volunteer":
+            return validVolunteer.length > 0 ? (
+              <section key="volunteer">
+                <h2 style={sectionHeadingStyle}>Volunteer Experience</h2>
+                {validVolunteer.map((vol, idx) => (
+                  <div key={vol.id} style={{ marginBottom: idx < validVolunteer.length - 1 ? SPACING.entryMarginBottom : 0 }}>
+                    <div style={flexRowStyle}>
+                      <span style={{ fontWeight: 700, fontSize: "10pt" }}>{vol.role || "Volunteer"}</span>
+                      {vol.date && <span style={rightMetaStyle}>{vol.date}</span>}
+                    </div>
+                    <div><span style={{ fontStyle: "italic", fontSize: "10pt" }}>{vol.organization}</span></div>
+                    {vol.bullets.length > 0 && (
+                      <ul style={bulletListStyle}>
+                        {vol.bullets.map((bullet, bIdx) => (
+                          <li key={bIdx} style={bulletItemStyle}>{bullet}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </section>
+            ) : null;
+
+          case "awards":
+            return validAwards.length > 0 ? (
+              <section key="awards">
+                <h2 style={sectionHeadingStyle}>Awards & Publications</h2>
+                {validAwards.map((award) => (
+                  <div key={award.id} style={{ ...flexRowStyle, marginBottom: SPACING.compactEntryMargin }}>
+                    <span style={{ fontSize: "10pt" }}>
+                      {award.url ? (
+                        <a href={award.url.startsWith("http") ? award.url : `https://${award.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{award.title}</a>
+                      ) : (
+                        <strong>{award.title}</strong>
+                      )}
+                      {award.issuer && <span> — {award.issuer}</span>}
+                    </span>
+                    <span style={rightMetaStyle}>{award.date}</span>
+                  </div>
+                ))}
+              </section>
+            ) : null;
+
+          default: {
+            // Custom sections
+            const cs = (data.customSections || []).find((s) => s.id === sectionId);
+            if (!cs || !cs.entries.some((e) => e.title)) return null;
+            return (
+              <section key={cs.id}>
+                <h2 style={sectionHeadingStyle}>{cs.name}</h2>
+                {cs.entries
+                  .filter((e) => e.title)
+                  .map((entry, idx, arr) => (
+                    <div key={entry.id} style={{ marginBottom: idx < arr.length - 1 ? SPACING.entryMarginBottom : 0 }}>
+                      <div style={flexRowStyle}>
+                        {entry.url ? (
+                          <a href={entry.url.startsWith("http") ? entry.url : `https://${entry.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{entry.title}</a>
+                        ) : (
+                          <span style={{ fontWeight: 700, fontSize: "10pt" }}>{entry.title}</span>
+                        )}
+                        {entry.date && <span style={rightMetaStyle}>{entry.date}</span>}
+                      </div>
+                      {entry.subtitle && (
+                        <div><span style={{ fontStyle: "italic", fontSize: "10pt" }}>{entry.subtitle}</span></div>
+                      )}
+                      {entry.bullets.length > 0 && (
+                        <ul style={bulletListStyle}>
+                          {entry.bullets.map((bullet, bIdx) => (
+                            <li key={bIdx} style={bulletItemStyle}>{bullet}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+              </section>
+            );
+          }
+        }
+      })}
       </div>
     </div>
   );
