@@ -311,12 +311,22 @@ function getModelConfig(mode: string): ModelConfig {
   }
 }
 
+// Get max tokens based on mode — resume parsing needs more output tokens for large resumes
+function getMaxTokens(mode: string): number {
+  switch (mode) {
+    case "resume_parse": return 16384; // Large resumes produce big JSON
+    case "ats": return 8192;
+    default: return 4096;
+  }
+}
+
 // ── Anthropic API call ───────────────────────────────────────────────
 async function callAnthropicAPI(
   apiKey: string,
   model: string,
   systemPrompt: string,
   messages: any[],
+  maxTokens = 8192,
 ): Promise<Response> {
   // Convert OpenAI-style messages to Anthropic format
   // Anthropic uses "system" as a top-level parameter, not in messages
@@ -336,7 +346,7 @@ async function callAnthropicAPI(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 8192,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: anthropicMessages,
       stream: true,
@@ -504,6 +514,7 @@ serve(async (req) => {
 
     let response: Response;
     let usedProvider: AIProvider = finalProvider;
+    const maxTokens = getMaxTokens(chatMode);
 
     if (finalProvider === "anthropic" && ANTHROPIC_API_KEY) {
       // ── Call Anthropic Claude API ──
@@ -512,6 +523,7 @@ serve(async (req) => {
         finalModel,
         systemPrompt,
         userMessages,
+        maxTokens,
       );
     } else {
       // ── Call OpenAI API ──
@@ -524,6 +536,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           model: finalModel,
+          max_tokens: maxTokens,
           messages: [
             { role: "system", content: systemPrompt },
             ...userMessages,
@@ -556,6 +569,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             model: "gpt-4o",
+            max_tokens: maxTokens,
             messages: [
               { role: "system", content: systemPrompt },
               ...userMessages,
@@ -578,6 +592,7 @@ serve(async (req) => {
           "claude-sonnet-4-20250514",
           systemPrompt,
           userMessages,
+          maxTokens,
         );
 
         if (!response.ok) {

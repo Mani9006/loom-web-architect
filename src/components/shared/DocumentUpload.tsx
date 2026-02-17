@@ -110,21 +110,36 @@ export function DocumentUpload({
       // Parse the document with streaming for progress
       const { data: session } = await supabase.auth.getSession();
       const isPdfOrImage = /\.(pdf|png|jpg|jpeg|webp)$/i.test(file.name);
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-document`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.session?.access_token}`,
-          },
-          body: JSON.stringify({ filePath, streaming: isPdfOrImage }),
+
+      // Add timeout for large file processing (2 minutes)
+      const abortController = new AbortController();
+      const fetchTimeout = setTimeout(() => abortController.abort(), 120_000);
+
+      let response: Response;
+      try {
+        response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-document`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.session?.access_token}`,
+            },
+            body: JSON.stringify({ filePath, streaming: isPdfOrImage }),
+            signal: abortController.signal,
+          }
+        );
+      } catch (fetchError) {
+        clearTimeout(fetchTimeout);
+        if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
+          throw new Error("Document processing timed out. Please try a smaller file or paste your resume text directly.");
         }
-      );
+        throw fetchError;
+      }
+      clearTimeout(fetchTimeout);
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: "Failed to parse document" }));
         throw new Error(errorData.error || "Failed to parse document");
       }
 
@@ -135,23 +150,23 @@ export function DocumentUpload({
         // Handle SSE streaming response
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
-        
+
         if (reader) {
           let buffer = "";
-          
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n\n");
             buffer = lines.pop() || "";
-            
+
             for (const line of lines) {
               if (line.startsWith("data: ")) {
                 try {
                   const data = JSON.parse(line.slice(6));
-                  
+
                   if (data.type === "progress") {
                     setProgressState({
                       progress: data.progress,
@@ -168,6 +183,27 @@ export function DocumentUpload({
                 } catch (e) {
                   if (e instanceof SyntaxError) continue;
                   throw e;
+                }
+              }
+            }
+          }
+
+          // Process any remaining buffer content (the final SSE event may be left in buffer)
+          if (buffer.trim()) {
+            const remainingLines = buffer.split("\n\n");
+            for (const line of remainingLines) {
+              if (line.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  if (data.type === "result") {
+                    extractedText = data.text;
+                    extractedFileName = data.fileName;
+                  } else if (data.type === "error") {
+                    throw new Error(data.error);
+                  }
+                } catch (e) {
+                  if (e instanceof SyntaxError) { /* ignore malformed final chunk */ }
+                  else throw e;
                 }
               }
             }
