@@ -442,10 +442,12 @@ serve(async (req: Request) => {
               });
             }
 
-            // Clean up the extracted text
+            // Clean up the extracted text while preserving structure
             extractedText = extractedText
-              .replace(/\s+/g, " ")
-              .replace(/\n\s*\n/g, "\n\n")
+              .replace(/\r\n/g, "\n")           // normalize line endings
+              .replace(/[ \t]+/g, " ")          // collapse horizontal whitespace only
+              .replace(/\n{3,}/g, "\n\n")       // collapse 3+ newlines to 2
+              .replace(/^ +| +$/gm, "")         // trim leading/trailing spaces per line
               .trim();
 
             sendSSE(controller, { 
@@ -623,10 +625,12 @@ serve(async (req: Request) => {
       });
     }
 
-    // Clean up the extracted text
+    // Clean up the extracted text while preserving structure
     extractedText = extractedText
-      .replace(/\s+/g, " ")
-      .replace(/\n\s*\n/g, "\n\n")
+      .replace(/\r\n/g, "\n")           // normalize line endings
+      .replace(/[ \t]+/g, " ")          // collapse horizontal whitespace only
+      .replace(/\n{3,}/g, "\n\n")       // collapse 3+ newlines to 2
+      .replace(/^ +| +$/gm, "")         // trim leading/trailing spaces per line
       .trim();
 
     if (!extractedText || extractedText.length < 20) {

@@ -5,6 +5,7 @@ import { ResumeJSON, createEmptyResumeJSON } from "@/types/resume";
 import { calculateATSScore } from "@/lib/ats-scorer";
 import {
   streamAIText, parseAIResponse, mapParsedToResumePayload, RESUME_PARSE_SYSTEM_PROMPT,
+  prepareResumeTextForParsing,
 } from "@/lib/ai-resume-parser";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
@@ -193,17 +194,25 @@ export default function ResumeProjects() {
         const { data: session } = await supabase.auth.getSession();
         if (!session.session) throw new Error("Not authenticated");
 
+        // Prepare text: truncate if too long, preserve structure
+        const preparedText = prepareResumeTextForParsing(textToParse);
+        console.log(`[ResumeProjects] Parsing resume text: ${preparedText.length} chars (original: ${textToParse.length})`);
+
         // System prompt is now defined server-side for mode "resume_parse"
+        // streamAIText now has built-in retry logic (3 attempts with exponential backoff)
         const fullContent = await streamAIText(
           session.session.access_token,
           [
-            { role: "user", content: `Parse this resume:\n\n${textToParse}` },
+            { role: "user", content: `Parse this resume:\n\n${preparedText}` },
           ],
           "resume_parse",
         );
 
         const parsedData = parseAIResponse(fullContent);
-        if (!parsedData) throw new Error("Could not extract structured data.");
+        if (!parsedData) {
+          console.error("[ResumeProjects] Failed to parse AI response:", fullContent.substring(0, 500));
+          throw new Error("Could not extract structured data from the AI response. Please try again.");
+        }
 
         const mapped = mapParsedToResumePayload(parsedData);
 
@@ -224,9 +233,11 @@ export default function ResumeProjects() {
           template: "professional",
         };
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : "Failed to parse resume";
+        console.error("[ResumeProjects] Import error:", errorMsg);
         toast({
           title: "Import failed",
-          description: error instanceof Error ? error.message : "Failed to parse resume",
+          description: errorMsg.length > 150 ? errorMsg.substring(0, 150) + "..." : errorMsg,
           variant: "destructive",
         });
         setIsCreating(false);

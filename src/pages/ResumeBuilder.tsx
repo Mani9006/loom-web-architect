@@ -20,7 +20,10 @@ import {
   DEFAULT_SECTION_ORDER,
   type ResumeSectionId,
 } from "@/types/resume";
-import { mergeAndDeduplicateSkills, normalizeAndDeduplicateSkills } from "@/lib/ai-resume-parser";
+import {
+  mergeAndDeduplicateSkills, normalizeAndDeduplicateSkills,
+  parseAIResponse, formatBullets, streamAIText, prepareResumeTextForParsing,
+} from "@/lib/ai-resume-parser";
 import { calculateATSScore, buildSectionFixPrompt, ATSScore, ATSIssue } from "@/lib/ats-scorer";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
@@ -155,72 +158,6 @@ function getSectionCount(id: SectionId, data: ResumeJSON): number {
       return cs ? cs.entries.filter((e) => e.title).length : 0;
     }
   }
-}
-
-// ─── Robust AI response parser ──────────────────────────────────────────────
-
-function parseAIResponse(content: string): Record<string, any> | null {
-  let cleaned = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-  let braceCount = 0, startIdx = -1, endIdx = -1, inString = false, escapeNext = false;
-  for (let i = 0; i < cleaned.length; i++) {
-    const char = cleaned[i];
-    if (escapeNext) { escapeNext = false; continue; }
-    if (char === "\\" && inString) { escapeNext = true; continue; }
-    if (char === '"' && !escapeNext) { inString = !inString; continue; }
-    if (!inString) {
-      if (char === "{") { if (startIdx === -1) startIdx = i; braceCount++; }
-      else if (char === "}") { braceCount--; if (braceCount === 0 && startIdx !== -1) { endIdx = i + 1; break; } }
-    }
-  }
-  if (startIdx === -1 || endIdx === -1) return null;
-  const jsonString = cleaned.substring(startIdx, endIdx);
-  try { return JSON.parse(jsonString); } catch {}
-  try {
-    return JSON.parse(jsonString.replace(/[\x00-\x1F\x7F]/g, " ").replace(/,(\s*[}\]])/g, "$1"));
-  } catch {}
-  return null;
-}
-
-function formatBullets(responsibilities: string | string[]): string[] {
-  if (!responsibilities) return [];
-  if (Array.isArray(responsibilities))
-    return responsibilities.filter((r) => r && r.trim()).map((r) => r.trim().replace(/^[•\-*]\s*/, ""));
-  return String(responsibilities).split(/\n|(?=•)|(?=-)/).map((l) => l.trim()).filter((l) => l.length > 0).map((l) => l.replace(/^[•\-*]\s*/, ""));
-}
-
-async function streamAIText(
-  accessToken: string,
-  messages: { role: string; content: string }[],
-  mode = "resume",
-): Promise<string> {
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ messages, mode }),
-    },
-  );
-  if (!response.ok) throw new Error("AI request failed");
-  const reader = response.body?.getReader();
-  const decoder = new TextDecoder();
-  let full = "";
-  if (reader) {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of decoder.decode(value, { stream: true }).split("\n")) {
-        if (line.startsWith("data: ") && line !== "data: [DONE]") {
-          try {
-            const p = JSON.parse(line.slice(6));
-            const c = p.choices?.[0]?.delta?.content || p.choices?.[0]?.message?.content || p.content || p.text;
-            if (c) full += c;
-          } catch {}
-        }
-      }
-    }
-  }
-  return full;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -411,13 +348,22 @@ export default function ResumeBuilder() {
     try {
       const { data: session } = await supabase.auth.getSession();
       if (!session.session) throw new Error("Not authenticated");
+
+      // Prepare text: truncate if too long, preserve structure
+      const preparedText = prepareResumeTextForParsing(text);
+      console.log(`[ResumeBuilder] Parsing resume text: ${preparedText.length} chars (original: ${text.length})`);
+
       // System prompt is now defined server-side for mode "resume_parse"
+      // streamAIText now has built-in retry logic (3 attempts with exponential backoff)
       const fullContent = await streamAIText(session.session.access_token, [
-        { role: "user", content: `Parse this resume:\n\n${text}` },
+        { role: "user", content: `Parse this resume:\n\n${preparedText}` },
       ], "resume_parse");
 
       const parsedData = parseAIResponse(fullContent);
-      if (!parsedData) throw new Error("Could not extract structured data.");
+      if (!parsedData) {
+        console.error("[ResumeBuilder] Failed to parse AI response:", fullContent.substring(0, 500));
+        throw new Error("Could not extract structured data. Please try again.");
+      }
 
       setData({
         header: { name: parsedData.header?.name || data.header.name, title: parsedData.header?.title || data.header.title, email: parsedData.header?.email || data.header.email, phone: parsedData.header?.phone || data.header.phone, location: parsedData.header?.location || data.header.location, linkedin: parsedData.header?.linkedin || data.header.linkedin },
@@ -430,7 +376,9 @@ export default function ResumeBuilder() {
       });
       toast({ title: "Resume imported!", description: `Extracted data from ${fileName}.` });
     } catch (error) {
-      toast({ title: "Import failed", description: error instanceof Error ? error.message : "Failed to parse resume", variant: "destructive" });
+      const errorMsg = error instanceof Error ? error.message : "Failed to parse resume";
+      console.error("[ResumeBuilder] Import error:", errorMsg);
+      toast({ title: "Import failed", description: errorMsg.length > 150 ? errorMsg.substring(0, 150) + "..." : errorMsg, variant: "destructive" });
     } finally { setIsParsingResume(false); }
   };
 
