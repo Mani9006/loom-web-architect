@@ -79,6 +79,10 @@ This repo now includes an HQ-grade control layer inspired by top OpenClaw showca
 - In-app command surface at `/control-center`
 - Edge function: `supabase/functions/executive-brief`
 - Local automation brief: `npm run hq:brief`
+- Jira governance loop: `npm run hq:governor`
+- Atlas ticket-to-agent dispatch: `npm run atlas:dispatch`
+- Secret audit gate: `npm run security:audit`
+- End-to-end loop: `npm run hq:loop`
 - Release gate command: `npm run hq:gate`
 
 ### What it tracks
@@ -87,6 +91,27 @@ This repo now includes an HQ-grade control layer inspired by top OpenClaw showca
 - Jira execution load (open, in-progress, review)
 - Platform growth volume (users, resumes, tracked jobs, conversations, cover letters)
 - Priority actions with explicit owner mapping
+- Ticket dispatch state in `.openclaw/reports/atlas-dispatch-state.json`
+- Runtime reports in `.openclaw/reports/`
+
+### Local control commands
+
+- `npm run hq:governor:dry` for safe Jira governance dry-run.
+- `npm run atlas:dispatch:dry` to preview Atlas -> agent routing without execution.
+- `npm run hq:loop:dry` to run dry governance + dry dispatch + brief + security audit.
+- `npm run hq:loop` to run the live control loop.
+
+### Optional env vars for dispatch/governor
+
+- `JIRA_URL`, `JIRA_USER`, `JIRA_TOKEN`
+- `HQ_WIP_LIMIT` (default `5`)
+- `HQ_WIP_EXEMPT_KEYS` (default `KAN-10,KAN-14,KAN-22`)
+- `ATLAS_DISPATCH_MAX` (default `9`)
+- `ATLAS_EXEMPT_KEYS` (default `KAN-10`)
+- `ATLAS_AGENT_ALIAS_MAP` (JSON for alias override mapping)
+- `OPENCLAW_CODEX_SANDBOX` (default `danger-full-access`)
+- `OPENCLAW_CODEX_APPROVAL` (default `never`)
+- `JIRA_OWNER_ACCOUNT_MAP` (JSON map owner alias -> Jira accountId for assignee correction)
 
 ### Required edge function secrets
 

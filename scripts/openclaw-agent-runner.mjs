@@ -13,7 +13,7 @@ const MODEL_CLIS_FILE = path.join(OPENCLAW_DIR, "model-clis.json");
 const USAGE = `Usage:
   node scripts/openclaw-agent-runner.mjs list
   node scripts/openclaw-agent-runner.mjs doctor
-  node scripts/openclaw-agent-runner.mjs run --agent <agent_id> --task \"<task prompt>\" [--provider openai|anthropic|auto] [--model <model>] [--dry-run]
+  node scripts/openclaw-agent-runner.mjs run --agent <agent_id> --task \"<task prompt>\" [--provider openai|anthropic|auto] [--model <model>] [--codex-sandbox danger-full-access] [--codex-approval never] [--dry-run]
 `;
 
 function parseOptions(argv) {
@@ -50,13 +50,18 @@ function resolveExecutable(providerConfig) {
   return null;
 }
 
-function buildArgs(template, replacements, modelArg, model) {
+function buildArgs(template, replacements, modelArg, model, argsBeforePrompt = []) {
   const tokens = [...template];
   const promptIndex = tokens.indexOf("{prompt}");
 
   if (modelArg && model) {
     const insertAt = promptIndex >= 0 ? promptIndex : tokens.length;
     tokens.splice(insertAt, 0, modelArg, model);
+  }
+
+  if (argsBeforePrompt.length > 0) {
+    const insertAt = tokens.indexOf("{prompt}") >= 0 ? tokens.indexOf("{prompt}") : tokens.length;
+    tokens.splice(insertAt, 0, ...argsBeforePrompt);
   }
 
   return tokens.map((token) =>
@@ -153,6 +158,14 @@ async function runAgent(agentsConfig, modelCliConfig, options) {
   }
 
   const model = String(options.model || agent.defaultModel || providerConfig.defaultModel || "").trim();
+  const codexSandbox = String(options["codex-sandbox"] || process.env.OPENCLAW_CODEX_SANDBOX || "danger-full-access").trim();
+  const codexApproval = String(options["codex-approval"] || process.env.OPENCLAW_CODEX_APPROVAL || "never").trim();
+  const argsBeforePrompt = [];
+
+  if (binary === "codex") {
+    if (codexSandbox) argsBeforePrompt.push("--sandbox", codexSandbox);
+    if (codexApproval) argsBeforePrompt.push("--approval", codexApproval);
+  }
 
   const composedPrompt = [
     `You are ${agent.name} for the ResumePreps codebase.`,
@@ -169,6 +182,7 @@ async function runAgent(agentsConfig, modelCliConfig, options) {
     { prompt: composedPrompt, cwd: ROOT },
     execConfig.modelArg,
     model,
+    argsBeforePrompt,
   );
 
   const dryRun = Boolean(options["dry-run"]);
