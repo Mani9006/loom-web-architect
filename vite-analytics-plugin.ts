@@ -45,7 +45,11 @@ export function analyticsPlugin(options: ViteAnalyticsPluginOptions = {}): Plugi
         if ('code' in assetInfo) {
           size = new TextEncoder().encode(assetInfo.code).length;
         } else if ('source' in assetInfo) {
-          size = new TextEncoder().encode(assetInfo.source).length;
+          const source =
+            typeof assetInfo.source === 'string'
+              ? assetInfo.source
+              : new TextDecoder().decode(assetInfo.source);
+          size = new TextEncoder().encode(source).length;
         }
         totalBundleSize += size;
         assets.push({ name: fileName, size });

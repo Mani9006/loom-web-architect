@@ -10,7 +10,7 @@ test.describe("Route Integrity E2E Tests", () => {
 
     // Check for main content
     const mainContent = page.locator("main, [role='main'], .container").first();
-    await expect(mainContent).toBeVisible({ timeout: 5000 }).catch(() => {
+    await expect(mainContent).toBeVisible({ timeout: 5000 }).catch(async () => {
       // Fallback: just check page title
       const title = await page.title();
       expect(title.length).toBeGreaterThan(0);
@@ -22,7 +22,7 @@ test.describe("Route Integrity E2E Tests", () => {
 
     // Should show auth form
     const formElement = page.locator("form, [role='form']").first();
-    await expect(formElement).toBeVisible({ timeout: 5000 }).catch(() => {
+    await expect(formElement).toBeVisible({ timeout: 5000 }).catch(async () => {
       // Fallback: check for auth content
       const authContent = page.locator(
         'button:has-text("Login"), button:has-text("Sign Up")'

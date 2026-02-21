@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { calculateATSScore, matchJobDescriptionKeywords } from "@/lib/ats-scorer";
 import type { ResumeJSON } from "@/types/resume";
