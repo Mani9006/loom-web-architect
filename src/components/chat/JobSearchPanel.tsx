@@ -115,7 +115,10 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
         return;
       }
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://eybsvijjtjwshbcsjtvz.supabase.co";
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        throw new Error("VITE_SUPABASE_URL is not configured");
+      }
       const response = await fetch(`${supabaseUrl}/functions/v1/job-search`, {
         method: "POST",
         headers: {

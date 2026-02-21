@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.job-search]
 verify_jwt = false
+
+[functions.enhance-bullet]
+verify_jwt = false

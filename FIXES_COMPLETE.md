@@ -44,7 +44,7 @@
 ### Step 2: Set Secrets in Supabase
 ```bash
 # Option A: Via CLI (fastest)
-supabase secrets set EXA_API_KEY="02d5f479-7122-48da-b26d-25ae3675248d"
+supabase secrets set EXA_API_KEY="your_exa_key_here"
 supabase secrets set PERPLEXITY_API_KEY="your_perplexity_key_here"
 
 # Option B: Via Dashboard

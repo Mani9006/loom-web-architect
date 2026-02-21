@@ -431,6 +431,10 @@ serve(async (req) => {
     const agentHint = typeof payload?.agentHint === "string"
       ? normalizeIntent(payload.agentHint)
       : null;
+    const modeHint = typeof payload?.mode === "string"
+      ? normalizeIntent(payload.mode)
+      : null;
+    const routedHint = agentHint ?? modeHint;
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Messages required" }), {
@@ -455,8 +459,8 @@ serve(async (req) => {
 
     // Parallel execution: classify intent + search memories
     const [intentResult, memories] = await Promise.all([
-      agentHint 
-        ? Promise.resolve({ intent: agentHint, confidence: 1.0, context: "hint provided" })
+      routedHint 
+        ? Promise.resolve({ intent: routedHint, confidence: 1.0, context: "hint provided" })
         : classifyIntent(OPENAI_API_KEY, userQuery, messages),
       MEM0_API_KEY ? searchMemories(MEM0_API_KEY, user.id, userQuery) : Promise.resolve([]),
     ]);

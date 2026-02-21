@@ -391,7 +391,7 @@ export default function Chat() {
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -402,7 +402,7 @@ export default function Chat() {
             role: m.role,
             content: m.content,
           })),
-          mode: "general",
+          agentHint: "general",
         }),
       });
 
@@ -500,7 +500,7 @@ export default function Chat() {
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -523,6 +523,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
             },
             { role: "user", content: userContent },
           ],
+          agentHint: "ats",
         }),
       });
 
@@ -606,7 +607,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -617,6 +618,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
             role: m.role,
             content: m.content,
           })),
+          agentHint: "ats",
         }),
       });
 
@@ -715,7 +717,7 @@ ${jobDescription}`;
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -739,6 +741,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
             },
             { role: "user", content: userContent },
           ],
+          agentHint: "cover_letter",
         }),
       });
 
@@ -818,7 +821,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -836,6 +839,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
               content: m.content,
             })),
           ],
+          agentHint: "cover_letter",
         }),
       });
 
@@ -937,7 +941,7 @@ ${jobDescription}`;
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -975,6 +979,7 @@ Format with clear headers and bullet points. Be specific to the role and company
             },
             { role: "user", content: userContent },
           ],
+          agentHint: "interview",
         }),
       });
 
@@ -1054,7 +1059,7 @@ Format with clear headers and bullet points. Be specific to the role and company
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1065,6 +1070,7 @@ Format with clear headers and bullet points. Be specific to the role and company
             role: m.role,
             content: m.content,
           })),
+          agentHint: "interview",
         }),
       });
 

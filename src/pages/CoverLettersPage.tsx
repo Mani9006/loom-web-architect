@@ -34,7 +34,7 @@ export default function CoverLettersPage() {
       if (!session) { navigate("/auth"); return; }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`,
         {
           method: "POST",
           headers: {
@@ -49,6 +49,7 @@ export default function CoverLettersPage() {
               },
             ],
             mode: "cover-letter",
+            agentHint: "cover_letter",
           }),
         }
       );

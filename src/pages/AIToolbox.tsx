@@ -38,7 +38,7 @@ export default function AIToolbox() {
       if (!session) { navigate("/auth"); return; }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`,
         {
           method: "POST",
           headers: {
@@ -50,6 +50,7 @@ export default function AIToolbox() {
               { role: "user", content: `You are an expert career coach. Generate a ${selectedTool.label} based on the following input:\n\n${input}` },
             ],
             mode: "general",
+            agentHint: "general",
           }),
         }
       );

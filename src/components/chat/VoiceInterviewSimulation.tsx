@@ -127,7 +127,7 @@ export function VoiceInterviewSimulation({
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`,
         {
           method: "POST",
           headers: {
@@ -150,6 +150,7 @@ Return ONLY the 5 questions, one per line, numbered 1-5. No other text or explan
               },
             ],
             mode: "interview-prep",
+            agentHint: "interview",
           }),
         }
       );
@@ -244,7 +245,7 @@ Return ONLY the 5 questions, one per line, numbered 1-5. No other text or explan
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`,
         {
           method: "POST",
           headers: {
@@ -264,6 +265,7 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
               },
             ],
             mode: "interview-prep",
+            agentHint: "interview",
           }),
         }
       );

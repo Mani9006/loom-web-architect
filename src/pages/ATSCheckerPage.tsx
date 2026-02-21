@@ -25,10 +25,14 @@ export default function ATSCheckerPage() {
     setMessages((prev) => [...prev, { id: tempId, role: "assistant", content: "", timestamp: new Date() }]);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
-        body: JSON.stringify({ messages: [{ role: "user", content: userContent }], mode: "ats" }),
+        body: JSON.stringify({
+          messages: [{ role: "user", content: userContent }],
+          mode: "ats",
+          agentHint: "ats",
+        }),
       });
 
       if (!response.ok) throw new Error("Failed");
@@ -79,12 +83,13 @@ export default function ATSCheckerPage() {
     setMessages((prev) => [...prev, { id: tempId, role: "assistant", content: "", timestamp: new Date() }]);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
         body: JSON.stringify({
           messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
           mode: "ats",
+          agentHint: "ats",
         }),
       });
 

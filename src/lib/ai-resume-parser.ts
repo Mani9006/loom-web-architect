@@ -215,14 +215,14 @@ async function streamAITextOnce(
 
   try {
     const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ messages, mode }),
+        body: JSON.stringify({ messages, mode, agentHint: mode }),
         signal: controller.signal,
       },
     );

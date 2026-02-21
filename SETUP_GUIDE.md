@@ -29,8 +29,8 @@ You need to add API keys to your Supabase project. Choose one method:
 ```bash
 cd /Users/mani/Documents/GitHub/loom-web-architect
 
-# Set the Exa.ai key (already provided)
-supabase secrets set EXA_API_KEY="02d5f479-7122-48da-b26d-25ae3675248d"
+# Set your Exa.ai key
+supabase secrets set EXA_API_KEY="your_exa_key_here"
 
 # Set your Perplexity key (get from https://www.perplexity.ai/settings/api)
 supabase secrets set PERPLEXITY_API_KEY="your_perplexity_key_here"
@@ -46,7 +46,7 @@ supabase secrets set MEM0_API_KEY="your_mem0_key_here"
 1. Go to: https://supabase.com/dashboard/project/nnwsguivskfbejyiqekb/settings/functions
 2. Click on **"Secrets"** or **"Environment Variables"**
 3. Add these secrets:
-   - `EXA_API_KEY` = `02d5f479-7122-48da-b26d-25ae3675248d` ✅ (Already set!)
+   - `EXA_API_KEY` = Get from https://dashboard.exa.ai/api-keys
    - `PERPLEXITY_API_KEY` = Get from https://www.perplexity.ai/settings/api
    - `OPENAI_API_KEY` = (Optional) Get from https://platform.openai.com/api-keys
    - `MEM0_API_KEY` = (Optional) Get from https://mem0.ai/
