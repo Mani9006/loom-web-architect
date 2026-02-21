@@ -38,6 +38,7 @@ TOOLS.md
 USER.md
 OPENCLAW_AI_SETUP.md
 .openclaw/
+.claude/worktrees/
 
 # Supabase temp
 supabase/.temp/
