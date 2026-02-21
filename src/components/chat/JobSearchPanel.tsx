@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { toast } from "sonner";
-import html2pdf from "html2pdf.js";
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -203,11 +202,18 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
       jsPDF: { unit: "in" as const, format: "letter" as const, orientation: "portrait" as const },
     };
 
-    toast.promise(html2pdf().set(opt).from(element).save(), {
-      loading: "Generating PDF...",
-      success: "PDF downloaded successfully!",
-      error: "Failed to generate PDF",
-    });
+    // Lazy load html2pdf only when user exports
+    toast.promise(
+      (async () => {
+        const html2pdf = (await import("html2pdf.js")).default;
+        return html2pdf().set(opt).from(element).save();
+      })(),
+      {
+        loading: "Generating PDF...",
+        success: "PDF downloaded successfully!",
+        error: "Failed to generate PDF",
+      }
+    );
   };
 
   const getMatchScoreColor = (score: number) => {
