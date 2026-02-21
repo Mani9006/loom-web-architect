@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.enhance-bullet]
 verify_jwt = false
+
+[functions.executive-brief]
+verify_jwt = false

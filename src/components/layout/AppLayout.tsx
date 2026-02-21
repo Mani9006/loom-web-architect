@@ -6,7 +6,7 @@ import {
   Home, Search, FileText, Columns3, Mic, MessageCircle,
   FolderOpen, ChevronDown, ChevronRight, LogOut,
   Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp, Target,
-  Sun, Moon,
+  Sun, Moon, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -42,6 +42,7 @@ const mainNav: NavItem[] = [
 
 const secondaryNav: NavItem[] = [
   { label: "Analytics", icon: TrendingUp, path: "/analytics" },
+  { label: "Control Center", icon: ShieldCheck, path: "/control-center", badge: "HQ" },
   {
     label: "Documents",
     icon: FolderOpen,

@@ -71,3 +71,29 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Executive Control Center (New)
+
+This repo now includes an HQ-grade control layer inspired by top OpenClaw showcase patterns:
+
+- In-app command surface at `/control-center`
+- Edge function: `supabase/functions/executive-brief`
+- Local automation brief: `npm run hq:brief`
+- Release gate command: `npm run hq:gate`
+
+### What it tracks
+
+- Deployment state from GitHub/Vercel status
+- Jira execution load (open, in-progress, review)
+- Platform growth volume (users, resumes, tracked jobs, conversations, cover letters)
+- Priority actions with explicit owner mapping
+
+### Required edge function secrets
+
+Set these in Supabase project secrets before deploying `executive-brief`:
+
+- `JIRA_BASE_URL`
+- `JIRA_USER`
+- `JIRA_API_TOKEN`
+- Optional: `EXECUTIVE_GITHUB_REPO` (defaults to `Mani9006/loom-web-architect`)
+- Optional: `EXECUTIVE_JIRA_PROJECT` (defaults to `KAN`)
