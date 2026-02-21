@@ -10,6 +10,8 @@
     "build:metrics": "vite build && node scripts/build-metrics.mjs",
     "metrics": "node scripts/build-metrics.mjs",
     "hq:brief": "node scripts/executive-brief.mjs",
+    "hq:governor": "node scripts/hq-governor.mjs",
+    "hq:governor:dry": "node scripts/hq-governor.mjs --dry-run",
     "hq:gate": "npm run type-check && npm run test && npm run build",
     "type-check": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "lint": "eslint .",
