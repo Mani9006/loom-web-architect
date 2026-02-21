@@ -8,6 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 
 // Eager-loaded routes (critical path)
 import Landing from "./pages/Landing";
@@ -89,6 +90,7 @@ const App = () => (
               </Routes>
             </Suspense>
           </BrowserRouter>
+          <VercelAnalytics />
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
