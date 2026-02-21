@@ -1,15 +1,15 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER, type ResumeSectionId } from "@/types/resume";
+import { getTemplate } from "@/config/resume-templates";
 
 interface ResumeTemplateProps {
   data: ResumeJSON;
+  templateId?: string;
   className?: string;
 }
 
 // ── ATS-Optimized Spacing Constants ──────────────────────────────────────────
-// Industry standard: 0.5in top/bottom, 0.6in left/right margins on 8.5x11 letter
-// Font: Calibri (most ATS-friendly sans-serif), fallback chain for web rendering
-// All spacing in pt for precision; line-height 1.35 for readability + density balance
+// All spacing in pt for precision
 
 const SPACING = {
   sectionMarginTop: "10pt",     // Space above each section heading
@@ -23,32 +23,75 @@ const SPACING = {
   skillLineMargin: "2pt",       // Space between skill category lines
 } as const;
 
-// ATS-compliant section heading style (consistent across all sections)
-const sectionHeadingStyle: React.CSSProperties = {
-  fontSize: "11pt",
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  borderBottom: "1.5px solid #000",
-  paddingBottom: "2pt",
-  marginTop: SPACING.sectionMarginTop,
-  marginBottom: SPACING.sectionMarginBottom,
-};
+// ── Template-aware style builders ────────────────────────────────────────────
+
+function buildSectionHeadingStyle(templateId: string): React.CSSProperties {
+  const base: React.CSSProperties = {
+    fontSize: "11pt",
+    fontWeight: 700,
+    letterSpacing: "0.05em",
+    paddingBottom: "2pt",
+    marginTop: SPACING.sectionMarginTop,
+    marginBottom: SPACING.sectionMarginBottom,
+  };
+
+  switch (templateId) {
+    case "modern":
+      return {
+        ...base,
+        textTransform: "uppercase",
+        borderBottom: "1.5px solid #2563eb",
+        color: "#1e293b",
+      };
+    case "minimal":
+      return {
+        ...base,
+        textTransform: "none",
+        fontVariant: "small-caps",
+        borderBottom: "none",
+        marginBottom: "6pt",
+        letterSpacing: "0.02em",
+      };
+    case "creative":
+    case "professional":
+    default:
+      return {
+        ...base,
+        textTransform: "uppercase",
+        borderBottom: "1.5px solid #000",
+      };
+  }
+}
+
+function buildHeaderBorderStyle(templateId: string): React.CSSProperties {
+  switch (templateId) {
+    case "modern":
+      return { borderBottom: "2px solid #2563eb" };
+    case "minimal":
+      return { borderBottom: "1px solid #57534e" };
+    case "creative":
+    case "professional":
+    default:
+      return { borderBottom: "2px solid #000" };
+  }
+}
+
+function buildTitleAccentColor(templateId: string): string {
+  switch (templateId) {
+    case "modern":
+      return "#2563eb";
+    case "minimal":
+      return "#292524";
+    default:
+      return "#000";
+  }
+}
 
 // Shared bullet list style — ensures consistent rendering across all sections
 const bulletListStyle: React.CSSProperties = {
   margin: `${SPACING.bulletListMarginTop} 0 0 ${SPACING.bulletIndent}`,
   padding: 0,
   listStyleType: "disc",
-};
-
-// Shared bullet item style
-const bulletItemStyle: React.CSSProperties = {
-  paddingLeft: SPACING.bulletPaddingLeft,
-  marginBottom: SPACING.bulletMarginBottom,
-  fontSize: "10pt",
-  lineHeight: "1.35",
-  textAlign: "justify",
 };
 
 // Shared flex row style (left content + right-aligned date/location)
@@ -78,9 +121,23 @@ const linkedTitleStyle: React.CSSProperties = {
 // Page height constant for page break indicators (matches PDF: 11in letter)
 const PAGE_HEIGHT_IN = 11;
 
-export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({ data, className }, ref) => {
+export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({ data, templateId = "professional", className }, ref) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const [pageCount, setPageCount] = useState(1);
+
+  const template = useMemo(() => getTemplate(templateId), [templateId]);
+  const sectionHeadingStyle = useMemo(() => buildSectionHeadingStyle(templateId), [templateId]);
+  const headerBorderStyle = useMemo(() => buildHeaderBorderStyle(templateId), [templateId]);
+  const titleAccentColor = useMemo(() => buildTitleAccentColor(templateId), [templateId]);
+
+  // Build bullet item style from template config
+  const bulletItemStyle: React.CSSProperties = useMemo(() => ({
+    paddingLeft: SPACING.bulletPaddingLeft,
+    marginBottom: SPACING.bulletMarginBottom,
+    fontSize: template.layout.fontSize,
+    lineHeight: String(template.layout.lineHeight),
+    textAlign: "justify",
+  }), [template]);
 
   // Calculate number of pages based on content height
   useEffect(() => {
@@ -114,9 +171,58 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
     ? data.header.linkedin.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
     : "";
 
+  // Skills rendering varies by template
+  const renderSkills = () => {
+    if (skillCategories.length === 0) return null;
+
+    // Modern template: inline tag/badge style
+    if (templateId === "modern") {
+      return (
+        <section key="skills">
+          <h2 style={sectionHeadingStyle}>Technical Skills</h2>
+          {skillCategories.map((sc, idx) => (
+            <div key={idx} style={{ marginBottom: SPACING.skillLineMargin }}>
+              <span style={{ fontWeight: 700, fontSize: template.layout.fontSize }}>{sc.category}: </span>
+              {sc.skills.map((skill, sIdx) => (
+                <span
+                  key={sIdx}
+                  style={{
+                    display: "inline-block",
+                    fontSize: "9pt",
+                    lineHeight: "1.2",
+                    padding: "1pt 5pt",
+                    margin: "1pt 2pt 1pt 0",
+                    borderRadius: "3pt",
+                    backgroundColor: "#eff6ff",
+                    border: "0.5px solid #bfdbfe",
+                    color: "#1e40af",
+                  }}
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          ))}
+        </section>
+      );
+    }
+
+    // Default (professional, creative, minimal): comma-separated list
+    return (
+      <section key="skills">
+        <h2 style={sectionHeadingStyle}>Technical Skills</h2>
+        {skillCategories.map((sc, idx) => (
+          <p key={idx} style={{ margin: `0 0 ${SPACING.skillLineMargin} 0`, fontSize: template.layout.fontSize, lineHeight: String(template.layout.lineHeight) }}>
+            <strong>{sc.category}:</strong> {sc.skills.join(", ")}
+          </p>
+        ))}
+      </section>
+    );
+  };
+
   return (
     <div ref={ref} className={className} style={{ position: "relative" }}>
-      {/* Page break indicators — dashed lines at every 11in boundary */}
+      {/* Page break indicators -- dashed lines at every 11in boundary */}
       {pageCount > 1 &&
         Array.from({ length: pageCount - 1 }, (_, i) => (
           <div
@@ -169,10 +275,10 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
         style={{
           width: "8.5in",
           minHeight: "11in",
-          padding: "0.5in 0.6in",
-          fontFamily: "'Calibri', 'Arial', 'Helvetica Neue', sans-serif",
-          fontSize: "10pt",
-          lineHeight: "1.35",
+          padding: `${template.layout.marginTop} ${template.layout.marginRight} ${template.layout.marginBottom} ${template.layout.marginLeft}`,
+          fontFamily: template.layout.fontFamily,
+          fontSize: template.layout.fontSize,
+          lineHeight: String(template.layout.lineHeight),
           color: "#000",
           backgroundColor: "#fff",
           boxSizing: "border-box",
@@ -183,17 +289,17 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
         style={{
           textAlign: "center",
           paddingBottom: "5pt",
-          borderBottom: "2px solid #000",
           marginBottom: "4pt",
+          ...headerBorderStyle,
         }}
       >
-        <h1 style={{ fontSize: "18pt", fontWeight: 700, letterSpacing: "0.03em", margin: 0 }}>
+        <h1 style={{ fontSize: template.layout.headerFontSize, fontWeight: 700, letterSpacing: "0.03em", margin: 0 }}>
           {data.header.name || "Your Name"}
         </h1>
         {data.header.title && (
-          <p style={{ fontSize: "11pt", fontWeight: 600, margin: "2pt 0 0 0", color: "#000" }}>{data.header.title}</p>
+          <p style={{ fontSize: template.layout.titleFontSize, fontWeight: 600, margin: "2pt 0 0 0", color: titleAccentColor }}>{data.header.title}</p>
         )}
-        {/* Contact info — plain text for ATS parsing, pipe-separated */}
+        {/* Contact info -- plain text for ATS parsing, pipe-separated */}
         <div
           style={{
             display: "flex",
@@ -233,7 +339,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
             return data.summary ? (
               <section key="summary">
                 <h2 style={sectionHeadingStyle}>Professional Summary</h2>
-                <p style={{ textAlign: "justify", lineHeight: "1.35", margin: 0, fontSize: "10pt" }}>{data.summary}</p>
+                <p style={{ textAlign: "justify", lineHeight: String(template.layout.lineHeight), margin: 0, fontSize: template.layout.fontSize }}>{data.summary}</p>
               </section>
             ) : null;
 
@@ -244,11 +350,11 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                 {validExperience.map((exp, idx) => (
                   <div key={exp.id} style={{ marginBottom: idx < validExperience.length - 1 ? SPACING.entryMarginBottom : 0 }}>
                     <div style={flexRowStyle}>
-                      <span style={{ fontWeight: 700, fontSize: "10pt" }}>{exp.role}</span>
+                      <span style={{ fontWeight: 700, fontSize: template.layout.fontSize }}>{exp.role}</span>
                       <span style={rightMetaStyle}>{exp.start_date} — {exp.end_date}</span>
                     </div>
                     <div style={flexRowStyle}>
-                      <span style={{ fontStyle: "italic", fontSize: "10pt" }}>{exp.company_or_client}</span>
+                      <span style={{ fontStyle: "italic", fontSize: template.layout.fontSize }}>{exp.company_or_client}</span>
                       {exp.location && <span style={rightMetaStyle}>{exp.location}</span>}
                     </div>
                     {exp.bullets.length > 0 && (
@@ -270,7 +376,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                 {validEducation.map((edu) => (
                   <div key={edu.id} style={{ marginBottom: SPACING.compactEntryMargin }}>
                     <div style={flexRowStyle}>
-                      <span style={{ fontSize: "10pt" }}>
+                      <span style={{ fontSize: template.layout.fontSize }}>
                         <strong>{edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree"}</strong>
                         {edu.institution && <span> — {edu.institution}</span>}
                         {edu.gpa && <span> (GPA: {edu.gpa})</span>}
@@ -284,16 +390,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
             ) : null;
 
           case "skills":
-            return skillCategories.length > 0 ? (
-              <section key="skills">
-                <h2 style={sectionHeadingStyle}>Technical Skills</h2>
-                {skillCategories.map((sc, idx) => (
-                  <p key={idx} style={{ margin: `0 0 ${SPACING.skillLineMargin} 0`, fontSize: "10pt", lineHeight: "1.35" }}>
-                    <strong>{sc.category}:</strong> {sc.skills.join(", ")}
-                  </p>
-                ))}
-              </section>
-            ) : null;
+            return renderSkills();
 
           case "certifications":
             return validCerts.length > 0 ? (
@@ -301,7 +398,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                 <h2 style={sectionHeadingStyle}>Certifications</h2>
                 {validCerts.map((cert) => (
                   <div key={cert.id} style={{ ...flexRowStyle, marginBottom: SPACING.compactEntryMargin }}>
-                    <span style={{ fontSize: "10pt" }}>
+                    <span style={{ fontSize: template.layout.fontSize }}>
                       {cert.url ? (
                         <a href={cert.url.startsWith("http") ? cert.url : `https://${cert.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{cert.name}</a>
                       ) : (
@@ -325,7 +422,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                       {project.url ? (
                         <a href={project.url.startsWith("http") ? project.url : `https://${project.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{project.title}</a>
                       ) : (
-                        <span style={{ fontWeight: 700, fontSize: "10pt" }}>{project.title}</span>
+                        <span style={{ fontWeight: 700, fontSize: template.layout.fontSize }}>{project.title}</span>
                       )}
                       {(project.organization || project.date) && (
                         <span style={{ ...rightMetaStyle, fontStyle: "italic" }}>
@@ -349,7 +446,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
             return validLanguages.length > 0 ? (
               <section key="languages">
                 <h2 style={sectionHeadingStyle}>Languages</h2>
-                <p style={{ margin: 0, fontSize: "10pt", lineHeight: "1.35" }}>
+                <p style={{ margin: 0, fontSize: template.layout.fontSize, lineHeight: String(template.layout.lineHeight) }}>
                   {validLanguages.map((l, idx) => (
                     <span key={l.id}>
                       <strong>{l.language}</strong>
@@ -368,10 +465,10 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                 {validVolunteer.map((vol, idx) => (
                   <div key={vol.id} style={{ marginBottom: idx < validVolunteer.length - 1 ? SPACING.entryMarginBottom : 0 }}>
                     <div style={flexRowStyle}>
-                      <span style={{ fontWeight: 700, fontSize: "10pt" }}>{vol.role || "Volunteer"}</span>
+                      <span style={{ fontWeight: 700, fontSize: template.layout.fontSize }}>{vol.role || "Volunteer"}</span>
                       {vol.date && <span style={rightMetaStyle}>{vol.date}</span>}
                     </div>
-                    <div><span style={{ fontStyle: "italic", fontSize: "10pt" }}>{vol.organization}</span></div>
+                    <div><span style={{ fontStyle: "italic", fontSize: template.layout.fontSize }}>{vol.organization}</span></div>
                     {vol.bullets.length > 0 && (
                       <ul style={bulletListStyle}>
                         {vol.bullets.map((bullet, bIdx) => (
@@ -390,7 +487,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                 <h2 style={sectionHeadingStyle}>Awards & Publications</h2>
                 {validAwards.map((award) => (
                   <div key={award.id} style={{ ...flexRowStyle, marginBottom: SPACING.compactEntryMargin }}>
-                    <span style={{ fontSize: "10pt" }}>
+                    <span style={{ fontSize: template.layout.fontSize }}>
                       {award.url ? (
                         <a href={award.url.startsWith("http") ? award.url : `https://${award.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{award.title}</a>
                       ) : (
@@ -419,12 +516,12 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                         {entry.url ? (
                           <a href={entry.url.startsWith("http") ? entry.url : `https://${entry.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{entry.title}</a>
                         ) : (
-                          <span style={{ fontWeight: 700, fontSize: "10pt" }}>{entry.title}</span>
+                          <span style={{ fontWeight: 700, fontSize: template.layout.fontSize }}>{entry.title}</span>
                         )}
                         {entry.date && <span style={rightMetaStyle}>{entry.date}</span>}
                       </div>
                       {entry.subtitle && (
-                        <div><span style={{ fontStyle: "italic", fontSize: "10pt" }}>{entry.subtitle}</span></div>
+                        <div><span style={{ fontStyle: "italic", fontSize: template.layout.fontSize }}>{entry.subtitle}</span></div>
                       )}
                       {entry.bullets.length > 0 && (
                         <ul style={bulletListStyle}>

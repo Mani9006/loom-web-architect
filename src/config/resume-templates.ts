@@ -162,10 +162,114 @@ export const CREATIVE_TEMPLATE: TemplateConfig = {
   },
 };
 
+// Modern template — clean sans-serif, blue accent, tags-style skills
+export const MODERN_TEMPLATE: TemplateConfig = {
+  id: 'modern',
+  name: 'Modern',
+  description: 'Clean sans-serif layout with blue accents and tag-style skills, great for tech roles',
+  preview: '',
+
+  layout: {
+    marginTop: '0.55in',
+    marginBottom: '0.55in',
+    marginLeft: '0.65in',
+    marginRight: '0.65in',
+    fontFamily: "'Inter', 'system-ui', '-apple-system', 'Segoe UI', sans-serif",
+    fontSize: '10pt',
+    lineHeight: 1.45,
+    headerFontSize: '20pt',
+    titleFontSize: '11.5pt',
+    sectionGap: '0.5cm',
+  },
+
+  sections: [
+    { id: 'header', name: 'Header', type: 'header', required: true, order: 1 },
+    { id: 'summary', name: 'Summary', type: 'summary', required: true, order: 2 },
+    { id: 'experience', name: 'Experience', type: 'experience', required: true, order: 3 },
+    { id: 'skills', name: 'Skills', type: 'skills', required: true, order: 4 },
+    { id: 'education', name: 'Education', type: 'education', required: true, order: 5 },
+    { id: 'projects', name: 'Projects', type: 'projects', required: false, order: 6 },
+    { id: 'certifications', name: 'Certifications', type: 'certifications', required: false, order: 7 },
+  ],
+
+  experience: {
+    bulletsPerRole: 6,
+    optionsCount: 2,
+    dateFormat: 'MMM yyyy',
+    showLocation: true,
+    showIndustry: false,
+  },
+
+  summary: {
+    optionsCount: 2,
+    maxSentences: 3,
+    includeYearsExperience: true,
+  },
+
+  skills: {
+    categorized: true,
+    maxCategories: 8,
+    maxSkillsPerCategory: 15,
+  },
+};
+
+// Minimal template — classic serif, understated, maximum content density
+export const MINIMAL_TEMPLATE: TemplateConfig = {
+  id: 'minimal',
+  name: 'Minimal',
+  description: 'Classic serif typography with maximum content density and understated styling',
+  preview: '',
+
+  layout: {
+    marginTop: '0.5in',
+    marginBottom: '0.5in',
+    marginLeft: '0.6in',
+    marginRight: '0.6in',
+    fontFamily: "'Georgia', 'Times New Roman', serif",
+    fontSize: '10pt',
+    lineHeight: 1.35,
+    headerFontSize: '18pt',
+    titleFontSize: '11pt',
+    sectionGap: '0.4cm',
+  },
+
+  sections: [
+    { id: 'header', name: 'Header', type: 'header', required: true, order: 1 },
+    { id: 'summary', name: 'Summary', type: 'summary', required: true, order: 2 },
+    { id: 'experience', name: 'Experience', type: 'experience', required: true, order: 3 },
+    { id: 'education', name: 'Education', type: 'education', required: true, order: 4 },
+    { id: 'skills', name: 'Skills', type: 'skills', required: true, order: 5 },
+    { id: 'certifications', name: 'Certifications', type: 'certifications', required: false, order: 6 },
+    { id: 'projects', name: 'Projects', type: 'projects', required: false, order: 7 },
+  ],
+
+  experience: {
+    bulletsPerRole: 7,
+    optionsCount: 2,
+    dateFormat: 'MMM yyyy',
+    showLocation: true,
+    showIndustry: false,
+  },
+
+  summary: {
+    optionsCount: 2,
+    maxSentences: 3,
+    includeYearsExperience: true,
+  },
+
+  skills: {
+    categorized: true,
+    maxCategories: 10,
+    maxSkillsPerCategory: 20,
+  },
+};
+
 // Template registry
 export const TEMPLATES: Record<string, TemplateConfig> = {
   professional: PROFESSIONAL_TEMPLATE,
   creative: CREATIVE_TEMPLATE,
+  modern: MODERN_TEMPLATE,
+  minimal: MINIMAL_TEMPLATE,
 };
 
 export const getTemplate = (templateId: string): TemplateConfig => {

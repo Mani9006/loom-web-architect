@@ -56,6 +56,7 @@ type JsPDFInstance = import("jspdf").jsPDF;
 class PDFResumeRenderer {
   private doc!: JsPDFInstance;
   private y = 0;
+  private widthCache = new Map<string, number>();
 
   private ensureSpace(needed: number) {
     if (this.y + needed > PAGE.height - PAGE.marginBottom) {
@@ -74,8 +75,13 @@ class PDFResumeRenderer {
   }
 
   private textWidth(text: string, size: number, style: FontStyle = "normal") {
+    const cacheKey = `${text}|${size}|${style}`;
+    const cached = this.widthCache.get(cacheKey);
+    if (cached !== undefined) return cached;
     this.setFont(size, style);
-    return (this.doc.getStringUnitWidth(text) * size) / 72;
+    const width = (this.doc.getStringUnitWidth(text) * size) / 72;
+    this.widthCache.set(cacheKey, width);
+    return width;
   }
 
   private wrapText(text: string, maxWidth: number, size: number, style: FontStyle = "normal"): string[] {
@@ -580,10 +586,46 @@ class PDFResumeRenderer {
 
   // ── Public API ─────────────────────────────────────────────────────
 
+  /**
+   * Validates resume data before rendering, returning issues that would
+   * cause rendering failures.
+   */
+  private validateData(data: ResumeJSON): string[] {
+    const issues: string[] = [];
+    if (!data.header) issues.push("Missing header section");
+    if (!data.header?.name && !data.header?.email) issues.push("Resume has no name or email");
+    if (!Array.isArray(data.experience)) issues.push("Experience must be an array");
+    if (!Array.isArray(data.education)) issues.push("Education must be an array");
+    if (!Array.isArray(data.certifications)) issues.push("Certifications must be an array");
+    if (data.skills && typeof data.skills !== "object") issues.push("Skills must be an object");
+    return issues;
+  }
+
+  /**
+   * Safely renders a section, catching errors so one bad section doesn't
+   * kill the entire export. Returns the section name if it failed.
+   */
+  private safeRenderSection(sectionName: string, renderFn: () => void): string | null {
+    try {
+      renderFn();
+      return null;
+    } catch (err) {
+      console.warn(`[PDF] Section "${sectionName}" failed to render:`, err);
+      return sectionName;
+    }
+  }
+
   public async render(data: ResumeJSON): Promise<JsPDFInstance> {
+    // Validate input data
+    const issues = this.validateData(data);
+    if (issues.length > 0) {
+      throw new Error(`Invalid resume data: ${issues.join("; ")}`);
+    }
+
     const { jsPDF } = await import("jspdf");
     this.doc = new jsPDF({ unit: "in", format: "letter", orientation: "portrait" });
     this.y = PAGE.marginTop;
+    this.widthCache.clear();
     this.doc.setTextColor(0, 0, 0);
 
     // Set PDF metadata for ATS
@@ -594,45 +636,49 @@ class PDFResumeRenderer {
       creator: "Resume Builder",
     });
 
+    // Header is critical — let this throw if it fails
     this.renderHeader(data.header);
 
-    // Render sections dynamically based on section_order
+    // Render sections with error boundaries
+    const failedSections: string[] = [];
     const sectionOrder = data.section_order || DEFAULT_SECTION_ORDER;
     for (const sectionId of sectionOrder) {
+      let failed: string | null = null;
       switch (sectionId) {
         case "summary":
-          if (data.summary) this.renderSummary(data.summary);
+          if (data.summary) failed = this.safeRenderSection("Summary", () => this.renderSummary(data.summary));
           break;
         case "experience":
-          this.renderExperience(data.experience);
+          failed = this.safeRenderSection("Experience", () => this.renderExperience(data.experience));
           break;
         case "education":
-          this.renderEducation(data.education);
+          failed = this.safeRenderSection("Education", () => this.renderEducation(data.education));
           break;
         case "skills":
-          this.renderSkills(data.skills);
+          failed = this.safeRenderSection("Skills", () => this.renderSkills(data.skills));
           break;
         case "certifications":
-          this.renderCertifications(data.certifications);
+          failed = this.safeRenderSection("Certifications", () => this.renderCertifications(data.certifications));
           break;
         case "projects":
-          this.renderProjects(data.projects);
+          failed = this.safeRenderSection("Projects", () => this.renderProjects(data.projects));
           break;
         case "languages":
-          this.renderLanguages(data.languages);
+          failed = this.safeRenderSection("Languages", () => this.renderLanguages(data.languages));
           break;
         case "volunteer":
-          this.renderVolunteer(data.volunteer);
+          failed = this.safeRenderSection("Volunteer", () => this.renderVolunteer(data.volunteer));
           break;
         case "awards":
-          this.renderAwards(data.awards);
+          failed = this.safeRenderSection("Awards", () => this.renderAwards(data.awards));
           break;
         default: {
           const cs = (data.customSections || []).find((s) => s.id === sectionId);
-          if (cs) this.renderCustomSections([cs]);
+          if (cs) failed = this.safeRenderSection(cs.name || sectionId, () => this.renderCustomSections([cs]));
           break;
         }
       }
+      if (failed) failedSections.push(failed);
     }
 
     // Add page numbers for multi-page resumes
@@ -652,8 +698,181 @@ class PDFResumeRenderer {
       }
     }
 
+    // Attach metadata about failed sections for caller to handle
+    (this.doc as any).__failedSections = failedSections;
+
     return this.doc;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Plain text generator (exported for clipboard copy without download)
+// ═══════════════════════════════════════════════════════════════════════
+
+export function generatePlainText(data: ResumeJSON): string {
+  const LINE_WIDTH = 80;
+  const SEPARATOR = "=".repeat(LINE_WIDTH);
+  const lines: string[] = [];
+
+  const centerText = (text: string): string => {
+    const pad = Math.max(0, Math.floor((LINE_WIDTH - text.length) / 2));
+    return " ".repeat(pad) + text;
+  };
+
+  const flexLine = (left: string, right: string): string => {
+    const gap = Math.max(2, LINE_WIDTH - left.length - right.length);
+    return left + " ".repeat(gap) + right;
+  };
+
+  const addSectionHeading = (title: string) => {
+    lines.push("");
+    lines.push(SEPARATOR);
+    lines.push(title.toUpperCase());
+    lines.push(SEPARATOR);
+  };
+
+  // Header
+  lines.push(centerText(data.header.name || "Your Name"));
+  const contactParts: string[] = [];
+  if (data.header.title) contactParts.push(data.header.title);
+  if (data.header.location) contactParts.push(data.header.location);
+  if (data.header.email) contactParts.push(data.header.email);
+  if (data.header.phone) contactParts.push(data.header.phone);
+  if (data.header.linkedin) {
+    contactParts.push(data.header.linkedin.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, ""));
+  }
+  if (contactParts.length > 0) lines.push(centerText(contactParts.join(" | ")));
+
+  // Section renderers
+  const renderSummary = () => {
+    if (!data.summary) return;
+    addSectionHeading("Professional Summary");
+    lines.push(data.summary);
+  };
+
+  const renderExperience = () => {
+    const valid = data.experience.filter((e) => e.company_or_client);
+    if (valid.length === 0) return;
+    addSectionHeading("Professional Experience");
+    valid.forEach((exp, idx) => {
+      lines.push(flexLine(exp.role || "Role", `${exp.start_date || "Start"} - ${exp.end_date || "Present"}`));
+      const parts: string[] = [exp.company_or_client];
+      if (exp.location) parts.push(exp.location);
+      lines.push(parts.join(" — "));
+      exp.bullets.forEach((b) => lines.push(`  - ${b}`));
+      if (idx < valid.length - 1) lines.push("");
+    });
+  };
+
+  const renderEducation = () => {
+    const valid = data.education.filter((e) => e.institution);
+    if (valid.length === 0) return;
+    addSectionHeading("Education");
+    valid.forEach((edu) => {
+      const deg = edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree";
+      let left = deg;
+      if (edu.institution) left += ` — ${edu.institution}`;
+      if (edu.gpa) left += ` (GPA: ${edu.gpa})`;
+      lines.push(flexLine(left, edu.graduation_date || ""));
+      if (edu.location) lines.push(edu.location);
+    });
+  };
+
+  const renderSkills = () => {
+    const cats = Object.entries(data.skills).filter(([_, s]) => s.length > 0).map(([key, s]) => ({ label: getSkillCategoryLabel(key), skills: s }));
+    if (cats.length === 0) return;
+    addSectionHeading("Technical Skills");
+    cats.forEach((cat) => lines.push(`${cat.label}: ${cat.skills.join(", ")}`));
+  };
+
+  const renderCertifications = () => {
+    const valid = data.certifications.filter((c) => c.name);
+    if (valid.length === 0) return;
+    addSectionHeading("Certifications");
+    valid.forEach((cert) => {
+      let left = cert.name;
+      if (cert.issuer) left += ` — ${cert.issuer}`;
+      lines.push(flexLine(left, cert.date || ""));
+    });
+  };
+
+  const renderProjects = () => {
+    const valid = (data.projects || []).filter((p) => p.title);
+    if (valid.length === 0) return;
+    addSectionHeading("Projects");
+    valid.forEach((proj, idx) => {
+      const rightParts: string[] = [];
+      if (proj.organization) rightParts.push(proj.organization);
+      if (proj.date) rightParts.push(proj.date);
+      lines.push(flexLine(proj.title, rightParts.join(" — ")));
+      proj.bullets.forEach((b) => lines.push(`  - ${b}`));
+      if (idx < valid.length - 1) lines.push("");
+    });
+  };
+
+  const renderLanguages = () => {
+    const valid = (data.languages || []).filter((l) => l.language);
+    if (valid.length === 0) return;
+    addSectionHeading("Languages");
+    lines.push(valid.map((l) => `${l.language}${l.proficiency ? ` (${l.proficiency})` : ""}`).join("  |  "));
+  };
+
+  const renderVolunteer = () => {
+    const valid = (data.volunteer || []).filter((v) => v.organization);
+    if (valid.length === 0) return;
+    addSectionHeading("Volunteer Experience");
+    valid.forEach((vol, idx) => {
+      lines.push(flexLine(vol.role || "Volunteer", vol.date || ""));
+      lines.push(vol.organization);
+      vol.bullets.forEach((b) => lines.push(`  - ${b}`));
+      if (idx < valid.length - 1) lines.push("");
+    });
+  };
+
+  const renderAwards = () => {
+    const valid = (data.awards || []).filter((a) => a.title);
+    if (valid.length === 0) return;
+    addSectionHeading("Awards & Publications");
+    valid.forEach((award) => {
+      let left = award.title;
+      if (award.issuer) left += ` — ${award.issuer}`;
+      lines.push(flexLine(left, award.date || ""));
+    });
+  };
+
+  const renderCustomSection = (cs: { name: string; entries: { title: string; subtitle: string; date: string; bullets: string[] }[] }) => {
+    const entries = cs.entries.filter((e) => e.title);
+    if (entries.length === 0) return;
+    addSectionHeading(cs.name);
+    entries.forEach((entry, idx) => {
+      lines.push(flexLine(entry.title, entry.date || ""));
+      if (entry.subtitle) lines.push(entry.subtitle);
+      entry.bullets.forEach((b) => lines.push(`  - ${b}`));
+      if (idx < entries.length - 1) lines.push("");
+    });
+  };
+
+  const sectionOrder = data.section_order || DEFAULT_SECTION_ORDER;
+  for (const sectionId of sectionOrder) {
+    switch (sectionId) {
+      case "summary": renderSummary(); break;
+      case "experience": renderExperience(); break;
+      case "education": renderEducation(); break;
+      case "skills": renderSkills(); break;
+      case "certifications": renderCertifications(); break;
+      case "projects": renderProjects(); break;
+      case "languages": renderLanguages(); break;
+      case "volunteer": renderVolunteer(); break;
+      case "awards": renderAwards(); break;
+      default: {
+        const cs = (data.customSections || []).find((s) => s.id === sectionId);
+        if (cs) renderCustomSection(cs);
+        break;
+      }
+    }
+  }
+
+  return lines.join("\n") + "\n";
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -668,11 +887,31 @@ export function useResumeExport() {
     try {
       const renderer = new PDFResumeRenderer();
       const doc = await renderer.render(data);
+      const failedSections: string[] = (doc as any).__failedSections || [];
+      const pageCount = doc.getNumberOfPages();
       doc.save(`${fileName}.pdf`);
-      toast.success("Resume exported as PDF!");
+
+      if (failedSections.length > 0) {
+        toast.warning(
+          `PDF exported with warnings: ${failedSections.join(", ")} section${failedSections.length > 1 ? "s" : ""} could not be rendered.`,
+          { duration: 6000 },
+        );
+      } else {
+        toast.success(`Resume exported as PDF${pageCount > 1 ? ` (${pageCount} pages)` : ""}!`);
+      }
     } catch (error) {
       console.error("PDF export error:", error);
-      toast.error("Failed to export PDF. Please try again.");
+      let msg = "An unexpected error occurred";
+      if (error instanceof Error) {
+        if (error.message.includes("Invalid resume data")) {
+          msg = error.message;
+        } else if (error.message.includes("jspdf") || error.message.includes("import")) {
+          msg = "Failed to load PDF library. Please refresh and try again.";
+        } else {
+          msg = error.message;
+        }
+      }
+      toast.error(`PDF export failed: ${msg}`);
     } finally {
       setIsExporting(false);
     }
@@ -917,11 +1156,42 @@ export function useResumeExport() {
       toast.success("Resume exported as Word document!");
     } catch (error) {
       console.error("Word export error:", error);
-      toast.error("Failed to export Word document. Please try again.");
+      let msg = "An unexpected error occurred";
+      if (error instanceof Error) {
+        if (error.message.includes("import") || error.message.includes("docx") || error.message.includes("file-saver")) {
+          msg = "Failed to load Word export library. Please refresh and try again.";
+        } else {
+          msg = error.message;
+        }
+      }
+      toast.error(`Word export failed: ${msg}`);
     } finally {
       setIsExporting(false);
     }
   }, []);
 
-  return { exportToPDF, exportToWord, isExporting };
+  const exportToText = useCallback(async (data: ResumeJSON, fileName: string) => {
+    setIsExporting(true);
+    try {
+      const textContent = generatePlainText(data);
+      const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${fileName}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Resume exported as plain text!");
+    } catch (error) {
+      console.error("Text export error:", error);
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Text export failed: ${msg}`);
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
+
+  return { exportToPDF, exportToWord, exportToText, isExporting };
 }

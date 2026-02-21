@@ -18,7 +18,7 @@ const AGENTS = {
 
 Based on the user's message, determine the intent and respond with a JSON object:
 {
-  "intent": "resume" | "ats" | "cover_letter" | "job_search" | "interview" | "general",
+  "intent": "resume" | "ats" | "cover_letter" | "job_search" | "interview" | "resume_parse" | "resume_enhance" | "salary_negotiation" | "networking" | "general",
   "confidence": 0.0-1.0,
   "context": "brief description of what user needs"
 }
@@ -29,6 +29,10 @@ Guidelines:
 - "cover_letter": Creating or editing cover letters
 - "job_search": Finding jobs, job recommendations, application strategies
 - "interview": Mock interviews, interview prep, common questions
+- "resume_parse": Extracting structured information from resume text/files
+- "resume_enhance": Improving bullets, summaries, or wording quality
+- "salary_negotiation": Compensation strategy, offer comparison, negotiation messaging
+- "networking": Referral outreach, cold messages, connection strategy
 - "general": Career advice, general questions, chit-chat
 
 Always respond with valid JSON only.`,
@@ -148,6 +152,58 @@ Specific talking points
 ### ⚠️ Common Pitfalls
 What to avoid`,
   },
+  resume_parse: {
+    name: "Resume Parser",
+    description: "Extracts structured resume data accurately",
+    systemPrompt: `You are a resume parsing specialist. Your goal is to extract structured information accurately and completely.
+
+Focus areas:
+- Identify roles, companies, dates, and locations correctly
+- Preserve bullet-point details without hallucination
+- Normalize section structure for downstream processing
+- Flag ambiguities clearly when source text is unclear
+
+Keep output deterministic, precise, and schema-friendly.`,
+  },
+  resume_enhance: {
+    name: "Resume Enhancement Coach",
+    description: "Improves bullet quality and wording while preserving truth",
+    systemPrompt: `You improve resume language without fabricating facts.
+
+Guidelines:
+- Preserve factual accuracy from user-provided content
+- Upgrade weak bullets into impact-focused bullets
+- Prefer concrete outcomes and metrics
+- Keep edits concise, ATS-friendly, and role-targeted
+
+Always state assumptions when metrics are missing.`,
+  },
+  salary_negotiation: {
+    name: "Salary Negotiation Advisor",
+    description: "Provides compensation strategy and negotiation support",
+    systemPrompt: `You are a salary negotiation advisor.
+
+Provide:
+- Offer analysis and total compensation breakdown
+- Negotiation scripts (email + live call)
+- Risk-aware strategy by stage (pre-offer, offer, counter-offer)
+- BATNA framing and decision support
+
+Prioritize practical, tactful, and high-confidence guidance.`,
+  },
+  networking: {
+    name: "Networking Strategist",
+    description: "Helps users improve networking and referral outcomes",
+    systemPrompt: `You are a networking and referrals strategist.
+
+Provide:
+- Outreach message drafts (short and personalized)
+- Follow-up cadences
+- Referral request templates
+- Portfolio/LinkedIn positioning suggestions
+
+Focus on respectful, concise, high-conversion communication.`,
+  },
   general: {
     name: "Career Assistant",
     description: "General career advice and support",
@@ -162,6 +218,30 @@ What to avoid`,
 Keep responses helpful, clear, and well-formatted with markdown.`,
   },
 };
+
+const ROUTABLE_INTENTS = new Set(
+  Object.keys(AGENTS).filter((key) => key !== "orchestrator")
+);
+
+function normalizeIntent(intent: string): string {
+  const normalized = intent.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  return ROUTABLE_INTENTS.has(normalized) ? normalized : "general";
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort("timeout"), timeoutMs);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 // Mem0 API functions - Following official v2 API
 async function searchMemories(apiKey: string, userId: string, query: string): Promise<string[]> {
@@ -218,7 +298,7 @@ async function classifyIntent(
   conversationHistory: any[]
 ): Promise<{ intent: string; confidence: number; context: string }> {
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -228,12 +308,12 @@ async function classifyIntent(
         model: "gpt-4o-mini", // Fast model for classification
         messages: [
           { role: "system", content: AGENTS.orchestrator.systemPrompt },
-          ...conversationHistory.slice(-3),
+          ...conversationHistory.slice(-2),
           { role: "user", content: message },
         ],
         response_format: { type: "json_object" },
       }),
-    });
+    }, 12000);
 
     if (!response.ok) {
       return { intent: "general", confidence: 0.5, context: "fallback" };
@@ -244,9 +324,10 @@ async function classifyIntent(
     
     try {
       const parsed = JSON.parse(content);
+      const confidence = Number(parsed.confidence);
       return {
-        intent: parsed.intent || "general",
-        confidence: parsed.confidence || 0.5,
+        intent: normalizeIntent(parsed.intent || "general"),
+        confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
         context: parsed.context || "",
       };
     } catch {
@@ -263,7 +344,12 @@ function getOptimalModelForAgent(agentType: string): string {
     case "cover_letter":
     case "resume":
     case "ats":
+    case "salary_negotiation":
+    case "networking":
+    case "resume_enhance":
       // GPT-4o for complex writing and analysis tasks
+      return "gpt-4o";
+    case "resume_parse":
       return "gpt-4o";
     case "interview":
     case "job_search":
@@ -279,13 +365,13 @@ async function executeAgent(
   apiKey: string,
   agentType: string,
   messages: any[],
-  memoryContext: string,
-  userMessage: string
+  memoryContext: string
 ): Promise<Response> {
-  const agent = AGENTS[agentType as keyof typeof AGENTS] || AGENTS.general;
-  const optimalModel = getOptimalModelForAgent(agentType);
+  const normalizedAgentType = normalizeIntent(agentType);
+  const agent = AGENTS[normalizedAgentType as keyof typeof AGENTS] || AGENTS.general;
+  const optimalModel = getOptimalModelForAgent(normalizedAgentType);
   
-  console.log(`[Agent] Executing ${agentType} with OpenAI model: ${optimalModel}`);
+  console.log(`[Agent] Executing ${normalizedAgentType} with OpenAI model: ${optimalModel}`);
   
   const systemPrompt = `${agent.systemPrompt}
 
@@ -293,7 +379,7 @@ ${memoryContext ? `## User Context (from previous interactions)\n${memoryContext
 
 Keep responses clear, well-structured, and actionable. Use markdown formatting for readability.`;
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -307,7 +393,7 @@ Keep responses clear, well-structured, and actionable. Use markdown formatting f
       ],
       stream: true,
     }),
-  });
+  }, 35000);
 
   return response;
 }
@@ -340,7 +426,11 @@ serve(async (req) => {
       });
     }
 
-    const { messages, agentHint } = await req.json();
+    const payload = await req.json();
+    const messages = payload?.messages;
+    const agentHint = typeof payload?.agentHint === "string"
+      ? normalizeIntent(payload.agentHint)
+      : null;
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Messages required" }), {
@@ -371,7 +461,11 @@ serve(async (req) => {
       MEM0_API_KEY ? searchMemories(MEM0_API_KEY, user.id, userQuery) : Promise.resolve([]),
     ]);
 
-    console.log(`[Orchestrator] Intent: ${intentResult.intent} (${intentResult.confidence}), Memories: ${memories.length}`);
+    const routedIntent = intentResult.confidence < 0.45
+      ? "general"
+      : normalizeIntent(intentResult.intent);
+
+    console.log(`[Orchestrator] Intent: ${intentResult.intent} (${intentResult.confidence}) -> ${routedIntent}, Memories: ${memories.length}`);
 
     const memoryContext = memories.length > 0 
       ? memories.map(m => `- ${m}`).join("\n")
@@ -380,10 +474,9 @@ serve(async (req) => {
     // Execute the appropriate agent
     const response = await executeAgent(
       OPENAI_API_KEY,
-      intentResult.intent,
+      routedIntent,
       messages,
-      memoryContext,
-      userQuery
+      memoryContext
     );
 
     if (!response.ok) {
@@ -410,7 +503,7 @@ serve(async (req) => {
         content: m.content,
       }));
       addMemory(MEM0_API_KEY, user.id, recentMessages, {
-        agent: intentResult.intent,
+        agent: routedIntent,
         timestamp: new Date().toISOString(),
       });
     }
@@ -421,7 +514,7 @@ serve(async (req) => {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
-        "X-Agent": intentResult.intent,
+        "X-Agent": routedIntent,
       },
     });
   } catch (error) {

@@ -1,8 +1,10 @@
 import { useRef } from "react";
 import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER } from "@/types/resume";
-import { Loader2, FileDown, FileText, Printer } from "lucide-react";
+import { Loader2, FileDown, FileText, Printer, ChevronDown, Copy, FileType } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useResumeExport } from "@/hooks/use-resume-export";
+import { toast } from "sonner";
 
 interface ResumePreviewProps {
   data: ResumeJSON;
@@ -11,29 +13,34 @@ interface ResumePreviewProps {
 
 export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
   const resumeRef = useRef<HTMLDivElement>(null);
-  const { exportToPDF, exportToWord, isExporting } = useResumeExport();
+  const { exportToPDF, exportToWord, exportToText, isExporting } = useResumeExport();
 
   // Check if we have substantial content (for multi-page indication)
-  const hasSubstantialContent = 
+  const hasSubstantialContent =
     data.experience.filter(e => e.company_or_client).length >= 2 ||
     (data.experience.filter(e => e.company_or_client).length >= 1 && Object.values(data.skills).some(s => s.length > 0));
 
-  const fileName = data.header.name 
+  const fileName = data.header.name
     ? `${data.header.name.replace(/\s+/g, '_')}_Resume`
     : "Resume";
 
-  const handleExportPDF = () => {
-    exportToPDF(data, fileName);
-  };
+  const handleExportPDF = () => exportToPDF(data, fileName);
+  const handleExportWord = () => exportToWord(data, fileName);
+  const handleExportText = () => exportToText(data, fileName);
 
-  const handleExportWord = () => {
-    exportToWord(data, fileName);
+  const handleCopyToClipboard = async () => {
+    try {
+      const { generatePlainText } = await import("@/hooks/use-resume-export");
+      const text = generatePlainText(data);
+      await navigator.clipboard.writeText(text);
+      toast.success("Resume copied to clipboard!");
+    } catch {
+      toast.error("Failed to copy to clipboard.");
+    }
   };
 
   const handlePrintView = () => {
-    // Store resume data in localStorage for the print page to access
     localStorage.setItem("printResumeData", JSON.stringify(data));
-    // Open print view in new tab
     window.open("/print-resume", "_blank");
   };
 
@@ -48,7 +55,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
   return (
     <div className="h-full overflow-auto p-4 bg-muted/30">
       {/* Export Buttons */}
-      <div className="flex justify-center gap-2 mb-4">
+      <div className="flex flex-wrap justify-center gap-2 mb-4">
         <Button
           variant="outline"
           size="sm"
@@ -59,26 +66,35 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
           {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
           Export PDF
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExportWord}
-          disabled={isExporting || isGenerating}
-          className="gap-2"
-        >
-          {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-          Export Word
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handlePrintView}
-          disabled={isGenerating}
-          className="gap-2"
-        >
-          <Printer className="h-4 w-4" />
-          Print View
-        </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={isExporting || isGenerating} className="gap-1">
+              <FileText className="h-4 w-4" />
+              More Formats
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center">
+            <DropdownMenuItem onClick={handleExportWord} className="gap-2">
+              <FileText className="h-4 w-4" />
+              Export as Word (.docx)
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportText} className="gap-2">
+              <FileType className="h-4 w-4" />
+              Export as Plain Text (.txt)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleCopyToClipboard} className="gap-2">
+              <Copy className="h-4 w-4" />
+              Copy to Clipboard
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handlePrintView} className="gap-2">
+              <Printer className="h-4 w-4" />
+              Print View
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Resume Document */}

@@ -2,26 +2,105 @@ import { useState } from "react";
 import { X, Check, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ResumeTemplate } from "@/types/resume";
-import templateCreative from "@/assets/templates/template-creative.jpg";
-import templateProfessional from "@/assets/templates/template-professional.jpg";
+import { TEMPLATES, type TemplateConfig } from "@/config/resume-templates";
 
-const templates: ResumeTemplate[] = [
-  {
-    id: "creative",
-    name: "Creative",
-    description: "Clean, modern layout perfect for tech and creative roles. Features sections for projects and side ventures.",
-    preview: templateCreative,
-    sections: ["Experience", "Projects", "Education", "Skills"],
-  },
-  {
-    id: "professional",
-    name: "Professional",
-    description: "Comprehensive format ideal for senior roles. Includes summary, certifications, and detailed skill categories.",
-    preview: templateProfessional,
-    sections: ["Summary", "Experience", "Education", "Certifications", "Skills", "Projects"],
-  },
-];
+// Color palette for template preview placeholders
+const TEMPLATE_COLORS: Record<string, { bg: string; accent: string; text: string }> = {
+  professional: { bg: "#f8f9fa", accent: "#000000", text: "#1a1a1a" },
+  creative: { bg: "#faf5ff", accent: "#9333ea", text: "#1a1a1a" },
+  modern: { bg: "#eff6ff", accent: "#2563eb", text: "#1e293b" },
+  minimal: { bg: "#fafaf9", accent: "#57534e", text: "#292524" },
+};
+
+// Small placeholder preview for template cards
+function TemplatePlaceholderPreview({ template }: { template: TemplateConfig }) {
+  const colors = TEMPLATE_COLORS[template.id] || TEMPLATE_COLORS.professional;
+  return (
+    <div
+      className="w-full h-full flex flex-col items-center justify-start p-4 select-none"
+      style={{ backgroundColor: colors.bg, fontFamily: template.layout.fontFamily }}
+    >
+      {/* Mini header */}
+      <div className="w-full text-center mb-3">
+        <div
+          className="font-bold text-sm mb-0.5"
+          style={{ color: colors.text, fontSize: "11px" }}
+        >
+          John Doe
+        </div>
+        <div style={{ color: colors.accent, fontSize: "8px", fontWeight: 600 }}>
+          Software Engineer
+        </div>
+        <div style={{ fontSize: "6px", color: "#9ca3af", marginTop: "2px" }}>
+          john@email.com | (555) 123-4567 | San Francisco, CA
+        </div>
+      </div>
+
+      {/* Mini sections */}
+      {template.sections
+        .filter((s) => s.type !== "header")
+        .slice(0, 4)
+        .map((section) => (
+          <div key={section.id} className="w-full mb-2">
+            <div
+              className="text-left mb-1"
+              style={{
+                fontSize: "7px",
+                fontWeight: 700,
+                color: colors.text,
+                textTransform:
+                  template.id === "minimal" ? "none" : "uppercase",
+                fontVariant:
+                  template.id === "minimal" ? "small-caps" : "normal",
+                borderBottom:
+                  template.id === "minimal"
+                    ? "none"
+                    : template.id === "modern"
+                    ? `1px solid ${colors.accent}`
+                    : `1px solid ${colors.text}`,
+                paddingBottom: "1px",
+                letterSpacing: "0.05em",
+              }}
+            >
+              {section.name}
+            </div>
+            {/* Faux content lines */}
+            <div className="space-y-0.5">
+              <div
+                className="rounded-sm"
+                style={{
+                  height: "3px",
+                  width: "85%",
+                  backgroundColor: `${colors.text}18`,
+                }}
+              />
+              <div
+                className="rounded-sm"
+                style={{
+                  height: "3px",
+                  width: "70%",
+                  backgroundColor: `${colors.text}10`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+}
+
+// Convert TemplateConfig to the shape needed for the selector display
+function getTemplateDisplayList() {
+  return Object.values(TEMPLATES).map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description,
+    sections: t.sections
+      .filter((s) => s.type !== "header")
+      .map((s) => s.name),
+    config: t,
+  }));
+}
 
 interface TemplateSelectorProps {
   isOpen: boolean;
@@ -30,8 +109,11 @@ interface TemplateSelectorProps {
   selectedTemplateId?: string;
 }
 
+type TemplateDisplay = ReturnType<typeof getTemplateDisplayList>[number];
+
 export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId }: TemplateSelectorProps) {
-  const [previewTemplate, setPreviewTemplate] = useState<ResumeTemplate | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<TemplateDisplay | null>(null);
+  const templates = getTemplateDisplayList();
 
   if (!isOpen) return null;
 
@@ -54,24 +136,18 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
           {previewTemplate ? (
             <div className="space-y-4">
               <Button variant="ghost" onClick={() => setPreviewTemplate(null)} className="gap-2">
-                ← Back to templates
+                &larr; Back to templates
               </Button>
               <div className="flex flex-col lg:flex-row gap-6">
-                {/* Scrollable preview container */}
+                {/* Preview container */}
                 <div className="flex-1 max-h-[70vh] overflow-auto rounded-lg border border-border shadow-lg bg-muted">
-                  <img
-                    src={previewTemplate.preview}
-                    alt={previewTemplate.name}
-                    className="w-full"
-                    style={{ minHeight: "100%" }}
-                  />
+                  <div className="w-full" style={{ minHeight: "400px" }}>
+                    <TemplatePlaceholderPreview template={previewTemplate.config} />
+                  </div>
                 </div>
                 <div className="lg:w-80 space-y-4">
                   <h3 className="text-2xl font-bold">{previewTemplate.name}</h3>
                   <p className="text-muted-foreground">{previewTemplate.description}</p>
-                  <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-2">
-                    💡 Scroll the preview to see all pages
-                  </div>
                   <div>
                     <h4 className="font-medium mb-2">Included Sections:</h4>
                     <ul className="space-y-1">
@@ -83,6 +159,11 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
                       ))}
                     </ul>
                   </div>
+                  <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-2">
+                    <strong>Font:</strong> {previewTemplate.config.layout.fontFamily.split(",")[0].replace(/'/g, "")}
+                    <br />
+                    <strong>Line height:</strong> {previewTemplate.config.layout.lineHeight}
+                  </div>
                   <Button
                     onClick={() => onSelect(previewTemplate.id)}
                     className="w-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 hover:opacity-90"
@@ -93,7 +174,7 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-6">
               {templates.map((template) => (
                 <div
                   key={template.id}
@@ -102,15 +183,10 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
                     selectedTemplateId === template.id ? "border-primary" : "border-border"
                   )}
                 >
-                  <div className="aspect-[3/4] overflow-hidden bg-muted relative group-hover:overflow-y-auto">
-                    <img
-                      src={template.preview}
-                      alt={template.name}
-                      className="w-full transition-transform group-hover:scale-100"
-                      style={{ objectFit: "contain", objectPosition: "top" }}
-                    />
+                  <div className="aspect-[3/4] overflow-hidden bg-muted relative">
+                    <TemplatePlaceholderPreview template={template.config} />
                   </div>
-                  
+
                   {/* Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-20">
                     <div className="flex gap-2">
