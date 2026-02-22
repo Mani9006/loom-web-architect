@@ -28,11 +28,13 @@ const USAGE = `Usage:
     [--owner-source HARDENING_SPRINT_OPS.md] [--force]
     [--include-operations] [--provider auto|openai|anthropic]
     [--model MODEL] [--exempt-keys KAN-10]
-    [--timeout-seconds 300] [--codex-sandbox danger-full-access] [--codex-approval never]
+    [--timeout-seconds 900] [--kill-delay-ms 5000]
+    [--codex-sandbox danger-full-access] [--codex-approval never]
 
 Examples:
   node scripts/atlas-dispatch.mjs --dry-run
   node scripts/atlas-dispatch.mjs --project KAN --max 6
+  node scripts/atlas-dispatch.mjs --timeout-seconds 1800 --kill-delay-ms 8000
 `;
 
 function parseOptions(argv) {
@@ -269,6 +271,7 @@ async function runCommand(cmd, args, options = {}) {
     });
 
     const timeoutMs = Number(options.timeoutMs || 0);
+    const killDelayMs = Math.max(1000, Number(options.killDelayMs || 5000));
     if (timeoutMs > 0) {
       timeoutId = setTimeout(() => {
         timedOut = true;
@@ -283,7 +286,7 @@ async function runCommand(cmd, args, options = {}) {
           } catch {
             child.kill("SIGKILL");
           }
-        }, 3000).unref();
+        }, killDelayMs).unref();
       }, timeoutMs);
     }
 
@@ -364,7 +367,8 @@ async function main() {
   const includeOperations = Boolean(options["include-operations"]);
   const provider = String(options.provider || "auto");
   const model = String(options.model || "").trim();
-  const timeoutSeconds = Math.max(30, Number(options["timeout-seconds"] || process.env.ATLAS_DISPATCH_TIMEOUT_SECONDS || 300));
+  const timeoutSeconds = Math.max(30, Number(options["timeout-seconds"] || process.env.ATLAS_DISPATCH_TIMEOUT_SECONDS || 900));
+  const killDelayMs = Math.max(1000, Number(options["kill-delay-ms"] || process.env.ATLAS_DISPATCH_KILL_DELAY_MS || 5000));
   const codexSandbox = String(options["codex-sandbox"] || process.env.OPENCLAW_CODEX_SANDBOX || "danger-full-access").trim();
   const codexApproval = String(options["codex-approval"] || process.env.OPENCLAW_CODEX_APPROVAL || "never").trim();
   const exemptKeys = normalizeCsvSet(options["exempt-keys"] || process.env.ATLAS_EXEMPT_KEYS || "KAN-10");
@@ -418,7 +422,7 @@ async function main() {
       commandArgs.push("--dry-run");
     }
 
-    const result = await runCommand("node", commandArgs, { cwd: ROOT, timeoutMs: timeoutSeconds * 1000 });
+    const result = await runCommand("node", commandArgs, { cwd: ROOT, timeoutMs: timeoutSeconds * 1000, killDelayMs });
     const ok = result.code === 0;
     const statusLine = ok ? "OK" : `FAILED (${result.code})`;
     const output = `${result.stdout}\n${result.stderr}`.trim().slice(0, 2400);
@@ -464,6 +468,7 @@ async function main() {
     `Project: ${project}`,
     `Max dispatch: ${maxDispatch}`,
     `Owner source: ${path.relative(ROOT, ownerSource) || ownerSource}`,
+    `Timeout: ${timeoutSeconds}s | Kill delay: ${killDelayMs}ms`,
     "",
     "## Candidate Summary",
     `- Open issues fetched: ${issues.length}`,
