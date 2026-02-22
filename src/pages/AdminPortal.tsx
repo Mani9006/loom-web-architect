@@ -58,6 +58,7 @@ type Tenant = Database["public"]["Tables"]["enterprise_tenants"]["Row"];
 type Membership = Database["public"]["Tables"]["enterprise_memberships"]["Row"] & {
   profiles?: { full_name: string | null; email: string | null } | null;
 };
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type AuditEntry = Database["public"]["Tables"]["audit_log_entries"]["Row"];
 type SsoConfig = Database["public"]["Tables"]["sso_configurations"]["Row"];
 
@@ -523,11 +524,45 @@ function MembersTab() {
     setLoading(true);
     const { data, error } = await supabase
       .from("enterprise_memberships")
-      .select("*, profiles(full_name, email)")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(100);
-    if (error) toast({ title: "Error loading members", description: error.message, variant: "destructive" });
-    setMemberships((data as Membership[]) ?? []);
+
+    if (error) {
+      toast({ title: "Error loading members", description: error.message, variant: "destructive" });
+      setMemberships([]);
+      setLoading(false);
+      return;
+    }
+
+    const memberships = data ?? [];
+    const userIds = Array.from(new Set(memberships.map((item) => item.user_id)));
+    const profileMap = new Map<string, Pick<Profile, "full_name" | "email">>();
+
+    if (userIds.length > 0) {
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, email")
+        .in("user_id", userIds);
+
+      if (profilesError) {
+        toast({ title: "Error loading member profiles", description: profilesError.message, variant: "destructive" });
+      } else {
+        (profilesData ?? []).forEach((profile) => {
+          profileMap.set(profile.user_id, {
+            full_name: profile.full_name,
+            email: profile.email,
+          });
+        });
+      }
+    }
+
+    const enrichedMemberships: Membership[] = memberships.map((membership) => ({
+      ...membership,
+      profiles: profileMap.get(membership.user_id) ?? null,
+    }));
+
+    setMemberships(enrichedMemberships);
     setLoading(false);
   }, [toast]);
 

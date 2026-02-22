@@ -12,6 +12,17 @@
 
 import { supabase } from "@/integrations/supabase/client";
 
+// Temporary adapter for tables not yet present in generated Supabase types.
+const untypedSupabase = supabase as unknown as {
+  from: (table: string) => {
+    upsert: (...args: unknown[]) => Promise<unknown>;
+    insert: (...args: unknown[]) => Promise<unknown>;
+    select: (...args: unknown[]) => {
+      eq: (...args: unknown[]) => Promise<{ data: unknown }>;
+    };
+  };
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Experiment {
@@ -68,7 +79,7 @@ export async function persistAssignment(
   experimentId: string,
   variant: string
 ): Promise<void> {
-  await supabase.from("experiment_assignments").upsert(
+  await untypedSupabase.from("experiment_assignments").upsert(
     { experiment_id: experimentId, user_id: userId, variant },
     { onConflict: "experiment_id,user_id", ignoreDuplicates: true }
   );
@@ -113,7 +124,7 @@ export async function trackExperimentEvent(
   const vercelEventName = `exp:${experimentId}:${eventName}`;
   vercelTrack(vercelEventName, { variant, ...properties });
 
-  await supabase.from("experiment_events").insert({
+  await untypedSupabase.from("experiment_events").insert({
     experiment_id: experimentId,
     user_id: userId ?? null,
     variant,
@@ -126,7 +137,7 @@ export async function trackExperimentEvent(
 
 /** Fetch all running experiments from Supabase. */
 export async function fetchRunningExperiments(): Promise<Experiment[]> {
-  const { data } = await supabase
+  const { data } = await untypedSupabase
     .from("experiments")
     .select("id, variants, traffic_pct, status")
     .eq("status", "running");
