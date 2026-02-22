@@ -82,6 +82,7 @@ This repo now includes an HQ-grade control layer inspired by top OpenClaw showca
 - Jira governance loop: `npm run hq:governor`
 - Atlas ticket-to-agent dispatch: `npm run atlas:dispatch`
 - GitHub agent-task dispatch: `npm run github:agents:dispatch`
+- GitHub scale superburst launcher: `npm run github:agents:superburst`
 - Secret audit gate: `npm run security:audit`
 - End-to-end loop: `npm run hq:loop`
 - Release gate command: `npm run hq:gate`
@@ -100,6 +101,7 @@ This repo now includes an HQ-grade control layer inspired by top OpenClaw showca
 - `npm run hq:governor:dry` for safe Jira governance dry-run.
 - `npm run atlas:dispatch:dry` to preview Atlas -> agent routing without execution.
 - `npm run github:agents:dispatch:dry` to preview Jira -> GitHub agent-task creation.
+- `npm run github:agents:superburst:dry` to preview strategic large-scale initiative launches.
 - `npm run hq:loop:dry` to run dry governance + dry dispatch + brief + security audit.
 - `npm run hq:loop` to run the live control loop (includes GitHub agent-task dispatch).
 
@@ -115,6 +117,8 @@ This repo now includes an HQ-grade control layer inspired by top OpenClaw showca
 - `GITHUB_AGENT_BASE` (default current branch)
 - `GITHUB_AGENT_DISPATCH_MAX` (default `3`)
 - `GITHUB_AGENT_EXEMPT_KEYS` (default `KAN-10,KAN-22`)
+- `GITHUB_AGENT_SUPERBURST_MAX` (default `3`)
+- `GITHUB_AGENT_SUPERBURST_IDS` (comma-separated initiative IDs)
 - `ENABLE_GITHUB_AGENT_DISPATCH` (default `1`, set `0` to skip in loop)
 - `OPENCLAW_CODEX_SANDBOX` (default `danger-full-access`)
 - `OPENCLAW_CODEX_APPROVAL` (default `never`)
