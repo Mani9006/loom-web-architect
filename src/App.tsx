@@ -8,6 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import RoleProtectedRoute from "@/components/RoleProtectedRoute";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 
 // Eager-loaded routes (critical path)
@@ -37,6 +38,7 @@ const Chat = lazy(() => import("./pages/Chat"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
+const AdminPortal = lazy(() => import("./pages/AdminPortal"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -85,6 +87,13 @@ const App = () => (
                     <Route path="/contacts" element={<Contacts />} />
                     <Route path="/ai-toolbox" element={<AIToolbox />} />
                     <Route path="/analytics" element={<Analytics />} />
+                  </Route>
+                </Route>
+
+                {/* Admin-only routes */}
+                <Route element={<RoleProtectedRoute allowedRoles={["admin"]} />}>
+                  <Route element={<AppLayout />}>
+                    <Route path="/admin" element={<AdminPortal />} />
                   </Route>
                 </Route>
 
