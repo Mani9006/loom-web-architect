@@ -91,6 +91,8 @@ interface PortalResponse {
     emailVerifiedUsers: number;
     googleAccounts: number;
     passwordAccounts: number;
+    dataSource: "auth_admin" | "profile_fallback";
+    warning: string | null;
   };
   access: {
     roleCounts: Record<PortalRole, number>;
@@ -265,6 +267,16 @@ function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString();
+}
+
+function loginRecency(lastSignInAt: string | null): { label: string; variant: "default" | "secondary" | "outline" } {
+  if (!lastSignInAt) return { label: "No login", variant: "outline" };
+  const ts = new Date(lastSignInAt).getTime();
+  if (Number.isNaN(ts)) return { label: "Unknown", variant: "outline" };
+  const mins = Math.floor((Date.now() - ts) / (1000 * 60));
+  if (mins <= 15) return { label: "Active now", variant: "default" };
+  if (mins <= 24 * 60) return { label: "Today", variant: "secondary" };
+  return { label: "Older", variant: "outline" };
 }
 
 function roleBadge(role: PortalRole): "default" | "secondary" | "outline" {
@@ -528,6 +540,65 @@ function OverviewTab({
         </Card>
       </div>
 
+      {data.auth.warning && (
+        <Card className="border-destructive/40">
+          <CardContent className="pt-6 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+            <div>
+              <p className="font-semibold">Auth Login Feed Warning</p>
+              <p className="text-sm text-muted-foreground">
+                Live auth-user login feed is unavailable, showing profile fallback only. {data.auth.warning}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Logins</CardTitle>
+          <CardDescription>
+            Latest user sign-ins and login recency ({data.auth.dataSource === "auth_admin" ? "Auth Admin source" : "Fallback source"}).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Last Sign-in</TableHead>
+                  <TableHead>Recency</TableHead>
+                  <TableHead>Email</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredUsers
+                  .filter((u) => Boolean(u.lastSignInAt))
+                  .sort((a, b) => (a.lastSignInAt || "") < (b.lastSignInAt || "") ? 1 : -1)
+                  .slice(0, 25)
+                  .map((item) => {
+                    const recency = loginRecency(item.lastSignInAt);
+                    return (
+                      <TableRow key={`login-${item.userId}`}>
+                        <TableCell>
+                          <div className="font-medium">{item.fullName || item.email || item.userId}</div>
+                          <div className="text-xs text-muted-foreground">{item.userId}</div>
+                        </TableCell>
+                        <TableCell className="text-xs">{item.authProvider || "unknown"}</TableCell>
+                        <TableCell className="text-xs">{item.lastSignInAt ? formatDate(item.lastSignInAt) : "-"}</TableCell>
+                        <TableCell><Badge variant={recency.variant}>{recency.label}</Badge></TableCell>
+                        <TableCell className="text-xs">{item.emailConfirmedAt ? "verified" : "unverified"}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>User Management</CardTitle>
@@ -536,6 +607,7 @@ function OverviewTab({
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -706,6 +778,7 @@ function OverviewTab({
               )})}
             </TableBody>
           </Table>
+          </div>
           {filteredUsers.length > 120 && (
             <p className="text-xs text-muted-foreground mt-3">
               Showing first 120 results. Use search to narrow to a specific account.

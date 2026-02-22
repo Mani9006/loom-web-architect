@@ -188,28 +188,22 @@ async function authAdminFetch(
   });
 }
 
-async function listAllAuthUsers(supabaseUrl: string, serviceRole: string): Promise<AuthUserRow[]> {
+async function listAllAuthUsers(serviceClient: ReturnType<typeof createClient>): Promise<AuthUserRow[]> {
   const users: AuthUserRow[] = [];
-  const perPage = 500;
+  const perPage = 1000;
 
-  for (let page = 1; page <= 20; page += 1) {
-    const response = await authAdminFetch(
-      supabaseUrl,
-      serviceRole,
-      `/auth/v1/admin/users?page=${page}&per_page=${perPage}`,
-      { method: "GET" },
-    );
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Failed to list auth users (${response.status}): ${body}`);
+  let page = 1;
+  for (let i = 0; i < 20; i += 1) {
+    const { data, error } = await serviceClient.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      throw new Error(`Failed to list auth users: ${error.message}`);
     }
 
-    const payload = await response.json();
-    const pageUsers = Array.isArray(payload?.users) ? (payload.users as AuthUserRow[]) : [];
+    const pageUsers = (data?.users || []) as unknown as AuthUserRow[];
     users.push(...pageUsers);
 
-    if (pageUsers.length < perPage) break;
+    if (!data?.nextPage || pageUsers.length < perPage) break;
+    page = data.nextPage;
   }
 
   return users;
@@ -661,9 +655,11 @@ async function buildSummary(
   }
 
   let authUsers: AuthUserRow[] = [];
+  let authDataWarning: string | null = null;
   try {
-    authUsers = await listAllAuthUsers(supabaseUrl, serviceRole);
+    authUsers = await listAllAuthUsers(serviceClient);
   } catch (error) {
+    authDataWarning = error instanceof Error ? error.message : "Failed to load auth users.";
     console.error("Failed to list auth users for admin summary:", error);
   }
 
@@ -862,6 +858,8 @@ async function buildSummary(
     emailVerifiedUsers: usersList.filter((u) => Boolean(u.emailConfirmedAt)).length,
     googleAccounts: usersList.filter((u) => u.authProvider === "google").length,
     passwordAccounts: usersList.filter((u) => u.authProvider === "email").length,
+    dataSource: authDataWarning ? "profile_fallback" : "auth_admin",
+    warning: authDataWarning,
   };
 
   const purchaseStateCounts: Record<PurchaseState, number> = {
