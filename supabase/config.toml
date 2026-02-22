@@ -23,3 +23,9 @@ verify_jwt = false
 
 [functions.executive-brief]
 verify_jwt = false
+
+[functions.admin-portal]
+verify_jwt = false
+
+[functions.usage-guard]
+verify_jwt = false

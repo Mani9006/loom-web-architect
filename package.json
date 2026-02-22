@@ -12,8 +12,11 @@
     "hq:brief": "node scripts/executive-brief.mjs",
     "hq:governor": "node scripts/hq-governor.mjs",
     "hq:governor:dry": "node scripts/hq-governor.mjs --dry-run",
+    "market:map": "node scripts/market-domination-map.mjs",
+    "market:map:dry": "node scripts/market-domination-map.mjs --dry-run",
     "atlas:dispatch": "node scripts/atlas-dispatch.mjs",
     "atlas:dispatch:dry": "node scripts/atlas-dispatch.mjs --dry-run",
+    "atlas:dispatch:long": "node scripts/atlas-dispatch.mjs --timeout-seconds 1800 --kill-delay-ms 8000",
     "github:agents:dispatch": "node scripts/github-agent-dispatch.mjs",
     "github:agents:dispatch:dry": "node scripts/github-agent-dispatch.mjs --dry-run",
     "github:agents:superburst": "node scripts/github-agent-superburst.mjs",
@@ -30,10 +33,14 @@
     "qa:execute": "bash ./qa-execute.sh",
     "qa:e2e": "npx playwright test",
     "qa:e2e:ui": "npx playwright test --ui",
+    "applypass:worker": "node scripts/applypass-browser-worker.mjs",
+    "applypass:worker:once": "node scripts/applypass-browser-worker.mjs --once",
     "agent:list": "node scripts/openclaw-agent-runner.mjs list",
     "agent:doctor": "node scripts/openclaw-agent-runner.mjs doctor",
     "agent:run": "node scripts/openclaw-agent-runner.mjs run",
-    "agent:audit": "node scripts/openclaw-codebase-audit.mjs"
+    "agent:audit": "node scripts/openclaw-codebase-audit.mjs",
+    "experiment:report": "node scripts/experiment-report.mjs",
+    "experiment:report:dry": "node scripts/experiment-report.mjs --days 7"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -95,8 +102,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0",
     "@eslint/js": "^9.32.0",
+    "@playwright/test": "^1.55.0",
     "@tailwindcss/typography": "^0.5.16",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",

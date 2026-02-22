@@ -6,7 +6,7 @@ import {
   Home, Search, FileText, Columns3, Mic, MessageCircle,
   FolderOpen, ChevronDown, ChevronRight, LogOut,
   Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp, Target,
-  Sun, Moon, ShieldCheck,
+  Sun, Moon, ShieldCheck, Map, Crown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -20,6 +20,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import Logo from "@/components/shared/Logo";
 import { supabase } from "@/integrations/supabase/client";
+import { isOwnerEmail } from "@/lib/admin";
 
 interface NavItem {
   label: string;
@@ -32,6 +33,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
   { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
+  { label: "ApplyPass", icon: Search, path: "/applypass", badge: "NEW" },
   { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
   { label: "Cover Letter", icon: FolderOpen, path: "/cover-letter" },
   { label: "ATS Checker", icon: Target, path: "/ats-checker" },
@@ -40,9 +42,10 @@ const mainNav: NavItem[] = [
   { label: "AI Chat", icon: MessageCircle, path: "/chat" },
 ];
 
-const secondaryNav: NavItem[] = [
+const secondaryNavBase: NavItem[] = [
   { label: "Analytics", icon: TrendingUp, path: "/analytics" },
   { label: "Control Center", icon: ShieldCheck, path: "/control-center", badge: "HQ" },
+  { label: "Market Map", icon: Map, path: "/market-domination-map", badge: "NEW" },
   {
     label: "Documents",
     icon: FolderOpen,
@@ -68,6 +71,8 @@ const secondaryNav: NavItem[] = [
     ],
   },
 ];
+
+const ownerNav: NavItem = { label: "Admin Portal", icon: Crown, path: "/admin", badge: "Owner" };
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -109,6 +114,7 @@ export default function AppLayout() {
   if (!user) return null;
 
   const showText = isMobile || sidebarOpen;
+  const secondaryNav = isOwnerEmail(user.email) ? [...secondaryNavBase, ownerNav] : secondaryNavBase;
 
   const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;
@@ -279,6 +285,11 @@ export default function AppLayout() {
               <DropdownMenuItem onClick={() => navigate("/dashboard")} className="cursor-pointer gap-2.5 rounded-xl">
                 <Home className="w-4 h-4" /> Dashboard
               </DropdownMenuItem>
+              {isOwnerEmail(user.email) && (
+                <DropdownMenuItem onClick={() => navigate("/admin")} className="cursor-pointer gap-2.5 rounded-xl">
+                  <Crown className="w-4 h-4" /> Admin Portal
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive gap-2.5 rounded-xl">
                 <LogOut className="w-4 h-4" /> Sign out

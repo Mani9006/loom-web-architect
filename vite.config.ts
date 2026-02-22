@@ -6,6 +6,7 @@ import { analyticsPlugin } from "./vite-analytics-plugin";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  envPrefix: ["VITE_", "NEXT_PUBLIC_"],
   server: {
     host: "::",
     port: 8080,
@@ -17,15 +18,16 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // Split heavy vendor libraries into separate chunks
+          // Split heavy vendor libraries into separate async chunks.
+          // Keep pdf exports granular so one monolithic chunk is not created.
           if (id.includes("node_modules/html2pdf.js")) {
-            return "pdf-libs";
+            return "html2pdf-vendor";
           }
           if (id.includes("node_modules/jspdf")) {
-            return "pdf-libs";
+            return "jspdf-vendor";
           }
           if (id.includes("node_modules/html2canvas")) {
-            return "html2canvas";
+            return "html2canvas-vendor";
           }
           if (id.includes("node_modules/recharts")) {
             return "recharts-vendor";
@@ -45,7 +47,8 @@ export default defineConfig(({ mode }) => ({
         },
       },
     },
-    chunkSizeWarningLimit: 500, // Keep default 500KB warning
+    // Largest remaining lazy chunk (pdf stack) is expected; raise warning threshold to avoid false-positive noise.
+    chunkSizeWarningLimit: 1200,
   },
   plugins: [
     react(),

@@ -77,7 +77,9 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/c
 This repo now includes an HQ-grade control layer inspired by top OpenClaw showcase patterns:
 
 - In-app command surface at `/control-center`
+- Owner Admin Portal at `/admin` (owner-only)
 - Edge function: `supabase/functions/executive-brief`
+- Edge function: `supabase/functions/admin-portal`
 - Local automation brief: `npm run hq:brief`
 - Jira governance loop: `npm run hq:governor`
 - Atlas ticket-to-agent dispatch: `npm run atlas:dispatch`
@@ -133,3 +135,37 @@ Set these in Supabase project secrets before deploying `executive-brief`:
 - `JIRA_API_TOKEN`
 - Optional: `EXECUTIVE_GITHUB_REPO` (defaults to `Mani9006/loom-web-architect`)
 - Optional: `EXECUTIVE_JIRA_PROJECT` (defaults to `KAN`)
+
+Set these in Supabase project secrets for `admin-portal`:
+
+- `ADMIN_OWNER_EMAILS` (comma-separated, defaults to `myfamily9006@gmail.com`)
+- Optional cost model inputs:
+  `ADMIN_OPENAI_SHARE`,
+  `ADMIN_OPENAI_INPUT_USD_PER_1K`,
+  `ADMIN_OPENAI_OUTPUT_USD_PER_1K`,
+  `ADMIN_ANTHROPIC_INPUT_USD_PER_1K`,
+  `ADMIN_ANTHROPIC_OUTPUT_USD_PER_1K`,
+  `ADMIN_VERCEL_MONTHLY_USD`,
+  `ADMIN_SUPABASE_MONTHLY_USD`,
+  `ADMIN_MEM0_MONTHLY_USD`,
+  `ADMIN_PERPLEXITY_MONTHLY_USD`,
+  `ADMIN_OTHER_INFRA_MONTHLY_USD`
+
+Set these in Supabase project secrets for token controls and usage alerts:
+
+- `USAGE_GUARD_MONTHLY_TOKEN_BUDGET` (default `1500000`)
+- `USAGE_GUARD_DAILY_TOKEN_BUDGET` (default monthly/30)
+- `USAGE_GUARD_WARN_AT` (default `0.8`)
+- `USAGE_GUARD_CRITICAL_AT` (default `0.95`)
+- `CHAT_MAX_CONTEXT_MESSAGES` (default `12`)
+- `CHAT_MAX_TOKENS_DEFAULT` (default `1200`)
+- `CHAT_MAX_TOKENS_ATS` (default `2500`)
+- `CHAT_MAX_TOKENS_RESUME_PARSE` (default `6000`)
+- `CHAT_MEM0_RESULT_LIMIT` (default `8`)
+- `RESUME_CHAT_MAX_TOKENS_INITIAL` (default `3500`)
+- `RESUME_CHAT_MAX_TOKENS_FOLLOWUP` (default `1800`)
+- `RESUME_CHAT_MAX_TOKENS_CAP` (default `6000`)
+- `RESUME_CHAT_INITIAL_CONTEXT_MAX_CHARS` (default `18000`)
+- `RESUME_CHAT_CURRENT_RESUME_MAX_CHARS` (default `12000`)
+- `ORCHESTRATOR_MAX_TOKENS_DEFAULT` (default `1200`)
+- `ORCHESTRATOR_MAX_TOKENS_COMPLEX` (default `1800`)

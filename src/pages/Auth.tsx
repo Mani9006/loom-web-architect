@@ -9,6 +9,7 @@ import { Mail, Loader2, ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 import { z } from "zod";
 import Logo from "@/components/shared/Logo";
+import { trackProductEvent } from "@/lib/product-analytics";
 
 const emailSchema = z.string().email("Please enter a valid email address");
 const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
@@ -62,14 +63,22 @@ export default function Auth() {
       if (mode === "forgot") {
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
         if (error) toast({ title: "Error", description: error.message, variant: "destructive" });
-        else { setResetSent(true); toast({ title: "Check your email", description: "We've sent you a password reset link." }); }
+        else {
+          setResetSent(true);
+          toast({ title: "Check your email", description: "We've sent you a password reset link." });
+          void trackProductEvent("auth_password_reset_requested", { provider: "email" });
+        }
       } else if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) toast({ title: "Login failed", description: error.message.includes("Invalid login credentials") ? "Invalid email or password." : error.message, variant: "destructive" });
+        else void trackProductEvent("auth_login_success", { provider: "email" });
       } else {
         const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/home`, data: { full_name: fullName } } });
         if (error) toast({ title: error.message.includes("already registered") ? "Account exists" : "Sign up failed", description: error.message.includes("already registered") ? "This email is already registered." : error.message, variant: "destructive" });
-        else toast({ title: "Welcome!", description: "Account created successfully." });
+        else {
+          toast({ title: "Welcome!", description: "Account created successfully." });
+          void trackProductEvent("auth_signup_success", { provider: "email" });
+        }
       }
     } catch { toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" }); }
     finally { setLoading(false); }
@@ -78,6 +87,7 @@ export default function Auth() {
   const handleSocialLogin = async (provider: Provider) => {
     setSocialLoading(provider);
     try {
+      void trackProductEvent("auth_oauth_start", { provider });
       const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: `${window.location.origin}/home`, queryParams: { access_type: 'offline', prompt: 'consent' } } });
       if (error) { toast({ title: "Login failed", description: error.message, variant: "destructive" }); setSocialLoading(null); }
     } catch { toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" }); setSocialLoading(null); }
