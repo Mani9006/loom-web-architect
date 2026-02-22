@@ -16,6 +16,7 @@
     "market:map:dry": "node scripts/market-domination-map.mjs --dry-run",
     "atlas:dispatch": "node scripts/atlas-dispatch.mjs",
     "atlas:dispatch:dry": "node scripts/atlas-dispatch.mjs --dry-run",
+    "atlas:dispatch:long": "node scripts/atlas-dispatch.mjs --timeout-seconds 1800 --kill-delay-ms 8000",
     "github:agents:dispatch": "node scripts/github-agent-dispatch.mjs",
     "github:agents:dispatch:dry": "node scripts/github-agent-dispatch.mjs --dry-run",
     "github:agents:superburst": "node scripts/github-agent-superburst.mjs",
