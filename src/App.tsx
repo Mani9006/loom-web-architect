@@ -38,6 +38,7 @@ const Chat = lazy(() => import("./pages/Chat"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
+const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
 const AdminPortal = lazy(() => import("./pages/AdminPortal"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
