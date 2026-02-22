@@ -53,6 +53,8 @@ interface UsageGuardSnapshot {
   dailyBudgetTokens: number;
   dailyUsagePct: number;
   nextResetAt: string;
+  reasonCode?: string;
+  reason?: string;
 }
 
 export default function Chat() {
@@ -202,7 +204,9 @@ export default function Chat() {
         } else if (snapshot.level === "blocked") {
           toast({
             title: "AI usage limit reached",
-            description: `Current usage has reached 100% of configured budget. Reset window: ${resetAt}.`,
+            description:
+              snapshot.reason ||
+              `Current usage has reached 100% of configured budget. Reset window: ${resetAt}.`,
             variant: "destructive",
           });
         }

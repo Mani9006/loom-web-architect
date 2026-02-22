@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -57,6 +58,8 @@ import {
 } from "recharts";
 
 type PortalRole = "admin" | "moderator" | "user";
+type AccountStatus = "active" | "suspended" | "blocked";
+type PurchaseState = "trial" | "active" | "past_due" | "canceled" | "manual";
 
 type Tenant = Database["public"]["Tables"]["enterprise_tenants"]["Row"];
 type Membership = Database["public"]["Tables"]["enterprise_memberships"]["Row"] & {
@@ -80,11 +83,26 @@ interface PortalResponse {
     totalMessages: number;
     onboardingCompletedUsers: number;
   };
+  auth: {
+    totalAuthUsers: number;
+    signedIn7d: number;
+    signedIn30d: number;
+    blockedAccounts: number;
+    emailVerifiedUsers: number;
+    googleAccounts: number;
+    passwordAccounts: number;
+  };
   access: {
     roleCounts: Record<PortalRole, number>;
     ownersPresent: Array<{ email: string | null; role: PortalRole; userId: string }>;
     model: string;
     subscriptionNote: string;
+  };
+  billing: {
+    purchaseStateCounts: Record<PurchaseState, number>;
+    planCounts: Record<string, number>;
+    aiEnabledUsers: number;
+    restrictedUsers: number;
   };
   apiCosts: {
     rangeDays: number;
@@ -123,6 +141,17 @@ interface PortalResponse {
     role: PortalRole;
     createdAt: string;
     lastActiveAt: string;
+    authProvider: string;
+    lastSignInAt: string | null;
+    emailConfirmedAt: string | null;
+    isAuthBanned: boolean;
+    bannedUntil: string | null;
+    accountStatus: AccountStatus;
+    purchaseState: PurchaseState;
+    subscriptionPlan: string;
+    aiFeaturesEnabled: boolean;
+    blockedReason: string | null;
+    blockedUntil: string | null;
     conversations: number;
     resumes: number;
     trackedJobs: number;
@@ -244,6 +273,15 @@ function roleBadge(role: PortalRole): "default" | "secondary" | "outline" {
   return "outline";
 }
 
+type AccessDraft = {
+  accountStatus: AccountStatus;
+  purchaseState: PurchaseState;
+  subscriptionPlan: string;
+  aiFeaturesEnabled: boolean;
+  blockedReason: string;
+  blockedUntil: string;
+};
+
 function OverviewTab({
   loading,
   refreshing,
@@ -252,9 +290,18 @@ function OverviewTab({
   data,
   roleDrafts,
   setRoleDrafts,
+  accessDrafts,
+  setAccessDrafts,
   savingRoles,
+  savingAccess,
+  actionBusy,
+  userSearch,
+  setUserSearch,
   onRefresh,
   onSaveRole,
+  onSaveAccess,
+  onCreateResetLink,
+  onForceSignOut,
 }: {
   loading: boolean;
   refreshing: boolean;
@@ -263,9 +310,18 @@ function OverviewTab({
   data: PortalResponse | null;
   roleDrafts: Record<string, PortalRole>;
   setRoleDrafts: React.Dispatch<React.SetStateAction<Record<string, PortalRole>>>;
+  accessDrafts: Record<string, AccessDraft>;
+  setAccessDrafts: React.Dispatch<React.SetStateAction<Record<string, AccessDraft>>>;
   savingRoles: Record<string, boolean>;
+  savingAccess: Record<string, boolean>;
+  actionBusy: Record<string, boolean>;
+  userSearch: string;
+  setUserSearch: React.Dispatch<React.SetStateAction<string>>;
   onRefresh: () => void;
   onSaveRole: (userId: string) => Promise<void>;
+  onSaveAccess: (userId: string) => Promise<void>;
+  onCreateResetLink: (userId: string, email: string | null) => Promise<void>;
+  onForceSignOut: (userId: string) => Promise<void>;
 }) {
   if (loading) {
     return (
@@ -290,9 +346,26 @@ function OverviewTab({
     );
   }
 
+  const filteredUsers = data.users.filter((item) => {
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (item.fullName || "").toLowerCase().includes(q) ||
+      (item.email || "").toLowerCase().includes(q) ||
+      item.userId.toLowerCase().includes(q) ||
+      item.subscriptionPlan.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Input
+          placeholder="Search users, emails, plan..."
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          className="w-full md:w-[280px]"
+        />
         <Select
           value={String(rangeDays)}
           onValueChange={(value) => setRangeDays(Number(value) as 7 | 30 | 90)}
@@ -313,7 +386,7 @@ function OverviewTab({
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2">
@@ -330,12 +403,12 @@ function OverviewTab({
 
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Documents & Output</CardDescription>
-            <CardTitle className="text-2xl">{formatNumber(data.company.totalResumes)} resumes</CardTitle>
+            <CardDescription>Auth Sign-ins (30d)</CardDescription>
+            <CardTitle className="text-2xl">{formatNumber(data.auth.signedIn30d)}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              Cover letters: {formatNumber(data.company.totalCoverLetters)} | Docs: {formatNumber(data.company.totalDocuments)}
+              7 days: {formatNumber(data.auth.signedIn7d)} | Verified emails: {formatNumber(data.auth.emailVerifiedUsers)}
             </p>
           </CardContent>
         </Card>
@@ -350,6 +423,18 @@ function OverviewTab({
           <CardContent>
             <p className="text-xs text-muted-foreground">
               Tokens ({data.apiCosts.rangeDays}d): {formatNumber(data.apiCosts.totalTokens)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Blocked or Restricted</CardDescription>
+            <CardTitle className="text-2xl">{formatNumber(data.billing.restrictedUsers)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
+              Banned auth users: {formatNumber(data.auth.blockedAccounts)}
             </p>
           </CardContent>
         </Card>
@@ -424,6 +509,18 @@ function OverviewTab({
               <span className="text-sm">Users</span>
               <Badge variant="outline">{data.access.roleCounts.user || 0}</Badge>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Paid (active)</span>
+              <Badge variant="secondary">{data.billing.purchaseStateCounts.active || 0}</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Past due</span>
+              <Badge variant="outline">{data.billing.purchaseStateCounts.past_due || 0}</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Canceled</span>
+              <Badge variant="outline">{data.billing.purchaseStateCounts.canceled || 0}</Badge>
+            </div>
             <div className="pt-2 text-xs text-muted-foreground leading-relaxed">
               {data.access.subscriptionNote}
             </div>
@@ -435,7 +532,7 @@ function OverviewTab({
         <CardHeader>
           <CardTitle>User Management</CardTitle>
           <CardDescription>
-            Change user access roles and monitor usage without technical steps.
+            Owner-only controls for role, account status, purchase state, AI feature access, and recovery actions.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -443,20 +540,40 @@ function OverviewTab({
             <TableHeader>
               <TableRow>
                 <TableHead>User</TableHead>
+                <TableHead>Auth</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Last Active</TableHead>
+                <TableHead>Purchase</TableHead>
+                <TableHead>Plan</TableHead>
+                <TableHead>AI</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Last Sign-in</TableHead>
                 <TableHead>Usage</TableHead>
-                <TableHead>AI Tokens (30d)</TableHead>
-                <TableHead>AI Cost (30d)</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.users.slice(0, 40).map((item) => (
+              {filteredUsers.slice(0, 120).map((item) => {
+                const accessDraft = accessDrafts[item.userId] || {
+                  accountStatus: item.accountStatus,
+                  purchaseState: item.purchaseState,
+                  subscriptionPlan: item.subscriptionPlan || "free",
+                  aiFeaturesEnabled: item.aiFeaturesEnabled,
+                  blockedReason: item.blockedReason || "",
+                  blockedUntil: item.blockedUntil || "",
+                };
+
+                return (
                 <TableRow key={item.userId}>
                   <TableCell>
                     <div className="font-medium">{item.fullName || item.email || "Unknown user"}</div>
                     <div className="text-xs text-muted-foreground">{item.email || item.userId}</div>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <div className="space-y-1">
+                      <div>Provider: {item.authProvider || "unknown"}</div>
+                      <div>{item.emailConfirmedAt ? "Verified" : "Unverified"}</div>
+                      <div>{item.isAuthBanned ? "Banned in Auth" : "Not banned"}</div>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="space-y-2">
@@ -478,26 +595,122 @@ function OverviewTab({
                       </Select>
                     </div>
                   </TableCell>
-                  <TableCell className="text-xs">{formatDate(item.lastActiveAt)}</TableCell>
-                  <TableCell className="text-xs">
-                    C:{item.conversations} R:{item.resumes} J:{item.trackedJobs} D:{item.documents}
-                  </TableCell>
-                  <TableCell>{formatNumber(item.inputTokens30d + item.outputTokens30d)}</TableCell>
-                  <TableCell>{formatUsd(item.estimatedAiCost30dUsd)}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={savingRoles[item.userId]}
-                      onClick={() => void onSaveRole(item.userId)}
+                  <TableCell>
+                    <Select
+                      value={accessDraft.purchaseState}
+                      onValueChange={(value) =>
+                        setAccessDrafts((prev) => ({
+                          ...prev,
+                          [item.userId]: { ...accessDraft, purchaseState: value as PurchaseState },
+                        }))
+                      }
                     >
-                      {savingRoles[item.userId] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
-                    </Button>
+                      <SelectTrigger className="h-8 w-[130px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="trial">trial</SelectItem>
+                        <SelectItem value="active">active</SelectItem>
+                        <SelectItem value="past_due">past_due</SelectItem>
+                        <SelectItem value="canceled">canceled</SelectItem>
+                        <SelectItem value="manual">manual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      value={accessDraft.subscriptionPlan}
+                      onChange={(e) =>
+                        setAccessDrafts((prev) => ({
+                          ...prev,
+                          [item.userId]: { ...accessDraft, subscriptionPlan: e.target.value.toLowerCase() || "free" },
+                        }))
+                      }
+                      className="h-8 w-[120px]"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={accessDraft.aiFeaturesEnabled}
+                      onCheckedChange={(checked) =>
+                        setAccessDrafts((prev) => ({
+                          ...prev,
+                          [item.userId]: { ...accessDraft, aiFeaturesEnabled: checked },
+                        }))
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={accessDraft.accountStatus}
+                      onValueChange={(value) =>
+                        setAccessDrafts((prev) => ({
+                          ...prev,
+                          [item.userId]: { ...accessDraft, accountStatus: value as AccountStatus },
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-[130px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">active</SelectItem>
+                        <SelectItem value="suspended">suspended</SelectItem>
+                        <SelectItem value="blocked">blocked</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="text-xs">{item.lastSignInAt ? formatDate(item.lastSignInAt) : "-"}</TableCell>
+                  <TableCell className="text-xs">
+                    C:{item.conversations} R:{item.resumes} J:{item.trackedJobs}
+                    <br />
+                    Tokens:{formatNumber(item.inputTokens30d + item.outputTokens30d)} · {formatUsd(item.estimatedAiCost30dUsd)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2 flex-wrap">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={savingRoles[item.userId]}
+                        onClick={() => void onSaveRole(item.userId)}
+                      >
+                        {savingRoles[item.userId] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Role"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={savingAccess[item.userId]}
+                        onClick={() => void onSaveAccess(item.userId)}
+                      >
+                        {savingAccess[item.userId] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Access"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={actionBusy[`reset:${item.userId}`]}
+                        onClick={() => void onCreateResetLink(item.userId, item.email)}
+                      >
+                        {actionBusy[`reset:${item.userId}`] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Reset Link"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={actionBusy[`logout:${item.userId}`]}
+                        onClick={() => void onForceSignOut(item.userId)}
+                      >
+                        {actionBusy[`logout:${item.userId}`] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Force Logout"}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ))}
+              )})}
             </TableBody>
           </Table>
+          {filteredUsers.length > 120 && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Showing first 120 results. Use search to narrow to a specific account.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -848,13 +1061,55 @@ function AuditLogTab() {
 export default function AdminPortal() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rangeDays, setRangeDays] = useState<7 | 30 | 90>(30);
   const [data, setData] = useState<PortalResponse | null>(null);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, PortalRole>>({});
+  const [accessDrafts, setAccessDrafts] = useState<Record<string, AccessDraft>>({});
   const [savingRoles, setSavingRoles] = useState<Record<string, boolean>>({});
+  const [savingAccess, setSavingAccess] = useState<Record<string, boolean>>({});
+  const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
+  const [userSearch, setUserSearch] = useState("");
+
+  const callAdminPortal = useCallback(
+    async (payload: Record<string, unknown>) => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        navigate("/auth");
+        throw new Error("Session not available.");
+      }
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !publishableKey) {
+        throw new Error("Supabase environment variables are missing for admin portal.");
+      }
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/admin-portal`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: publishableKey,
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Admin action failed (${response.status}): ${body}`);
+      }
+
+      return await response.json();
+    },
+    [navigate],
+  );
 
   const fetchPortal = useCallback(
     async (isRefresh = false) => {
@@ -865,41 +1120,24 @@ export default function AdminPortal() {
       else setLoading(true);
 
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!session?.access_token) {
-          navigate("/auth");
-          return;
-        }
-
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
-        if (!supabaseUrl || !publishableKey) {
-          throw new Error("Supabase environment variables are missing for admin portal.");
-        }
-
-        const response = await fetch(`${supabaseUrl}/functions/v1/admin-portal`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: publishableKey,
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ action: "summary", rangeDays }),
-        });
-
-        if (!response.ok) {
-          const body = await response.text();
-          throw new Error(`Admin portal fetch failed (${response.status}): ${body}`);
-        }
-
-        const payload = (await response.json()) as PortalResponse;
+        const payload = (await callAdminPortal({ action: "summary", rangeDays })) as PortalResponse;
         setData(payload);
         setRoleDrafts(
           payload.users.reduce<Record<string, PortalRole>>((acc, item) => {
             acc[item.userId] = item.role;
+            return acc;
+          }, {}),
+        );
+        setAccessDrafts(
+          payload.users.reduce<Record<string, AccessDraft>>((acc, item) => {
+            acc[item.userId] = {
+              accountStatus: item.accountStatus,
+              purchaseState: item.purchaseState,
+              subscriptionPlan: item.subscriptionPlan || "free",
+              aiFeaturesEnabled: item.aiFeaturesEnabled,
+              blockedReason: item.blockedReason || "",
+              blockedUntil: item.blockedUntil || "",
+            };
             return acc;
           }, {}),
         );
@@ -911,7 +1149,7 @@ export default function AdminPortal() {
         setRefreshing(false);
       }
     },
-    [navigate, rangeDays, user],
+    [callAdminPortal, rangeDays, user],
   );
 
   useEffect(() => {
@@ -928,31 +1166,8 @@ export default function AdminPortal() {
 
       try {
         setSavingRoles((prev) => ({ ...prev, [targetUserId]: true }));
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-        if (!session?.access_token || !supabaseUrl || !publishableKey) {
-          throw new Error("Session or environment not available for role update.");
-        }
-
-        const response = await fetch(`${supabaseUrl}/functions/v1/admin-portal`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: publishableKey,
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ action: "set-role", targetUserId, role }),
-        });
-
-        if (!response.ok) {
-          const body = await response.text();
-          throw new Error(`Role update failed (${response.status}): ${body}`);
-        }
-
+        await callAdminPortal({ action: "set-role", targetUserId, role });
+        toast({ title: "Role updated" });
         await fetchPortal(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to update role");
@@ -960,7 +1175,75 @@ export default function AdminPortal() {
         setSavingRoles((prev) => ({ ...prev, [targetUserId]: false }));
       }
     },
-    [data, fetchPortal, roleDrafts],
+    [callAdminPortal, data, fetchPortal, roleDrafts, toast],
+  );
+
+  const saveAccess = useCallback(
+    async (targetUserId: string) => {
+      const draft = accessDrafts[targetUserId];
+      if (!draft) return;
+      try {
+        setSavingAccess((prev) => ({ ...prev, [targetUserId]: true }));
+        await callAdminPortal({
+          action: "set-account-access",
+          targetUserId,
+          accountStatus: draft.accountStatus,
+          purchaseState: draft.purchaseState,
+          subscriptionPlan: draft.subscriptionPlan,
+          aiFeaturesEnabled: draft.aiFeaturesEnabled,
+          blockedReason: draft.blockedReason || null,
+          blockedUntil: draft.blockedUntil || null,
+        });
+        toast({ title: "Access updated" });
+        await fetchPortal(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update account access");
+      } finally {
+        setSavingAccess((prev) => ({ ...prev, [targetUserId]: false }));
+      }
+    },
+    [accessDrafts, callAdminPortal, fetchPortal, toast],
+  );
+
+  const createResetLink = useCallback(
+    async (targetUserId: string, email: string | null) => {
+      const key = `reset:${targetUserId}`;
+      try {
+        setActionBusy((prev) => ({ ...prev, [key]: true }));
+        const payload = (await callAdminPortal({
+          action: "password-reset-link",
+          targetUserId,
+          email,
+        })) as { result?: { resetLink?: string } };
+
+        const resetLink = payload?.result?.resetLink;
+        if (!resetLink) throw new Error("No reset link returned.");
+
+        await navigator.clipboard.writeText(resetLink);
+        toast({ title: "Password reset link copied", description: "Share this link securely with the user." });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to generate reset link");
+      } finally {
+        setActionBusy((prev) => ({ ...prev, [key]: false }));
+      }
+    },
+    [callAdminPortal, toast],
+  );
+
+  const forceSignOut = useCallback(
+    async (targetUserId: string) => {
+      const key = `logout:${targetUserId}`;
+      try {
+        setActionBusy((prev) => ({ ...prev, [key]: true }));
+        await callAdminPortal({ action: "force-signout", targetUserId });
+        toast({ title: "User signed out of all sessions" });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to force sign out");
+      } finally {
+        setActionBusy((prev) => ({ ...prev, [key]: false }));
+      }
+    },
+    [callAdminPortal, toast],
   );
 
   const lastUpdated = useMemo(() => (data?.generatedAt ? formatDate(data.generatedAt) : "-"), [data?.generatedAt]);
@@ -1030,9 +1313,18 @@ export default function AdminPortal() {
             data={data}
             roleDrafts={roleDrafts}
             setRoleDrafts={setRoleDrafts}
+            accessDrafts={accessDrafts}
+            setAccessDrafts={setAccessDrafts}
             savingRoles={savingRoles}
+            savingAccess={savingAccess}
+            actionBusy={actionBusy}
+            userSearch={userSearch}
+            setUserSearch={setUserSearch}
             onRefresh={() => void fetchPortal(true)}
             onSaveRole={(userId) => saveRole(userId)}
+            onSaveAccess={(userId) => saveAccess(userId)}
+            onCreateResetLink={(userId, email) => createResetLink(userId, email)}
+            onForceSignOut={(userId) => forceSignOut(userId)}
           />
         </TabsContent>
         <TabsContent value="operations" className="mt-4">

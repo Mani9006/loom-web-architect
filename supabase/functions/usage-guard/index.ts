@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { evaluateUserAccess } from "../_shared/access-control.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,6 +66,26 @@ serve(async (req) => {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    const access = await evaluateUserAccess(supabase, user.id);
+    if (!access.allowed) {
+      return new Response(
+        JSON.stringify({
+          level: "blocked" as UsageLevel,
+          monthlyUsedTokens: 0,
+          monthlyBudgetTokens: 0,
+          monthlyUsagePct: 1,
+          dailyUsedTokens: 0,
+          dailyBudgetTokens: 0,
+          dailyUsagePct: 1,
+          nextResetAt: nextUtcMidnightIso(new Date()),
+          windowDays: 30,
+          reasonCode: access.code,
+          reason: access.message || "Account access is restricted.",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const monthlyBudgetTokens = Math.max(

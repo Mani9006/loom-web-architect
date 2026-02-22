@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { evaluateUserAccess } from "../_shared/access-control.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -415,6 +416,21 @@ serve(async (req) => {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    const access = await evaluateUserAccess(supabase, user.id);
+    if (!access.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: "Access denied",
+          reasonCode: access.code,
+          detail: access.message || "AI access is restricted for this account.",
+        }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const { messages, resumeData, currentResume, selectedModel } = await req.json();

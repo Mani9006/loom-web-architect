@@ -10,6 +10,8 @@ const DEFAULT_OWNER_EMAILS = ["myfamily9006@gmail.com"];
 const ROLE_PRIORITY: Record<string, number> = { admin: 3, moderator: 2, user: 1 };
 
 type AdminRole = "admin" | "moderator" | "user";
+type AccountStatus = "active" | "suspended" | "blocked";
+type PurchaseState = "trial" | "active" | "past_due" | "canceled" | "manual";
 
 type ActivityUser = {
   userId: string;
@@ -21,6 +23,17 @@ type ActivityUser = {
   role: AdminRole;
   createdAt: string;
   lastActiveAt: string;
+  authProvider: string;
+  lastSignInAt: string | null;
+  emailConfirmedAt: string | null;
+  isAuthBanned: boolean;
+  bannedUntil: string | null;
+  accountStatus: AccountStatus;
+  purchaseState: PurchaseState;
+  subscriptionPlan: string;
+  aiFeaturesEnabled: boolean;
+  blockedReason: string | null;
+  blockedUntil: string | null;
   conversations: number;
   resumes: number;
   trackedJobs: number;
@@ -34,6 +47,32 @@ type ActivityUser = {
 };
 
 type TrendPoint = { date: string; signups: number; activeUsers: number };
+
+type AccessControlRow = {
+  user_id: string;
+  account_status: AccountStatus;
+  purchase_state: PurchaseState;
+  subscription_plan: string;
+  ai_features_enabled: boolean;
+  blocked_reason: string | null;
+  blocked_until: string | null;
+};
+
+type AuthUserRow = {
+  id: string;
+  email: string | null;
+  created_at: string;
+  last_sign_in_at: string | null;
+  email_confirmed_at: string | null;
+  banned_until: string | null;
+  app_metadata?: {
+    provider?: string;
+    providers?: string[];
+  };
+};
+
+const ACCOUNT_STATUS_VALUES: AccountStatus[] = ["active", "suspended", "blocked"];
+const PURCHASE_STATE_VALUES: PurchaseState[] = ["trial", "active", "past_due", "canceled", "manual"];
 
 function toLower(value: string | null | undefined): string {
   return String(value || "").trim().toLowerCase();
@@ -73,6 +112,13 @@ function safeDate(value: string | null | undefined): string {
   return d.toISOString();
 }
 
+function safeNullableDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 function boolEnv(name: string): boolean {
   return Boolean(String(Deno.env.get(name) || "").trim());
 }
@@ -101,6 +147,125 @@ function integrationStatus() {
     serviceRole: boolEnv("SERVICE_ROLE_KEY") || boolEnv("SUPABASE_SERVICE_ROLE_KEY"),
     supabaseUrl: boolEnv("SUPABASE_URL"),
   };
+}
+
+function isValidUuid(value: string): boolean {
+  return /^[0-9a-f-]{36}$/i.test(value);
+}
+
+function getClientIp(req: Request): string | null {
+  const forwarded = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "";
+  const first = forwarded.split(",")[0]?.trim();
+  return first || null;
+}
+
+function parseAuthProvider(authUser: AuthUserRow | null | undefined): string {
+  if (!authUser) return "unknown";
+  const providers = authUser.app_metadata?.providers || [];
+  if (providers.length > 0) return String(providers[0]);
+  return String(authUser.app_metadata?.provider || "unknown");
+}
+
+function isAuthBanned(authUser: AuthUserRow | null | undefined): boolean {
+  const until = safeNullableDate(authUser?.banned_until);
+  return Boolean(until && until > new Date().toISOString());
+}
+
+async function authAdminFetch(
+  supabaseUrl: string,
+  serviceRole: string,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  return await fetch(`${supabaseUrl}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      apikey: serviceRole,
+      Authorization: `Bearer ${serviceRole}`,
+      ...(init?.headers || {}),
+    },
+  });
+}
+
+async function listAllAuthUsers(supabaseUrl: string, serviceRole: string): Promise<AuthUserRow[]> {
+  const users: AuthUserRow[] = [];
+  const perPage = 500;
+
+  for (let page = 1; page <= 20; page += 1) {
+    const response = await authAdminFetch(
+      supabaseUrl,
+      serviceRole,
+      `/auth/v1/admin/users?page=${page}&per_page=${perPage}`,
+      { method: "GET" },
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Failed to list auth users (${response.status}): ${body}`);
+    }
+
+    const payload = await response.json();
+    const pageUsers = Array.isArray(payload?.users) ? (payload.users as AuthUserRow[]) : [];
+    users.push(...pageUsers);
+
+    if (pageUsers.length < perPage) break;
+  }
+
+  return users;
+}
+
+function getBanDurationForStatus(status: AccountStatus, blockedUntil: string | null): string {
+  if (status === "active") return "none";
+
+  if (blockedUntil) {
+    const until = new Date(blockedUntil);
+    if (!Number.isNaN(until.getTime()) && until.getTime() > Date.now()) {
+      const hours = Math.max(1, Math.ceil((until.getTime() - Date.now()) / (1000 * 60 * 60)));
+      return `${hours}h`;
+    }
+  }
+
+  return "876000h";
+}
+
+function normalizeAccountStatus(value: unknown): AccountStatus {
+  const normalized = String(value || "active").trim().toLowerCase();
+  return ACCOUNT_STATUS_VALUES.includes(normalized as AccountStatus)
+    ? (normalized as AccountStatus)
+    : "active";
+}
+
+function normalizePurchaseState(value: unknown): PurchaseState {
+  const normalized = String(value || "trial").trim().toLowerCase();
+  return PURCHASE_STATE_VALUES.includes(normalized as PurchaseState)
+    ? (normalized as PurchaseState)
+    : "trial";
+}
+
+function normalizePlan(value: unknown): string {
+  const plan = String(value || "free").trim().toLowerCase();
+  return plan || "free";
+}
+
+async function writeAuditLog(
+  serviceClient: ReturnType<typeof createClient>,
+  actorId: string,
+  action: string,
+  resource: string,
+  resourceId: string,
+  metadata: Record<string, unknown>,
+  req: Request,
+) {
+  await serviceClient.rpc("write_audit_log", {
+    p_actor_id: actorId,
+    p_action: action,
+    p_resource: resource,
+    p_resource_id: resourceId,
+    p_metadata: metadata,
+    p_ip_address: getClientIp(req),
+    p_user_agent: req.headers.get("user-agent"),
+  }).catch(() => null);
 }
 
 async function authenticateOwner(req: Request) {
@@ -160,7 +325,7 @@ async function authenticateOwner(req: Request) {
   }
 
   const serviceClient = createClient(supabaseUrl, serviceRole);
-  return { user, ownerEmails, serviceClient };
+  return { user, ownerEmails, serviceClient, supabaseUrl, serviceRole };
 }
 
 async function ensureOwnerRoles(serviceClient: ReturnType<typeof createClient>, ownerEmails: string[]) {
@@ -170,7 +335,7 @@ async function ensureOwnerRoles(serviceClient: ReturnType<typeof createClient>, 
     .in("email", ownerEmails);
 
   const ownerUserIds = (ownerProfiles || [])
-    .map((row: any) => row.user_id as string)
+    .map((row: { user_id: string }) => row.user_id)
     .filter(Boolean);
 
   if (ownerUserIds.length === 0) return;
@@ -182,8 +347,13 @@ async function ensureOwnerRoles(serviceClient: ReturnType<typeof createClient>, 
   );
 }
 
-async function setUserRole(serviceClient: ReturnType<typeof createClient>, ownerEmails: string[], targetUserId: string, role: AdminRole) {
-  if (!/^[0-9a-f-]{36}$/i.test(targetUserId)) {
+async function setUserRole(
+  serviceClient: ReturnType<typeof createClient>,
+  ownerEmails: string[],
+  targetUserId: string,
+  role: AdminRole,
+) {
+  if (!isValidUuid(targetUserId)) {
     throw new Error("Invalid user ID");
   }
 
@@ -197,7 +367,7 @@ async function setUserRole(serviceClient: ReturnType<typeof createClient>, owner
     throw new Error("Target user not found");
   }
 
-  const targetEmail = toLower((targetProfile as any).email);
+  const targetEmail = toLower((targetProfile as { email: string | null }).email);
   if (ownerEmails.includes(targetEmail) && role !== "admin") {
     throw new Error("Owner account cannot be demoted from admin");
   }
@@ -215,6 +385,155 @@ async function setUserRole(serviceClient: ReturnType<typeof createClient>, owner
   await serviceClient.from("user_roles").upsert({ user_id: targetUserId, role: "user" }, { onConflict: "user_id,role" });
 
   return { ok: true, userId: targetUserId, role };
+}
+
+async function setUserAccessControl(
+  serviceClient: ReturnType<typeof createClient>,
+  ownerEmails: string[],
+  supabaseUrl: string,
+  serviceRole: string,
+  targetUserId: string,
+  payload: {
+    accountStatus?: unknown;
+    purchaseState?: unknown;
+    subscriptionPlan?: unknown;
+    aiFeaturesEnabled?: unknown;
+    blockedReason?: unknown;
+    blockedUntil?: unknown;
+  },
+) {
+  if (!isValidUuid(targetUserId)) throw new Error("Invalid user ID");
+
+  const { data: profile } = await serviceClient
+    .from("profiles")
+    .select("email")
+    .eq("user_id", targetUserId)
+    .maybeSingle();
+
+  const targetEmail = toLower((profile as { email?: string | null } | null)?.email);
+
+  const accountStatus = normalizeAccountStatus(payload.accountStatus);
+  const purchaseState = normalizePurchaseState(payload.purchaseState);
+  const subscriptionPlan = normalizePlan(payload.subscriptionPlan);
+  const aiFeaturesEnabled = Boolean(payload.aiFeaturesEnabled ?? true);
+  const blockedReason = String(payload.blockedReason || "").trim() || null;
+  const blockedUntil = safeNullableDate(String(payload.blockedUntil || ""));
+
+  if (ownerEmails.includes(targetEmail)) {
+    if (accountStatus !== "active") {
+      throw new Error("Owner account cannot be suspended or blocked");
+    }
+    if (!aiFeaturesEnabled) {
+      throw new Error("Owner account must keep AI access enabled");
+    }
+  }
+
+  const { error: upsertError } = await serviceClient
+    .from("user_access_controls")
+    .upsert(
+      {
+        user_id: targetUserId,
+        account_status: accountStatus,
+        purchase_state: purchaseState,
+        subscription_plan: subscriptionPlan,
+        ai_features_enabled: aiFeaturesEnabled,
+        blocked_reason: accountStatus === "active" ? null : blockedReason,
+        blocked_until: accountStatus === "active" ? null : blockedUntil,
+        last_admin_action_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+
+  if (upsertError) {
+    if (upsertError.code === "42P01") {
+      throw new Error("Database migration missing: user_access_controls table is not deployed yet.");
+    }
+    throw new Error(upsertError.message);
+  }
+
+  const banDuration = getBanDurationForStatus(accountStatus, blockedUntil);
+  const authResponse = await authAdminFetch(supabaseUrl, serviceRole, `/auth/v1/admin/users/${targetUserId}`, {
+    method: "PUT",
+    body: JSON.stringify({ ban_duration: banDuration }),
+  });
+
+  if (!authResponse.ok) {
+    const body = await authResponse.text();
+    throw new Error(`Failed to update auth access (${authResponse.status}): ${body}`);
+  }
+
+  return {
+    ok: true,
+    userId: targetUserId,
+    accountStatus,
+    purchaseState,
+    subscriptionPlan,
+    aiFeaturesEnabled,
+    blockedUntil,
+  };
+}
+
+async function forceSignOutUser(supabaseUrl: string, serviceRole: string, targetUserId: string) {
+  if (!isValidUuid(targetUserId)) throw new Error("Invalid user ID");
+  const response = await authAdminFetch(
+    supabaseUrl,
+    serviceRole,
+    `/auth/v1/admin/users/${targetUserId}/logout`,
+    { method: "POST", body: JSON.stringify({ scope: "global" }) },
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Failed to force logout (${response.status}): ${body}`);
+  }
+
+  return { ok: true, userId: targetUserId };
+}
+
+async function generatePasswordResetLink(
+  serviceClient: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  serviceRole: string,
+  targetUserId: string,
+  fallbackEmail: string | null,
+) {
+  if (!isValidUuid(targetUserId)) throw new Error("Invalid user ID");
+
+  let email = toLower(fallbackEmail);
+  if (!email) {
+    const response = await authAdminFetch(supabaseUrl, serviceRole, `/auth/v1/admin/users/${targetUserId}`, {
+      method: "GET",
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Failed to fetch user for password reset (${response.status}): ${body}`);
+    }
+    const payload = await response.json();
+    email = toLower(payload?.email);
+  }
+
+  if (!email) throw new Error("Target user email not found");
+
+  const redirectTo = Deno.env.get("ADMIN_PASSWORD_RESET_REDIRECT") || `${Deno.env.get("SITE_URL") || "https://www.resumepreps.com"}/reset-password`;
+
+  const { data, error } = await serviceClient.auth.admin.generateLink({
+    type: "recovery",
+    email,
+    options: { redirectTo },
+  });
+
+  if (error) throw new Error(error.message);
+
+  const resetLink =
+    data?.properties?.action_link ||
+    data?.properties?.email_otp ||
+    null;
+
+  if (!resetLink) {
+    throw new Error("Password reset link was not returned by Supabase");
+  }
+
+  return { ok: true, userId: targetUserId, email, resetLink };
 }
 
 function buildRoleMap(rows: Array<{ user_id: string; role: AdminRole }>) {
@@ -276,7 +595,13 @@ function buildCostModel(inputTokens: number, outputTokens: number, rangeDays: nu
   };
 }
 
-async function buildSummary(serviceClient: ReturnType<typeof createClient>, ownerEmails: string[], rangeDays: number) {
+async function buildSummary(
+  serviceClient: ReturnType<typeof createClient>,
+  ownerEmails: string[],
+  rangeDays: number,
+  supabaseUrl: string,
+  serviceRole: string,
+) {
   const sinceDate = new Date(Date.now() - Math.max(1, rangeDays) * 24 * 60 * 60 * 1000);
   const sinceIso = sinceDate.toISOString();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -311,7 +636,7 @@ async function buildSummary(serviceClient: ReturnType<typeof createClient>, owne
       .from("profiles")
       .select("user_id,email,full_name,location,target_role,onboarding_completed,created_at,updated_at")
       .order("updated_at", { ascending: false })
-      .limit(250),
+      .limit(1000),
     serviceClient.from("user_roles").select("user_id,role"),
     serviceClient.from("conversations").select("id,user_id,updated_at,created_at"),
     serviceClient.from("resumes").select("user_id,updated_at,created_at"),
@@ -326,6 +651,24 @@ async function buildSummary(serviceClient: ReturnType<typeof createClient>, owne
       .limit(parseNum(Deno.env.get("ADMIN_COST_SAMPLE_LIMIT"), 10000)),
     serviceClient.from("profiles").select("user_id,created_at").gte("created_at", sinceIso),
   ]);
+
+  let accessControlRows: AccessControlRow[] = [];
+  const accessRes = await serviceClient
+    .from("user_access_controls")
+    .select("user_id,account_status,purchase_state,subscription_plan,ai_features_enabled,blocked_reason,blocked_until");
+  if (!accessRes.error) {
+    accessControlRows = (accessRes.data || []) as AccessControlRow[];
+  }
+
+  let authUsers: AuthUserRow[] = [];
+  try {
+    authUsers = await listAllAuthUsers(supabaseUrl, serviceRole);
+  } catch (error) {
+    console.error("Failed to list auth users for admin summary:", error);
+  }
+
+  const authById = new Map<string, AuthUserRow>();
+  for (const row of authUsers) authById.set(row.id, row);
 
   const roleRows = (roles.data || []) as Array<{ user_id: string; role: AdminRole }>;
   const { roleCounts, roleByUser } = buildRoleMap(roleRows);
@@ -346,6 +689,9 @@ async function buildSummary(serviceClient: ReturnType<typeof createClient>, owne
     updated_at: string;
   }>;
 
+  const profileByUser = new Map(profileRows.map((row) => [row.user_id, row]));
+  const accessByUser = new Map(accessControlRows.map((row) => [row.user_id, row]));
+
   const convToUser = new Map<string, string>();
   for (const row of convRows) convToUser.set(row.id, row.user_id);
 
@@ -354,17 +700,31 @@ async function buildSummary(serviceClient: ReturnType<typeof createClient>, owne
   const ensureUser = (userId: string): ActivityUser => {
     let item = users.get(userId);
     if (!item) {
-      const p = profileRows.find((row) => row.user_id === userId);
+      const profileRow = profileByUser.get(userId);
+      const authRow = authById.get(userId);
+      const accessRow = accessByUser.get(userId);
+
       item = {
         userId,
-        email: p?.email || null,
-        fullName: p?.full_name || null,
-        location: p?.location || null,
-        targetRole: p?.target_role || null,
-        onboardingCompleted: Boolean(p?.onboarding_completed),
+        email: profileRow?.email || authRow?.email || null,
+        fullName: profileRow?.full_name || null,
+        location: profileRow?.location || null,
+        targetRole: profileRow?.target_role || null,
+        onboardingCompleted: Boolean(profileRow?.onboarding_completed),
         role: roleByUser.get(userId) || "user",
-        createdAt: safeDate(p?.created_at),
-        lastActiveAt: safeDate(p?.updated_at),
+        createdAt: safeDate(profileRow?.created_at || authRow?.created_at),
+        lastActiveAt: safeDate(profileRow?.updated_at || authRow?.last_sign_in_at || authRow?.created_at),
+        authProvider: parseAuthProvider(authRow),
+        lastSignInAt: safeNullableDate(authRow?.last_sign_in_at),
+        emailConfirmedAt: safeNullableDate(authRow?.email_confirmed_at),
+        isAuthBanned: isAuthBanned(authRow),
+        bannedUntil: safeNullableDate(authRow?.banned_until),
+        accountStatus: accessRow?.account_status || "active",
+        purchaseState: accessRow?.purchase_state || "trial",
+        subscriptionPlan: accessRow?.subscription_plan || "free",
+        aiFeaturesEnabled: accessRow?.ai_features_enabled ?? true,
+        blockedReason: accessRow?.blocked_reason || null,
+        blockedUntil: safeNullableDate(accessRow?.blocked_until),
         conversations: 0,
         resumes: 0,
         trackedJobs: 0,
@@ -380,6 +740,9 @@ async function buildSummary(serviceClient: ReturnType<typeof createClient>, owne
     }
     return item;
   };
+
+  for (const row of profileRows) ensureUser(row.user_id);
+  for (const row of authUsers) ensureUser(row.id);
 
   for (const row of convRows) {
     const u = ensureUser(row.user_id);
@@ -486,16 +849,47 @@ async function buildSummary(serviceClient: ReturnType<typeof createClient>, owne
 
   const usersList = [...users.values()]
     .sort((a, b) => (a.lastActiveAt < b.lastActiveAt ? 1 : -1))
-    .slice(0, 120);
+    .slice(0, 400);
 
   const ownerUserEmails = new Set(ownerEmails);
   const ownerUsers = usersList.filter((u) => ownerUserEmails.has(toLower(u.email)));
+
+  const authSummary = {
+    totalAuthUsers: authUsers.length || profilesCount.count || 0,
+    signedIn7d: usersList.filter((u) => (u.lastSignInAt || "") >= since7d).length,
+    signedIn30d: usersList.filter((u) => (u.lastSignInAt || "") >= since30d).length,
+    blockedAccounts: usersList.filter((u) => u.accountStatus !== "active" || u.isAuthBanned).length,
+    emailVerifiedUsers: usersList.filter((u) => Boolean(u.emailConfirmedAt)).length,
+    googleAccounts: usersList.filter((u) => u.authProvider === "google").length,
+    passwordAccounts: usersList.filter((u) => u.authProvider === "email").length,
+  };
+
+  const purchaseStateCounts: Record<PurchaseState, number> = {
+    trial: 0,
+    active: 0,
+    past_due: 0,
+    canceled: 0,
+    manual: 0,
+  };
+
+  const planCounts: Record<string, number> = {};
+  let aiEnabledUsers = 0;
+  let restrictedUsers = 0;
+
+  for (const user of usersList) {
+    purchaseStateCounts[user.purchaseState] += 1;
+    planCounts[user.subscriptionPlan] = (planCounts[user.subscriptionPlan] || 0) + 1;
+    if (user.aiFeaturesEnabled) aiEnabledUsers += 1;
+    if (user.accountStatus !== "active" || !user.aiFeaturesEnabled || user.purchaseState === "past_due" || user.purchaseState === "canceled") {
+      restrictedUsers += 1;
+    }
+  }
 
   return {
     generatedAt: new Date().toISOString(),
     ownerEmails,
     company: {
-      totalUsers: profilesCount.count || 0,
+      totalUsers: profilesCount.count || authSummary.totalAuthUsers,
       activeUsers7d: active7dUsers.size,
       totalResumes: resumesCount.count || 0,
       totalTrackedJobs: jobsCount.count || 0,
@@ -505,12 +899,19 @@ async function buildSummary(serviceClient: ReturnType<typeof createClient>, owne
       totalMessages: messagesCount.count || 0,
       onboardingCompletedUsers: profileRows.filter((item) => item.onboarding_completed).length,
     },
+    auth: authSummary,
     access: {
       roleCounts,
       ownersPresent: ownerUsers.map((u) => ({ email: u.email, role: u.role, userId: u.userId })),
-      model: "Role-based access control",
+      model: "Role + account status + purchase state access control",
       subscriptionNote:
-        "Subscription plans are not configured in database tables yet. Access control is currently role-based.",
+        "Purchase and access are owner-managed in user_access_controls. Use account status, purchase state, and AI toggle to grant or revoke access instantly.",
+    },
+    billing: {
+      purchaseStateCounts,
+      planCounts,
+      aiEnabledUsers,
+      restrictedUsers,
     },
     apiCosts: monthlyCost,
     trends,
@@ -531,7 +932,7 @@ serve(async (req) => {
   }
 
   try {
-    const { serviceClient, ownerEmails } = await authenticateOwner(req);
+    const { user, serviceClient, ownerEmails, supabaseUrl, serviceRole } = await authenticateOwner(req);
     await ensureOwnerRoles(serviceClient, ownerEmails);
 
     const body = await req.json().catch(() => ({}));
@@ -548,13 +949,94 @@ serve(async (req) => {
       }
 
       const result = await setUserRole(serviceClient, ownerEmails, targetUserId, role);
+      await writeAuditLog(
+        serviceClient,
+        user.id,
+        "user.role_changed",
+        "user_role",
+        targetUserId,
+        { role },
+        req,
+      );
+
+      return new Response(JSON.stringify({ ok: true, result }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "set-account-access") {
+      const targetUserId = String(body?.targetUserId || "");
+      const result = await setUserAccessControl(serviceClient, ownerEmails, supabaseUrl, serviceRole, targetUserId, {
+        accountStatus: body?.accountStatus,
+        purchaseState: body?.purchaseState,
+        subscriptionPlan: body?.subscriptionPlan,
+        aiFeaturesEnabled: body?.aiFeaturesEnabled,
+        blockedReason: body?.blockedReason,
+        blockedUntil: body?.blockedUntil,
+      });
+
+      await writeAuditLog(
+        serviceClient,
+        user.id,
+        "user.access_updated",
+        "user_access_controls",
+        targetUserId,
+        {
+          accountStatus: result.accountStatus,
+          purchaseState: result.purchaseState,
+          subscriptionPlan: result.subscriptionPlan,
+          aiFeaturesEnabled: result.aiFeaturesEnabled,
+          blockedUntil: result.blockedUntil,
+        },
+        req,
+      );
+
+      return new Response(JSON.stringify({ ok: true, result }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "force-signout") {
+      const targetUserId = String(body?.targetUserId || "");
+      const result = await forceSignOutUser(supabaseUrl, serviceRole, targetUserId);
+
+      await writeAuditLog(
+        serviceClient,
+        user.id,
+        "user.forced_signout",
+        "auth_user",
+        targetUserId,
+        {},
+        req,
+      );
+
+      return new Response(JSON.stringify({ ok: true, result }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "password-reset-link") {
+      const targetUserId = String(body?.targetUserId || "");
+      const targetEmail = body?.email ? String(body.email) : null;
+      const result = await generatePasswordResetLink(serviceClient, supabaseUrl, serviceRole, targetUserId, targetEmail);
+
+      await writeAuditLog(
+        serviceClient,
+        user.id,
+        "user.password_reset_link_generated",
+        "auth_user",
+        targetUserId,
+        { email: result.email },
+        req,
+      );
+
       return new Response(JSON.stringify({ ok: true, result }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const rangeDays = Math.max(7, Math.min(90, Number(body?.rangeDays || 30)));
-    const summary = await buildSummary(serviceClient, ownerEmails, rangeDays);
+    const summary = await buildSummary(serviceClient, ownerEmails, rangeDays, supabaseUrl, serviceRole);
     return new Response(JSON.stringify(summary), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
