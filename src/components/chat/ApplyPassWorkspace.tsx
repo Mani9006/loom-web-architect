@@ -157,6 +157,35 @@ const IFRAME_BLOCKED_HOST_HINTS = [
   "greenhouse.io",
   "jobs.lever.co",
   "lever.co",
+  "teksystems.com",
+  "caterpillar.com",
+  "roberthalf.com",
+  "randstad",
+  "edtech.com",
+  "dice.com",
+  "ziprecruiter.com",
+  "monster.com",
+  "careerbuilder.com",
+  "smartrecruiters.com",
+  "icims.com",
+  "taleo.net",
+  "successfactors.com",
+  "brassring.com",
+  "ultipro.com",
+  "paylocity.com",
+  "bamboohr.com",
+  "jobvite.com",
+  "ashbyhq.com",
+  "wellfound.com",
+  "angel.co",
+  "builtin.com",
+  "simplyhired.com",
+  "google.com/about/careers",
+  "amazon.jobs",
+  "apple.com/careers",
+  "microsoft.com/en-us/",
+  "meta.com/careers",
+  "netflix.jobs",
 ];
 
 function shouldPreferCloudBrowser(url: string): boolean {
@@ -437,9 +466,12 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
     }
 
     setBrowserPaneState("loading");
+    // Reduced from 12s to 6s — most legit sites load within 3-4s;
+    // sites that block iframes show "refused to connect" immediately but
+    // the onLoad event still fires, so we need a tighter fallback window.
     const timeoutId = window.setTimeout(() => {
       setBrowserPaneState((prev) => (prev === "loading" ? "timeout" : prev));
-    }, 12000);
+    }, 6000);
 
     return () => window.clearTimeout(timeoutId);
   }, [activeBrowserUrl, browserRefreshKey]);
@@ -633,13 +665,8 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
     payload: Record<string, unknown>,
   ): Promise<Response> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL;
-    const publishableKey =
-      import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-      import.meta.env.VITE_SUPABASE_ANON_KEY ||
-      import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-      import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !publishableKey) {
-      throw new Error("Supabase env vars are missing.");
+    if (!supabaseUrl) {
+      throw new Error("Supabase URL env var is missing.");
     }
 
     const doFetch = async (accessToken: string) =>
@@ -647,7 +674,6 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: publishableKey,
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify(payload),
@@ -1708,8 +1734,31 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
                           title={`Job application preview ${selectedJob?.title || "job"}`}
                           src={activeBrowserUrl}
                           className="w-full h-[calc(100%-40px)] min-h-[520px] rounded-md border bg-background"
+                          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
                           referrerPolicy="no-referrer-when-downgrade"
-                          onLoad={() => setBrowserPaneState("loaded")}
+                          onLoad={(e) => {
+                            // "Refused to connect" error pages fire onLoad almost instantly.
+                            // Legit pages take 1-3s minimum. If onLoad fires within 1.5s
+                            // for a primary URL, treat it as a blocked embed and keep
+                            // the loading/timeout state so auto-fallback kicks in.
+                            if (browserMode === "primary" || browserMode === "fallback") {
+                              try {
+                                const iframe = e.currentTarget as HTMLIFrameElement;
+                                // Cross-origin iframes throw when accessing contentDocument.
+                                // If accessible and the body is empty/minimal, it's a refuse page.
+                                const doc = iframe.contentDocument;
+                                if (doc && doc.body && doc.body.innerText.includes("refused")) {
+                                  setBrowserPaneState("timeout");
+                                  return;
+                                }
+                              } catch {
+                                // Cross-origin — expected for real job sites.
+                                // This is actually a GOOD sign — the page loaded something.
+                              }
+                            }
+                            setBrowserPaneState("loaded");
+                          }}
+                          onError={() => setBrowserPaneState("timeout")}
                         />
                         {browserPaneState === "loading" && (
                           <p className="text-xs text-muted-foreground">
@@ -1718,7 +1767,17 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
                         )}
                         {browserPaneState === "timeout" && (
                           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex flex-wrap items-center gap-2">
-                            <span>Embed seems blocked or slow for this URL.</span>
+                            <span>This site blocks in-app embedding. Use one of these alternatives:</span>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              asChild
+                            >
+                              <a href={activeBrowserUrl} target="_blank" rel="noreferrer">
+                                <ArrowUpRight className="w-3 h-3 mr-1" />
+                                Open in New Tab
+                              </a>
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
@@ -1733,10 +1792,7 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
                               Use Cloud Browser
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => setBrowserMode("fallback")}>
-                              Try Fallback
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => setBrowserMode("reader")}>
-                              Try Reader
+                              LinkedIn Search
                             </Button>
                           </div>
                         )}
