@@ -14,6 +14,12 @@ Each profile file must use the `*.agent.md` naming convention.
 - `performance_optimizer`: Bundle/runtime/perf optimization.
 - `security_guardian`: Secret handling and security hardening.
 - `devops_release`: Build/release/deploy safety.
+- `growth_autopilot`: Growth experiment engine.
+- `enterprise_architect`: Enterprise feature and architecture strategy.
+- `market_intelligence`: Competitive analysis and positioning.
+- `automation_fabric`: Cross-system automation design.
+- `customer_success`: Onboarding, retention, and success ops.
+- `revenue_ops`: Pricing and revenue system optimization.
 
 ## Jira owner alias mapping
 
