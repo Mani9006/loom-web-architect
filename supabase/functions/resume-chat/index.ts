@@ -6,6 +6,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function parseIntEnv(name: string, fallback: number): number {
+  const raw = Deno.env.get(name);
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function clampText(value: string, maxChars: number): string {
+  if (!value || value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n\n[Truncated to fit budget]`;
+}
+
+function getResumeMaxTokens(isInitialGeneration: boolean): number {
+  const initialMax = parseIntEnv("RESUME_CHAT_MAX_TOKENS_INITIAL", 3500);
+  const followupMax = parseIntEnv("RESUME_CHAT_MAX_TOKENS_FOLLOWUP", 1800);
+  const cap = parseIntEnv("RESUME_CHAT_MAX_TOKENS_CAP", 6000);
+  const selected = isInitialGeneration ? initialMax : followupMax;
+  return Math.max(512, Math.min(selected, cap));
+}
+
 // Mem0 helper - search for user context
 async function searchUserMemories(userId: string): Promise<string> {
   const MEM0_API_KEY = Deno.env.get("MEM0_API_KEY");
@@ -242,7 +261,8 @@ const MODEL_CONFIGS: Record<string, ModelConfig> = {
 async function callOpenAI(
   apiKey: string,
   model: string,
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: string }>,
+  maxTokens: number,
 ): Promise<Response> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -252,6 +272,7 @@ async function callOpenAI(
     },
     body: JSON.stringify({
       model,
+      max_tokens: maxTokens,
       messages,
       stream: true,
     }),
@@ -262,7 +283,8 @@ async function callOpenAI(
 async function callAnthropic(
   apiKey: string,
   model: string,
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: string }>,
+  maxTokens: number,
 ): Promise<Response> {
   // Extract system message and convert messages for Anthropic format
   const systemMessage = messages.find((m) => m.role === "system")?.content || "";
@@ -282,7 +304,7 @@ async function callAnthropic(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 8192,
+      max_tokens: maxTokens,
       system: systemMessage,
       messages: anthropicMessages,
       stream: true,
@@ -294,7 +316,8 @@ async function callAnthropic(
 async function callLovableAI(
   apiKey: string,
   model: string,
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: string }>,
+  maxTokens: number,
 ): Promise<Response> {
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -304,6 +327,7 @@ async function callLovableAI(
     },
     body: JSON.stringify({
       model,
+      max_tokens: maxTokens,
       messages,
       stream: true,
     }),
@@ -422,6 +446,9 @@ serve(async (req) => {
       });
     }
 
+    const isInitialGeneration = !!resumeData && (!messages || messages.length === 0);
+    const maxOutputTokens = getResumeMaxTokens(isInitialGeneration);
+
     // Fetch user memories in parallel with building context
     const userMemoryPromise = searchUserMemories(user.id);
 
@@ -494,6 +521,10 @@ ${projectDetails}
 5. Use strong action verbs and quantifiable metrics
 6. Optimize for ATS with keywords relevant to: ${targetRole || "the role"}
 7. Keep the exact markdown structure for parsing`;
+      contextMessage = clampText(
+        contextMessage,
+        parseIntEnv("RESUME_CHAT_INITIAL_CONTEXT_MAX_CHARS", 18000),
+      );
     }
 
     // If currentResume is provided, add it to context for refinement
@@ -502,7 +533,7 @@ ${projectDetails}
       resumeContext = `
 
 **Current Resume State** (update only what user requests, keep same format):
-${JSON.stringify(currentResume, null, 2)}
+${clampText(JSON.stringify(currentResume, null, 2), parseIntEnv("RESUME_CHAT_CURRENT_RESUME_MAX_CHARS", 12000))}
 
 IMPORTANT: When refining, maintain the EXACT same template structure. Only update the content the user specifies.`;
     }
@@ -534,14 +565,14 @@ IMPORTANT: When refining, maintain the EXACT same template structure. Only updat
 
     switch (config.provider) {
       case "openai":
-        response = await callOpenAI(apiKey, config.model, fullMessages);
+        response = await callOpenAI(apiKey, config.model, fullMessages, maxOutputTokens);
         break;
       case "anthropic":
-        response = await callAnthropic(apiKey, config.model, fullMessages);
+        response = await callAnthropic(apiKey, config.model, fullMessages, maxOutputTokens);
         break;
       case "lovable":
       default:
-        response = await callLovableAI(apiKey, config.model, fullMessages);
+        response = await callLovableAI(apiKey, config.model, fullMessages, maxOutputTokens);
         break;
     }
 

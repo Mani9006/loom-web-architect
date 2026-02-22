@@ -6,6 +6,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function parseIntEnv(name: string, fallback: number): number {
+  const raw = Deno.env.get(name);
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function trimMessages(messages: any[], maxNonSystemMessages: number): any[] {
+  if (!Array.isArray(messages) || messages.length === 0) return [];
+  const systemMessages = messages.filter((message) => message?.role === "system").slice(-1);
+  const nonSystemMessages = messages.filter((message) => message?.role !== "system");
+  if (nonSystemMessages.length <= maxNonSystemMessages) {
+    return [...systemMessages, ...nonSystemMessages];
+  }
+  return [...systemMessages, ...nonSystemMessages.slice(-maxNonSystemMessages)];
+}
+
 // Specialized system prompts for different modes
 const SYSTEM_PROMPTS: Record<string, string> = {
   general: `You are an intelligent, helpful AI assistant with persistent memory. You help users with career-related tasks and general questions.
@@ -204,7 +220,7 @@ async function searchMem0(apiKey: string, userId: string, query: string): Promis
         filters: {
           OR: [{ user_id: userId }]
         },
-        limit: 15,
+        limit: parseIntEnv("CHAT_MEM0_RESULT_LIMIT", 8),
       }),
     });
 
@@ -313,10 +329,16 @@ function getModelConfig(mode: string): ModelConfig {
 
 // Get max tokens based on mode — resume parsing needs more output tokens for large resumes
 function getMaxTokens(mode: string): number {
+  const defaultMax = parseIntEnv("CHAT_MAX_TOKENS_DEFAULT", 1200);
+  const atsMax = parseIntEnv("CHAT_MAX_TOKENS_ATS", 2500);
+  const resumeParseMax = parseIntEnv("CHAT_MAX_TOKENS_RESUME_PARSE", 6000);
   switch (mode) {
-    case "resume_parse": return 16384; // Large resumes produce big JSON
-    case "ats": return 8192;
-    default: return 4096;
+    case "resume_parse":
+      return resumeParseMax;
+    case "ats":
+      return atsMax;
+    default:
+      return defaultMax;
   }
 }
 
@@ -508,9 +530,10 @@ serve(async (req) => {
 
     // When the backend has a dedicated system prompt for this mode, strip frontend system messages
     // to avoid conflicting/duplicate instructions. Otherwise, keep them (the frontend provides the prompt).
-    const userMessages = hasDedicatedPrompt
+    const rawMessages = hasDedicatedPrompt
       ? messages.filter((m: any) => m.role !== "system")
       : messages;
+    const userMessages = trimMessages(rawMessages, parseIntEnv("CHAT_MAX_CONTEXT_MESSAGES", 12));
 
     let response: Response;
     let usedProvider: AIProvider = finalProvider;

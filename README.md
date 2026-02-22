@@ -150,3 +150,22 @@ Set these in Supabase project secrets for `admin-portal`:
   `ADMIN_MEM0_MONTHLY_USD`,
   `ADMIN_PERPLEXITY_MONTHLY_USD`,
   `ADMIN_OTHER_INFRA_MONTHLY_USD`
+
+Set these in Supabase project secrets for token controls and usage alerts:
+
+- `USAGE_GUARD_MONTHLY_TOKEN_BUDGET` (default `1500000`)
+- `USAGE_GUARD_DAILY_TOKEN_BUDGET` (default monthly/30)
+- `USAGE_GUARD_WARN_AT` (default `0.8`)
+- `USAGE_GUARD_CRITICAL_AT` (default `0.95`)
+- `CHAT_MAX_CONTEXT_MESSAGES` (default `12`)
+- `CHAT_MAX_TOKENS_DEFAULT` (default `1200`)
+- `CHAT_MAX_TOKENS_ATS` (default `2500`)
+- `CHAT_MAX_TOKENS_RESUME_PARSE` (default `6000`)
+- `CHAT_MEM0_RESULT_LIMIT` (default `8`)
+- `RESUME_CHAT_MAX_TOKENS_INITIAL` (default `3500`)
+- `RESUME_CHAT_MAX_TOKENS_FOLLOWUP` (default `1800`)
+- `RESUME_CHAT_MAX_TOKENS_CAP` (default `6000`)
+- `RESUME_CHAT_INITIAL_CONTEXT_MAX_CHARS` (default `18000`)
+- `RESUME_CHAT_CURRENT_RESUME_MAX_CHARS` (default `12000`)
+- `ORCHESTRATOR_MAX_TOKENS_DEFAULT` (default `1200`)
+- `ORCHESTRATOR_MAX_TOKENS_COMPLEX` (default `1800`)

@@ -6,6 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function parseIntEnv(name: string, fallback: number): number {
+  const raw = Deno.env.get(name);
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 // Agent definitions with specialized capabilities
 const AGENTS = {
   orchestrator: {
@@ -360,12 +366,27 @@ function getOptimalModelForAgent(agentType: string): string {
   }
 }
 
+function getMaxTokensForAgent(agentType: string): number {
+  const defaultMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_DEFAULT", 1200);
+  const complexMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_COMPLEX", 1800);
+  switch (agentType) {
+    case "resume":
+    case "cover_letter":
+    case "ats":
+    case "resume_enhance":
+      return complexMax;
+    default:
+      return defaultMax;
+  }
+}
+
 // Execute specialized agent using OpenAI
 async function executeAgent(
   apiKey: string,
   agentType: string,
   messages: any[],
-  memoryContext: string
+  memoryContext: string,
+  maxTokens: number,
 ): Promise<Response> {
   const normalizedAgentType = normalizeIntent(agentType);
   const agent = AGENTS[normalizedAgentType as keyof typeof AGENTS] || AGENTS.general;
@@ -387,6 +408,7 @@ Keep responses clear, well-structured, and actionable. Use markdown formatting f
     },
     body: JSON.stringify({
       model: optimalModel,
+      max_tokens: maxTokens,
       messages: [
         { role: "system", content: systemPrompt },
         ...messages,
@@ -480,7 +502,8 @@ serve(async (req) => {
       OPENAI_API_KEY,
       routedIntent,
       messages,
-      memoryContext
+      memoryContext,
+      getMaxTokensForAgent(routedIntent),
     );
 
     if (!response.ok) {
