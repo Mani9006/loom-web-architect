@@ -259,7 +259,10 @@ function buildTaskDescription(issue) {
 }
 
 function runGhAgentTaskCreate({ repo, base, agentName, description, dryRun }) {
-  const args = ["agent-task", "create", description, "--repo", repo, "--base", base, "--custom-agent", agentName];
+  const args = ["agent-task", "create", description, "--repo", repo, "--base", base];
+  if (agentName) {
+    args.push("--custom-agent", agentName);
+  }
   if (dryRun) {
     return Promise.resolve({ code: 0, stdout: `[dry-run] gh ${args.join(" ")}`, stderr: "" });
   }
@@ -326,7 +329,7 @@ async function main() {
     const key = keyOf(issue);
     const updated = String(issue?.fields?.updated || "");
     const prev = state.issues?.[key];
-    if (!force && prev && prev.updated === updated && prev.mode === "live") continue;
+    if (!force && prev && prev.updated === updated && prev.mode === "live" && prev.result === "created") continue;
     candidates.push(issue);
     if (candidates.length >= maxDispatch) break;
   }
@@ -339,7 +342,7 @@ async function main() {
     const key = keyOf(issue);
     const customAgent = resolveAgent(issue, ownerByTicket, aliasMap);
     const description = buildTaskDescription(issue);
-    const result = await runGhAgentTaskCreate({
+    let result = await runGhAgentTaskCreate({
       repo,
       base,
       agentName: customAgent,
@@ -347,8 +350,25 @@ async function main() {
       dryRun,
     });
 
+    let usedCustomAgent = true;
+    if (
+      !dryRun &&
+      result.code !== 0 &&
+      /custom agent not found/i.test(`${result.stdout}\n${result.stderr}`)
+    ) {
+      result = await runGhAgentTaskCreate({
+        repo,
+        base,
+        agentName: "",
+        description,
+        dryRun,
+      });
+      usedCustomAgent = false;
+    }
+
     const ok = result.code === 0;
-    actions.push(`- ${key}: ${customAgent} -> ${ok ? "created" : `failed (${result.code})`}`);
+    const agentLabel = usedCustomAgent ? customAgent : `${customAgent} (fallback: default)`;
+    actions.push(`- ${key}: ${agentLabel} -> ${ok ? "created" : `failed (${result.code})`}`);
     if (!ok) {
       errors.push(`${key}: ${result.stderr.trim() || "gh agent-task create failed"}`);
     }
@@ -357,9 +377,11 @@ async function main() {
       updatedState[key] = {
         updated: String(issue?.fields?.updated || ""),
         customAgent,
+        usedCustomAgent,
         dispatchedAt: new Date().toISOString(),
         status: statusOf(issue),
         mode: "live",
+        result: ok ? "created" : "failed",
         output: result.stdout.trim().slice(0, 1200),
       };
     }
