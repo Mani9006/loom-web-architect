@@ -121,7 +121,7 @@ async function authenticateOwner(req: Request) {
     );
   }
 
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!serviceRole) {
     throw new Response(JSON.stringify({ error: "Service role key missing" }), {
       status: 500,
