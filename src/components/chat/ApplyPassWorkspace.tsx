@@ -423,6 +423,11 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
     cloudBrowserSession?.debuggerUrl ||
     "";
 
+  const primaryUrlIsBlocked = useMemo(
+    () => shouldPreferCloudBrowser(primaryBrowserUrl),
+    [primaryBrowserUrl],
+  );
+
   const activeBrowserUrl = useMemo(() => {
     if (browserMode === "cloud") return cloudBrowserUrl;
     if (browserMode === "manual") return manualBrowserUrl;
@@ -483,41 +488,25 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
     }
   }, [selectedJobId, browserMode]);
 
+  // Auto-switch to cloud mode when a cloud session already exists and the
+  // primary URL is blocklisted. We no longer auto-*create* cloud sessions
+  // for blocklisted URLs — the UI shows action buttons instead.
   useEffect(() => {
     if (browserMode !== "primary") return;
     if (!primaryBrowserUrl) return;
     if (!shouldPreferCloudBrowser(primaryBrowserUrl)) return;
-    if (autoCloudForUrlRef.current === primaryBrowserUrl) return;
-    if (cloudBusy) return;
+    if (!cloudBrowserSession?.sessionId) return;
+    setBrowserMode("cloud");
+  }, [browserMode, primaryBrowserUrl, cloudBrowserSession?.sessionId]);
 
-    autoCloudForUrlRef.current = primaryBrowserUrl;
-
-    if (cloudBrowserSession?.sessionId) {
-      setBrowserMode("cloud");
-      return;
-    }
-
-    void startCloudBrowserSession(primaryBrowserUrl);
-  }, [browserMode, primaryBrowserUrl, cloudBusy, cloudBrowserSession?.sessionId]);
-
+  // When a non-blocked iframe times out and a cloud session exists, auto-switch.
   useEffect(() => {
     if (browserPaneState !== "timeout") return;
     if (browserMode !== "primary") return;
     if (cloudBrowserSession?.sessionId) {
       setBrowserMode("cloud");
-      return;
     }
-    if (cloudBusy) return;
-    void startCloudBrowserSession(primaryBrowserUrl || fallbackBrowserUrl || browserAddress);
-  }, [
-    browserPaneState,
-    browserMode,
-    cloudBrowserSession?.sessionId,
-    cloudBusy,
-    primaryBrowserUrl,
-    fallbackBrowserUrl,
-    browserAddress,
-  ]);
+  }, [browserPaneState, browserMode, cloudBrowserSession?.sessionId]);
 
   useEffect(() => {
     setBrowserAddress(activeBrowserUrl);
@@ -1728,53 +1717,22 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
 
                   <div className="flex-1 p-3 min-h-0">
                     {activeBrowserUrl ? (
-                      <div className="h-full space-y-2">
-                        <iframe
-                          key={`${activeBrowserUrl}-${browserRefreshKey}`}
-                          title={`Job application preview ${selectedJob?.title || "job"}`}
-                          src={activeBrowserUrl}
-                          className="w-full h-[calc(100%-40px)] min-h-[520px] rounded-md border bg-background"
-                          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                          referrerPolicy="no-referrer-when-downgrade"
-                          onLoad={(e) => {
-                            // "Refused to connect" error pages fire onLoad almost instantly.
-                            // Legit pages take 1-3s minimum. If onLoad fires within 1.5s
-                            // for a primary URL, treat it as a blocked embed and keep
-                            // the loading/timeout state so auto-fallback kicks in.
-                            if (browserMode === "primary" || browserMode === "fallback") {
-                              try {
-                                const iframe = e.currentTarget as HTMLIFrameElement;
-                                // Cross-origin iframes throw when accessing contentDocument.
-                                // If accessible and the body is empty/minimal, it's a refuse page.
-                                const doc = iframe.contentDocument;
-                                if (doc && doc.body && doc.body.innerText.includes("refused")) {
-                                  setBrowserPaneState("timeout");
-                                  return;
-                                }
-                              } catch {
-                                // Cross-origin — expected for real job sites.
-                                // This is actually a GOOD sign — the page loaded something.
-                              }
-                            }
-                            setBrowserPaneState("loaded");
-                          }}
-                          onError={() => setBrowserPaneState("timeout")}
-                        />
-                        {browserPaneState === "loading" && (
-                          <p className="text-xs text-muted-foreground">
-                            Loading in-app browser...
-                          </p>
-                        )}
-                        {browserPaneState === "timeout" && (
-                          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex flex-wrap items-center gap-2">
-                            <span>This site blocks in-app embedding. Use one of these alternatives:</span>
-                            <Button
-                              size="sm"
-                              variant="default"
-                              asChild
-                            >
-                              <a href={activeBrowserUrl} target="_blank" rel="noreferrer">
-                                <ArrowUpRight className="w-3 h-3 mr-1" />
+                      primaryUrlIsBlocked && browserMode === "primary" ? (
+                        /* Blocklisted domain — skip iframe entirely, show actions */
+                        <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium">
+                              {domainFromUrl(primaryBrowserUrl)} blocks in-app embedding.
+                            </p>
+                            <p className="text-xs text-muted-foreground max-w-md">
+                              Most job boards prevent their pages from loading inside other sites.
+                              Open the listing directly or switch to a different browser mode below.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 justify-center">
+                            <Button size="sm" variant="default" asChild>
+                              <a href={primaryBrowserUrl} target="_blank" rel="noreferrer">
+                                <ArrowUpRight className="w-4 h-4 mr-1" />
                                 Open in New Tab
                               </a>
                             </Button>
@@ -1788,15 +1746,65 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
                                   void startCloudBrowserSession();
                                 }
                               }}
+                              disabled={cloudBusy}
                             >
+                              {cloudBusy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <SearchCode className="w-4 h-4 mr-1" />}
                               Use Cloud Browser
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => setBrowserMode("fallback")}>
                               LinkedIn Search
                             </Button>
+                            <Button size="sm" variant="outline" onClick={() => setBrowserMode("reader")}>
+                              Reader Mode
+                            </Button>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        /* Normal iframe rendering for non-blocked or non-primary modes */
+                        <div className="h-full space-y-2">
+                          <iframe
+                            key={`${activeBrowserUrl}-${browserRefreshKey}`}
+                            title={`Job application preview ${selectedJob?.title || "job"}`}
+                            src={activeBrowserUrl}
+                            className="w-full h-[calc(100%-40px)] min-h-[520px] rounded-md border bg-background"
+                            referrerPolicy="no-referrer-when-downgrade"
+                            onLoad={() => setBrowserPaneState("loaded")}
+                            onError={() => setBrowserPaneState("timeout")}
+                          />
+                          {browserPaneState === "loading" && (
+                            <p className="text-xs text-muted-foreground">
+                              Loading in-app browser...
+                            </p>
+                          )}
+                          {browserPaneState === "timeout" && (
+                            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex flex-wrap items-center gap-2">
+                              <span>This site may block in-app embedding. Use one of these alternatives:</span>
+                              <Button size="sm" variant="default" asChild>
+                                <a href={activeBrowserUrl} target="_blank" rel="noreferrer">
+                                  <ArrowUpRight className="w-3 h-3 mr-1" />
+                                  Open in New Tab
+                                </a>
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  if (cloudBrowserSession?.sessionId) {
+                                    setBrowserMode("cloud");
+                                  } else {
+                                    void startCloudBrowserSession();
+                                  }
+                                }}
+                              >
+                                Use Cloud Browser
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setBrowserMode("fallback")}>
+                                LinkedIn Search
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )
                     ) : (
                       <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
                         {browserMode === "cloud" ? (
