@@ -609,10 +609,20 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    if (session?.access_token) return session.access_token;
+    if (session?.access_token) {
+      const verified = await supabase.auth.getUser();
+      if (!verified.error && verified.data.user) {
+        return session.access_token;
+      }
+    }
 
     const refreshed = await supabase.auth.refreshSession();
     if (refreshed.error || !refreshed.data.session?.access_token) {
+      throw new Error("Your session has expired. Please sign out and sign in again.");
+    }
+
+    const verified = await supabase.auth.getUser();
+    if (verified.error || !verified.data.user) {
       throw new Error("Your session has expired. Please sign out and sign in again.");
     }
     return refreshed.data.session.access_token;
