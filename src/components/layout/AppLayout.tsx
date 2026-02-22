@@ -33,6 +33,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
   { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
+  { label: "ApplyPass", icon: Search, path: "/applypass", badge: "NEW" },
   { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
   { label: "Cover Letter", icon: FolderOpen, path: "/cover-letter" },
   { label: "ATS Checker", icon: Target, path: "/ats-checker" },

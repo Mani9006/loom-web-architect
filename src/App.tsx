@@ -9,6 +9,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import OwnerProtectedRoute from "@/components/OwnerProtectedRoute";
+import RouteAnalyticsTracker from "@/components/RouteAnalyticsTracker";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 
 // Eager-loaded routes (critical path)
@@ -27,6 +28,7 @@ const ResumeProjects = lazy(() => import("./pages/ResumeProjects"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
 const JobsPage = lazy(() => import("./pages/JobsPage"));
 const JobSearchPage = lazy(() => import("./pages/JobSearchPage"));
+const ApplyPassPage = lazy(() => import("./pages/ApplyPassPage"));
 const Contacts = lazy(() => import("./pages/Contacts"));
 const CoverLettersPage = lazy(() => import("./pages/CoverLettersPage"));
 const CoverLetterPage = lazy(() => import("./pages/CoverLetterPage"));
@@ -56,6 +58,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <RouteAnalyticsTracker />
             <Suspense fallback={<SuspenseFallback />}>
               <Routes>
                 {/* Public routes */}
@@ -70,6 +73,7 @@ const App = () => (
                     <Route path="/home" element={<HomePage />} />
                     <Route path="/jobs" element={<JobsPage />} />
                     <Route path="/job-search" element={<JobSearchPage />} />
+                    <Route path="/applypass" element={<ApplyPassPage />} />
                     <Route path="/resume-builder" element={<ResumeProjects />} />
                     <Route path="/resume-builder/:resumeId" element={<ResumeBuilder />} />
                     <Route path="/job-tracker" element={<JobTracker />} />

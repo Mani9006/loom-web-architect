@@ -47,6 +47,25 @@ type ActivityUser = {
 };
 
 type TrendPoint = { date: string; signups: number; activeUsers: number };
+type WebsiteTrendPoint = { date: string; visitors: number; pageViews: number };
+
+type WebsiteAnalytics = {
+  rangeDays: number;
+  events: number;
+  pageViews: number;
+  uniqueVisitors: number;
+  signedInVisitors: number;
+  currentVisitors5m: number;
+  viewsPerVisit: number;
+  avgVisitDurationSec: number;
+  bounceRatePct: number;
+  topSources: Array<{ source: string; visitors: number }>;
+  topPages: Array<{ path: string; views: number }>;
+  countries: Array<{ country: string; visitors: number }>;
+  devices: Array<{ device: string; visitors: number }>;
+  visitsTrend: WebsiteTrendPoint[];
+  warning: string | null;
+};
 
 type AccessControlRow = {
   user_id: string;
@@ -69,6 +88,16 @@ type AuthUserRow = {
     provider?: string;
     providers?: string[];
   };
+};
+
+type ProductEventRow = {
+  session_id: string;
+  user_id: string | null;
+  event_name: string;
+  path: string | null;
+  referrer: string | null;
+  properties: Record<string, unknown> | null;
+  occurred_at: string;
 };
 
 const ACCOUNT_STATUS_VALUES: AccountStatus[] = ["active", "suspended", "blocked"];
@@ -117,6 +146,31 @@ function safeNullableDate(value: string | null | undefined): string | null {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+function toDomain(referrer: string | null | undefined): string {
+  if (!referrer) return "Direct";
+  try {
+    const host = new URL(referrer).hostname.toLowerCase();
+    return host.startsWith("www.") ? host.slice(4) : host;
+  } catch {
+    return "Direct";
+  }
+}
+
+function toCountry(value: unknown): string {
+  const v = String(value || "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(v)) return v;
+  return "Unknown";
+}
+
+function toDevice(value: unknown): string {
+  const v = String(value || "").trim().toLowerCase();
+  if (!v) return "Unknown";
+  if (v.includes("mobile")) return "Mobile";
+  if (v.includes("tablet")) return "Tablet";
+  if (v.includes("desktop")) return "Desktop";
+  return "Other";
 }
 
 function boolEnv(name: string): boolean {
@@ -589,6 +643,137 @@ function buildCostModel(inputTokens: number, outputTokens: number, rangeDays: nu
   };
 }
 
+function buildWebsiteAnalytics(
+  rows: ProductEventRow[],
+  rangeDays: number,
+  warning: string | null,
+): WebsiteAnalytics {
+  const dayKeys: string[] = [];
+  for (let i = Math.max(1, rangeDays) - 1; i >= 0; i -= 1) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    dayKeys.push(d.toISOString().slice(0, 10));
+  }
+
+  const byDayVisitors = new Map<string, Set<string>>();
+  const byDayPageViews = new Map<string, number>();
+  for (const day of dayKeys) {
+    byDayVisitors.set(day, new Set());
+    byDayPageViews.set(day, 0);
+  }
+
+  const sessions = new Map<
+    string,
+    {
+      firstAt: string;
+      lastAt: string;
+      pageViews: number;
+      userId: string | null;
+      source: string;
+      country: string;
+      device: string;
+    }
+  >();
+  const topPages = new Map<string, number>();
+
+  for (const row of rows) {
+    const ts = safeDate(row.occurred_at);
+    const day = ts.slice(0, 10);
+    const sessionId = row.session_id || `unknown-${row.user_id || "anon"}`;
+    const source = toDomain(row.referrer);
+    const country = toCountry(row.properties?.country);
+    const device = toDevice(row.properties?.device_type);
+
+    let s = sessions.get(sessionId);
+    if (!s) {
+      s = {
+        firstAt: ts,
+        lastAt: ts,
+        pageViews: 0,
+        userId: row.user_id || null,
+        source,
+        country,
+        device,
+      };
+      sessions.set(sessionId, s);
+    }
+    if (ts < s.firstAt) s.firstAt = ts;
+    if (ts > s.lastAt) s.lastAt = ts;
+    if (row.user_id && !s.userId) s.userId = row.user_id;
+
+    if (row.event_name === "page_view") {
+      s.pageViews += 1;
+      const path = row.path || "/";
+      topPages.set(path, (topPages.get(path) || 0) + 1);
+      if (byDayPageViews.has(day)) {
+        byDayPageViews.set(day, (byDayPageViews.get(day) || 0) + 1);
+      }
+      byDayVisitors.get(day)?.add(sessionId);
+    } else {
+      byDayVisitors.get(day)?.add(sessionId);
+    }
+  }
+
+  const sessionValues = [...sessions.values()];
+  const sourceMap = new Map<string, number>();
+  const countryMap = new Map<string, number>();
+  const deviceMap = new Map<string, number>();
+  let totalVisitDurationSec = 0;
+  let sessionsWithPageViews = 0;
+  let bouncedSessions = 0;
+
+  for (const s of sessionValues) {
+    sourceMap.set(s.source, (sourceMap.get(s.source) || 0) + 1);
+    countryMap.set(s.country, (countryMap.get(s.country) || 0) + 1);
+    deviceMap.set(s.device, (deviceMap.get(s.device) || 0) + 1);
+
+    if (s.pageViews > 0) {
+      sessionsWithPageViews += 1;
+      if (s.pageViews <= 1) bouncedSessions += 1;
+      const sec = Math.max(0, Math.floor((new Date(s.lastAt).getTime() - new Date(s.firstAt).getTime()) / 1000));
+      totalVisitDurationSec += sec;
+    }
+  }
+
+  const pageViews = [...topPages.values()].reduce((acc, n) => acc + n, 0);
+  const uniqueVisitors = sessions.size;
+  const signedInVisitors = new Set(sessionValues.map((s) => s.userId).filter(Boolean)).size;
+  const viewsPerVisit = sessionsWithPageViews > 0 ? pageViews / sessionsWithPageViews : 0;
+  const avgVisitDurationSec = sessionsWithPageViews > 0 ? totalVisitDurationSec / sessionsWithPageViews : 0;
+  const bounceRatePct = sessionsWithPageViews > 0 ? (bouncedSessions / sessionsWithPageViews) * 100 : 0;
+  const now = Date.now();
+  const currentVisitors5m = sessionValues.filter(
+    (s) => now - new Date(s.lastAt).getTime() <= 5 * 60 * 1000,
+  ).length;
+
+  const sortTop = (map: Map<string, number>, label: string) =>
+    [...map.entries()]
+      .map(([key, count]) => ({ [label]: key, count }) as Record<string, string | number>)
+      .sort((a, b) => Number(b.count) - Number(a.count))
+      .slice(0, 12);
+
+  return {
+    rangeDays,
+    events: rows.length,
+    pageViews,
+    uniqueVisitors,
+    signedInVisitors,
+    currentVisitors5m,
+    viewsPerVisit: Math.round(viewsPerVisit * 100) / 100,
+    avgVisitDurationSec: Math.round(avgVisitDurationSec),
+    bounceRatePct: Math.round(bounceRatePct * 10) / 10,
+    topSources: sortTop(sourceMap, "source").map((v) => ({ source: String(v.source), visitors: Number(v.count) })),
+    topPages: sortTop(topPages, "path").map((v) => ({ path: String(v.path), views: Number(v.count) })),
+    countries: sortTop(countryMap, "country").map((v) => ({ country: String(v.country), visitors: Number(v.count) })),
+    devices: sortTop(deviceMap, "device").map((v) => ({ device: String(v.device), visitors: Number(v.count) })),
+    visitsTrend: dayKeys.map((day) => ({
+      date: day,
+      visitors: byDayVisitors.get(day)?.size || 0,
+      pageViews: byDayPageViews.get(day) || 0,
+    })),
+    warning,
+  };
+}
+
 async function buildSummary(
   serviceClient: ReturnType<typeof createClient>,
   ownerEmails: string[],
@@ -618,6 +803,7 @@ async function buildSummary(
     documents,
     recentMessages,
     recentSignups,
+    websiteEvents,
   ] = await Promise.all([
     serviceClient.from("profiles").select("id", { count: "exact", head: true }),
     serviceClient.from("resumes").select("id", { count: "exact", head: true }),
@@ -644,6 +830,12 @@ async function buildSummary(
       .order("created_at", { ascending: false })
       .limit(parseNum(Deno.env.get("ADMIN_COST_SAMPLE_LIMIT"), 10000)),
     serviceClient.from("profiles").select("user_id,created_at").gte("created_at", sinceIso),
+    serviceClient
+      .from("product_analytics_events")
+      .select("session_id,user_id,event_name,path,referrer,properties,occurred_at")
+      .gte("occurred_at", sinceIso)
+      .order("occurred_at", { ascending: true })
+      .limit(parseNum(Deno.env.get("ADMIN_ANALYTICS_EVENT_LIMIT"), 50000)),
   ]);
 
   let accessControlRows: AccessControlRow[] = [];
@@ -883,6 +1075,20 @@ async function buildSummary(
     }
   }
 
+  let websiteWarning: string | null = null;
+  let websiteRows: ProductEventRow[] = [];
+  if (websiteEvents.error) {
+    if (websiteEvents.error.code !== "42P01") {
+      websiteWarning = websiteEvents.error.message;
+    } else {
+      websiteWarning = "Analytics event table not deployed yet.";
+    }
+  } else {
+    websiteRows = (websiteEvents.data || []) as ProductEventRow[];
+  }
+
+  const website = buildWebsiteAnalytics(websiteRows, rangeDays, websiteWarning);
+
   return {
     generatedAt: new Date().toISOString(),
     ownerEmails,
@@ -911,6 +1117,7 @@ async function buildSummary(
       aiEnabledUsers,
       restrictedUsers,
     },
+    website,
     apiCosts: monthlyCost,
     trends,
     users: usersList,

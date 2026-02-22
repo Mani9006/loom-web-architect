@@ -29,21 +29,26 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
 import {
+  Activity,
   AlertTriangle,
   Building2,
   ChevronRight,
   ClipboardList,
+  Clock3,
   Crown,
   Database as DatabaseIcon,
   DollarSign,
   ExternalLink,
   GitBranch,
+  Globe,
   KeyRound,
   Loader2,
+  MousePointerClick,
   Rocket,
   RefreshCcw,
   Shield,
   ShieldCheck,
+  TrendingUp,
   Users,
 } from "lucide-react";
 import {
@@ -105,6 +110,23 @@ interface PortalResponse {
     planCounts: Record<string, number>;
     aiEnabledUsers: number;
     restrictedUsers: number;
+  };
+  website?: {
+    rangeDays: number;
+    events: number;
+    pageViews: number;
+    uniqueVisitors: number;
+    signedInVisitors: number;
+    currentVisitors5m: number;
+    viewsPerVisit: number;
+    avgVisitDurationSec: number;
+    bounceRatePct: number;
+    topSources: Array<{ source: string; visitors: number }>;
+    topPages: Array<{ path: string; views: number }>;
+    countries: Array<{ country: string; visitors: number }>;
+    devices: Array<{ device: string; visitors: number }>;
+    visitsTrend: Array<{ date: string; visitors: number; pageViews: number }>;
+    warning: string | null;
   };
   apiCosts: {
     rangeDays: number;
@@ -269,6 +291,14 @@ function formatDate(value: string) {
   return date.toLocaleString();
 }
 
+function formatDuration(sec: number) {
+  const total = Math.max(0, Math.floor(sec || 0));
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  if (mins <= 0) return `${secs}s`;
+  return `${mins}m ${String(secs).padStart(2, "0")}s`;
+}
+
 function loginRecency(lastSignInAt: string | null): { label: string; variant: "default" | "secondary" | "outline" } {
   if (!lastSignInAt) return { label: "No login", variant: "outline" };
   const ts = new Date(lastSignInAt).getTime();
@@ -369,6 +399,24 @@ function OverviewTab({
     );
   });
 
+  const website = data.website ?? {
+    rangeDays,
+    events: 0,
+    pageViews: 0,
+    uniqueVisitors: 0,
+    signedInVisitors: 0,
+    currentVisitors5m: 0,
+    viewsPerVisit: 0,
+    avgVisitDurationSec: 0,
+    bounceRatePct: 0,
+    topSources: [] as Array<{ source: string; visitors: number }>,
+    topPages: [] as Array<{ path: string; views: number }>,
+    countries: [] as Array<{ country: string; visitors: number }>,
+    devices: [] as Array<{ device: string; visitors: number }>,
+    visitsTrend: [] as Array<{ date: string; visitors: number; pageViews: number }>,
+    warning: null,
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -466,6 +514,92 @@ function OverviewTab({
         </Card>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <Globe className="w-4 h-4" /> Visitors
+            </CardDescription>
+            <CardTitle className="text-2xl">{formatNumber(website.uniqueVisitors)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Signed in: {formatNumber(website.signedInVisitors)}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <MousePointerClick className="w-4 h-4" /> Pageviews
+            </CardDescription>
+            <CardTitle className="text-2xl">{formatNumber(website.pageViews)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Events: {formatNumber(website.events)}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" /> Views / Visit
+            </CardDescription>
+            <CardTitle className="text-2xl">{website.viewsPerVisit.toFixed(2)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Range: {website.rangeDays} days</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <Clock3 className="w-4 h-4" /> Visit Duration
+            </CardDescription>
+            <CardTitle className="text-2xl">{formatDuration(website.avgVisitDurationSec)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Average session duration</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <Activity className="w-4 h-4" /> Bounce Rate
+            </CardDescription>
+            <CardTitle className="text-2xl">{website.bounceRatePct.toFixed(1)}%</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Single-page sessions</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <Users className="w-4 h-4" /> Current Visitors
+            </CardDescription>
+            <CardTitle className="text-2xl">{formatNumber(website.currentVisitors5m)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">Active in last 5 minutes</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {website.warning && (
+        <Card className="border-destructive/40">
+          <CardContent className="pt-6 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+            <div>
+              <p className="font-semibold">Website Analytics Warning</p>
+              <p className="text-sm text-muted-foreground">{website.warning}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <Card className="xl:col-span-2">
           <CardHeader>
@@ -536,6 +670,122 @@ function OverviewTab({
             <div className="pt-2 text-xs text-muted-foreground leading-relaxed">
               {data.access.subscriptionNote}
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-3">
+          <CardHeader>
+            <CardTitle>Website Traffic Trend</CardTitle>
+            <CardDescription>Daily visitors and pageviews over the selected period.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={website.visitsTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Legend />
+                <Area
+                  type="monotone"
+                  dataKey="visitors"
+                  stroke="hsl(220, 85%, 62%)"
+                  fill="hsl(220, 85%, 62%)"
+                  fillOpacity={0.18}
+                  strokeWidth={2}
+                  name="Visitors"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="pageViews"
+                  stroke="hsl(265, 75%, 58%)"
+                  fill="hsl(265, 75%, 58%)"
+                  fillOpacity={0.14}
+                  strokeWidth={2}
+                  name="Pageviews"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Sources</CardTitle>
+            <CardDescription>Where visitors are coming from.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {website.topSources.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No source data yet.</p>
+            ) : (
+              website.topSources.slice(0, 10).map((row) => (
+                <div key={row.source} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <span className="text-sm truncate pr-3">{row.source}</span>
+                  <span className="text-sm font-medium">{formatNumber(row.visitors)}</span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Pages</CardTitle>
+            <CardDescription>Most visited routes.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {website.topPages.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No pageview data yet.</p>
+            ) : (
+              website.topPages.slice(0, 10).map((row) => (
+                <div key={row.path} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <span className="text-sm truncate pr-3">{row.path}</span>
+                  <span className="text-sm font-medium">{formatNumber(row.views)}</span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Countries</CardTitle>
+            <CardDescription>Visitor region distribution.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {website.countries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No country data yet.</p>
+            ) : (
+              website.countries.slice(0, 10).map((row) => (
+                <div key={row.country} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <span className="text-sm truncate pr-3">{row.country}</span>
+                  <span className="text-sm font-medium">{formatNumber(row.visitors)}</span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Devices</CardTitle>
+            <CardDescription>Desktop vs mobile traffic.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {website.devices.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No device data yet.</p>
+            ) : (
+              website.devices.slice(0, 10).map((row) => (
+                <div key={row.device} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <span className="text-sm truncate pr-3">{row.device}</span>
+                  <span className="text-sm font-medium">{formatNumber(row.visitors)}</span>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </div>

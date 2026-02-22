@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "jsr:@std/http@1.0.8": "jsr:@std/http@1.0.8",
+    "npm:@supabase/supabase-js@2": "npm:@supabase/supabase-js@2"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window", "esnext"],
+    "strict": false
+  }
+}

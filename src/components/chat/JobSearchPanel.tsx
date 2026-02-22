@@ -11,8 +11,11 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import ApplyPassWorkspace from "@/components/chat/ApplyPassWorkspace";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const FILTERS_STORAGE_KEY = "job-search-filters";
+export const APPLYPASS_LATEST_SEARCH_KEY = "applypass-latest-search-v1";
 
 export interface JobFilters {
   jobType: string;
@@ -32,7 +35,18 @@ export interface JobResult {
   postedDate?: string;
   description?: string;
   url?: string;
+  fallbackUrl?: string;
+  sourceUrl?: string;
   matchScore?: number;
+}
+
+export interface ApplyPassSearchState {
+  jobs: JobResult[];
+  resumeText: string;
+  preferredResumeId?: string | null;
+  searchMarkdown: string;
+  filters: JobFilters;
+  searchedAt: string;
 }
 
 interface JobSearchPanelProps {
@@ -48,7 +62,121 @@ const defaultFilters: JobFilters = {
   salaryRange: "all",
 };
 
+function normalizeUrl(rawUrl: string): string {
+  if (!rawUrl) return "";
+  const unescaped = rawUrl.replace(/&amp;/gi, "&").trim();
+  const cleaned = unescaped
+    .replace(/^<+|>+$/g, "")
+    .replace(/^\(+|\)+$/g, "")
+    .replace(/[),.;]+$/g, "")
+    .trim();
+
+  if (!/^https?:\/\//i.test(cleaned)) return "";
+
+  try {
+    const parsed = new URL(cleaned);
+    if (!parsed.hostname) return "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+function isLikelyBrokenUrl(url: string): boolean {
+  const normalized = url.toLowerCase();
+
+  if (!normalized.startsWith("http")) return true;
+  if (/fake|placeholder|example\.com|undefined|null|lorem/.test(normalized)) return true;
+  if (normalized.includes("linkedin.com/jobs/view/") && !/linkedin\.com\/jobs\/view\/\d+/.test(normalized)) return true;
+  if (normalized.includes("indeed.com/viewjob") && !/[?&]jk=/.test(normalized)) return true;
+
+  return false;
+}
+
+function buildLinkedInFallbackUrl(title: string, company: string, location?: string): string {
+  const q = `${title} ${company}`.trim();
+  const where = (location || "United States").trim();
+  return `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(q)}&location=${encodeURIComponent(where)}`;
+}
+
+function extractLinks(section: string): string[] {
+  const links: string[] = [];
+
+  for (const match of section.matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/gi)) {
+    links.push(match[1]);
+  }
+
+  for (const match of section.matchAll(/(?:^|\s)(https?:\/\/[^\s<>()]+)(?=$|\s)/gi)) {
+    links.push(match[1]);
+  }
+
+  return links;
+}
+
+function parseJobsFromMarkdown(markdown: string, filters: JobFilters): JobResult[] {
+  const sections = markdown
+    .split(/\n##\s+/)
+    .map((part, idx) => (idx === 0 ? part : `## ${part}`))
+    .filter((part) => /^##\s*\d+\./m.test(part));
+
+  const parsed: JobResult[] = [];
+  const seen = new Set<string>();
+
+  sections.forEach((section, idx) => {
+    const headingMatch = section.match(/^##\s*\d+\.\s*(?:[^\w]*)?(.*?)$/m) || section.match(/^##\s*(.*?)$/m);
+    const heading = (headingMatch?.[1] || "").replace(/\*\*/g, "").trim();
+
+    let title = heading;
+    let company = "Unknown Company";
+    const atMatch = heading.match(/(.+?)\s+at\s+(.+)/i);
+    if (atMatch) {
+      title = atMatch[1].trim();
+      company = atMatch[2].trim();
+    }
+
+    const location =
+      section.match(/- \*\*(?:Location|Where):\*\*\s*(.+)/i)?.[1]?.trim() ||
+      section.match(/Location:\s*(.+)/i)?.[1]?.trim() ||
+      "";
+    const postedDate = section.match(/- \*\*Posted:\*\*\s*(.+)/i)?.[1]?.trim() || "";
+    const whyMatch = section.match(/- \*\*Why You're a Match:\*\*\s*([\s\S]*?)(?:\n- \*\*|\n---|\n##|$)/i);
+    const description = whyMatch?.[1]?.trim() || section.slice(0, 380);
+
+    const links = extractLinks(section);
+    const preferred = links.find((link) => /apply|jobs\/view|greenhouse|lever|workday|myworkdayjobs/i.test(link)) || links[0] || "";
+    const cleanedPrimary = normalizeUrl(preferred);
+    const primary = cleanedPrimary && !isLikelyBrokenUrl(cleanedPrimary) ? cleanedPrimary : "";
+    const fallbackLocation = location || (filters.workLocation === "remote" ? "Remote" : "United States");
+    const fallback = buildLinkedInFallbackUrl(title || `Job ${idx + 1}`, company, fallbackLocation);
+    const resolvedUrl = primary || fallback;
+
+    const jobKey = `${title}|${company}|${resolvedUrl}`.toLowerCase();
+    if (seen.has(jobKey)) return;
+    seen.add(jobKey);
+
+    const matchScoreRaw = section.match(/(?:match score|fit score|score):\s*(\d{1,3})%?/i)?.[1];
+    const matchScore = matchScoreRaw ? Number(matchScoreRaw) : undefined;
+
+    parsed.push({
+      id: `${idx + 1}-${title}-${company}-${resolvedUrl}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      title: title || `Job ${idx + 1}`,
+      company,
+      location,
+      postedDate,
+      description,
+      url: resolvedUrl,
+      fallbackUrl: fallback,
+      sourceUrl: cleanedPrimary || undefined,
+      matchScore: Number.isFinite(matchScore) ? matchScore : undefined,
+    });
+  });
+
+  return parsed.slice(0, 10);
+}
+
 export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [resumeText, setResumeText] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -56,6 +184,7 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
   const [hasSearched, setHasSearched] = useState(false);
   const [streamingResponse, setStreamingResponse] = useState("");
   const [conversationHistory, setConversationHistory] = useState<Array<{ role: string; content: string }>>([]);
+  const [savedResumeDocId, setSavedResumeDocId] = useState<string | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   // Load filters from localStorage on mount
@@ -114,16 +243,25 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
         return;
       }
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL;
+      const publishableKey =
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        import.meta.env.VITE_SUPABASE_ANON_KEY ||
+        import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+        import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
       if (!supabaseUrl) {
-        throw new Error("VITE_SUPABASE_URL is not configured");
+        throw new Error("Supabase URL is not configured");
+      }
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      };
+      if (publishableKey) {
+        headers.apikey = publishableKey;
       }
       const response = await fetch(`${supabaseUrl}/functions/v1/job-search`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers,
         body: JSON.stringify({
           resumeText,
           filters,
@@ -141,14 +279,16 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullResponse = "";
+      let streamBuffer = "";
 
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
+          streamBuffer += decoder.decode(value, { stream: true });
+          const lines = streamBuffer.split("\n");
+          streamBuffer = lines.pop() || "";
 
           for (const line of lines) {
             if (line.startsWith("data: ")) {
@@ -166,6 +306,23 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
             }
           }
         }
+
+        if (streamBuffer.startsWith("data: ")) {
+          const finalData = streamBuffer.slice(6);
+          if (finalData && finalData !== "[DONE]") {
+            try {
+              const parsed = JSON.parse(finalData);
+              const content = parsed.choices?.[0]?.delta?.content || "";
+              fullResponse += content;
+              setStreamingResponse(fullResponse);
+            } catch {
+              // Ignore trailing malformed chunk.
+            }
+          }
+        }
+      } else {
+        fullResponse = await response.text();
+        setStreamingResponse(fullResponse);
       }
 
       // Update conversation history
@@ -177,11 +334,41 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
         },
         { role: "assistant", content: fullResponse },
       ]);
+      const parsedJobs = parseJobsFromMarkdown(fullResponse, filters);
+      setJobs(parsedJobs);
 
-      toast.success("Job search completed!");
+      if (parsedJobs.length > 0) {
+        const state: ApplyPassSearchState = {
+          jobs: parsedJobs,
+          resumeText,
+          preferredResumeId: savedResumeDocId,
+          searchMarkdown: fullResponse,
+          filters,
+          searchedAt: new Date().toISOString(),
+        };
+        try {
+          sessionStorage.setItem(APPLYPASS_LATEST_SEARCH_KEY, JSON.stringify(state));
+        } catch (storageError) {
+          console.warn("Failed to persist ApplyPass search state:", storageError);
+        }
+
+        if (!isFollowUp && location.pathname !== "/applypass") {
+          navigate("/applypass", { state });
+          toast.success("Jobs found. Opening ApplyPass workspace.");
+        } else {
+          toast.success("Job search completed!");
+        }
+      } else {
+        toast.error("No valid jobs could be parsed from this response. Try Generate More Jobs.");
+      }
     } catch (error) {
       console.error("Job search error:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to search for jobs. Please try again.");
+      const message = error instanceof Error ? error.message : "Failed to search for jobs. Please try again.";
+      if (message.toLowerCase().includes("failed to fetch")) {
+        toast.error("Failed to fetch jobs. Please refresh and try again. If it persists, reconnect Supabase env keys.");
+      } else {
+        toast.error(message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -228,6 +415,7 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
     setJobs([]);
     setResumeText("");
     setUploadedFileName(null);
+    setSavedResumeDocId(null);
     // Keep the filters - they are persisted in localStorage
   };
 
@@ -252,6 +440,9 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
               onTextExtracted={handleDocumentExtracted}
               isLoading={isLoading}
               label="Upload Resume (PDF/Word)"
+              persistToDocuments
+              documentCategory="resume"
+              onDocumentSaved={(doc) => setSavedResumeDocId(doc.id)}
             />
 
             {uploadedFileName && (
@@ -447,6 +638,14 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
                   </Button>
                 </div>
               </div>
+
+              {jobs.length > 0 && (
+                <ApplyPassWorkspace
+                  jobs={jobs}
+                  resumeText={resumeText}
+                  preferredResumeId={savedResumeDocId}
+                />
+              )}
 
               <Card ref={resultsRef} className="p-6">
                 <div className="prose prose-sm dark:prose-invert max-w-none">
