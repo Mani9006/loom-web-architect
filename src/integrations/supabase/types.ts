@@ -380,6 +380,163 @@ export type Database = {
         }
         Relationships: []
       }
+      enterprise_tenants: {
+        Row: {
+          id: string
+          name: string
+          slug: string
+          plan: "enterprise" | "enterprise_plus"
+          sso_enabled: boolean
+          max_seats: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          slug: string
+          plan?: "enterprise" | "enterprise_plus"
+          sso_enabled?: boolean
+          max_seats?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          slug?: string
+          plan?: "enterprise" | "enterprise_plus"
+          sso_enabled?: boolean
+          max_seats?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      enterprise_memberships: {
+        Row: {
+          id: string
+          tenant_id: string
+          user_id: string
+          tenant_role: "owner" | "admin" | "member" | "viewer"
+          invited_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          user_id: string
+          tenant_role?: "owner" | "admin" | "member" | "viewer"
+          invited_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          user_id?: string
+          tenant_role?: "owner" | "admin" | "member" | "viewer"
+          invited_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_memberships_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "enterprise_tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sso_configurations: {
+        Row: {
+          id: string
+          tenant_id: string
+          protocol: "saml" | "oidc"
+          issuer_url: string | null
+          client_id: string | null
+          idp_metadata_url: string | null
+          sp_acs_url: string | null
+          attribute_map: Json
+          enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          protocol?: "saml" | "oidc"
+          issuer_url?: string | null
+          client_id?: string | null
+          idp_metadata_url?: string | null
+          sp_acs_url?: string | null
+          attribute_map?: Json
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          protocol?: "saml" | "oidc"
+          issuer_url?: string | null
+          client_id?: string | null
+          idp_metadata_url?: string | null
+          sp_acs_url?: string | null
+          attribute_map?: Json
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sso_configurations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "enterprise_tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_log_entries: {
+        Row: {
+          id: string
+          tenant_id: string | null
+          actor_id: string | null
+          action: string
+          resource: string | null
+          resource_id: string | null
+          metadata: Json
+          ip_address: string | null
+          user_agent: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id?: string | null
+          actor_id?: string | null
+          action: string
+          resource?: string | null
+          resource_id?: string | null
+          metadata?: Json
+          ip_address?: string | null
+          user_agent?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string | null
+          actor_id?: string | null
+          action?: string
+          resource?: string | null
+          resource_id?: string | null
+          metadata?: Json
+          ip_address?: string | null
+          user_agent?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -392,9 +549,22 @@ export type Database = {
         }
         Returns: boolean
       }
+      write_audit_log: {
+        Args: {
+          p_actor_id: string
+          p_action: string
+          p_resource?: string | null
+          p_resource_id?: string | null
+          p_tenant_id?: string | null
+          p_metadata?: Json
+          p_ip_address?: string | null
+          p_user_agent?: string | null
+        }
+        Returns: string
+      }
     }
     Enums: {
-      app_role: "admin" | "moderator" | "user"
+      app_role: "admin" | "moderator" | "user" | "enterprise_admin" | "enterprise_member"
     }
     CompositeTypes: {
       [_ in never]: never
