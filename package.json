@@ -35,7 +35,9 @@
     "agent:list": "node scripts/openclaw-agent-runner.mjs list",
     "agent:doctor": "node scripts/openclaw-agent-runner.mjs doctor",
     "agent:run": "node scripts/openclaw-agent-runner.mjs run",
-    "agent:audit": "node scripts/openclaw-codebase-audit.mjs"
+    "agent:audit": "node scripts/openclaw-codebase-audit.mjs",
+    "experiment:report": "node scripts/experiment-report.mjs",
+    "experiment:report:dry": "node scripts/experiment-report.mjs --days 7"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
