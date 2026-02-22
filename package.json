@@ -12,6 +12,8 @@
     "hq:brief": "node scripts/executive-brief.mjs",
     "hq:governor": "node scripts/hq-governor.mjs",
     "hq:governor:dry": "node scripts/hq-governor.mjs --dry-run",
+    "market:map": "node scripts/market-domination-map.mjs",
+    "market:map:dry": "node scripts/market-domination-map.mjs --dry-run",
     "atlas:dispatch": "node scripts/atlas-dispatch.mjs",
     "atlas:dispatch:dry": "node scripts/atlas-dispatch.mjs --dry-run",
     "github:agents:dispatch": "node scripts/github-agent-dispatch.mjs",

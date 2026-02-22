@@ -37,6 +37,7 @@ const Chat = lazy(() => import("./pages/Chat"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
+const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -78,6 +79,7 @@ const App = () => (
                     <Route path="/c/:conversationId" element={<Chat />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/control-center" element={<ControlCenter />} />
+                    <Route path="/market-domination-map" element={<MarketDominationMap />} />
                     <Route path="/profile" element={<Profile />} />
                     <Route path="/documents" element={<Documents />} />
                     <Route path="/cover-letters" element={<CoverLettersPage />} />
