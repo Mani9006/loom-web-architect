@@ -73,6 +73,36 @@ function safeDate(value: string | null | undefined): string {
   return d.toISOString();
 }
 
+function boolEnv(name: string): boolean {
+  return Boolean(String(Deno.env.get(name) || "").trim());
+}
+
+function defaultOpsLinks() {
+  const ref = "woxtbyotydxorcdhhivr";
+  return {
+    vercel:
+      Deno.env.get("ADMIN_PORTAL_VERCEL_DASHBOARD_URL") ||
+      "https://vercel.com/maanys-projects-8bbfa798/loom-web-architect",
+    supabase:
+      Deno.env.get("ADMIN_PORTAL_SUPABASE_DASHBOARD_URL") || `https://supabase.com/dashboard/project/${ref}`,
+    github: Deno.env.get("ADMIN_PORTAL_GITHUB_REPO_URL") || "https://github.com/Mani9006/loom-web-architect",
+    jira: Deno.env.get("ADMIN_PORTAL_JIRA_URL") || Deno.env.get("JIRA_BASE_URL") || "",
+    slack: Deno.env.get("ADMIN_PORTAL_SLACK_URL") || "",
+  };
+}
+
+function integrationStatus() {
+  return {
+    openai: boolEnv("OPENAI_API_KEY"),
+    anthropic: boolEnv("ANTHROPIC_API_KEY"),
+    perplexity: boolEnv("PERPLEXITY_API_KEY"),
+    mem0: boolEnv("MEM0_API_KEY"),
+    exa: boolEnv("EXA_API_KEY"),
+    serviceRole: boolEnv("SERVICE_ROLE_KEY") || boolEnv("SUPABASE_SERVICE_ROLE_KEY"),
+    supabaseUrl: boolEnv("SUPABASE_URL"),
+  };
+}
+
 async function authenticateOwner(req: Request) {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
@@ -485,6 +515,8 @@ async function buildSummary(serviceClient: ReturnType<typeof createClient>, owne
     apiCosts: monthlyCost,
     trends,
     users: usersList,
+    integrations: integrationStatus(),
+    opsLinks: defaultOpsLinks(),
     meta: {
       rangeDays,
       costSampleRows: messageRows.length,

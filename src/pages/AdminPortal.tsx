@@ -33,9 +33,13 @@ import {
   ChevronRight,
   ClipboardList,
   Crown,
+  Database as DatabaseIcon,
   DollarSign,
+  ExternalLink,
+  GitBranch,
   KeyRound,
   Loader2,
+  Rocket,
   RefreshCcw,
   Shield,
   ShieldCheck,
@@ -93,6 +97,22 @@ interface PortalResponse {
     estimatedMonthlyTotalUsd: number;
   };
   trends: Array<{ date: string; signups: number; activeUsers: number }>;
+  integrations: {
+    openai: boolean;
+    anthropic: boolean;
+    perplexity: boolean;
+    mem0: boolean;
+    exa: boolean;
+    serviceRole: boolean;
+    supabaseUrl: boolean;
+  };
+  opsLinks: {
+    vercel: string;
+    supabase: string;
+    github: string;
+    jira: string;
+    slack: string;
+  };
   users: Array<{
     userId: string;
     email: string | null;
@@ -114,6 +134,89 @@ interface PortalResponse {
     outputTokens30d: number;
     estimatedAiCost30dUsd: number;
   }>;
+}
+
+function OperationsTab({ data }: { data: PortalResponse | null }) {
+  if (!data) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <p className="text-sm text-muted-foreground">Operations data is not available yet.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const integrations = [
+    { name: "OpenAI", ok: data.integrations.openai },
+    { name: "Anthropic", ok: data.integrations.anthropic },
+    { name: "Perplexity", ok: data.integrations.perplexity },
+    { name: "Mem0", ok: data.integrations.mem0 },
+    { name: "Exa", ok: data.integrations.exa },
+    { name: "Supabase URL", ok: data.integrations.supabaseUrl },
+    { name: "Service Role", ok: data.integrations.serviceRole },
+  ];
+
+  const links = [
+    { key: "vercel", name: "Vercel Project", icon: Rocket, url: data.opsLinks.vercel },
+    { key: "supabase", name: "Supabase Dashboard", icon: DatabaseIcon, url: data.opsLinks.supabase },
+    { key: "github", name: "GitHub Repository", icon: GitBranch, url: data.opsLinks.github },
+    { key: "jira", name: "Jira Workspace", icon: ClipboardList, url: data.opsLinks.jira },
+    { key: "slack", name: "Slack Workspace", icon: Users, url: data.opsLinks.slack },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Integration Health</CardTitle>
+          <CardDescription>Connected services used by ResumePreps production workflows.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {integrations.map((item) => (
+            <div key={item.name} className="rounded-lg border px-3 py-2 flex items-center justify-between">
+              <span className="text-sm font-medium">{item.name}</span>
+              <Badge variant={item.ok ? "default" : "outline"}>{item.ok ? "Connected" : "Missing"}</Badge>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Owner Quick Controls</CardTitle>
+          <CardDescription>One-click access to the main platforms used to run the company.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {links.map((link) => {
+            const Icon = link.icon;
+            if (!link.url) {
+              return (
+                <div key={link.key} className="rounded-lg border px-3 py-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm">{link.name}</span>
+                  </div>
+                  <Badge variant="outline">Not set</Badge>
+                </div>
+              );
+            }
+            return (
+              <Button key={link.key} variant="outline" asChild className="justify-between">
+                <a href={link.url} target="_blank" rel="noreferrer">
+                  <span className="inline-flex items-center gap-2">
+                    <Icon className="w-4 h-4" />
+                    {link.name}
+                  </span>
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </Button>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 const CHART_COLORS = {
@@ -917,6 +1020,9 @@ export default function AdminPortal() {
           <TabsTrigger value="overview" className="gap-1.5">
             <ShieldCheck className="w-4 h-4" /> Overview
           </TabsTrigger>
+          <TabsTrigger value="operations" className="gap-1.5">
+            <Rocket className="w-4 h-4" /> Operations
+          </TabsTrigger>
           <TabsTrigger value="tenants" className="gap-1.5">
             <Building2 className="w-4 h-4" /> Tenants
           </TabsTrigger>
@@ -944,6 +1050,9 @@ export default function AdminPortal() {
             onRefresh={() => void fetchPortal(true)}
             onSaveRole={(userId) => saveRole(userId)}
           />
+        </TabsContent>
+        <TabsContent value="operations" className="mt-4">
+          <OperationsTab data={data} />
         </TabsContent>
 
         <TabsContent value="tenants" className="mt-4">
