@@ -101,7 +101,7 @@ This repo now includes an HQ-grade control layer inspired by top OpenClaw showca
 - `npm run atlas:dispatch:dry` to preview Atlas -> agent routing without execution.
 - `npm run github:agents:dispatch:dry` to preview Jira -> GitHub agent-task creation.
 - `npm run hq:loop:dry` to run dry governance + dry dispatch + brief + security audit.
-- `npm run hq:loop` to run the live control loop.
+- `npm run hq:loop` to run the live control loop (includes GitHub agent-task dispatch).
 
 ### Optional env vars for dispatch/governor
 
@@ -115,6 +115,7 @@ This repo now includes an HQ-grade control layer inspired by top OpenClaw showca
 - `GITHUB_AGENT_BASE` (default current branch)
 - `GITHUB_AGENT_DISPATCH_MAX` (default `3`)
 - `GITHUB_AGENT_EXEMPT_KEYS` (default `KAN-10,KAN-22`)
+- `ENABLE_GITHUB_AGENT_DISPATCH` (default `1`, set `0` to skip in loop)
 - `OPENCLAW_CODEX_SANDBOX` (default `danger-full-access`)
 - `OPENCLAW_CODEX_APPROVAL` (default `never`)
 - `JIRA_OWNER_ACCOUNT_MAP` (JSON map owner alias -> Jira accountId for assignee correction)
