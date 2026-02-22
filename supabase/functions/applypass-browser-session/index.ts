@@ -140,7 +140,11 @@ async function browserbaseFetch(path: string, init: RequestInit = {}) {
 
   const parsed = asObject(data);
   if (!response.ok) {
-    const message = (typeof parsed.error === "string" ? parsed.error : "") || JSON.stringify(parsed);
+    const message =
+      (typeof parsed.message === "string" && parsed.message) ||
+      (typeof parsed.error === "string" && parsed.error) ||
+      (typeof parsed.detail === "string" && parsed.detail) ||
+      text.slice(0, 300);
     throw new Error(`Browserbase API ${response.status}: ${message}`);
   }
 
@@ -253,19 +257,21 @@ serve(async (req) => {
       const initialUrl = typeof body.initialUrl === "string" ? body.initialUrl.trim() : "";
       const metadata = asObject(body.metadata);
 
+      // Browserbase metadata only accepts short alphanumeric-ish values.
+      // Drop URLs, long strings, special characters, null, etc.
+      const safeMetadata: Record<string, string> = {
+        userId: user.id,
+        source: String(metadata.source || "applypass_workspace").slice(0, 50),
+      };
+      if (user.email) safeMetadata.userEmail = user.email;
+
       const created = await browserbaseFetch("/v1/sessions", {
         method: "POST",
         body: JSON.stringify({
           projectId,
           region,
           keepAlive: true,
-          userMetadata: {
-            userId: user.id,
-            userEmail: user.email || "",
-            source: "applypass_workspace",
-            requestedUrl: initialUrl,
-            ...metadata,
-          },
+          userMetadata: safeMetadata,
         }),
       });
 
