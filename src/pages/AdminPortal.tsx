@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { isOwnerEmail } from "@/lib/admin";
@@ -967,23 +967,7 @@ export default function AdminPortal() {
 
   if (!user) return null;
 
-  if (!isOwnerEmail(user.email)) {
-    return (
-      <div className="p-6 max-w-3xl mx-auto">
-        <Card className="border-destructive/30">
-          <CardContent className="pt-6 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
-            <div>
-              <p className="font-semibold">Owner Access Required</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                This Admin Portal is restricted to owner accounts only.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  if (!isOwnerEmail(user.email)) return <Navigate to="/home" replace />;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">

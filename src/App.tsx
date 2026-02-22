@@ -8,6 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import OwnerProtectedRoute from "@/components/OwnerProtectedRoute";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 
 // Eager-loaded routes (critical path)
@@ -81,7 +82,14 @@ const App = () => (
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/control-center" element={<ControlCenter />} />
                     <Route path="/market-domination-map" element={<MarketDominationMap />} />
-                    <Route path="/admin" element={<AdminPortal />} />
+                    <Route
+                      path="/admin"
+                      element={
+                        <OwnerProtectedRoute>
+                          <AdminPortal />
+                        </OwnerProtectedRoute>
+                      }
+                    />
                     <Route path="/profile" element={<Profile />} />
                     <Route path="/documents" element={<Documents />} />
                     <Route path="/cover-letters" element={<CoverLettersPage />} />
