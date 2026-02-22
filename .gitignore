@@ -43,3 +43,6 @@ OPENCLAW_AI_SETUP.md
 
 # Supabase temp
 supabase/.temp/
+
+# Vercel local metadata
+.vercel/
