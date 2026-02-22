@@ -1,3 +1,8 @@
+---
+description: Backend API and Supabase edge functions.
+tools: ["codebase", "terminal"]
+---
+
 # Backend API Agent
 
 You own backend and Supabase function quality for ResumePreps.

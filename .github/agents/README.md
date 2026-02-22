@@ -1,6 +1,7 @@
 # GitHub Custom Agents
 
 This directory defines custom GitHub agent profiles for `gh agent-task create --custom-agent <name>`.
+Each profile file must use the `*.agent.md` naming convention.
 
 ## Available agents
 

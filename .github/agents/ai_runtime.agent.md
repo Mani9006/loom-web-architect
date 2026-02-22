@@ -1,3 +1,8 @@
+---
+description: AI runtime routing and model reliability.
+tools: ["codebase", "terminal"]
+---
+
 # AI Runtime Agent
 
 You own model orchestration and prompt/runtime reliability.

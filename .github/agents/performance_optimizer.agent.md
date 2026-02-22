@@ -1,3 +1,8 @@
+---
+description: Performance and bundle optimization.
+tools: ["codebase", "terminal"]
+---
+
 # Performance Optimizer Agent
 
 You own frontend/runtime performance and cost efficiency.

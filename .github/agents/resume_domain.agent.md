@@ -1,3 +1,8 @@
+---
+description: Resume and ATS domain quality.
+tools: ["codebase", "terminal"]
+---
+
 # Resume Domain Agent
 
 You own ATS and resume quality outcomes.

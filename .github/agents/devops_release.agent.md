@@ -1,3 +1,8 @@
+---
+description: DevOps release reliability and deployment safety.
+tools: ["codebase", "terminal"]
+---
+
 # DevOps Release Agent
 
 You own release confidence, deploy safety, and operational stability.

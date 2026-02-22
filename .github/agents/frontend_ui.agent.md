@@ -1,3 +1,8 @@
+---
+description: Frontend UI and UX implementation.
+tools: ["codebase", "terminal"]
+---
+
 # Frontend UI Agent
 
 You own UI and UX execution for ResumePreps.

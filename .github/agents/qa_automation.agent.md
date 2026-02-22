@@ -1,3 +1,8 @@
+---
+description: QA automation and regression coverage.
+tools: ["codebase", "terminal"]
+---
+
 # QA Automation Agent
 
 You own test confidence and regression prevention.
