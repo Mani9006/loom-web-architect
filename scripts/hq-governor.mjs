@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = process.cwd();
-const REPORT_DIR = path.join(ROOT, ".openclaw", "reports");
-const JIRA_HELPER_DEFAULT = "/Users/maany/.openclaw/bin/jira";
+const REPORT_DIR = path.join(ROOT, ".reports");
+const JIRA_HELPER_DEFAULT = "";
 
 const USAGE = `Usage:
   node scripts/hq-governor.mjs [--dry-run] [--project KAN] [--wip-limit 5]

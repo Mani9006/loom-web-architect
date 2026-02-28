@@ -72,59 +72,60 @@ To connect a domain, navigate to Project > Settings > Domains and click Connect 
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
 
-## Executive Control Center (New)
+## Remote Agent Architecture (Claude Code)
 
-This repo now includes an HQ-grade control layer inspired by top OpenClaw showcase patterns:
+All agent orchestration now runs **remotely via GitHub Actions** instead of locally on Mac Mini. This replaces the previous OpenClaw AI local agent system.
+
+### GitHub Actions Workflows
+
+| Workflow | Schedule | Purpose |
+|----------|----------|---------|
+| `hq-control-loop.yml` | Every 6 hours | Governance checks, quality gate, security audit, Slack notifications |
+| `claude-code-agent.yml` | On issue/dispatch | Claude Code agent for ticket execution |
+| `jira-sync.yml` | Every 4 hours | Sync Jira review tickets and send Slack alerts |
+
+### How to trigger agent work
+
+1. **Create a GitHub issue** with the `agent-task` label
+2. **Manual dispatch**: `gh workflow run claude-code-agent.yml -f task="your task here"`
+3. **Scheduled**: Workflows run automatically on schedule
+
+### In-app control surfaces
 
 - In-app command surface at `/control-center`
 - Owner Admin Portal at `/admin` (owner-only)
 - Edge function: `supabase/functions/executive-brief`
 - Edge function: `supabase/functions/admin-portal`
-- Local automation brief: `npm run hq:brief`
-- Jira governance loop: `npm run hq:governor`
-- Atlas ticket-to-agent dispatch: `npm run atlas:dispatch`
-- GitHub agent-task dispatch: `npm run github:agents:dispatch`
-- GitHub scale superburst launcher: `npm run github:agents:superburst`
-- Secret audit gate: `npm run security:audit`
-- End-to-end loop: `npm run hq:loop`
-- Release gate command: `npm run hq:gate`
 
 ### What it tracks
 
 - Deployment state from GitHub/Vercel status
 - Jira execution load (open, in-progress, review)
 - Platform growth volume (users, resumes, tracked jobs, conversations, cover letters)
-- Priority actions with explicit owner mapping
-- Ticket dispatch state in `.openclaw/reports/atlas-dispatch-state.json`
-- Runtime reports in `.openclaw/reports/`
+- Quality gates (type-check, tests, build)
+- Security audit for secret leaks
 
-### Local control commands
+### Local commands (for manual one-off use only)
 
-- `npm run hq:governor:dry` for safe Jira governance dry-run.
-- `npm run atlas:dispatch:dry` to preview Atlas -> agent routing without execution.
-- `npm run github:agents:dispatch:dry` to preview Jira -> GitHub agent-task creation.
-- `npm run github:agents:superburst:dry` to preview strategic large-scale initiative launches.
-- `npm run hq:loop:dry` to run dry governance + dry dispatch + brief + security audit.
-- `npm run hq:loop` to run the live control loop (includes GitHub agent-task dispatch).
+- `npm run hq:gate` - Full release gate: type-check + test + build
+- `npm run hq:governor:dry` - Safe Jira governance dry-run
+- `npm run hq:brief` - Generate executive brief
+- `npm run security:audit` - Check for leaked secrets
+- `npm run hq:loop:dry` - Dry run of the deprecated local loop
 
-### Optional env vars for dispatch/governor
+### Required GitHub repository secrets
 
-- `JIRA_URL`, `JIRA_USER`, `JIRA_TOKEN`
-- `HQ_WIP_LIMIT` (default `5`)
-- `HQ_WIP_EXEMPT_KEYS` (default `KAN-10,KAN-14,KAN-22`)
-- `ATLAS_DISPATCH_MAX` (default `9`)
-- `ATLAS_EXEMPT_KEYS` (default `KAN-10`)
-- `ATLAS_AGENT_ALIAS_MAP` (JSON for alias override mapping)
-- `GITHUB_AGENT_REPO` (default `Mani9006/loom-web-architect`)
-- `GITHUB_AGENT_BASE` (default current branch)
-- `GITHUB_AGENT_DISPATCH_MAX` (default `3`)
-- `GITHUB_AGENT_EXEMPT_KEYS` (default `KAN-10,KAN-22`)
-- `GITHUB_AGENT_SUPERBURST_MAX` (default `3`)
-- `GITHUB_AGENT_SUPERBURST_IDS` (comma-separated initiative IDs)
-- `ENABLE_GITHUB_AGENT_DISPATCH` (default `1`, set `0` to skip in loop)
-- `OPENCLAW_CODEX_SANDBOX` (default `danger-full-access`)
-- `OPENCLAW_CODEX_APPROVAL` (default `never`)
-- `JIRA_OWNER_ACCOUNT_MAP` (JSON map owner alias -> Jira accountId for assignee correction)
+Set these in GitHub Settings > Secrets > Actions:
+
+- `JIRA_URL`, `JIRA_USER`, `JIRA_TOKEN` (for Jira integration)
+
+### Required GitHub repository variables
+
+Set these in GitHub Settings > Variables > Actions:
+
+- `SLACK_WEBHOOK_URL` (Slack incoming webhook for notifications)
+- `JIRA_PROJECT_KEY` (default `KAN`)
+- `ENABLE_HQ_LOOP` (default `1`, set `0` to disable scheduled runs)
 
 ### Required edge function secrets
 
