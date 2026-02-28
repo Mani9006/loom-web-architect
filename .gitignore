@@ -29,7 +29,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# OpenClaw agent scaffolding
+# Legacy OpenClaw agent scaffolding (removed)
 AGENTS.md
 BOOTSTRAP.md
 HEARTBEAT.md
@@ -39,7 +39,12 @@ TOOLS.md
 USER.md
 OPENCLAW_AI_SETUP.md
 .openclaw/
+
+# Claude Code
 .claude/worktrees/
+
+# Agent reports (generated at runtime)
+.reports/
 
 # Supabase temp
 supabase/.temp/

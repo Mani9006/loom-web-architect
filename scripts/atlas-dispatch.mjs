@@ -4,12 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = process.cwd();
-const OPENCLAW_DIR = path.join(ROOT, ".openclaw");
-const REPORT_DIR = path.join(OPENCLAW_DIR, "reports");
-const AGENTS_FILE = path.join(OPENCLAW_DIR, "agents.json");
+const REPORT_DIR = path.join(ROOT, ".reports");
+const AGENTS_FILE = path.join(ROOT, ".github", "agents.json");
 const DEFAULT_OWNER_SOURCE = "HARDENING_SPRINT_OPS.md";
 const STATE_FILE = path.join(REPORT_DIR, "atlas-dispatch-state.json");
-const JIRA_HELPER_DEFAULT = "/Users/maany/.openclaw/bin/jira";
+const JIRA_HELPER_DEFAULT = "";
 
 const OWNER_ALIAS_TO_AGENT = {
   atlas: "orchestrator",

@@ -1,0 +1,132 @@
+name: HQ Control Loop (Remote)
+
+on:
+  schedule:
+    # Run every 6 hours instead of constant local polling
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+  issues: read
+  statuses: read
+
+env:
+  GITHUB_REPO: Mani9006/loom-web-architect
+
+jobs:
+  governance-check:
+    name: Jira Governance & Deployment Gate
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_HQ_LOOP != '0' }}
+    outputs:
+      deploy_state: ${{ steps.deploy.outputs.state }}
+      open_issues: ${{ steps.jira.outputs.open_count }}
+      review_issues: ${{ steps.jira.outputs.review_count }}
+      wip_count: ${{ steps.jira.outputs.wip_count }}
+    steps:
+      - name: Check deployment state
+        id: deploy
+        run: |
+          DEPLOY_STATE=$(curl -s -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ env.GITHUB_REPO }}/commits/main/status" \
+            | jq -r '.state // "unknown"')
+          echo "state=$DEPLOY_STATE" >> "$GITHUB_OUTPUT"
+          echo "Deployment state: $DEPLOY_STATE"
+
+      - name: Check Jira ticket status
+        id: jira
+        if: ${{ secrets.JIRA_URL != '' }}
+        env:
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_USER: ${{ secrets.JIRA_USER }}
+          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY || 'KAN' }}
+        run: |
+          RESPONSE=$(curl -s -u "$JIRA_USER:$JIRA_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$JIRA_URL/rest/api/3/search/jql?jql=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("project = '"$PROJECT_KEY"' AND status != Done ORDER BY updated DESC"))')&maxResults=50&fields=summary,status")
+
+          OPEN_COUNT=$(echo "$RESPONSE" | jq '.total // 0')
+          REVIEW_COUNT=$(echo "$RESPONSE" | jq '[.issues[]? | select(.fields.status.name | test("review"; "i"))] | length')
+          WIP_COUNT=$(echo "$RESPONSE" | jq '[.issues[]? | select(.fields.status.name | test("in progress"; "i"))] | length')
+
+          echo "open_count=$OPEN_COUNT" >> "$GITHUB_OUTPUT"
+          echo "review_count=$REVIEW_COUNT" >> "$GITHUB_OUTPUT"
+          echo "wip_count=$WIP_COUNT" >> "$GITHUB_OUTPUT"
+
+          echo "Open: $OPEN_COUNT | Review: $REVIEW_COUNT | WIP: $WIP_COUNT"
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan tracked files for secrets
+        run: |
+          SECRET_PATTERN='(SUPABASE_SERVICE_ROLE_KEY=eyJ[A-Za-z0-9._-]{20,}|OPENAI_API_KEY=sk-[A-Za-z0-9_-]{20,}|PERPLEXITY_API_KEY=pplx-[A-Za-z0-9_-]{20,}|MEM0_API_KEY=mem0-[A-Za-z0-9_-]{12,}|JIRA_TOKEN="?ATAT[A-Za-z0-9._:-]{20,}"?)'
+
+          RESULTS=$(git ls-files | xargs grep -nE "$SECRET_PATTERN" 2>/dev/null \
+            | grep -vE 'your_key_here|xxxxx|example|optional' || true)
+
+          if [ -n "$RESULTS" ]; then
+            echo "::error::Potential secrets found in tracked files"
+            echo "$RESULTS" | sed -E 's#(=).{8,}#\1<redacted>#g'
+            exit 1
+          fi
+          echo "No hardcoded secrets detected in tracked files."
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+  notify:
+    name: Slack Notification
+    runs-on: ubuntu-latest
+    needs: [governance-check, security-audit, quality-gate]
+    if: always() && vars.SLACK_WEBHOOK_URL != ''
+    steps:
+      - name: Send summary to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ vars.SLACK_WEBHOOK_URL }}
+          DEPLOY_STATE: ${{ needs.governance-check.outputs.deploy_state }}
+          REVIEW_COUNT: ${{ needs.governance-check.outputs.review_issues }}
+          WIP_COUNT: ${{ needs.governance-check.outputs.wip_count }}
+          SECURITY_RESULT: ${{ needs.security-audit.result }}
+          QUALITY_RESULT: ${{ needs.quality-gate.result }}
+        run: |
+          STATUS_EMOJI="✅"
+          if [ "$SECURITY_RESULT" = "failure" ] || [ "$QUALITY_RESULT" = "failure" ]; then
+            STATUS_EMOJI="🚨"
+          fi
+
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"$STATUS_EMOJI *ResumePreps HQ Control Loop Report*\n• Deploy: $DEPLOY_STATE\n• Review tickets: ${REVIEW_COUNT:-n/a}\n• WIP tickets: ${WIP_COUNT:-n/a}\n• Security audit: $SECURITY_RESULT\n• Quality gate: $QUALITY_RESULT\n• <https://github.com/${{ env.GITHUB_REPO }}/actions|View Details>\"
+            }"

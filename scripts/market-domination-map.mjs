@@ -136,7 +136,7 @@ async function main() {
 
   const report = renderKpiBoard(counts, generatedAt, opts.dryRun);
 
-  const outDir = path.join(repoRoot, ".openclaw", "reports");
+  const outDir = path.join(repoRoot, ".reports");
   fs.mkdirSync(outDir, { recursive: true });
   const timestamp = now.toISOString().replace(/[.:]/g, "-");
   const outFile = path.join(outDir, `market-domination-kpi-${timestamp}.md`);

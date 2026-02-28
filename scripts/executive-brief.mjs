@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const repoRoot = process.cwd();
-const jiraCli = process.env.JIRA_CLI || "/Users/maany/.openclaw/bin/jira";
+const jiraCli = process.env.JIRA_CLI || "jira";
 const githubRepo = process.env.EXECUTIVE_GITHUB_REPO || "Mani9006/loom-web-architect";
 
 function safeExec(cmd) {
@@ -140,7 +140,7 @@ async function main() {
     "",
   ].join("\n");
 
-  const outDir = path.join(repoRoot, ".openclaw", "reports");
+  const outDir = path.join(repoRoot, ".reports");
   fs.mkdirSync(outDir, { recursive: true });
   const file = path.join(outDir, `executive-brief-${now.toISOString().replace(/[.:]/g, "-")}.md`);
   fs.writeFileSync(file, report, "utf8");

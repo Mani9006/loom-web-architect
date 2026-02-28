@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-REPORT_DIR="$ROOT_DIR/.openclaw/reports"
+REPORT_DIR="$ROOT_DIR/.reports"
 mkdir -p "$REPORT_DIR"
 STAMP="$(date -u +"%Y-%m-%dT%H-%M-%SZ")"
 REPORT_FILE="$REPORT_DIR/security-audit-$STAMP.md"
@@ -41,8 +41,8 @@ echo "" >> "$REPORT_FILE"
 
 for file in \
   "$ROOT_DIR/.env.local" \
-  "/Users/maany/careerhq/api-keys.env" \
-  "/Users/maany/.openclaw/bin/jira"
+  "${CAREERHQ_ENV:-/dev/null}" \
+  "${JIRA_HELPER:-}"
 do
   if [[ -f "$file" ]]; then
     echo "- Present: $file" >> "$REPORT_FILE"

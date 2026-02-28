@@ -1,33 +1,28 @@
-#!/bin/zsh
+#!/bin/bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-STATE_DIR="${REPO_DIR}/.openclaw/reports"
+STATE_DIR="${REPO_DIR}/.reports"
 STATE_FILE="${STATE_DIR}/jira-review-alert-state.json"
 TMP_FILE="${STATE_DIR}/jira-review-alert-current.json"
 
 mkdir -p "${STATE_DIR}"
 
-JIRA_HELPER="${JIRA_HELPER:-/Users/maany/.openclaw/bin/jira}"
-JIRA_URL="${JIRA_URL:-$(sed -n 's/^JIRA_URL="\(.*\)"/\1/p' "${JIRA_HELPER}" | head -n1)}"
-JIRA_USER="${JIRA_USER:-$(sed -n 's/^JIRA_USER="\(.*\)"/\1/p' "${JIRA_HELPER}" | head -n1)}"
-JIRA_TOKEN="${JIRA_TOKEN:-$(sed -n 's/^JIRA_TOKEN="\(.*\)"/\1/p' "${JIRA_HELPER}" | head -n1)}"
+# Credentials from environment variables (no local file dependency)
+JIRA_URL="${JIRA_URL:-}"
+JIRA_USER="${JIRA_USER:-}"
+JIRA_TOKEN="${JIRA_TOKEN:-}"
 PROJECT_KEY="${PROJECT_KEY:-KAN}"
-SLACK_TARGET="${SLACK_TARGET:-C0AGFMREHTJ}"
-SLACK_CHANNEL="${SLACK_CHANNEL:-slack}"
+SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}"
 DRY_RUN="${DRY_RUN:-0}"
 
 if [[ -z "${JIRA_URL}" || -z "${JIRA_USER}" || -z "${JIRA_TOKEN}" ]]; then
-  echo "Missing Jira credentials. Set JIRA_URL/JIRA_USER/JIRA_TOKEN or ensure ${JIRA_HELPER} has them."
+  echo "Missing Jira credentials. Set JIRA_URL, JIRA_USER, and JIRA_TOKEN environment variables."
   exit 1
 fi
 
-ENCODED_JQL=$(python3 - <<'PY'
-import urllib.parse
-print(urllib.parse.quote('project = KAN ORDER BY updated DESC'))
-PY
-)
+ENCODED_JQL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('project = ${PROJECT_KEY} ORDER BY updated DESC'))")
 
 RAW_JSON=$(curl -sS -u "${JIRA_USER}:${JIRA_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -92,7 +87,7 @@ if not new_items:
 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 lines = [
     f"ResumePreps review alert ({timestamp})",
-    "Tickets requiring Codex review/deploy checks:",
+    "Tickets requiring review/deploy checks:",
 ]
 for key, item in sorted(new_items):
     lines.append(f"- {key} [{item['status']}] {item['summary']}")
@@ -113,9 +108,14 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   exit 0
 fi
 
-openclaw message send \
-  --channel "${SLACK_CHANNEL}" \
-  --target "${SLACK_TARGET}" \
-  --message "${ALERT_MSG}" >/dev/null
-
-echo "Alert sent to ${SLACK_CHANNEL}:${SLACK_TARGET}"
+# Send via Slack webhook (replaces openclaw message send)
+if [[ -n "${SLACK_WEBHOOK_URL}" ]]; then
+  ESCAPED_MSG=$(echo "${ALERT_MSG}" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
+  curl -s -X POST "${SLACK_WEBHOOK_URL}" \
+    -H "Content-Type: application/json" \
+    -d "{\"text\": ${ESCAPED_MSG}}" >/dev/null
+  echo "Alert sent via Slack webhook"
+else
+  echo "No SLACK_WEBHOOK_URL set. Alert message:"
+  echo "${ALERT_MSG}"
+fi

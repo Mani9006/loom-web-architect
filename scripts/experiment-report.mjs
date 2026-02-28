@@ -177,7 +177,7 @@ async function main() {
   }
 
   const report = lines.join("\n");
-  const outDir = path.join(process.cwd(), ".openclaw", "reports");
+  const outDir = path.join(process.cwd(), ".reports");
   fs.mkdirSync(outDir, { recursive: true });
   const outFile = path.join(
     outDir,

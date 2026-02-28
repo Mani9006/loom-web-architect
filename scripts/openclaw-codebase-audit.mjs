@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 
 const ROOT = process.cwd();
-const REPORT_DIR = path.join(ROOT, ".openclaw", "reports");
+const REPORT_DIR = path.join(ROOT, ".reports");
 
 async function walk(dir, filter) {
   const out = [];
@@ -81,8 +81,8 @@ async function main() {
     safeRead(path.join(ROOT, "src", "components", "resume", "ModelSelector.tsx")),
     safeRead(path.join(ROOT, "supabase", "functions", "ai-orchestrator", "index.ts")),
     safeRead(path.join(ROOT, "supabase", "config.toml")),
-    safeRead(path.join(ROOT, ".openclaw", "agents.json")),
-    safeRead(path.join(ROOT, ".openclaw", "model-clis.json")),
+    safeRead(path.join(ROOT, ".github", "agents.json")),
+    safeRead(path.join(ROOT, ".github", "model-clis.json")),
     safeRead(path.join(ROOT, "src", "pages", "Chat.tsx")),
   ]);
 
@@ -101,11 +101,11 @@ async function main() {
   }
 
   if (!agentsConfig) {
-    findings.push("Missing `.openclaw/agents.json` (agent workforce config).");
+    findings.push("Missing `.github/agents.json` (agent workforce config).");
   }
 
   if (!modelCliConfig) {
-    findings.push("Missing `.openclaw/model-clis.json` (model CLI routing config).");
+    findings.push("Missing `.github/model-clis.json` (model CLI routing config).");
   }
 
   const report = [
@@ -132,10 +132,10 @@ async function main() {
     `- AI orchestrator specialist agents (${aiOrchestratorAgents.length}): ${aiOrchestratorAgents.join(", ") || "none detected"}`,
     `- Frontend currently wired to ai-orchestrator endpoint: ${hasAiOrchestratorUICall ? "yes" : "no"}`,
     "",
-    "## OpenClaw Workforce Inventory",
-    "- Agent workforce config: `.openclaw/agents.json`",
-    "- Model CLI routing config: `.openclaw/model-clis.json`",
-    "- Runner: `scripts/openclaw-agent-runner.mjs`",
+    "## Agent Workforce Inventory",
+    "- Agent definitions: `.github/agents/*.agent.md`",
+    "- Remote orchestration: `.github/workflows/claude-code-agent.yml`",
+    "- Control loop: `.github/workflows/hq-control-loop.yml`",
     "",
     "## High-Impact Findings",
     ...((findings.length > 0) ? findings.map((item) => `- ${item}`) : ["- No high-impact findings detected in this static pass."]),
