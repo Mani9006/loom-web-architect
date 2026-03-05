@@ -6,7 +6,7 @@ import {
   Home, Search, FileText, Columns3, Mic, MessageCircle,
   FolderOpen, ChevronDown, ChevronRight, LogOut,
   Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp, Target,
-  Sun, Moon, ShieldCheck, Map, Crown,
+  Sun, Moon, ShieldCheck, Map, Crown, Zap, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -32,12 +32,13 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
-  { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
+  { label: "Job Discovery", icon: Search, path: "/job-search", badge: "AI" },
   { label: "ApplyPass", icon: Search, path: "/applypass", badge: "NEW" },
+  { label: "AutoApply", icon: Zap, path: "/auto-apply", badge: "NEW" },
   { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
-  { label: "Cover Letter", icon: FolderOpen, path: "/cover-letter" },
   { label: "ATS Checker", icon: Target, path: "/ats-checker" },
-  { label: "Job Tracker", icon: Columns3, path: "/job-tracker" },
+  { label: "Applications", icon: ClipboardList, path: "/job-tracker" },
+  { label: "Cover Letters", icon: FolderOpen, path: "/cover-letters" },
   { label: "Interviews", icon: Mic, path: "/interview-prep" },
   { label: "AI Chat", icon: MessageCircle, path: "/chat" },
 ];
@@ -55,7 +56,6 @@ const secondaryNavBase: NavItem[] = [
       { label: "Cover Letters", path: "/cover-letters" },
     ],
   },
-  { label: "Contacts", icon: Users, path: "/contacts" },
   {
     label: "AI Toolbox",
     icon: Wand2,
