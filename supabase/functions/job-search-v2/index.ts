@@ -1,5 +1,5 @@
-// Job Search V2 - Uses JSearch API (RapidAPI) + Remotive for real job listings
-// Replaces Exa.ai with proper job aggregation
+// Job Search V2 - Multi-source job aggregation
+// Sources: JSearch (RapidAPI, if key available), Remotive (free), Arbeitnow (free), FindWork (free)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -9,33 +9,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface JSearchJob {
-  job_id: string;
-  job_title: string;
-  employer_name: string;
-  employer_logo: string | null;
-  job_city: string;
-  job_state: string;
-  job_country: string;
-  job_description: string;
-  job_apply_link: string;
-  job_posted_at_datetime_utc: string;
-  job_min_salary: number | null;
-  job_max_salary: number | null;
-  job_employment_type: string;
-  job_is_remote: boolean;
-}
-
-interface RemotiveJob {
-  id: number;
+interface NormalizedJob {
+  id: string;
   title: string;
-  company_name: string;
-  url: string;
+  company: string;
+  logo: string | null;
+  location: string;
   description: string;
-  publication_date: string;
-  salary: string;
-  job_type: string;
-  candidate_required_location: string;
+  apply_url: string;
+  date_posted: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  job_type: string | null;
+  remote: boolean;
+  source: string;
+  tags?: string[];
 }
 
 interface SearchFilters {
@@ -47,8 +35,8 @@ interface SearchFilters {
   page?: number;
 }
 
-// Fetch jobs from JSearch API (RapidAPI)
-async function searchJSearch(apiKey: string, filters: SearchFilters): Promise<any[]> {
+// ─── JSearch (RapidAPI, paid) ───────────────────────────────────────
+async function searchJSearch(apiKey: string, filters: SearchFilters): Promise<NormalizedJob[]> {
   try {
     const query = filters.query || "software engineer";
     const params = new URLSearchParams({
@@ -58,9 +46,7 @@ async function searchJSearch(apiKey: string, filters: SearchFilters): Promise<an
       date_posted: filters.datePosted || "week",
     });
 
-    if (filters.remote) {
-      params.set("remote_jobs_only", "true");
-    }
+    if (filters.remote) params.set("remote_jobs_only", "true");
     if (filters.jobType && filters.jobType !== "all") {
       params.set("employment_types", filters.jobType.toUpperCase());
     }
@@ -78,7 +64,7 @@ async function searchJSearch(apiKey: string, filters: SearchFilters): Promise<an
     }
 
     const data = await response.json();
-    return (data.data || []).map((job: JSearchJob) => ({
+    return (data.data || []).map((job: any) => ({
       id: job.job_id,
       title: job.job_title,
       company: job.employer_name,
@@ -86,7 +72,7 @@ async function searchJSearch(apiKey: string, filters: SearchFilters): Promise<an
       location: job.job_is_remote
         ? "Remote"
         : [job.job_city, job.job_state, job.job_country].filter(Boolean).join(", "),
-      description: job.job_description?.substring(0, 500),
+      description: job.job_description?.substring(0, 500) || "",
       apply_url: job.job_apply_link,
       date_posted: job.job_posted_at_datetime_utc,
       salary_min: job.job_min_salary,
@@ -101,22 +87,45 @@ async function searchJSearch(apiKey: string, filters: SearchFilters): Promise<an
   }
 }
 
-// Fetch remote jobs from Remotive (free API)
-async function searchRemotive(query: string): Promise<any[]> {
+// ─── Remotive (free, remote jobs) ──────────────────────────────────
+async function searchRemotive(query: string): Promise<NormalizedJob[]> {
   try {
-    const params = new URLSearchParams({ search: query, limit: "10" });
-    const response = await fetch(`https://remotive.com/api/remote-jobs?${params}`);
+    // Remotive doesn't handle multi-word phrases well — use the first
+    // meaningful keyword for search, then filter results client-side.
+    const keywords = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => !["in", "at", "the", "a", "an", "for", "and", "or", "of", "with"].includes(w));
 
-    if (!response.ok) return [];
+    // Try each keyword until we get results (Remotive is picky)
+    let allJobs: any[] = [];
+    for (const keyword of keywords.slice(0, 3)) {
+      const params = new URLSearchParams({ search: keyword, limit: "20" });
+      const response = await fetch(`https://remotive.com/api/remote-jobs?${params}`);
+      if (!response.ok) continue;
+      const data = await response.json();
+      if (data.jobs && data.jobs.length > 0) {
+        allJobs = data.jobs;
+        break;
+      }
+    }
 
-    const data = await response.json();
-    return (data.jobs || []).slice(0, 10).map((job: RemotiveJob) => ({
+    // If keyword search found nothing, get latest remote jobs (no search filter)
+    if (allJobs.length === 0) {
+      const response = await fetch(`https://remotive.com/api/remote-jobs?limit=20`);
+      if (response.ok) {
+        const data = await response.json();
+        allJobs = data.jobs || [];
+      }
+    }
+
+    return allJobs.slice(0, 15).map((job: any) => ({
       id: `remotive-${job.id}`,
       title: job.title,
       company: job.company_name,
-      logo: null,
+      logo: job.company_logo || null,
       location: job.candidate_required_location || "Remote",
-      description: job.description?.replace(/<[^>]*>/g, "").substring(0, 500),
+      description: (job.description || "").replace(/<[^>]*>/g, "").substring(0, 500),
       apply_url: job.url,
       date_posted: job.publication_date,
       salary_min: null,
@@ -124,9 +133,76 @@ async function searchRemotive(query: string): Promise<any[]> {
       job_type: job.job_type,
       remote: true,
       source: "remotive",
+      tags: job.tags || [],
     }));
   } catch (e) {
     console.error("Remotive fetch error:", e);
+    return [];
+  }
+}
+
+// ─── Arbeitnow (free, international) ──────────────────────────────
+async function searchArbeitnow(query: string, page: number = 1): Promise<NormalizedJob[]> {
+  try {
+    const params = new URLSearchParams({
+      search: query,
+      page: String(page),
+      per_page: "15",
+    });
+    const response = await fetch(`https://www.arbeitnow.com/api/job-board-api?${params}`);
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    return (data.data || []).slice(0, 15).map((job: any) => ({
+      id: `arbeitnow-${job.slug}`,
+      title: job.title,
+      company: job.company_name,
+      logo: null,
+      location: job.location || job.remote ? "Remote" : "Unknown",
+      description: (job.description || "").replace(/<[^>]*>/g, "").substring(0, 500),
+      apply_url: job.url,
+      date_posted: job.created_at ? new Date(job.created_at * 1000).toISOString() : null,
+      salary_min: null,
+      salary_max: null,
+      job_type: null,
+      remote: job.remote || false,
+      source: "arbeitnow",
+      tags: job.tags || [],
+    }));
+  } catch (e) {
+    console.error("Arbeitnow fetch error:", e);
+    return [];
+  }
+}
+
+// ─── FindWork.dev (free, tech-focused) ─────────────────────────────
+async function searchFindWork(query: string): Promise<NormalizedJob[]> {
+  try {
+    const params = new URLSearchParams({ search: query, order_by: "-date_posted" });
+    const response = await fetch(`https://findwork.dev/api/jobs/?${params}`, {
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    return (data.results || []).slice(0, 10).map((job: any) => ({
+      id: `findwork-${job.id}`,
+      title: job.role,
+      company: job.company_name,
+      logo: job.logo || null,
+      location: job.location || (job.remote ? "Remote" : "Unknown"),
+      description: (job.text || "").replace(/<[^>]*>/g, "").substring(0, 500),
+      apply_url: job.url,
+      date_posted: job.date_posted,
+      salary_min: null,
+      salary_max: null,
+      job_type: job.employment_type,
+      remote: job.remote || false,
+      source: "findwork",
+      tags: job.keywords || [],
+    }));
+  } catch (e) {
+    console.error("FindWork fetch error:", e);
     return [];
   }
 }
@@ -152,7 +228,6 @@ serve(async (req: Request) => {
     // Build search query from resume if no explicit query
     let searchQuery = query;
     if (!searchQuery && resumeText) {
-      // Extract likely job title from resume
       const titleMatch = resumeText.match(/(?:title|position|role|objective)[\s:]+([^\n]+)/i);
       const skillsMatch = resumeText.match(/(?:skills?)[\s:]+([^\n]+)/gi);
       searchQuery = titleMatch?.[1] || (skillsMatch ? skillsMatch[0].replace(/skills?\s*:?\s*/i, "") : "software engineer");
@@ -163,53 +238,68 @@ serve(async (req: Request) => {
       location,
       jobType,
       remote,
-      datePosted: datePosted || "week",
+      datePosted: datePosted || "month",
       page: page || 1,
     };
 
     console.log(`[JobSearchV2] Query: "${filters.query}", Location: "${filters.location}", Remote: ${filters.remote}`);
 
-    // Fetch from multiple sources in parallel
-    const promises: Promise<any[]>[] = [];
+    // Fetch from all available sources in parallel
+    const promises: Promise<NormalizedJob[]>[] = [];
+    const sourceNames: string[] = [];
 
     if (JSEARCH_API_KEY) {
       promises.push(searchJSearch(JSEARCH_API_KEY, filters));
+      sourceNames.push("jsearch");
     }
 
-    // Always include Remotive for remote jobs
-    if (remote || !location) {
-      promises.push(searchRemotive(filters.query || "developer"));
-    }
+    // Always include free sources
+    promises.push(searchRemotive(filters.query || "developer"));
+    sourceNames.push("remotive");
 
-    const results = await Promise.all(promises);
-    const allJobs = results.flat();
+    promises.push(searchArbeitnow(filters.query || "software engineer", filters.page));
+    sourceNames.push("arbeitnow");
 
-    // Deduplicate by title + company
+    promises.push(searchFindWork(filters.query || "software engineer"));
+    sourceNames.push("findwork");
+
+    const results = await Promise.allSettled(promises);
+    const allJobs: NormalizedJob[] = [];
+
+    results.forEach((result, i) => {
+      if (result.status === "fulfilled") {
+        console.log(`[JobSearchV2] ${sourceNames[i]}: ${result.value.length} jobs`);
+        allJobs.push(...result.value);
+      } else {
+        console.error(`[JobSearchV2] ${sourceNames[i]} failed:`, result.reason);
+      }
+    });
+
+    // Deduplicate by title + company (case-insensitive)
     const seen = new Set<string>();
     const uniqueJobs = allJobs.filter((job) => {
-      const key = `${job.title.toLowerCase()}-${job.company.toLowerCase()}`;
+      const key = `${job.title.toLowerCase().trim()}-${job.company.toLowerCase().trim()}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
 
-    // Sort by date posted (newest first)
+    // Sort by date posted (newest first), nulls last
     uniqueJobs.sort((a, b) => {
       const dateA = a.date_posted ? new Date(a.date_posted).getTime() : 0;
       const dateB = b.date_posted ? new Date(b.date_posted).getTime() : 0;
       return dateB - dateA;
     });
 
-    console.log(`[JobSearchV2] Found ${uniqueJobs.length} unique jobs from ${promises.length} sources`);
+    console.log(`[JobSearchV2] Total: ${uniqueJobs.length} unique jobs from ${sourceNames.length} sources`);
 
     // Optionally store jobs in Supabase for caching
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!;
-
     if (uniqueJobs.length > 0) {
       try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!;
         const supabase = createClient(supabaseUrl, supabaseKey);
-        const jobsToInsert = uniqueJobs.map((job) => ({
+        const jobsToInsert = uniqueJobs.slice(0, 50).map((job) => ({
           title: job.title,
           company: job.company,
           location: job.location,
@@ -225,11 +315,9 @@ serve(async (req: Request) => {
           external_id: job.id,
         }));
 
-        // Upsert to avoid duplicates
         await supabase.from("jobs").upsert(jobsToInsert, { onConflict: "external_id", ignoreDuplicates: true });
       } catch (e) {
         console.error("Failed to cache jobs:", e);
-        // Non-blocking — still return results
       }
     }
 
@@ -237,7 +325,7 @@ serve(async (req: Request) => {
       jobs: uniqueJobs,
       total: uniqueJobs.length,
       page: filters.page,
-      sources: JSEARCH_API_KEY ? ["jsearch", "remotive"] : ["remotive"],
+      sources: sourceNames.filter((_, i) => results[i].status === "fulfilled"),
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
