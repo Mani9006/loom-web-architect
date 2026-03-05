@@ -223,7 +223,63 @@ serve(async (req: Request) => {
 
     const { query, location, jobType, remote, datePosted, page, resumeText } = await req.json();
 
-    const JSEARCH_API_KEY = Deno.env.get("RAPIDAPI_KEY") || Deno.env.get("JSEARCH_API_KEY");
+    // Try env var first, then fall back to Supabase vault
+    let JSEARCH_API_KEY = Deno.env.get("RAPIDAPI_KEY") || Deno.env.get("JSEARCH_API_KEY");
+
+    if (!JSEARCH_API_KEY) {
+      try {
+        // Query vault.decrypted_secrets via PostgREST REST API directly
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const vaultResp = await fetch(
+          `${supabaseUrl}/rest/v1/rpc/vault_read_secret`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: serviceKey,
+              Authorization: `Bearer ${serviceKey}`,
+            },
+            body: JSON.stringify({ secret_name: "RAPIDAPI_KEY" }),
+          }
+        );
+        if (vaultResp.ok) {
+          const vaultData = await vaultResp.json();
+          if (vaultData && typeof vaultData === "string") {
+            JSEARCH_API_KEY = vaultData;
+            console.log("[JobSearchV2] Loaded RAPIDAPI_KEY from vault RPC");
+          } else if (Array.isArray(vaultData) && vaultData[0]?.decrypted_secret) {
+            JSEARCH_API_KEY = vaultData[0].decrypted_secret;
+            console.log("[JobSearchV2] Loaded RAPIDAPI_KEY from vault RPC (array)");
+          }
+        }
+      } catch (e) {
+        console.log("[JobSearchV2] Vault lookup skipped:", (e as Error).message);
+      }
+    }
+
+    // Fallback: query vault.decrypted_secrets directly via SQL if RPC failed
+    if (!JSEARCH_API_KEY) {
+      try {
+        const vaultClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          { db: { schema: "vault" } }
+        );
+        const { data: secrets } = await vaultClient
+          .from("decrypted_secrets")
+          .select("decrypted_secret")
+          .eq("name", "RAPIDAPI_KEY")
+          .limit(1)
+          .single();
+        if (secrets?.decrypted_secret) {
+          JSEARCH_API_KEY = secrets.decrypted_secret;
+          console.log("[JobSearchV2] Loaded RAPIDAPI_KEY from vault schema");
+        }
+      } catch (e) {
+        console.log("[JobSearchV2] Vault schema lookup skipped:", (e as Error).message);
+      }
+    }
 
     // Build search query from resume if no explicit query
     let searchQuery = query;
