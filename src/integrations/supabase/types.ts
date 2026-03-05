@@ -284,6 +284,184 @@ export type Database = {
         }
         Relationships: []
       }
+      jobs: {
+        Row: {
+          id: string
+          title: string
+          company: string
+          location: string | null
+          description: string | null
+          apply_url: string | null
+          source: string
+          date_posted: string | null
+          salary_min: number | null
+          salary_max: number | null
+          job_type: string | null
+          remote: boolean
+          employer_logo: string | null
+          external_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          company: string
+          location?: string | null
+          description?: string | null
+          apply_url?: string | null
+          source?: string
+          date_posted?: string | null
+          salary_min?: number | null
+          salary_max?: number | null
+          job_type?: string | null
+          remote?: boolean
+          employer_logo?: string | null
+          external_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          company?: string
+          location?: string | null
+          description?: string | null
+          apply_url?: string | null
+          source?: string
+          date_posted?: string | null
+          salary_min?: number | null
+          salary_max?: number | null
+          job_type?: string | null
+          remote?: boolean
+          employer_logo?: string | null
+          external_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      job_applications: {
+        Row: {
+          id: string
+          user_id: string
+          job_id: string | null
+          title: string
+          company: string
+          status: string
+          applied_at: string
+          apply_url: string | null
+          notes: string | null
+          confirmation_email_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          job_id?: string | null
+          title: string
+          company: string
+          status?: string
+          applied_at?: string
+          apply_url?: string | null
+          notes?: string | null
+          confirmation_email_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          job_id?: string | null
+          title?: string
+          company?: string
+          status?: string
+          applied_at?: string
+          apply_url?: string | null
+          notes?: string | null
+          confirmation_email_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_applications_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_aliases: {
+        Row: {
+          id: string
+          user_id: string
+          alias_email: string
+          forwarding_email: string
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          alias_email: string
+          forwarding_email: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          alias_email?: string
+          forwarding_email?: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      application_emails: {
+        Row: {
+          id: string
+          user_id: string
+          job_application_id: string | null
+          from_email: string | null
+          subject: string | null
+          body_preview: string | null
+          received_at: string
+          parsed_status: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          job_application_id?: string | null
+          from_email?: string | null
+          subject?: string | null
+          body_preview?: string | null
+          received_at?: string
+          parsed_status?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          job_application_id?: string | null
+          from_email?: string | null
+          subject?: string | null
+          body_preview?: string | null
+          received_at?: string
+          parsed_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_emails_job_application_id_fkey"
+            columns: ["job_application_id"]
+            isOneToOne: false
+            referencedRelation: "job_applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tracked_jobs: {
         Row: {
           company: string
