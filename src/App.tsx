@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { SubscriptionProvider } from "@/components/SubscriptionGate";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -39,6 +40,8 @@ const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
 const AdminPortal = lazy(() => import("./pages/AdminPortal"));
 const AutoApplyPage = lazy(() => import("./pages/AutoApplyPage"));
+const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
+const PricingPage = lazy(() => import("./pages/PricingPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -51,6 +54,7 @@ const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <SubscriptionProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
@@ -75,6 +79,8 @@ const App = () => (
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
                     <Route path="/job-tracker" element={<JobTracker />} />
                     <Route path="/auto-apply" element={<AutoApplyPage />} />
+                    <Route path="/profile-setup" element={<ProfileSetupPage />} />
+                    <Route path="/pricing" element={<PricingPage />} />
                     <Route path="/interview-prep" element={<InterviewPrepPage />} />
                     <Route path="/cover-letters" element={<CoverLettersPage />} />
                     <Route path="/chat" element={<Chat />} />
@@ -103,6 +109,7 @@ const App = () => (
           </BrowserRouter>
           <VercelAnalytics />
         </TooltipProvider>
+        </SubscriptionProvider>
       </AuthProvider>
     </QueryClientProvider>
   </ErrorBoundary>

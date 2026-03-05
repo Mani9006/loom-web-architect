@@ -202,6 +202,21 @@ export type Database = {
           target_role: string | null
           updated_at: string
           user_id: string
+          seniority_level: string | null
+          languages_spoken: Json | null
+          skills: Json | null
+          work_authorization: string | null
+          preferred_work_type: string[] | null
+          salary_expectations: Json | null
+          years_of_experience: number | null
+          education_level: string | null
+          blacklisted_companies: string[] | null
+          desired_roles: string[] | null
+          desired_locations: string[] | null
+          profile_completeness: number | null
+          profile_setup_completed: boolean | null
+          linkedin_url: string | null
+          resume_json: Json | null
         }
         Insert: {
           avatar_url?: string | null
@@ -216,6 +231,21 @@ export type Database = {
           target_role?: string | null
           updated_at?: string
           user_id: string
+          seniority_level?: string | null
+          languages_spoken?: Json | null
+          skills?: Json | null
+          work_authorization?: string | null
+          preferred_work_type?: string[] | null
+          salary_expectations?: Json | null
+          years_of_experience?: number | null
+          education_level?: string | null
+          blacklisted_companies?: string[] | null
+          desired_roles?: string[] | null
+          desired_locations?: string[] | null
+          profile_completeness?: number | null
+          profile_setup_completed?: boolean | null
+          linkedin_url?: string | null
+          resume_json?: Json | null
         }
         Update: {
           avatar_url?: string | null
@@ -230,6 +260,21 @@ export type Database = {
           target_role?: string | null
           updated_at?: string
           user_id?: string
+          seniority_level?: string | null
+          languages_spoken?: Json | null
+          skills?: Json | null
+          work_authorization?: string | null
+          preferred_work_type?: string[] | null
+          salary_expectations?: Json | null
+          years_of_experience?: number | null
+          education_level?: string | null
+          blacklisted_companies?: string[] | null
+          desired_roles?: string[] | null
+          desired_locations?: string[] | null
+          profile_completeness?: number | null
+          profile_setup_completed?: boolean | null
+          linkedin_url?: string | null
+          resume_json?: Json | null
         }
         Relationships: []
       }
@@ -715,6 +760,89 @@ export type Database = {
         }
         Relationships: []
       }
+      job_matches: {
+        Row: {
+          id: string
+          user_id: string
+          job_id: string
+          match_score: number
+          match_reasons: Json | null
+          liked: boolean | null
+          dismissed: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          job_id: string
+          match_score?: number
+          match_reasons?: Json | null
+          liked?: boolean | null
+          dismissed?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          job_id?: string
+          match_score?: number
+          match_reasons?: Json | null
+          liked?: boolean | null
+          dismissed?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_matches_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_plans: {
+        Row: {
+          id: string
+          user_id: string
+          plan_type: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          current_period_start: string | null
+          current_period_end: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          plan_type?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          plan_type?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -726,6 +854,12 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      vault_read_secret: {
+        Args: {
+          secret_name: string
+        }
+        Returns: string
       }
       write_audit_log: {
         Args: {
