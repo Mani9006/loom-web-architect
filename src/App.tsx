@@ -3,11 +3,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { SubscriptionProvider } from "@/components/SubscriptionGate";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import OwnerProtectedRoute from "@/components/OwnerProtectedRoute";
+import RouteAnalyticsTracker from "@/components/RouteAnalyticsTracker";
+import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 
 // Eager-loaded routes (critical path)
 import Landing from "./pages/Landing";
@@ -19,15 +23,12 @@ const PrintResume = lazy(() => import("./pages/PrintResume"));
 const AppLayout = lazy(() => import("./components/layout/AppLayout"));
 const HomePage = lazy(() => import("./pages/HomePage"));
 const JobTracker = lazy(() => import("./pages/JobTracker"));
-const MockInterviews = lazy(() => import("./pages/MockInterviews"));
 const Documents = lazy(() => import("./pages/Documents"));
 const ResumeProjects = lazy(() => import("./pages/ResumeProjects"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
-const JobsPage = lazy(() => import("./pages/JobsPage"));
 const JobSearchPage = lazy(() => import("./pages/JobSearchPage"));
-const Contacts = lazy(() => import("./pages/Contacts"));
+// ApplyPass removed — redirects to /auto-apply
 const CoverLettersPage = lazy(() => import("./pages/CoverLettersPage"));
-const CoverLetterPage = lazy(() => import("./pages/CoverLetterPage"));
 const InterviewPrepPage = lazy(() => import("./pages/InterviewPrepPage"));
 const ATSCheckerPage = lazy(() => import("./pages/ATSCheckerPage"));
 const AIToolbox = lazy(() => import("./pages/AIToolbox"));
@@ -35,6 +36,12 @@ const Analytics = lazy(() => import("./pages/Analytics"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const ControlCenter = lazy(() => import("./pages/ControlCenter"));
+const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
+const AdminPortal = lazy(() => import("./pages/AdminPortal"));
+const AutoApplyPage = lazy(() => import("./pages/AutoApplyPage"));
+const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
+const PricingPage = lazy(() => import("./pages/PricingPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -47,10 +54,12 @@ const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <SubscriptionProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <RouteAnalyticsTracker />
             <Suspense fallback={<SuspenseFallback />}>
               <Routes>
                 {/* Public routes */}
@@ -63,23 +72,32 @@ const App = () => (
                 <Route element={<ProtectedRoute />}>
                   <Route element={<AppLayout />}>
                     <Route path="/home" element={<HomePage />} />
-                    <Route path="/jobs" element={<JobsPage />} />
                     <Route path="/job-search" element={<JobSearchPage />} />
+                    <Route path="/applypass" element={<Navigate to="/auto-apply" replace />} />
                     <Route path="/resume-builder" element={<ResumeProjects />} />
                     <Route path="/resume-builder/:resumeId" element={<ResumeBuilder />} />
-                    <Route path="/job-tracker" element={<JobTracker />} />
-                    <Route path="/mock-interviews" element={<MockInterviews />} />
-                    <Route path="/interview-prep" element={<InterviewPrepPage />} />
-                    <Route path="/cover-letter" element={<CoverLetterPage />} />
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
+                    <Route path="/job-tracker" element={<JobTracker />} />
+                    <Route path="/auto-apply" element={<AutoApplyPage />} />
+                    <Route path="/profile-setup" element={<ProfileSetupPage />} />
+                    <Route path="/pricing" element={<PricingPage />} />
+                    <Route path="/interview-prep" element={<InterviewPrepPage />} />
+                    <Route path="/cover-letters" element={<CoverLettersPage />} />
                     <Route path="/chat" element={<Chat />} />
                     <Route path="/c/:conversationId" element={<Chat />} />
                     <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/control-center" element={<ControlCenter />} />
+                    <Route path="/market-domination-map" element={<MarketDominationMap />} />
+                    <Route
+                      path="/admin"
+                      element={
+                        <OwnerProtectedRoute>
+                          <AdminPortal />
+                        </OwnerProtectedRoute>
+                      }
+                    />
                     <Route path="/profile" element={<Profile />} />
                     <Route path="/documents" element={<Documents />} />
-                    <Route path="/cover-letters" element={<CoverLettersPage />} />
-                    <Route path="/linkedin" element={<Profile />} />
-                    <Route path="/contacts" element={<Contacts />} />
                     <Route path="/ai-toolbox" element={<AIToolbox />} />
                     <Route path="/analytics" element={<Analytics />} />
                   </Route>
@@ -89,7 +107,9 @@ const App = () => (
               </Routes>
             </Suspense>
           </BrowserRouter>
+          <VercelAnalytics />
         </TooltipProvider>
+        </SubscriptionProvider>
       </AuthProvider>
     </QueryClientProvider>
   </ErrorBoundary>

@@ -1,0 +1,52 @@
+name: Jira Ticket Sync
+
+on:
+  schedule:
+    # Check every 4 hours for review tickets
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  GITHUB_REPO: Mani9006/loom-web-architect
+
+jobs:
+  sync-review-tickets:
+    name: Sync Jira Review Tickets
+    runs-on: ubuntu-latest
+    if: ${{ secrets.JIRA_URL != '' }}
+    steps:
+      - name: Fetch Jira tickets needing review
+        id: jira
+        env:
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_USER: ${{ secrets.JIRA_USER }}
+          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY || 'KAN' }}
+        run: |
+          JQL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('project = $PROJECT_KEY AND status = Review ORDER BY updated DESC'))")
+
+          RESPONSE=$(curl -s -u "$JIRA_USER:$JIRA_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$JIRA_URL/rest/api/3/search/jql?jql=$JQL&maxResults=10&fields=summary,status,updated")
+
+          echo "review_tickets<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESPONSE" | jq -r '.issues[]? | "\(.key): \(.fields.summary)"' >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          COUNT=$(echo "$RESPONSE" | jq '.total // 0')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack about review tickets
+        if: steps.jira.outputs.count != '0' && vars.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ vars.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"📋 *ResumePreps Review Alert*\n${{ steps.jira.outputs.count }} ticket(s) need review:\n\`\`\`\n${{ steps.jira.outputs.review_tickets }}\n\`\`\`\nAction: Review commits and deploy evidence before promotion.\"
+            }"

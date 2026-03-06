@@ -1,6 +1,4 @@
 // Supabase Edge Function - Runs on Deno runtime
-// @deno-types="npm:@types/node"
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -20,6 +18,28 @@ interface ExaResult {
   publishedDate?: string;
   text?: string;
   highlights?: string[];
+}
+
+function isLikelyJobListingUrl(url: string): boolean {
+  const normalized = String(url || "").toLowerCase().trim();
+  if (!normalized.startsWith("http")) return false;
+  if (/fake|placeholder|example\.com|undefined|null/.test(normalized)) return false;
+
+  const allowedHints = [
+    "/jobs/",
+    "/job/",
+    "careers",
+    "myworkdayjobs.com",
+    "jobs.lever.co",
+    "boards.greenhouse.io",
+    "smartrecruiters.com",
+    "icims.com/jobs",
+    "linkedin.com/jobs",
+    "indeed.com/viewjob",
+    "wellfound.com/jobs",
+  ];
+
+  return allowedHints.some((hint) => normalized.includes(hint));
 }
 
 const corsHeaders = {
@@ -184,6 +204,12 @@ async function searchJobsWithExa(apiKey: string, resumeText: string, filters?: J
             "myworkdayjobs.com",
             "jobs.lever.co",
             "boards.greenhouse.io",
+            "jobs.smartrecruiters.com",
+            "smartrecruiters.com",
+            "jobs.jobvite.com",
+            "icims.com",
+            "careers.ibm.com",
+            "careers.microsoft.com",
             "careers.google.com",
             "amazon.jobs",
             "microsoft.com",
@@ -214,8 +240,13 @@ async function searchJobsWithExa(apiKey: string, resumeText: string, filters?: J
 
     for (const results of resultSets) {
       for (const result of results) {
-        if (!seenUrls.has(result.url)) {
-          seenUrls.add(result.url);
+        const cleanUrl = String(result.url || "").trim();
+        if (!isLikelyJobListingUrl(cleanUrl)) {
+          continue;
+        }
+
+        if (!seenUrls.has(cleanUrl)) {
+          seenUrls.add(cleanUrl);
           allResults.push(result);
         }
       }

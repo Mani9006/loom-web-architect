@@ -1,4 +1,4 @@
-project_id = "nnwsguivskfbejyiqekb"
+project_id = "woxtbyotydxorcdhhivr"
 
 [functions.chat]
 verify_jwt = false
@@ -19,4 +19,28 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.enhance-bullet]
+verify_jwt = false
+
+[functions.executive-brief]
+verify_jwt = false
+
+[functions.admin-portal]
+verify_jwt = false
+
+[functions.usage-guard]
+verify_jwt = false
+
+[functions.applypass-browser-session]
+verify_jwt = false
+
+[functions.applypass-agent-queue]
+verify_jwt = false
+
+[functions.apply-to-job]
+verify_jwt = false
+
+[functions.job-search-v2]
+verify_jwt = false
+
+[functions.ats-score]
 verify_jwt = false

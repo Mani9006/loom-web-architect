@@ -1,10 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { evaluateUserAccess } from "../_shared/access-control.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+function parseIntEnv(name: string, fallback: number): number {
+  const raw = Deno.env.get(name);
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 // Agent definitions with specialized capabilities
 const AGENTS = {
@@ -360,12 +367,27 @@ function getOptimalModelForAgent(agentType: string): string {
   }
 }
 
+function getMaxTokensForAgent(agentType: string): number {
+  const defaultMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_DEFAULT", 1200);
+  const complexMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_COMPLEX", 1800);
+  switch (agentType) {
+    case "resume":
+    case "cover_letter":
+    case "ats":
+    case "resume_enhance":
+      return complexMax;
+    default:
+      return defaultMax;
+  }
+}
+
 // Execute specialized agent using OpenAI
 async function executeAgent(
   apiKey: string,
   agentType: string,
   messages: any[],
-  memoryContext: string
+  memoryContext: string,
+  maxTokens: number,
 ): Promise<Response> {
   const normalizedAgentType = normalizeIntent(agentType);
   const agent = AGENTS[normalizedAgentType as keyof typeof AGENTS] || AGENTS.general;
@@ -387,6 +409,7 @@ Keep responses clear, well-structured, and actionable. Use markdown formatting f
     },
     body: JSON.stringify({
       model: optimalModel,
+      max_tokens: maxTokens,
       messages: [
         { role: "system", content: systemPrompt },
         ...messages,
@@ -424,6 +447,21 @@ serve(async (req) => {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    const access = await evaluateUserAccess(supabase, user.id);
+    if (!access.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: "Access denied",
+          reasonCode: access.code,
+          detail: access.message || "AI access is restricted for this account.",
+        }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const payload = await req.json();
@@ -480,7 +518,8 @@ serve(async (req) => {
       OPENAI_API_KEY,
       routedIntent,
       messages,
-      memoryContext
+      memoryContext,
+      getMaxTokensForAgent(routedIntent),
     );
 
     if (!response.ok) {

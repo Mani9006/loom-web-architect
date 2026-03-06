@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, Mail, FileDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import html2pdf from "html2pdf.js";
 
 interface CoverLetterActionsProps {
   content: string;
@@ -28,23 +27,26 @@ export function useCoverLetterActions() {
 
   const exportToPdf = async (content: string, title: string) => {
     setIsExporting(true);
-    
+
     try {
+      // Lazy load html2pdf only when user triggers export
+      const html2pdf = (await import("html2pdf.js")).default;
+
       // Create a styled HTML container for the PDF using safe DOM manipulation
       // to prevent XSS attacks from user-controlled content
       const container = document.createElement("div");
-      
+
       const wrapper = document.createElement("div");
       wrapper.style.cssText = "font-family: 'Georgia', serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.6;";
-      
+
       const heading = document.createElement("h1");
       heading.style.cssText = "font-size: 18px; margin-bottom: 24px; color: #1a1a1a;";
       heading.textContent = title; // Safe - uses textContent, no HTML parsing
-      
+
       const contentDiv = document.createElement("div");
       contentDiv.style.cssText = "font-size: 12px; color: #333; white-space: pre-wrap;";
       contentDiv.textContent = content; // Safe - uses textContent, no HTML parsing
-      
+
       wrapper.appendChild(heading);
       wrapper.appendChild(contentDiv);
       container.appendChild(wrapper);
@@ -58,7 +60,7 @@ export function useCoverLetterActions() {
       };
 
       await html2pdf().set(options).from(container).save();
-      
+
       toast({
         title: "PDF Downloaded",
         description: "Your cover letter has been saved as a PDF.",

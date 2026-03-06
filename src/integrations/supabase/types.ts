@@ -202,6 +202,21 @@ export type Database = {
           target_role: string | null
           updated_at: string
           user_id: string
+          seniority_level: string | null
+          languages_spoken: Json | null
+          skills: Json | null
+          work_authorization: string | null
+          preferred_work_type: string[] | null
+          salary_expectations: Json | null
+          years_of_experience: number | null
+          education_level: string | null
+          blacklisted_companies: string[] | null
+          desired_roles: string[] | null
+          desired_locations: string[] | null
+          profile_completeness: number | null
+          profile_setup_completed: boolean | null
+          linkedin_url: string | null
+          resume_json: Json | null
         }
         Insert: {
           avatar_url?: string | null
@@ -216,6 +231,21 @@ export type Database = {
           target_role?: string | null
           updated_at?: string
           user_id: string
+          seniority_level?: string | null
+          languages_spoken?: Json | null
+          skills?: Json | null
+          work_authorization?: string | null
+          preferred_work_type?: string[] | null
+          salary_expectations?: Json | null
+          years_of_experience?: number | null
+          education_level?: string | null
+          blacklisted_companies?: string[] | null
+          desired_roles?: string[] | null
+          desired_locations?: string[] | null
+          profile_completeness?: number | null
+          profile_setup_completed?: boolean | null
+          linkedin_url?: string | null
+          resume_json?: Json | null
         }
         Update: {
           avatar_url?: string | null
@@ -230,6 +260,21 @@ export type Database = {
           target_role?: string | null
           updated_at?: string
           user_id?: string
+          seniority_level?: string | null
+          languages_spoken?: Json | null
+          skills?: Json | null
+          work_authorization?: string | null
+          preferred_work_type?: string[] | null
+          salary_expectations?: Json | null
+          years_of_experience?: number | null
+          education_level?: string | null
+          blacklisted_companies?: string[] | null
+          desired_roles?: string[] | null
+          desired_locations?: string[] | null
+          profile_completeness?: number | null
+          profile_setup_completed?: boolean | null
+          linkedin_url?: string | null
+          resume_json?: Json | null
         }
         Relationships: []
       }
@@ -283,6 +328,184 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      jobs: {
+        Row: {
+          id: string
+          title: string
+          company: string
+          location: string | null
+          description: string | null
+          apply_url: string | null
+          source: string
+          date_posted: string | null
+          salary_min: number | null
+          salary_max: number | null
+          job_type: string | null
+          remote: boolean
+          employer_logo: string | null
+          external_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          company: string
+          location?: string | null
+          description?: string | null
+          apply_url?: string | null
+          source?: string
+          date_posted?: string | null
+          salary_min?: number | null
+          salary_max?: number | null
+          job_type?: string | null
+          remote?: boolean
+          employer_logo?: string | null
+          external_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          company?: string
+          location?: string | null
+          description?: string | null
+          apply_url?: string | null
+          source?: string
+          date_posted?: string | null
+          salary_min?: number | null
+          salary_max?: number | null
+          job_type?: string | null
+          remote?: boolean
+          employer_logo?: string | null
+          external_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      job_applications: {
+        Row: {
+          id: string
+          user_id: string
+          job_id: string | null
+          title: string
+          company: string
+          status: string
+          applied_at: string
+          apply_url: string | null
+          notes: string | null
+          confirmation_email_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          job_id?: string | null
+          title: string
+          company: string
+          status?: string
+          applied_at?: string
+          apply_url?: string | null
+          notes?: string | null
+          confirmation_email_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          job_id?: string | null
+          title?: string
+          company?: string
+          status?: string
+          applied_at?: string
+          apply_url?: string | null
+          notes?: string | null
+          confirmation_email_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_applications_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_aliases: {
+        Row: {
+          id: string
+          user_id: string
+          alias_email: string
+          forwarding_email: string
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          alias_email: string
+          forwarding_email: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          alias_email?: string
+          forwarding_email?: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      application_emails: {
+        Row: {
+          id: string
+          user_id: string
+          job_application_id: string | null
+          from_email: string | null
+          subject: string | null
+          body_preview: string | null
+          received_at: string
+          parsed_status: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          job_application_id?: string | null
+          from_email?: string | null
+          subject?: string | null
+          body_preview?: string | null
+          received_at?: string
+          parsed_status?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          job_application_id?: string | null
+          from_email?: string | null
+          subject?: string | null
+          body_preview?: string | null
+          received_at?: string
+          parsed_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_emails_job_application_id_fkey"
+            columns: ["job_application_id"]
+            isOneToOne: false
+            referencedRelation: "job_applications"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tracked_jobs: {
         Row: {
@@ -380,6 +603,246 @@ export type Database = {
         }
         Relationships: []
       }
+      enterprise_tenants: {
+        Row: {
+          id: string
+          name: string
+          slug: string
+          plan: "enterprise" | "enterprise_plus"
+          sso_enabled: boolean
+          max_seats: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          slug: string
+          plan?: "enterprise" | "enterprise_plus"
+          sso_enabled?: boolean
+          max_seats?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          slug?: string
+          plan?: "enterprise" | "enterprise_plus"
+          sso_enabled?: boolean
+          max_seats?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      enterprise_memberships: {
+        Row: {
+          id: string
+          tenant_id: string
+          user_id: string
+          tenant_role: "owner" | "admin" | "member" | "viewer"
+          invited_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          user_id: string
+          tenant_role?: "owner" | "admin" | "member" | "viewer"
+          invited_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          user_id?: string
+          tenant_role?: "owner" | "admin" | "member" | "viewer"
+          invited_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_memberships_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "enterprise_tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sso_configurations: {
+        Row: {
+          id: string
+          tenant_id: string
+          protocol: "saml" | "oidc"
+          issuer_url: string | null
+          client_id: string | null
+          idp_metadata_url: string | null
+          sp_acs_url: string | null
+          attribute_map: Json
+          enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          protocol?: "saml" | "oidc"
+          issuer_url?: string | null
+          client_id?: string | null
+          idp_metadata_url?: string | null
+          sp_acs_url?: string | null
+          attribute_map?: Json
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          protocol?: "saml" | "oidc"
+          issuer_url?: string | null
+          client_id?: string | null
+          idp_metadata_url?: string | null
+          sp_acs_url?: string | null
+          attribute_map?: Json
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sso_configurations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "enterprise_tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_log_entries: {
+        Row: {
+          id: string
+          tenant_id: string | null
+          actor_id: string | null
+          action: string
+          resource: string | null
+          resource_id: string | null
+          metadata: Json
+          ip_address: string | null
+          user_agent: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id?: string | null
+          actor_id?: string | null
+          action: string
+          resource?: string | null
+          resource_id?: string | null
+          metadata?: Json
+          ip_address?: string | null
+          user_agent?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string | null
+          actor_id?: string | null
+          action?: string
+          resource?: string | null
+          resource_id?: string | null
+          metadata?: Json
+          ip_address?: string | null
+          user_agent?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      job_matches: {
+        Row: {
+          id: string
+          user_id: string
+          job_id: string
+          match_score: number
+          match_reasons: Json | null
+          liked: boolean | null
+          dismissed: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          job_id: string
+          match_score?: number
+          match_reasons?: Json | null
+          liked?: boolean | null
+          dismissed?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          job_id?: string
+          match_score?: number
+          match_reasons?: Json | null
+          liked?: boolean | null
+          dismissed?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_matches_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_plans: {
+        Row: {
+          id: string
+          user_id: string
+          plan_type: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          current_period_start: string | null
+          current_period_end: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          plan_type?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          plan_type?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -392,9 +855,28 @@ export type Database = {
         }
         Returns: boolean
       }
+      vault_read_secret: {
+        Args: {
+          secret_name: string
+        }
+        Returns: string
+      }
+      write_audit_log: {
+        Args: {
+          p_actor_id: string
+          p_action: string
+          p_resource?: string | null
+          p_resource_id?: string | null
+          p_tenant_id?: string | null
+          p_metadata?: Json
+          p_ip_address?: string | null
+          p_user_agent?: string | null
+        }
+        Returns: string
+      }
     }
     Enums: {
-      app_role: "admin" | "moderator" | "user"
+      app_role: "admin" | "moderator" | "user" | "enterprise_admin" | "enterprise_member"
     }
     CompositeTypes: {
       [_ in never]: never

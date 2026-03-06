@@ -12,6 +12,7 @@ import { Plus, Search, Briefcase, Building2, Clock, Target, Trash2, Loader2 } fr
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { trackProductEvent } from "@/lib/product-analytics";
 
 interface Job {
   id: string;
@@ -75,9 +76,11 @@ export default function JobTracker() {
     setNewJob({ title: "", company: "" });
     setDialogOpen(false);
     toast({ title: "Job added", description: `${data.title} saved to tracker` });
+    void trackProductEvent("job_added", { status: "Saved" });
   };
 
   const moveJob = async (jobId: string, newStatus: string) => {
+    const current = jobs.find((j) => j.id === jobId);
     setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j)));
 
     const { error } = await supabase
@@ -87,7 +90,9 @@ export default function JobTracker() {
 
     if (error) {
       toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
+      return;
     }
+    void trackProductEvent("job_status_changed", { from: current?.status || "unknown", to: newStatus });
   };
 
   const deleteJob = async (jobId: string) => {
@@ -100,7 +105,9 @@ export default function JobTracker() {
 
     if (error) {
       toast({ title: "Error", description: "Failed to delete job", variant: "destructive" });
+      return;
     }
+    void trackProductEvent("job_deleted");
   };
 
   const filteredJobs = jobs.filter(
