@@ -446,6 +446,7 @@ async function setUserAccessControl(
     purchaseState?: unknown;
     subscriptionPlan?: unknown;
     aiFeaturesEnabled?: unknown;
+    autoApplyEnabled?: unknown;
     blockedReason?: unknown;
     blockedUntil?: unknown;
   },
@@ -464,6 +465,7 @@ async function setUserAccessControl(
   const purchaseState = normalizePurchaseState(payload.purchaseState);
   const subscriptionPlan = normalizePlan(payload.subscriptionPlan);
   const aiFeaturesEnabled = Boolean(payload.aiFeaturesEnabled ?? true);
+  const autoApplyEnabled = Boolean(payload.autoApplyEnabled ?? false);
   const blockedReason = String(payload.blockedReason || "").trim() || null;
   const blockedUntil = safeNullableDate(String(payload.blockedUntil || ""));
 
@@ -485,6 +487,7 @@ async function setUserAccessControl(
         purchase_state: purchaseState,
         subscription_plan: subscriptionPlan,
         ai_features_enabled: aiFeaturesEnabled,
+        auto_apply_enabled: autoApplyEnabled,
         blocked_reason: accountStatus === "active" ? null : blockedReason,
         blocked_until: accountStatus === "active" ? null : blockedUntil,
         last_admin_action_at: new Date().toISOString(),
@@ -517,6 +520,7 @@ async function setUserAccessControl(
     purchaseState,
     subscriptionPlan,
     aiFeaturesEnabled,
+    autoApplyEnabled,
     blockedUntil,
   };
 }
@@ -911,6 +915,7 @@ async function buildSummary(
         purchaseState: accessRow?.purchase_state || "trial",
         subscriptionPlan: accessRow?.subscription_plan || "free",
         aiFeaturesEnabled: accessRow?.ai_features_enabled ?? true,
+        autoApplyEnabled: accessRow?.auto_apply_enabled ?? false,
         blockedReason: accessRow?.blocked_reason || null,
         blockedUntil: safeNullableDate(accessRow?.blocked_until),
         conversations: 0,
@@ -1176,6 +1181,7 @@ serve(async (req) => {
         purchaseState: body?.purchaseState,
         subscriptionPlan: body?.subscriptionPlan,
         aiFeaturesEnabled: body?.aiFeaturesEnabled,
+        autoApplyEnabled: body?.autoApplyEnabled,
         blockedReason: body?.blockedReason,
         blockedUntil: body?.blockedUntil,
       });
@@ -1191,6 +1197,7 @@ serve(async (req) => {
           purchaseState: result.purchaseState,
           subscriptionPlan: result.subscriptionPlan,
           aiFeaturesEnabled: result.aiFeaturesEnabled,
+          autoApplyEnabled: result.autoApplyEnabled,
           blockedUntil: result.blockedUntil,
         },
         req,
