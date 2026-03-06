@@ -25,7 +25,15 @@ import {
   parseAIResponse, formatBullets, streamAIText, prepareResumeTextForParsing,
 } from "@/lib/ai-resume-parser";
 import { calculateATSScore, buildSectionFixPrompt, ATSScore, ATSIssue } from "@/lib/ats-scorer";
+import {
+  validateField, validateRequiredField, validateExperienceEntry, validateEducationEntry,
+  getDateFormatSuggestion,
+  nameSchema, requiredEmailSchema, phoneSchema, linkedinSchema, urlSchema,
+  getSummaryWarning,
+} from "@/lib/resume-validation";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
+import { TemplateSelector } from "@/components/resume/TemplateSelector";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ResumeFormSkeleton } from "@/components/resume/ResumeFormSkeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -36,6 +44,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Accordion,
   AccordionContent,
@@ -82,6 +91,8 @@ import {
   LayoutList,
   Linkedin,
   ArrowLeft,
+  Palette,
+  FileType,
 } from "lucide-react";
 import { Reorder } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -166,7 +177,7 @@ export default function ResumeBuilder() {
   const { resumeId } = useParams<{ resumeId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { exportToPDF, exportToWord, isExporting } = useResumeExport();
+  const { exportToPDF, exportToWord, exportToText, isExporting } = useResumeExport();
   const resumeRef = useRef<HTMLDivElement>(null);
 
   const [data, setData] = useState<ResumeJSON>(createEmptyResumeJSON());
@@ -198,6 +209,12 @@ export default function ResumeBuilder() {
   const [expandedLangId, setExpandedLangId] = useState<string | null>(null);
   const [expandedVolId, setExpandedVolId] = useState<string | null>(null);
   const [expandedAwardId, setExpandedAwardId] = useState<string | null>(null);
+  // ── Validation errors (validated on blur) ────────────────────────────
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
+  const [summaryWarning, setSummaryWarning] = useState<string | null>(null);
+  const isMobile = useIsMobile();
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const [previewScale, setPreviewScale] = useState(1);
   const [dragSectionIdx, setDragSectionIdx] = useState<number | null>(null);
   const [dragOverSectionIdx, setDragOverSectionIdx] = useState<number | null>(null);
   const [showATSDetails, setShowATSDetails] = useState(false);
@@ -205,6 +222,8 @@ export default function ResumeBuilder() {
   const [showLinkedInImport, setShowLinkedInImport] = useState(false);
   const [linkedInText, setLinkedInText] = useState("");
   const [isParsingLinkedIn, setIsParsingLinkedIn] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState("professional");
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // ── ATS Score (live, memoized) ──────────────────────────────────────────
@@ -250,6 +269,9 @@ export default function ResumeBuilder() {
 
       const r = resume as any;
       setCurrentResumeId(r.id);
+      if (r.template && typeof r.template === "string") {
+        setSelectedTemplate(r.template);
+      }
       const savedOrder: ResumeSectionId[] | undefined = Array.isArray(r.section_order) ? r.section_order : undefined;
       setData({
         header: r.personal_info || createEmptyResumeJSON().header,
@@ -298,7 +320,7 @@ export default function ResumeBuilder() {
         skills: resumeJson.skills as any, projects: resumeJson.projects as any,
         certifications: resumeJson.certifications as any, languages: resumeJson.languages as any,
         section_order: resumeJson.section_order as any,
-        template: "professional",
+        template: selectedTemplate,
       };
       if (currentResumeId) {
         await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
@@ -309,7 +331,7 @@ export default function ResumeBuilder() {
       setLastSaved(new Date());
     } catch {}
     setIsSaving(false);
-  }, [currentResumeId]);
+  }, [currentResumeId, selectedTemplate]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -537,6 +559,68 @@ export default function ResumeBuilder() {
 
   // ── Data mutation helpers ──────────────────────────────────────────────
   const updateHeader = (field: keyof ResumeJSON["header"], value: string) => setData((prev) => ({ ...prev, header: { ...prev.header, [field]: value } }));
+  // ── Field validation on blur ─────────────────────────────────────────
+  const validateOnBlur = (field: string, value: string) => {
+    let error: string | null = null;
+    switch (field) {
+      case "name": error = validateRequiredField(nameSchema, value); break;
+      case "email": error = validateRequiredField(requiredEmailSchema, value); break;
+      case "phone": error = validateField(phoneSchema, value); break;
+      case "linkedin": error = validateField(linkedinSchema, value); break;
+    }
+    setFieldErrors((prev) => ({ ...prev, [field]: error }));
+  };
+  const handleSummaryBlur = (value: string) => {
+    setSummaryWarning(getSummaryWarning(value));
+  };
+  const validateExpOnBlur = (expId: string, exp: { company_or_client: string; role: string; start_date: string; end_date: string; bullets: string[] }) => {
+    const errors = validateExperienceEntry(exp);
+    setFieldErrors((prev) => ({
+      ...prev,
+      [`exp.${expId}.company_or_client`]: errors.company_or_client,
+      [`exp.${expId}.role`]: errors.role,
+    }));
+  };
+  const validateExpDateOnBlur = (expId: string, field: string, value: string) => {
+    const suggestion = getDateFormatSuggestion(value);
+    setFieldErrors((prev) => ({ ...prev, [`exp.${expId}.${field}`]: suggestion }));
+  };
+  const validateEduOnBlur = (eduId: string, edu: { institution: string; degree: string; field: string; graduation_date: string }) => {
+    const errors = validateEducationEntry(edu);
+    setFieldErrors((prev) => ({
+      ...prev,
+      [`edu.${eduId}.institution`]: errors.institution,
+      [`edu.${eduId}.degree`]: errors.degree,
+    }));
+  };
+  const validateCertNameOnBlur = (certId: string, name: string, issuer: string) => {
+    // Require name if any cert field is filled
+    const hasContent = name.trim() || issuer.trim();
+    setFieldErrors((prev) => ({
+      ...prev,
+      [`cert.${certId}.name`]: hasContent && !name.trim() ? "Certification name is required" : null,
+    }));
+  };
+  const validateUrlOnBlur = (key: string, value: string) => {
+    const error = validateField(urlSchema, value);
+    setFieldErrors((prev) => ({ ...prev, [key]: error }));
+  };
+
+  // ── Mobile preview scaling ──────────────────────────────────────────
+  useEffect(() => {
+    if (!isMobile || !previewContainerRef.current) return;
+    const container = previewContainerRef.current;
+    const updateScale = () => {
+      const containerWidth = container.clientWidth - 32; // account for padding
+      const resumeWidth = 816; // standard US letter width in px at 96dpi
+      const scale = Math.min(containerWidth / resumeWidth, 1);
+      setPreviewScale(scale);
+    };
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [isMobile, mobileView]);
   const addExperience = () => setData((prev) => ({ ...prev, experience: [...prev.experience, { id: crypto.randomUUID(), role: "", company_or_client: "", start_date: "", end_date: "", location: "", bullets: [] }] }));
   const removeExperience = (id: string) => setData((prev) => ({ ...prev, experience: prev.experience.filter((e) => e.id !== id) }));
   const updateExperience = (id: string, field: keyof ExperienceEntry, value: any) => setData((prev) => ({ ...prev, experience: prev.experience.map((e) => (e.id === id ? { ...e, [field]: value } : e)) }));
@@ -714,15 +798,38 @@ export default function ResumeBuilder() {
 
   const fileName = data.header.name ? `${data.header.name.replace(/\s+/g, "_")}_Resume` : "Resume";
   const handleDownloadPDF = () => exportToPDF(previewData, fileName);
-  const handleDownloadWord = () => exportToWord(data, fileName);
+  const handleDownloadWord = () => exportToWord(previewData, fileName);
+  const handleDownloadText = () => exportToText(previewData, fileName);
   const handlePrintView = () => { localStorage.setItem("printResumeData", JSON.stringify(data)); window.open("/print-resume", "_blank"); };
 
   if (!isLoaded) return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-background">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-background">
+      {/* ─── MOBILE TOGGLE BAR ────────────────────────────────────────── */}
+      {isMobile && (
+        <div className="flex items-center border-b border-border bg-card px-2 py-1.5 gap-1 shrink-0">
+          <Button
+            variant={mobileView === "editor" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setMobileView("editor")}
+            className="flex-1 h-8 text-xs gap-1.5"
+          >
+            <Pencil className="h-3.5 w-3.5" /> Editor
+          </Button>
+          <Button
+            variant={mobileView === "preview" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setMobileView("preview")}
+            className="flex-1 h-8 text-xs gap-1.5"
+          >
+            <Eye className="h-3.5 w-3.5" /> Preview
+          </Button>
+        </div>
+      )}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* ─── LEFT PANEL: Accordion editor ─────────────────────────────── */}
-      <div className={cn("w-full lg:w-[48%] lg:min-w-[380px] lg:max-w-[520px] flex flex-col min-h-0 border-r border-border", mobileView !== "editor" && "hidden lg:flex")}>
+      <div className={cn("w-full lg:w-[48%] lg:min-w-[380px] lg:max-w-[520px] flex flex-col min-h-0 border-r border-border", isMobile && mobileView !== "editor" && "hidden")}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card">
           <Button variant="ghost" size="sm" onClick={() => navigate("/resume-builder")} className="h-7 px-2 gap-1 text-xs text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-3.5 w-3.5" /> All Resumes
@@ -768,7 +875,7 @@ export default function ResumeBuilder() {
             </div>
           )}
         </div>
-          <Button variant="outline" size="sm" onClick={() => setMobileView("preview")} className="h-7 text-xs lg:hidden">Preview</Button>
+          {!isMobile && <Button variant="outline" size="sm" onClick={() => setMobileView("preview")} className="h-7 text-xs lg:hidden">Preview</Button>}
           <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={resetResume} className="h-8 w-8 shrink-0 text-muted-foreground"><RotateCcw className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Reset all fields</TooltipContent></Tooltip>
         </div>
 
@@ -956,10 +1063,20 @@ export default function ResumeBuilder() {
                     <AccordionContent className="px-2 pb-2 pt-0">
                       {/* ── Personal Info: compact 3-col grid ── */}
                       {section.id === "personal" && (
-                        <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
-                          {([{ field: "name" as const, label: "Name", placeholder: "John Doe" }, { field: "title" as const, label: "Title", placeholder: "Data Engineer" }, { field: "email" as const, label: "Email", placeholder: "john@email.com", type: "email" as const }, { field: "phone" as const, label: "Phone", placeholder: "+1 555-123-4567" }, { field: "location" as const, label: "Location", placeholder: "Dallas, TX" }, { field: "linkedin" as const, label: "LinkedIn", placeholder: "linkedin.com/in/..." }] as { field: keyof typeof data.header; label: string; placeholder: string; type?: string }[]).map(({ field, label, placeholder, type }) => (
+                        <div className={cn("grid gap-x-2 gap-y-1.5", isMobile ? "grid-cols-1" : "grid-cols-3")}>
+                          {([{ field: "name" as const, label: "Name *", placeholder: "John Doe" }, { field: "title" as const, label: "Title", placeholder: "Data Engineer" }, { field: "email" as const, label: "Email *", placeholder: "john@email.com", type: "email" as const }, { field: "phone" as const, label: "Phone", placeholder: "+1 (555) 123-4567" }, { field: "location" as const, label: "Location", placeholder: "Dallas, TX" }, { field: "linkedin" as const, label: "LinkedIn", placeholder: "linkedin.com/in/yourname" }] as { field: keyof typeof data.header; label: string; placeholder: string; type?: string }[]).map(({ field, label, placeholder, type }) => (
                             <div key={field}>
-                              <Input type={type || "text"} placeholder={`${label}: ${placeholder}`} value={data.header[field]} onChange={(e) => updateHeader(field, e.target.value)} className="bg-background h-7 text-xs" />
+                              <Input
+                                type={type || "text"}
+                                placeholder={`${label}: ${placeholder}`}
+                                value={data.header[field]}
+                                onChange={(e) => updateHeader(field, e.target.value)}
+                                onBlur={(e) => validateOnBlur(field, e.target.value)}
+                                aria-invalid={!!fieldErrors[field]}
+                                aria-describedby={fieldErrors[field] ? `error-${field}` : undefined}
+                                className={cn("bg-background h-7 text-xs", fieldErrors[field] && "border-destructive focus-visible:ring-destructive")}
+                              />
+                              {fieldErrors[field] && <p id={`error-${field}`} role="alert" className="text-xs text-destructive mt-0.5 flex items-center gap-0.5"><AlertCircle className="h-3 w-3 shrink-0" />{fieldErrors[field]}</p>}
                             </div>
                           ))}
                         </div>
@@ -968,9 +1085,22 @@ export default function ResumeBuilder() {
                       {/* ── Summary: compact textarea ── */}
                       {section.id === "summary" && (
                         <div className="space-y-1.5">
-                          <Textarea placeholder="Brief professional summary..." value={data.summary} onChange={(e) => setData((prev) => ({ ...prev, summary: e.target.value }))} className="bg-background text-xs min-h-[60px] resize-y" />
+                          <Textarea
+                            placeholder="Brief professional summary..."
+                            value={data.summary}
+                            onChange={(e) => setData((prev) => ({ ...prev, summary: e.target.value }))}
+                            onBlur={(e) => handleSummaryBlur(e.target.value)}
+                            className="bg-background text-xs min-h-[60px] resize-y"
+                          />
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-muted-foreground">{data.summary.length} chars</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-muted-foreground">{data.summary.length} chars</span>
+                              {summaryWarning && (
+                                <span className="text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1 bg-yellow-500/10 rounded px-1.5 py-0.5">
+                                  <AlertTriangle className="h-3 w-3 shrink-0" /> {summaryWarning}
+                                </span>
+                              )}
+                            </div>
                             <Button type="button" variant="ghost" size="sm" onClick={enhanceSummaryWithAI} disabled={aiEnhancingSection === "summary"} className="h-6 text-[10px] gap-1 px-2">
                               {aiEnhancingSection === "summary" ? <><Loader2 className="h-3 w-3 animate-spin" /> Enhancing...</> : <><Sparkles className="h-3 w-3" /> {data.summary ? "Enhance" : "Generate"}</>}
                             </Button>
@@ -1003,11 +1133,25 @@ export default function ResumeBuilder() {
                                 {/* Expanded form */}
                                 {expandedExpId === exp.id && (
                                   <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
+                                    <div className={cn("grid gap-1.5", isMobile ? "grid-cols-1" : "grid-cols-2")}>
+                                      <div>
+                                        <Input placeholder="Company *" value={exp.company_or_client} onChange={(e) => updateExperience(exp.id, "company_or_client", e.target.value)} onBlur={() => validateExpOnBlur(exp.id, exp)} aria-invalid={!!fieldErrors[`exp.${exp.id}.company_or_client`]} className={cn("bg-background h-7 text-xs", fieldErrors[`exp.${exp.id}.company_or_client`] && "border-destructive focus-visible:ring-destructive")} />
+                                        {fieldErrors[`exp.${exp.id}.company_or_client`] && <p role="alert" className="text-xs text-destructive mt-0.5 flex items-center gap-0.5"><AlertCircle className="h-3 w-3 shrink-0" />{fieldErrors[`exp.${exp.id}.company_or_client`]}</p>}
+                                      </div>
+                                      <div>
+                                        <Input placeholder="Role *" value={exp.role} onChange={(e) => updateExperience(exp.id, "role", e.target.value)} onBlur={() => validateExpOnBlur(exp.id, exp)} aria-invalid={!!fieldErrors[`exp.${exp.id}.role`]} className={cn("bg-background h-7 text-xs", fieldErrors[`exp.${exp.id}.role`] && "border-destructive focus-visible:ring-destructive")} />
+                                        {fieldErrors[`exp.${exp.id}.role`] && <p role="alert" className="text-xs text-destructive mt-0.5 flex items-center gap-0.5"><AlertCircle className="h-3 w-3 shrink-0" />{fieldErrors[`exp.${exp.id}.role`]}</p>}
+                                      </div>
+                                    </div>
                                     <div className="grid grid-cols-2 gap-1.5">
-                                      <Input placeholder="Company *" value={exp.company_or_client} onChange={(e) => updateExperience(exp.id, "company_or_client", e.target.value)} className="bg-background h-7 text-xs" />
-                                      <Input placeholder="Role *" value={exp.role} onChange={(e) => updateExperience(exp.id, "role", e.target.value)} className="bg-background h-7 text-xs" />
-                                      <Input placeholder="Start date" value={exp.start_date} onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)} className="bg-background h-7 text-xs" />
-                                      <Input placeholder="End date" value={exp.end_date} onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                      <div>
+                                        <Input placeholder="Start (e.g. Jan 2023)" value={exp.start_date} onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)} onBlur={(e) => validateExpDateOnBlur(exp.id, "start_date", e.target.value)} className={cn("bg-background h-7 text-xs", fieldErrors[`exp.${exp.id}.start_date`] && "border-yellow-500")} />
+                                        {fieldErrors[`exp.${exp.id}.start_date`] && <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />{fieldErrors[`exp.${exp.id}.start_date`]}</p>}
+                                      </div>
+                                      <div>
+                                        <Input placeholder="End (or Present)" value={exp.end_date} onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)} onBlur={(e) => validateExpDateOnBlur(exp.id, "end_date", e.target.value)} className={cn("bg-background h-7 text-xs", fieldErrors[`exp.${exp.id}.end_date`] && "border-yellow-500")} />
+                                        {fieldErrors[`exp.${exp.id}.end_date`] && <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />{fieldErrors[`exp.${exp.id}.end_date`]}</p>}
+                                      </div>
                                     </div>
                                     <Input placeholder="Location" value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} className="bg-background h-7 text-xs" />
                                     <Textarea placeholder={"Bullet points (one per line)\n- Designed ETL pipelines...\n- Led data migration..."} value={exp.bullets.join("\n")} onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split("\n").filter((b) => b.trim()))} className="bg-background text-xs min-h-[60px] resize-y" />
@@ -1042,11 +1186,20 @@ export default function ResumeBuilder() {
                                 </div>
                                 {expandedEduId === edu.id && (
                                   <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                      <Input placeholder="Institution" value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} className="bg-background h-7 text-xs" />
-                                      <Input placeholder="Degree" value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} className="bg-background h-7 text-xs" />
-                                      <Input placeholder="Field" value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} className="bg-background h-7 text-xs" />
-                                      <Input placeholder="Graduation date" value={edu.graduation_date} onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)} className="bg-background h-7 text-xs" />
+                                    <div className={cn("grid gap-1.5", isMobile ? "grid-cols-1" : "grid-cols-2")}>
+                                      <div>
+                                        <Input placeholder="Institution *" value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} onBlur={() => validateEduOnBlur(edu.id, edu)} aria-invalid={!!fieldErrors[`edu.${edu.id}.institution`]} className={cn("bg-background h-7 text-xs", fieldErrors[`edu.${edu.id}.institution`] && "border-destructive focus-visible:ring-destructive")} />
+                                        {fieldErrors[`edu.${edu.id}.institution`] && <p role="alert" className="text-xs text-destructive mt-0.5 flex items-center gap-0.5"><AlertCircle className="h-3 w-3 shrink-0" />{fieldErrors[`edu.${edu.id}.institution`]}</p>}
+                                      </div>
+                                      <div>
+                                        <Input placeholder="Degree *" value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} onBlur={() => validateEduOnBlur(edu.id, edu)} aria-invalid={!!fieldErrors[`edu.${edu.id}.degree`]} className={cn("bg-background h-7 text-xs", fieldErrors[`edu.${edu.id}.degree`] && "border-destructive focus-visible:ring-destructive")} />
+                                        {fieldErrors[`edu.${edu.id}.degree`] && <p role="alert" className="text-xs text-destructive mt-0.5 flex items-center gap-0.5"><AlertCircle className="h-3 w-3 shrink-0" />{fieldErrors[`edu.${edu.id}.degree`]}</p>}
+                                      </div>
+                                      <Input placeholder="Field of Study" value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} className="bg-background h-7 text-xs" />
+                                      <div>
+                                        <Input placeholder="Graduation (e.g. May 2024)" value={edu.graduation_date} onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)} onBlur={(e) => { const s = getDateFormatSuggestion(e.target.value); setFieldErrors((prev) => ({ ...prev, [`edu.${edu.id}.graduation_date`]: s })); }} className={cn("bg-background h-7 text-xs", fieldErrors[`edu.${edu.id}.graduation_date`] && "border-yellow-500")} />
+                                        {fieldErrors[`edu.${edu.id}.graduation_date`] && <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />{fieldErrors[`edu.${edu.id}.graduation_date`]}</p>}
+                                      </div>
                                     </div>
                                   </div>
                                 )}
@@ -1101,11 +1254,14 @@ export default function ResumeBuilder() {
                                 {expandedProjIdx === index && (
                                   <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
                                     <Input placeholder="Project Name" value={project.title} onChange={(e) => updateProject(index, { title: e.target.value })} className="bg-background h-7 text-xs" />
-                                    <div className="grid grid-cols-2 gap-1.5">
+                                    <div className={cn("grid gap-1.5", isMobile ? "grid-cols-1" : "grid-cols-2")}>
                                       <Input placeholder="Organization" value={project.organization} onChange={(e) => updateProject(index, { organization: e.target.value })} className="bg-background h-7 text-xs" />
                                       <Input placeholder="Date" value={project.date} onChange={(e) => updateProject(index, { date: e.target.value })} className="bg-background h-7 text-xs" />
                                     </div>
-                                    <Input placeholder="Link URL (e.g., https://github.com/...)" value={project.url || ""} onChange={(e) => updateProject(index, { url: e.target.value })} className="bg-background h-7 text-xs" />
+                                    <div>
+                                      <Input placeholder="Link URL (e.g., https://github.com/...)" value={project.url || ""} onChange={(e) => updateProject(index, { url: e.target.value })} onBlur={(e) => validateUrlOnBlur(`proj.${index}.url`, e.target.value)} className={cn("bg-background h-7 text-xs", fieldErrors[`proj.${index}.url`] && "border-destructive focus-visible:ring-destructive")} />
+                                      {fieldErrors[`proj.${index}.url`] && <p className="text-xs text-destructive mt-0.5 flex items-center gap-0.5"><AlertCircle className="h-3 w-3 shrink-0" />{fieldErrors[`proj.${index}.url`]}</p>}
+                                    </div>
                                     <Textarea placeholder={"Key points (one per line)\n- Built a chatbot...\n- Implemented ML pipeline..."} value={project.bullets.join("\n")} onChange={(e) => updateProject(index, { bullets: e.target.value.split("\n") })} className="bg-background text-xs min-h-[50px] resize-y" />
                                   </div>
                                 )}
@@ -1134,12 +1290,18 @@ export default function ResumeBuilder() {
                               </div>
                               {expandedCertId === cert.id && (
                                 <div className="px-2 pb-2 pt-1 space-y-1.5 border-t border-border/30 bg-muted/20">
-                                  <div className="grid grid-cols-3 gap-1.5">
-                                    <Input placeholder="Certification Name" value={cert.name} onChange={(e) => updateCertification(cert.id, "name", e.target.value)} className="bg-background h-7 text-xs col-span-2" />
+                                  <div className={cn("grid gap-1.5", isMobile ? "grid-cols-1" : "grid-cols-3")}>
+                                    <div className={cn(isMobile ? "" : "col-span-2")}>
+                                      <Input placeholder="Certification Name *" value={cert.name} onChange={(e) => updateCertification(cert.id, "name", e.target.value)} onBlur={() => validateCertNameOnBlur(cert.id, cert.name, cert.issuer)} aria-invalid={!!fieldErrors[`cert.${cert.id}.name`]} className={cn("bg-background h-7 text-xs", fieldErrors[`cert.${cert.id}.name`] && "border-destructive focus-visible:ring-destructive")} />
+                                      {fieldErrors[`cert.${cert.id}.name`] && <p role="alert" className="text-xs text-destructive mt-0.5 flex items-center gap-0.5"><AlertCircle className="h-3 w-3 shrink-0" />{fieldErrors[`cert.${cert.id}.name`]}</p>}
+                                    </div>
                                     <Input placeholder="Date" value={cert.date} onChange={(e) => updateCertification(cert.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
                                   </div>
                                   <Input placeholder="Issuer (e.g., AWS)" value={cert.issuer} onChange={(e) => updateCertification(cert.id, "issuer", e.target.value)} className="bg-background h-7 text-xs" />
-                                  <Input placeholder="Credential URL (e.g., https://credly.com/...)" value={cert.url || ""} onChange={(e) => updateCertification(cert.id, "url", e.target.value)} className="bg-background h-7 text-xs" />
+                                  <div>
+                                    <Input placeholder="Credential URL (e.g., https://credly.com/...)" value={cert.url || ""} onChange={(e) => updateCertification(cert.id, "url", e.target.value)} onBlur={(e) => validateUrlOnBlur(`cert.${cert.id}.url`, e.target.value)} className={cn("bg-background h-7 text-xs", fieldErrors[`cert.${cert.id}.url`] && "border-destructive focus-visible:ring-destructive")} />
+                                    {fieldErrors[`cert.${cert.id}.url`] && <p className="text-xs text-destructive mt-0.5 flex items-center gap-0.5"><AlertCircle className="h-3 w-3 shrink-0" />{fieldErrors[`cert.${cert.id}.url`]}</p>}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -1239,7 +1401,10 @@ export default function ResumeBuilder() {
                                     <Input placeholder="Issuer/Publisher" value={award.issuer} onChange={(e) => updateAward(award.id, "issuer", e.target.value)} className="bg-background h-7 text-xs" />
                                     <Input placeholder="Date" value={award.date} onChange={(e) => updateAward(award.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
                                   </div>
-                                  <Input placeholder="Link URL (e.g., https://...)" value={award.url || ""} onChange={(e) => updateAward(award.id, "url", e.target.value)} className="bg-background h-7 text-xs" />
+                                  <div>
+                                    <Input placeholder="Link URL (e.g., https://...)" value={award.url || ""} onChange={(e) => updateAward(award.id, "url", e.target.value)} onBlur={(e) => validateUrlOnBlur(`award.${award.id}.url`, e.target.value)} className={cn("bg-background h-7 text-xs", fieldErrors[`award.${award.id}.url`] && "border-destructive focus-visible:ring-destructive")} />
+                                    {fieldErrors[`award.${award.id}.url`] && <p className="text-xs text-destructive mt-0.5 flex items-center gap-0.5"><AlertCircle className="h-3 w-3 shrink-0" />{fieldErrors[`award.${award.id}.url`]}</p>}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -1406,10 +1571,10 @@ export default function ResumeBuilder() {
       </div>
 
       {/* ─── RIGHT PANEL: Resume preview ──────────────────────────────── */}
-      <div className={cn("flex-1 flex flex-col min-w-0 bg-muted/20", mobileView !== "preview" && "hidden lg:flex")}>
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card">
+      <div className={cn("flex-1 flex flex-col min-w-0 bg-muted/20", isMobile && mobileView !== "preview" && "hidden")}>
+        <div className={cn("flex items-center justify-between px-4 py-2.5 border-b border-border bg-card", isMobile && "flex-wrap gap-2")}>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setMobileView("editor")} className="h-7 text-xs lg:hidden">&larr; Editor</Button>
+            {!isMobile && <Button variant="outline" size="sm" onClick={() => setMobileView("editor")} className="h-7 text-xs lg:hidden">&larr; Editor</Button>}
             <h2 className="text-sm font-bold">Preview</h2>
             {hiddenSections.size > 0 && <Badge variant="outline" className="text-[10px] h-5">{hiddenSections.size} hidden</Badge>}
             {/* ATS Score Badge */}
@@ -1429,10 +1594,32 @@ export default function ResumeBuilder() {
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={handlePrintView} disabled={isExporting} className="h-8 gap-1.5"><Printer className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Print</span></Button></TooltipTrigger><TooltipContent>Print-friendly view</TooltipContent></Tooltip>
-            <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={handleDownloadWord} disabled={isExporting} className="h-8 gap-1.5"><FileText className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Word</span></Button></TooltipTrigger><TooltipContent>Export as .docx</TooltipContent></Tooltip>
-            <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={copyAsPlainText} className="h-8 gap-1.5">{copiedField === "resume" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />} <span className="hidden sm:inline">{copiedField === "resume" ? "Copied!" : "Copy"}</span></Button></TooltipTrigger><TooltipContent>Copy as plain text (for pasting into forms)</TooltipContent></Tooltip>
-            <Button size="sm" onClick={handleDownloadPDF} disabled={isExporting} className="h-8 gap-1.5">{isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Download PDF</Button>
+            {isMobile ? (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setShowTemplateSelector(true)} className="h-8 gap-1.5"><Palette className="h-3.5 w-3.5" /></Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 gap-1.5"><Download className="h-3.5 w-3.5" /> Export</Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleDownloadPDF} disabled={isExporting}><Download className="h-3.5 w-3.5 mr-2" /> Download PDF</DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDownloadWord} disabled={isExporting}><FileText className="h-3.5 w-3.5 mr-2" /> Download Word</DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDownloadText} disabled={isExporting}><FileType className="h-3.5 w-3.5 mr-2" /> Download Text</DropdownMenuItem>
+                    <DropdownMenuItem onClick={handlePrintView} disabled={isExporting}><Printer className="h-3.5 w-3.5 mr-2" /> Print</DropdownMenuItem>
+                    <DropdownMenuItem onClick={copyAsPlainText}>{copiedField === "resume" ? <Check className="h-3.5 w-3.5 mr-2 text-green-500" /> : <Copy className="h-3.5 w-3.5 mr-2" />} {copiedField === "resume" ? "Copied!" : "Copy Text"}</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : (
+              <>
+                <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={() => setShowTemplateSelector(true)} className="h-8 gap-1.5"><Palette className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Template</span></Button></TooltipTrigger><TooltipContent>Change resume template</TooltipContent></Tooltip>
+                <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={handlePrintView} disabled={isExporting} className="h-8 gap-1.5"><Printer className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Print</span></Button></TooltipTrigger><TooltipContent>Print-friendly view</TooltipContent></Tooltip>
+                <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={handleDownloadWord} disabled={isExporting} className="h-8 gap-1.5"><FileText className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Word</span></Button></TooltipTrigger><TooltipContent>Export as .docx</TooltipContent></Tooltip>
+                <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={handleDownloadText} disabled={isExporting} className="h-8 gap-1.5"><FileType className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Text</span></Button></TooltipTrigger><TooltipContent>Export as plain text (.txt)</TooltipContent></Tooltip>
+                <Tooltip><TooltipTrigger asChild><Button variant="outline" size="sm" onClick={copyAsPlainText} className="h-8 gap-1.5">{copiedField === "resume" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />} <span className="hidden sm:inline">{copiedField === "resume" ? "Copied!" : "Copy"}</span></Button></TooltipTrigger><TooltipContent>Copy as plain text (for pasting into forms)</TooltipContent></Tooltip>
+                <Button size="sm" onClick={handleDownloadPDF} disabled={isExporting} className="h-8 gap-1.5">{isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Download PDF</Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1451,7 +1638,7 @@ export default function ResumeBuilder() {
             </div>
 
             {/* Section scores */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className={cn("grid gap-2", isMobile ? "grid-cols-2" : "grid-cols-4")}>
               {atsScore.sections.map((s) => (
                 <div key={s.section} className="text-center p-2 rounded-lg bg-muted/40">
                   <div className={cn("text-lg font-bold", s.score / s.maxScore >= 0.7 ? "text-green-500" : s.score / s.maxScore >= 0.4 ? "text-yellow-500" : "text-red-500")}>
@@ -1492,13 +1679,31 @@ export default function ResumeBuilder() {
           </div>
         )}
 
-        <div className="flex-1 overflow-auto p-6">
-          <div className="mx-auto shadow-xl relative" style={{ width: "fit-content" }}>
-            <ResumeTemplate ref={resumeRef} data={previewData} />
+        <div ref={previewContainerRef} className={cn("flex-1 overflow-auto", isMobile ? "p-2" : "p-6")}>
+          <div
+            className="mx-auto shadow-xl relative"
+            style={{
+              width: "fit-content",
+              ...(isMobile ? { transform: `scale(${previewScale})`, transformOrigin: "top center" } : {}),
+            }}
+          >
+            <ResumeTemplate ref={resumeRef} data={previewData} templateId={selectedTemplate} />
             {isParsingResume && <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded"><div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 text-primary animate-spin" /><span className="text-sm text-muted-foreground">Parsing resume...</span></div></div>}
           </div>
         </div>
       </div>
+      </div>
+
+      {/* Template Selector Modal */}
+      <TemplateSelector
+        isOpen={showTemplateSelector}
+        onClose={() => setShowTemplateSelector(false)}
+        onSelect={(templateId) => {
+          setSelectedTemplate(templateId);
+          setShowTemplateSelector(false);
+        }}
+        selectedTemplateId={selectedTemplate}
+      />
     </div>
   );
 }

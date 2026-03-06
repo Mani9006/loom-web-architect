@@ -237,7 +237,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
       // Call AI to parse the resume text into structured data
       // System prompt is now defined server-side for mode "resume_parse"
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`,
         {
           method: "POST",
           headers: {
@@ -252,6 +252,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
               }
             ],
             mode: "resume_parse",
+            agentHint: "resume_parse",
           }),
         }
       );

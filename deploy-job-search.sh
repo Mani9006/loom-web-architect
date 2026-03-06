@@ -20,8 +20,16 @@ echo "📝 Checking API keys..."
 if supabase secrets list | grep -q "EXA_API_KEY"; then
     echo "✅ EXA_API_KEY is set"
 else
-    echo "⚠️  Setting EXA_API_KEY..."
-    supabase secrets set EXA_API_KEY="02d5f479-7122-48da-b26d-25ae3675248d"
+    echo "⚠️  EXA_API_KEY not set. You need to set it manually:"
+    echo "   supabase secrets set EXA_API_KEY=\"your_key_here\""
+    echo ""
+    read -p "Do you want to enter it now? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        read -p "Enter your Exa API key: " exa_key
+        supabase secrets set EXA_API_KEY="$exa_key"
+        echo "✅ EXA_API_KEY set!"
+    fi
 fi
 
 # Check if PERPLEXITY_API_KEY is set

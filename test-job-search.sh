@@ -38,7 +38,7 @@ fi
 # Check if .env file exists
 if [ -f "supabase/.env" ]; then
     echo "✅ supabase/.env file exists"
-    if grep -q "02d5f479-7122-48da-b26d-25ae3675248d" supabase/.env; then
+    if grep -q "EXA_API_KEY=" supabase/.env; then
         echo "✅ Exa.ai API key configured"
     else
         echo "⚠️  Exa.ai API key not found in .env"

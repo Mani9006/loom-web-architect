@@ -42,6 +42,21 @@ type Conversation = {
   updated_at: string;
 };
 
+type UsageGuardLevel = "ok" | "warn" | "critical" | "blocked";
+
+interface UsageGuardSnapshot {
+  level: UsageGuardLevel;
+  monthlyUsedTokens: number;
+  monthlyBudgetTokens: number;
+  monthlyUsagePct: number;
+  dailyUsedTokens: number;
+  dailyBudgetTokens: number;
+  dailyUsagePct: number;
+  nextResetAt: string;
+  reasonCode?: string;
+  reason?: string;
+}
+
 export default function Chat() {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -73,6 +88,7 @@ export default function Chat() {
   }, []);
 
   const { parseIncremental, parseComplete, reset: resetParser } = useResumeParser(resumeData, handleResumeUpdate);
+  const usageToastLevelRef = useRef<UsageGuardLevel>("ok");
 
   useEffect(() => {
     // Track if initial session check is done to prevent premature redirects
@@ -152,6 +168,69 @@ export default function Chat() {
       }
     }
   }, [conversationId, user?.id, searchParams]);
+
+  const checkUsageBudget = useCallback(async (): Promise<UsageGuardSnapshot | null> => {
+    if (!session?.access_token) return null;
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/usage-guard`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) return null;
+      const snapshot = (await response.json()) as UsageGuardSnapshot;
+
+      const lastLevel = usageToastLevelRef.current;
+      if (snapshot.level !== lastLevel) {
+        usageToastLevelRef.current = snapshot.level;
+        const usedPercent = Math.round(snapshot.monthlyUsagePct * 100);
+        const resetAt = new Date(snapshot.nextResetAt).toLocaleString();
+
+        if (snapshot.level === "warn") {
+          toast({
+            title: "AI usage is getting high",
+            description: `You are at ${usedPercent}% of monthly AI budget. Reset window: ${resetAt}.`,
+          });
+        } else if (snapshot.level === "critical") {
+          toast({
+            title: "AI usage is near limit",
+            description: `You are at ${usedPercent}% of monthly AI budget. Consider smaller prompts now.`,
+            variant: "destructive",
+          });
+        } else if (snapshot.level === "blocked") {
+          toast({
+            title: "AI usage limit reached",
+            description:
+              snapshot.reason ||
+              `Current usage has reached 100% of configured budget. Reset window: ${resetAt}.`,
+            variant: "destructive",
+          });
+        }
+      }
+
+      return snapshot;
+    } catch {
+      return null;
+    }
+  }, [session?.access_token, toast]);
+
+  const ensureUsageWithinBudget = useCallback(async () => {
+    const snapshot = await checkUsageBudget();
+    return snapshot?.level !== "blocked";
+  }, [checkUsageBudget]);
+
+  useEffect(() => {
+    if (!session?.access_token) return;
+    void checkUsageBudget();
+    const timer = window.setInterval(() => {
+      void checkUsageBudget();
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [session?.access_token, checkUsageBudget]);
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -342,6 +421,7 @@ export default function Chat() {
 
   const handleGeneralChat = async (message: string) => {
     if (!session || !user) return;
+    if (!(await ensureUsageWithinBudget())) return;
 
     // Switch to general chat mode if in welcome
     if (chatMode === "welcome") {
@@ -391,7 +471,7 @@ export default function Chat() {
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -402,7 +482,7 @@ export default function Chat() {
             role: m.role,
             content: m.content,
           })),
-          mode: "general",
+          agentHint: "general",
         }),
       });
 
@@ -477,6 +557,7 @@ export default function Chat() {
   // ATS Score Check Handler
   const handleATSAnalyze = async (resumeText: string, jobDescription?: string) => {
     if (!session) return;
+    if (!(await ensureUsageWithinBudget())) return;
 
     setIsLoading(true);
     const userContent = jobDescription
@@ -500,7 +581,7 @@ export default function Chat() {
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -523,6 +604,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
             },
             { role: "user", content: userContent },
           ],
+          agentHint: "ats",
         }),
       });
 
@@ -590,6 +672,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
 
   const handleATSFollowUp = async (message: string) => {
     if (!session) return;
+    if (!(await ensureUsageWithinBudget())) return;
 
     setIsLoading(true);
     const userMsg: ATSMessage = {
@@ -606,7 +689,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -617,6 +700,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
             role: m.role,
             content: m.content,
           })),
+          agentHint: "ats",
         }),
       });
 
@@ -681,6 +765,7 @@ Be detailed and specific. If a job description is provided, also analyze keyword
     template: string = "modern",
   ) => {
     if (!session) return;
+    if (!(await ensureUsageWithinBudget())) return;
 
     // Import template prompt helper
     const { getTemplatePrompt } = await import("@/components/chat/CoverLetterTemplateSelector");
@@ -715,7 +800,7 @@ ${jobDescription}`;
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -739,6 +824,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
             },
             { role: "user", content: userContent },
           ],
+          agentHint: "cover_letter",
         }),
       });
 
@@ -802,6 +888,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
 
   const handleCoverLetterFollowUp = async (message: string) => {
     if (!session) return;
+    if (!(await ensureUsageWithinBudget())) return;
 
     setIsLoading(true);
     const userMsg: CoverLetterMessage = {
@@ -818,7 +905,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -836,6 +923,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
               content: m.content,
             })),
           ],
+          agentHint: "cover_letter",
         }),
       });
 
@@ -900,6 +988,7 @@ Output ONLY the cover letter text, properly formatted with paragraphs. Do not in
     interviewType: string,
   ) => {
     if (!session) return;
+    if (!(await ensureUsageWithinBudget())) return;
 
     setIsLoading(true);
     const typeLabels: Record<string, string> = {
@@ -937,7 +1026,7 @@ ${jobDescription}`;
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -975,6 +1064,7 @@ Format with clear headers and bullet points. Be specific to the role and company
             },
             { role: "user", content: userContent },
           ],
+          agentHint: "interview",
         }),
       });
 
@@ -1038,6 +1128,7 @@ Format with clear headers and bullet points. Be specific to the role and company
 
   const handleInterviewFollowUp = async (message: string) => {
     if (!session) return;
+    if (!(await ensureUsageWithinBudget())) return;
 
     setIsLoading(true);
     const userMsg: InterviewMessage = {
@@ -1054,7 +1145,7 @@ Format with clear headers and bullet points. Be specific to the role and company
 
     try {
       let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1065,6 +1156,7 @@ Format with clear headers and bullet points. Be specific to the role and company
             role: m.role,
             content: m.content,
           })),
+          agentHint: "interview",
         }),
       });
 
@@ -1167,6 +1259,7 @@ Format with clear headers and bullet points. Be specific to the role and company
 
   const handleGenerateResume = async () => {
     if (!user || !session) return;
+    if (!(await ensureUsageWithinBudget())) return;
 
     setIsLoading(true);
     setGenerationPhase("thinking");
@@ -1409,6 +1502,7 @@ ${experienceSummary}
 
   const handleSendMessage = async (message: string) => {
     if (!session || !currentConversation) return;
+    if (!(await ensureUsageWithinBudget())) return;
 
     setIsLoading(true);
     const userMsg: ChatMessage = {

@@ -14,6 +14,7 @@ import {
   CheckCircle2, Sparkles, Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 interface OnboardingModalProps {
   open: boolean;
@@ -31,6 +32,7 @@ const EXPERIENCE_LEVELS = ["Entry Level", "Mid Level", "Senior", "Lead", "Execut
 
 export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [resumeUploaded, setResumeUploaded] = useState(false);
   const [targetRole, setTargetRole] = useState("");
@@ -67,6 +69,8 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
         } as any)
         .eq("user_id", user.id);
       onComplete();
+      // Redirect to comprehensive profile setup
+      navigate("/profile-setup");
     } catch {
       onComplete();
     } finally {

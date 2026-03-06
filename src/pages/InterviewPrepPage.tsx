@@ -31,12 +31,13 @@ export default function InterviewPrepPage() {
     setMessages((prev) => [...prev, { id: tempId, role: "assistant", content: "", timestamp: new Date() }]);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({
           messages: [{ role: "user", content: `Generate ${interviewType} interview prep for ${jobTitle} at ${companyName}.\n\nResume:\n${resumeText}\n\nJob Description:\n${jobDescription}` }],
           mode: "interview",
+          agentHint: "interview",
         }),
       });
 
@@ -86,12 +87,13 @@ export default function InterviewPrepPage() {
     setMessages((prev) => [...prev, { id: tempId, role: "assistant", content: "", timestamp: new Date() }]);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({
           messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
           mode: "interview",
+          agentHint: "interview",
         }),
       });
 
