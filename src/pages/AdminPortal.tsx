@@ -320,6 +320,7 @@ type AccessDraft = {
   purchaseState: PurchaseState;
   subscriptionPlan: string;
   aiFeaturesEnabled: boolean;
+  autoApplyEnabled: boolean;
   blockedReason: string;
   blockedUntil: string;
 };
@@ -867,6 +868,7 @@ function OverviewTab({
                 <TableHead>Purchase</TableHead>
                 <TableHead>Plan</TableHead>
                 <TableHead>AI</TableHead>
+                <TableHead>Auto Apply</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last Sign-in</TableHead>
                 <TableHead>Usage</TableHead>
@@ -880,6 +882,7 @@ function OverviewTab({
                   purchaseState: item.purchaseState,
                   subscriptionPlan: item.subscriptionPlan || "free",
                   aiFeaturesEnabled: item.aiFeaturesEnabled,
+                  autoApplyEnabled: (item as any).autoApplyEnabled ?? false,
                   blockedReason: item.blockedReason || "",
                   blockedUntil: item.blockedUntil || "",
                 };
@@ -958,6 +961,17 @@ function OverviewTab({
                         setAccessDrafts((prev) => ({
                           ...prev,
                           [item.userId]: { ...accessDraft, aiFeaturesEnabled: checked },
+                        }))
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={accessDraft.autoApplyEnabled}
+                      onCheckedChange={(checked) =>
+                        setAccessDrafts((prev) => ({
+                          ...prev,
+                          [item.userId]: { ...accessDraft, autoApplyEnabled: checked },
                         }))
                       }
                     />
@@ -1458,6 +1472,7 @@ export default function AdminPortal() {
               purchaseState: item.purchaseState,
               subscriptionPlan: item.subscriptionPlan || "free",
               aiFeaturesEnabled: item.aiFeaturesEnabled,
+              autoApplyEnabled: (item as any).autoApplyEnabled ?? false,
               blockedReason: item.blockedReason || "",
               blockedUntil: item.blockedUntil || "",
             };
@@ -1514,6 +1529,7 @@ export default function AdminPortal() {
           purchaseState: draft.purchaseState,
           subscriptionPlan: draft.subscriptionPlan,
           aiFeaturesEnabled: draft.aiFeaturesEnabled,
+          autoApplyEnabled: draft.autoApplyEnabled,
           blockedReason: draft.blockedReason || null,
           blockedUntil: draft.blockedUntil || null,
         });

@@ -30,11 +30,9 @@ interface NavItem {
   children?: { label: string; path: string }[];
 }
 
-const mainNav: NavItem[] = [
+const baseMainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
-  { label: "Job Discovery", icon: Search, path: "/job-search", badge: "AI" },
-  { label: "ApplyPass", icon: Search, path: "/applypass", badge: "NEW" },
-  { label: "AutoApply", icon: Zap, path: "/auto-apply", badge: "NEW" },
+  { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
   { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
   { label: "ATS Checker", icon: Target, path: "/ats-checker" },
   { label: "Applications", icon: ClipboardList, path: "/job-tracker" },
@@ -42,6 +40,8 @@ const mainNav: NavItem[] = [
   { label: "Interviews", icon: Mic, path: "/interview-prep" },
   { label: "AI Chat", icon: MessageCircle, path: "/chat" },
 ];
+
+const autoApplyNav: NavItem = { label: "Auto Apply", icon: Zap, path: "/auto-apply", badge: "PRO" };
 
 const secondaryNavBase: NavItem[] = [
   { label: "Analytics", icon: TrendingUp, path: "/analytics" },
@@ -84,6 +84,7 @@ export default function AppLayout() {
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [autoApplyEnabled, setAutoApplyEnabled] = useState(false);
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
   useEffect(() => { if (isMobile) setSidebarOpen(true); }, [isMobile]);
@@ -92,6 +93,9 @@ export default function AppLayout() {
     if (!user) return;
     supabase.from("profiles").select("full_name").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { setDisplayName(data?.full_name || user.email?.split("@")[0] || "User"); });
+    // Check if Auto Apply is enabled for this user
+    (supabase as any).from("user_access_controls").select("auto_apply_enabled").eq("user_id", user.id).maybeSingle()
+      .then(({ data }: { data: any }) => { setAutoApplyEnabled(data?.auto_apply_enabled === true); });
   }, [user?.id]);
 
   const handleSignOut = async () => { await signOut(); navigate("/auth"); };
@@ -114,6 +118,9 @@ export default function AppLayout() {
   if (!user) return null;
 
   const showText = isMobile || sidebarOpen;
+  const mainNav = autoApplyEnabled
+    ? [baseMainNav[0], baseMainNav[1], autoApplyNav, ...baseMainNav.slice(2)]
+    : baseMainNav;
   const secondaryNav = isOwnerEmail(user.email) ? [...secondaryNavBase, ownerNav] : secondaryNavBase;
 
   const renderNavItem = (item: NavItem) => {

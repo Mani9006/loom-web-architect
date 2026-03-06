@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { SubscriptionProvider } from "@/components/SubscriptionGate";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -27,7 +27,7 @@ const Documents = lazy(() => import("./pages/Documents"));
 const ResumeProjects = lazy(() => import("./pages/ResumeProjects"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
 const JobSearchPage = lazy(() => import("./pages/JobSearchPage"));
-const ApplyPassPage = lazy(() => import("./pages/ApplyPassPage"));
+// ApplyPass removed — redirects to /auto-apply
 const CoverLettersPage = lazy(() => import("./pages/CoverLettersPage"));
 const InterviewPrepPage = lazy(() => import("./pages/InterviewPrepPage"));
 const ATSCheckerPage = lazy(() => import("./pages/ATSCheckerPage"));
@@ -73,7 +73,7 @@ const App = () => (
                   <Route element={<AppLayout />}>
                     <Route path="/home" element={<HomePage />} />
                     <Route path="/job-search" element={<JobSearchPage />} />
-                    <Route path="/applypass" element={<ApplyPassPage />} />
+                    <Route path="/applypass" element={<Navigate to="/auto-apply" replace />} />
                     <Route path="/resume-builder" element={<ResumeProjects />} />
                     <Route path="/resume-builder/:resumeId" element={<ResumeBuilder />} />
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
