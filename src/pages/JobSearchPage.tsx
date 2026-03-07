@@ -360,7 +360,7 @@ export default function JobSearchPage() {
   const showSplitView = !loading && jobs.length > 0;
 
   return (
-    <div className="bg-muted/30 min-h-full flex flex-col">
+    <div className="bg-muted/30 h-full flex flex-col overflow-hidden">
       {/* Search Header - always visible */}
       <div className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-[1440px] mx-auto p-3 sm:p-4 space-y-3">
@@ -534,7 +534,7 @@ export default function JobSearchPage() {
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {/* Loading state */}
         {loading && (
           <div className="max-w-2xl mx-auto p-6">
@@ -598,7 +598,7 @@ export default function JobSearchPage() {
 
         {/* ===== LINKEDIN-STYLE SPLIT VIEW ===== */}
         {showSplitView && (
-          <div className="flex h-[calc(100vh-220px)]">
+          <div className="flex h-full overflow-hidden">
             {/* LEFT PANE: Job list */}
             <div className={cn(
               "border-r bg-background flex flex-col",
@@ -706,7 +706,7 @@ export default function JobSearchPage() {
             {/* RIGHT PANE: Job detail (LinkedIn-style) */}
             {selectedJob ? (
               <div className={cn(
-                "flex-1 flex flex-col bg-background",
+                "flex-1 flex flex-col bg-background overflow-hidden",
                 "w-full md:w-auto"
               )}>
                 {/* Mobile back button */}

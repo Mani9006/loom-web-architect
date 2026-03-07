@@ -247,12 +247,12 @@ serve(async (req) => {
       : "";
 
     const systemPrompt = `You are a job search engine for the United States job market ONLY. Return ONLY valid JSON, no markdown, no explanation.
-Format: {"jobs":[{"title":"","company":"","location":"","description":"2-4 sentence summary of the role, responsibilities, and requirements","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"","source":"LinkedIn/Indeed/Glassdoor/etc"}]}
+Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"","source":"LinkedIn/Indeed/Glassdoor/etc"}]}
 CRITICAL RULES:
 - ONLY return jobs located in the United States — absolutely NO jobs from India, Canada, UK, Europe, Asia, or any other country
 - Every location MUST be a US city/state (e.g. "San Francisco, CA", "New York, NY", "Remote (US)")
 - If a job is remote, it must be US-based remote — mark location as "Remote (US)" not just "Remote"
-- Every job MUST have a description field with 2-4 sentences about the role — never leave it empty
+- DESCRIPTION RULES: Each job MUST include a detailed description (5-10 sentences) pulled directly from the actual job posting. Include the real responsibilities, requirements, qualifications, and any listed benefits. Do NOT summarize or paraphrase — use the actual content from the job posting as closely as possible. Never leave the description empty.
 - Find as many REAL job listings as possible — aim for 15-20 jobs minimum
 - Search across LinkedIn, Indeed, Glassdoor, ZipRecruiter, company career pages, SimplyHired, Dice, AngelList, Built In, and any other job boards
 - Every job MUST have a real, clickable apply_url — not a generic homepage
@@ -288,7 +288,7 @@ CRITICAL RULES:
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-            max_tokens: 3500,
+            max_tokens: 6000,
             temperature: 0.0,
             search_recency_filter: recencyFilter,
           }),
@@ -399,6 +399,43 @@ CRITICAL RULES:
             });
           }
         }
+      }
+
+      // ── 3b. Also save to `jobs` table so auto-apply match-jobs can score them ──
+      for (const job of normalizedJobs) {
+        // Use a composite external_id based on fingerprint to avoid duplicates
+        const fp = jobFingerprint({ title: job.title, company: job.company, location: job.location });
+        const extId = `search_${fp}`;
+        // Parse salary range if present (e.g. "$80k-$120k")
+        let salaryMin: number | null = null;
+        let salaryMax: number | null = null;
+        if (job.salary) {
+          const nums = job.salary.match(/(\d[\d,]*)/g);
+          if (nums && nums.length >= 1) {
+            salaryMin = parseInt(nums[0].replace(/,/g, ""), 10);
+            if (nums[0].includes("k") || job.salary.toLowerCase().includes("k")) salaryMin *= 1000;
+            else if (salaryMin < 1000) salaryMin *= 1000; // likely "80k" without the k
+          }
+          if (nums && nums.length >= 2) {
+            salaryMax = parseInt(nums[1].replace(/,/g, ""), 10);
+            if (nums[1].includes("k") || job.salary.toLowerCase().includes("k")) salaryMax *= 1000;
+            else if (salaryMax < 1000) salaryMax *= 1000;
+          }
+        }
+        await sb.from("jobs").upsert({
+          title: job.title,
+          company: job.company,
+          location: job.location,
+          description: job.description,
+          apply_url: job.apply_url,
+          salary_min: salaryMin,
+          salary_max: salaryMax,
+          job_type: job.job_type,
+          remote: job.remote,
+          date_posted: job.date_posted,
+          source: job.source || "Web Search",
+          external_id: extId,
+        }, { onConflict: "external_id" }).select("id").single().catch(() => {});
       }
 
       // Save the search → job mapping
