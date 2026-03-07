@@ -111,6 +111,12 @@ export default function AppLayout() {
     setExpandedMenus((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
   };
   const handleNavigate = (path: string) => { navigate(path); if (isMobile) setMobileOpen(false); };
+  const handleLinkClick = (e: React.MouseEvent, path: string) => {
+    // Allow Ctrl+Click / Cmd+Click / middle-click to open in new tab natively
+    if (e.metaKey || e.ctrlKey || e.button === 1) return;
+    e.preventDefault();
+    handleNavigate(path);
+  };
   const isActive = (path: string) => {
     const [pathname, search] = path.split("?");
     if (search) {
@@ -137,55 +143,75 @@ export default function AppLayout() {
     const expanded = expandedMenus.includes(item.label);
     const active = hasChildren ? isParentActive(item) : isActive(item.path);
 
+    const sharedClassName = cn(
+      "w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-medium transition-all duration-200 group no-underline",
+      active
+        ? "bg-gradient-to-r from-sidebar-primary/20 to-sidebar-primary/10 text-sidebar-accent-foreground"
+        : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+    );
+
+    const innerContent = (
+      <>
+        <div className={cn(
+          "w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0",
+          active
+            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-lg"
+            : "bg-sidebar-accent/50 text-sidebar-foreground group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground"
+        )}>
+          <Icon className="w-4 h-4" strokeWidth={active ? 2.2 : 1.8} />
+        </div>
+        {showText && (
+          <>
+            <span className="flex-1 text-left truncate">{item.label}</span>
+            {item.badge && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-sidebar-primary/20 text-sidebar-primary font-bold">
+                {item.badge}
+              </span>
+            )}
+            {hasChildren && (
+              expanded ? <ChevronDown className="w-3.5 h-3.5 opacity-40" /> : <ChevronRight className="w-3.5 h-3.5 opacity-40" />
+            )}
+          </>
+        )}
+      </>
+    );
+
     return (
       <div key={item.label}>
-        <button
-          onClick={() => hasChildren ? toggleMenu(item.label) : handleNavigate(item.path)}
-          title={!showText ? item.label : undefined}
-          className={cn(
-            "w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-medium transition-all duration-200 group",
-            active
-              ? "bg-gradient-to-r from-sidebar-primary/20 to-sidebar-primary/10 text-sidebar-accent-foreground"
-              : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
-          )}
-        >
-          <div className={cn(
-            "w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0",
-            active
-              ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-lg"
-              : "bg-sidebar-accent/50 text-sidebar-foreground group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground"
-          )}>
-            <Icon className="w-4 h-4" strokeWidth={active ? 2.2 : 1.8} />
-          </div>
-          {showText && (
-            <>
-              <span className="flex-1 text-left truncate">{item.label}</span>
-              {item.badge && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sidebar-primary/20 text-sidebar-primary font-bold">
-                  {item.badge}
-                </span>
-              )}
-              {hasChildren && (
-                expanded ? <ChevronDown className="w-3.5 h-3.5 opacity-40" /> : <ChevronRight className="w-3.5 h-3.5 opacity-40" />
-              )}
-            </>
-          )}
-        </button>
+        {hasChildren ? (
+          <button
+            onClick={() => toggleMenu(item.label)}
+            title={!showText ? item.label : undefined}
+            className={sharedClassName}
+          >
+            {innerContent}
+          </button>
+        ) : (
+          <a
+            href={item.path}
+            onClick={(e) => handleLinkClick(e, item.path)}
+            title={!showText ? item.label : undefined}
+            className={sharedClassName}
+          >
+            {innerContent}
+          </a>
+        )}
         {hasChildren && expanded && showText && (
           <div className="ml-[44px] mt-1.5 space-y-0.5 border-l-2 border-sidebar-border/50 pl-3">
             {item.children!.map((child) => (
-              <button
+              <a
                 key={child.label + child.path}
-                onClick={() => handleNavigate(child.path)}
+                href={child.path}
+                onClick={(e) => handleLinkClick(e, child.path)}
                 className={cn(
-                  "w-full text-left px-3 py-1.5 rounded-xl text-[12px] transition-colors",
+                  "w-full block text-left px-3 py-1.5 rounded-xl text-[12px] transition-colors no-underline",
                   isActive(child.path)
                     ? "text-sidebar-primary font-semibold"
                     : "text-sidebar-foreground/60 hover:text-sidebar-accent-foreground"
                 )}
               >
                 {child.label}
-              </button>
+              </a>
             ))}
           </div>
         )}
@@ -236,10 +262,11 @@ export default function AppLayout() {
           </div>
           {showText && (theme === "light" ? "Dark Mode" : "Light Mode")}
         </button>
-        <button
-          onClick={() => handleNavigate("/profile")}
+        <a
+          href="/profile"
+          onClick={(e) => handleLinkClick(e, "/profile")}
           className={cn(
-            "w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-medium transition-colors",
+            "w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-[13px] font-medium transition-colors no-underline",
             "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
           )}
         >
@@ -247,7 +274,7 @@ export default function AppLayout() {
             <Settings className="w-4 h-4" strokeWidth={1.8} />
           </div>
           {showText && "Settings"}
-        </button>
+        </a>
       </div>
     </aside>
   );
