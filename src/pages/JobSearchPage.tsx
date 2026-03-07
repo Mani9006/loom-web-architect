@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import {
   Search, Briefcase, ExternalLink, Building2,
-  Clock, DollarSign, Loader2, Globe, Filter, ChevronDown, ChevronUp, FileText, MapPin, X,
+  Clock, DollarSign, Loader2, Globe, Filter, ChevronDown, ChevronUp, FileText, MapPin, X, Ban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LocationAutocomplete from "@/components/LocationAutocomplete";
@@ -65,6 +65,11 @@ export default function JobSearchPage() {
   const [jobs, setJobs] = useState<SearchJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchProgress, setSearchProgress] = useState(0);
+  const [searchStatus, setSearchStatus] = useState("");
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Active filters count (for badge)
   const activeFilters = [
@@ -74,15 +79,73 @@ export default function JobSearchPage() {
     location ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
+  const cancelSearch = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    setLoading(false);
+    setSearchProgress(0);
+    setSearchStatus("");
+    toast({ title: "Search cancelled" });
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    };
+  }, []);
+
   const searchJobs = useCallback(async (overrideQuery?: string) => {
     const q = overrideQuery || query;
     if (!q.trim()) {
       toast({ title: "Enter a search term", description: "Type a job title or keyword" });
       return;
     }
+
+    // Cancel any in-flight search
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     setHasSearched(true);
     setShowRoleSuggestions(false);
+    setSearchProgress(0);
+    setElapsedMs(null);
+
+    // Progress animation — updates status messages as time passes
+    const statusMessages = [
+      { at: 0, msg: "Searching job boards...", pct: 10 },
+      { at: 2000, msg: "Scanning LinkedIn, Indeed, Glassdoor...", pct: 30 },
+      { at: 5000, msg: "Analyzing job listings...", pct: 55 },
+      { at: 8000, msg: "Gathering details & URLs...", pct: 70 },
+      { at: 12000, msg: "Almost done...", pct: 85 },
+      { at: 18000, msg: "Taking a bit longer than usual...", pct: 92 },
+    ];
+    const searchStart = Date.now();
+    setSearchStatus(statusMessages[0].msg);
+    setSearchProgress(statusMessages[0].pct);
+
+    progressIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - searchStart;
+      // Find the latest applicable status
+      for (let i = statusMessages.length - 1; i >= 0; i--) {
+        if (elapsed >= statusMessages[i].at) {
+          setSearchStatus(statusMessages[i].msg);
+          setSearchProgress(statusMessages[i].pct);
+          break;
+        }
+      }
+    }, 500);
 
     try {
       const session = await supabase.auth.getSession();
@@ -97,6 +160,9 @@ export default function JobSearchPage() {
       if (datePosted) payload.date_posted = datePosted;
       if (resumeText.trim()) payload.resume_text = resumeText.trim();
 
+      // 30s frontend timeout
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL || "https://woxtbyotydxorcdhhivr.supabase.co"}/functions/v1/perplexity-job-search`,
         {
@@ -106,24 +172,45 @@ export default function JobSearchPage() {
             Authorization: `Bearer ${token || anonKey}`,
           },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         }
       );
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
+        if (err.timed_out) {
+          throw new Error("Search took too long. Try a simpler query or fewer filters.");
+        }
         throw new Error(err.error || `Search failed (${response.status})`);
       }
 
       const data = await response.json();
       setJobs(data.jobs || []);
+      setSearchProgress(100);
+      setSearchStatus("Done!");
+      if (data.elapsed_ms) setElapsedMs(data.elapsed_ms);
 
       if ((data.jobs || []).length === 0) {
         toast({ title: "No results", description: `No jobs found for "${q}". Try broader keywords.` });
       }
     } catch (err: any) {
-      console.error("Search failed:", err);
-      toast({ title: "Search failed", description: err.message || "Please try again", variant: "destructive" });
+      if (err.name === "AbortError") {
+        // User cancelled or timeout — don't show error if user cancelled
+        if (controller.signal.reason !== "user-cancel") {
+          toast({ title: "Search timed out", description: "Try a simpler search query", variant: "destructive" });
+        }
+      } else {
+        console.error("Search failed:", err);
+        toast({ title: "Search failed", description: err.message || "Please try again", variant: "destructive" });
+      }
     } finally {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      abortControllerRef.current = null;
       setLoading(false);
     }
   }, [query, location, salaryRange, jobType, datePosted, resumeText]);
@@ -368,24 +455,25 @@ export default function JobSearchPage() {
           </div>
         )}
 
-        {/* Loading skeleton */}
+        {/* Loading state with progress */}
         {loading && (
-          <div className="space-y-3">
-            {[...Array(6)].map((_, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <div className="flex gap-4">
-                    <Skeleton className="w-12 h-12 rounded-lg" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-5 w-3/4" />
-                      <Skeleton className="h-4 w-1/2" />
-                      <Skeleton className="h-3 w-full" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <Card>
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  <span className="text-sm font-medium">{searchStatus}</span>
+                </div>
+                <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground h-8" onClick={cancelSearch}>
+                  <Ban className="w-3.5 h-3.5" /> Cancel
+                </Button>
+              </div>
+              <Progress value={searchProgress} className="h-2" />
+              <p className="text-xs text-muted-foreground text-center">
+                Searching across LinkedIn, Indeed, Glassdoor & more
+              </p>
+            </CardContent>
+          </Card>
         )}
 
         {/* Empty state */}
@@ -414,7 +502,9 @@ export default function JobSearchPage() {
         {/* Results */}
         {!loading && jobs.length > 0 && (
           <>
-            <p className="text-sm text-muted-foreground">{jobs.length} jobs found</p>
+            <p className="text-sm text-muted-foreground">
+              {jobs.length} jobs found{elapsedMs ? ` in ${(elapsedMs / 1000).toFixed(1)}s` : ""}
+            </p>
             <div className="space-y-3">
               {jobs.map((job) => (
                 <Card key={job.id} className="hover:shadow-md transition-shadow">
