@@ -11,128 +11,128 @@
 
 @layer base {
   :root {
-    /* Slate Ash — clean, modern, professional */
-    --background: 210 11% 97%;
-    --foreground: 220 14% 10%;
+    /* Tropical Parrot — vibrant teal + coral + mango */
+    --background: 170 20% 97%;
+    --foreground: 190 30% 8%;
 
-    --card: 210 11% 99%;
-    --card-foreground: 220 14% 10%;
+    --card: 170 18% 99%;
+    --card-foreground: 190 30% 8%;
 
-    --popover: 210 11% 99%;
-    --popover-foreground: 220 14% 10%;
+    --popover: 170 18% 99%;
+    --popover-foreground: 190 30% 8%;
 
-    --primary: 215 14% 34%;
+    --primary: 174 62% 38%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 12% 93%;
-    --secondary-foreground: 220 12% 20%;
+    --secondary: 170 18% 92%;
+    --secondary-foreground: 190 25% 15%;
 
-    --muted: 210 11% 93%;
-    --muted-foreground: 215 8% 46%;
+    --muted: 170 14% 92%;
+    --muted-foreground: 180 10% 40%;
 
-    --accent: 215 12% 50%;
+    --accent: 12 80% 58%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 52%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 14% 86%;
-    --input: 214 14% 86%;
-    --ring: 215 14% 34%;
+    --border: 174 20% 85%;
+    --input: 174 20% 85%;
+    --ring: 174 62% 38%;
 
     --radius: 1rem;
 
-    /* Sidebar — dark slate */
-    --sidebar-background: 220 16% 10%;
-    --sidebar-foreground: 215 8% 55%;
-    --sidebar-primary: 210 10% 70%;
+    /* Sidebar — deep jungle dark */
+    --sidebar-background: 180 30% 8%;
+    --sidebar-foreground: 170 15% 60%;
+    --sidebar-primary: 174 55% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 12% 14%;
-    --sidebar-accent-foreground: 210 10% 82%;
-    --sidebar-border: 220 12% 16%;
-    --sidebar-ring: 215 14% 34%;
+    --sidebar-accent: 180 25% 12%;
+    --sidebar-accent-foreground: 170 15% 85%;
+    --sidebar-border: 180 20% 14%;
+    --sidebar-ring: 174 62% 38%;
 
     /* Custom design tokens */
-    --gradient-hero: linear-gradient(135deg, hsl(215, 14%, 34%) 0%, hsl(215, 12%, 50%) 50%, hsl(210, 10%, 62%) 100%);
-    --gradient-primary: linear-gradient(135deg, hsl(215, 14%, 34%), hsl(215, 12%, 50%));
-    --gradient-shimmer: linear-gradient(90deg, hsl(215, 14%, 34%), hsl(215, 12%, 50%), hsl(215, 14%, 34%));
+    --gradient-hero: linear-gradient(135deg, hsl(174, 62%, 38%) 0%, hsl(12, 80%, 58%) 50%, hsl(45, 90%, 55%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(174, 62%, 38%), hsl(174, 50%, 48%));
+    --gradient-shimmer: linear-gradient(90deg, hsl(174, 62%, 38%), hsl(12, 80%, 58%), hsl(174, 62%, 38%));
     --gradient-glass: linear-gradient(135deg, hsl(0 0% 100% / 0.7), hsl(0 0% 100% / 0.3));
-    --gradient-mesh: radial-gradient(at 40% 20%, hsl(215 14% 34% / 0.06) 0px, transparent 50%),
-                     radial-gradient(at 80% 0%, hsl(215 12% 50% / 0.05) 0px, transparent 50%),
-                     radial-gradient(at 0% 50%, hsl(210 10% 62% / 0.04) 0px, transparent 50%);
-    --shadow-glow: 0 0 60px -12px hsl(215 14% 34% / 0.15);
-    --shadow-subtle: 0 1px 3px 0 hsl(220 14% 10% / 0.02);
-    --shadow-card: 0 1px 4px 0 hsl(220 14% 10% / 0.03), 0 0 0 1px hsl(220 14% 10% / 0.02);
-    --shadow-card-hover: 0 16px 40px -8px hsl(215 14% 34% / 0.06), 0 8px 20px -8px hsl(220 14% 10% / 0.04);
-    --shadow-elevated: 0 24px 48px -12px hsl(220 14% 10% / 0.1);
+    --gradient-mesh: radial-gradient(at 40% 20%, hsl(174 62% 38% / 0.06) 0px, transparent 50%),
+                     radial-gradient(at 80% 0%, hsl(12 80% 58% / 0.05) 0px, transparent 50%),
+                     radial-gradient(at 0% 50%, hsl(45 90% 55% / 0.04) 0px, transparent 50%);
+    --shadow-glow: 0 0 60px -12px hsl(174 62% 38% / 0.18);
+    --shadow-subtle: 0 1px 3px 0 hsl(190 30% 8% / 0.02);
+    --shadow-card: 0 1px 4px 0 hsl(190 30% 8% / 0.04), 0 0 0 1px hsl(174 62% 38% / 0.04);
+    --shadow-card-hover: 0 16px 40px -8px hsl(174 62% 38% / 0.08), 0 8px 20px -8px hsl(190 30% 8% / 0.05);
+    --shadow-elevated: 0 24px 48px -12px hsl(190 30% 8% / 0.1);
 
-    --chart-1: 215 14% 34%;
-    --chart-2: 215 12% 50%;
-    --chart-3: 160 50% 45%;
-    --chart-4: 340 50% 50%;
-    --chart-5: 200 60% 50%;
-    --sidebar: 220 16% 10%;
+    --chart-1: 174 62% 38%;
+    --chart-2: 12 80% 58%;
+    --chart-3: 45 90% 50%;
+    --chart-4: 280 60% 55%;
+    --chart-5: 200 75% 50%;
+    --sidebar: 180 30% 8%;
     --font-sans: 'Outfit', ui-sans-serif, system-ui, -apple-system, sans-serif;
     --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --shadow-2xs: 0 1px 2px 0 hsl(220 14% 10% / 0.02);
-    --shadow-xs: 0 1px 2px 0 hsl(220 14% 10% / 0.04);
-    --shadow-sm: 0 2px 4px 0 hsl(220 14% 10% / 0.04), 0 1px 2px -1px hsl(220 14% 10% / 0.03);
-    --shadow: 0 2px 6px 0 hsl(220 14% 10% / 0.05), 0 1px 3px -1px hsl(220 14% 10% / 0.04);
-    --shadow-md: 0 6px 12px -2px hsl(220 14% 10% / 0.05), 0 3px 6px -3px hsl(220 14% 10% / 0.03);
-    --shadow-lg: 0 12px 24px -4px hsl(220 14% 10% / 0.06), 0 4px 8px -4px hsl(220 14% 10% / 0.02);
-    --shadow-xl: 0 20px 40px -8px hsl(220 14% 10% / 0.08), 0 8px 16px -6px hsl(220 14% 10% / 0.03);
-    --shadow-2xl: 0 32px 64px -16px hsl(220 14% 10% / 0.12);
+    --shadow-2xs: 0 1px 2px 0 hsl(190 30% 8% / 0.02);
+    --shadow-xs: 0 1px 2px 0 hsl(190 30% 8% / 0.04);
+    --shadow-sm: 0 2px 4px 0 hsl(190 30% 8% / 0.04), 0 1px 2px -1px hsl(190 30% 8% / 0.03);
+    --shadow: 0 2px 6px 0 hsl(190 30% 8% / 0.05), 0 1px 3px -1px hsl(190 30% 8% / 0.04);
+    --shadow-md: 0 6px 12px -2px hsl(190 30% 8% / 0.05), 0 3px 6px -3px hsl(190 30% 8% / 0.03);
+    --shadow-lg: 0 12px 24px -4px hsl(190 30% 8% / 0.06), 0 4px 8px -4px hsl(190 30% 8% / 0.02);
+    --shadow-xl: 0 20px 40px -8px hsl(190 30% 8% / 0.08), 0 8px 16px -6px hsl(190 30% 8% / 0.03);
+    --shadow-2xl: 0 32px 64px -16px hsl(190 30% 8% / 0.12);
     --tracking-normal: 0em;
     --spacing: 0.25rem;
   }
 
   .dark {
-    --background: 220 14% 5%;
-    --foreground: 210 10% 92%;
+    --background: 185 30% 5%;
+    --foreground: 165 15% 92%;
 
-    --card: 220 12% 8%;
-    --card-foreground: 210 10% 92%;
+    --card: 185 25% 8%;
+    --card-foreground: 165 15% 92%;
 
-    --popover: 220 12% 8%;
-    --popover-foreground: 210 10% 92%;
+    --popover: 185 25% 8%;
+    --popover-foreground: 165 15% 92%;
 
-    --primary: 215 14% 55%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 174 55% 50%;
+    --primary-foreground: 185 40% 4%;
 
-    --secondary: 220 10% 12%;
-    --secondary-foreground: 210 10% 92%;
+    --secondary: 185 20% 12%;
+    --secondary-foreground: 165 15% 90%;
 
-    --muted: 220 10% 12%;
-    --muted-foreground: 215 8% 48%;
+    --muted: 185 18% 12%;
+    --muted-foreground: 170 10% 50%;
 
-    --accent: 215 12% 45%;
+    --accent: 12 75% 60%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 63% 31%;
     --destructive-foreground: 0 86% 97%;
 
-    --border: 220 10% 15%;
-    --input: 220 10% 15%;
-    --ring: 215 14% 55%;
+    --border: 180 15% 15%;
+    --input: 180 15% 15%;
+    --ring: 174 55% 50%;
 
-    --sidebar-background: 220 14% 4%;
-    --sidebar-foreground: 215 8% 48%;
-    --sidebar-primary: 215 14% 55%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 12% 9%;
-    --sidebar-accent-foreground: 210 10% 82%;
-    --sidebar-border: 220 10% 10%;
-    --sidebar-ring: 215 14% 55%;
+    --sidebar-background: 185 35% 4%;
+    --sidebar-foreground: 170 12% 52%;
+    --sidebar-primary: 174 55% 50%;
+    --sidebar-primary-foreground: 185 40% 4%;
+    --sidebar-accent: 185 22% 9%;
+    --sidebar-accent-foreground: 170 15% 82%;
+    --sidebar-border: 180 18% 10%;
+    --sidebar-ring: 174 55% 50%;
 
     --shadow-card: 0 1px 4px 0 hsl(0 0% 0% / 0.3);
-    --shadow-card-hover: 0 16px 40px -8px hsl(0 0% 0% / 0.3);
-    --chart-1: 215 14% 55%;
-    --chart-2: 215 12% 45%;
-    --chart-3: 160 50% 50%;
-    --chart-4: 340 65% 60%;
-    --chart-5: 200 70% 55%;
-    --sidebar: 220 14% 4%;
+    --shadow-card-hover: 0 16px 40px -8px hsl(174 62% 38% / 0.15);
+    --chart-1: 174 55% 50%;
+    --chart-2: 12 75% 60%;
+    --chart-3: 45 85% 58%;
+    --chart-4: 280 55% 62%;
+    --chart-5: 200 70% 58%;
+    --sidebar: 185 35% 4%;
     --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.1);
     --shadow-xs: 0 1px 2px 0 hsl(0 0% 0% / 0.1);
     --shadow-sm: 0 2px 4px 0 hsl(0 0% 0% / 0.15), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
@@ -176,8 +176,8 @@
   }
 
   .dark .glass-card {
-    background: hsl(24 16% 8% / 0.6);
-    border-color: hsl(0 0% 100% / 0.06);
+    background: hsl(185 25% 8% / 0.6);
+    border-color: hsl(174 55% 50% / 0.08);
   }
 
   .glass-surface {
