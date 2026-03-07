@@ -401,42 +401,39 @@ CRITICAL RULES:
         }
       }
 
-      // ── 3b. Also save to `jobs` table so auto-apply match-jobs can score them ──
-      for (const job of normalizedJobs) {
-        // Use a composite external_id based on fingerprint to avoid duplicates
+      // ── 3b. Fire-and-forget: bridge to `jobs` table for auto-apply/match-jobs ──
+      // Non-blocking — don't await, so it doesn't slow down the response
+      const bridgeRows = normalizedJobs.map((job: any) => {
         const fp = jobFingerprint({ title: job.title, company: job.company, location: job.location });
-        const extId = `search_${fp}`;
-        // Parse salary range if present (e.g. "$80k-$120k")
         let salaryMin: number | null = null;
         let salaryMax: number | null = null;
         if (job.salary) {
           const nums = job.salary.match(/(\d[\d,]*)/g);
           if (nums && nums.length >= 1) {
             salaryMin = parseInt(nums[0].replace(/,/g, ""), 10);
-            if (nums[0].includes("k") || job.salary.toLowerCase().includes("k")) salaryMin *= 1000;
-            else if (salaryMin < 1000) salaryMin *= 1000; // likely "80k" without the k
+            if (job.salary.toLowerCase().includes("k")) salaryMin *= 1000;
+            else if (salaryMin < 1000) salaryMin *= 1000;
           }
           if (nums && nums.length >= 2) {
             salaryMax = parseInt(nums[1].replace(/,/g, ""), 10);
-            if (nums[1].includes("k") || job.salary.toLowerCase().includes("k")) salaryMax *= 1000;
+            if (job.salary.toLowerCase().includes("k")) salaryMax *= 1000;
             else if (salaryMax < 1000) salaryMax *= 1000;
           }
         }
-        await sb.from("jobs").upsert({
-          title: job.title,
-          company: job.company,
-          location: job.location,
-          description: job.description,
-          apply_url: job.apply_url,
-          salary_min: salaryMin,
-          salary_max: salaryMax,
-          job_type: job.job_type,
-          remote: job.remote,
-          date_posted: job.date_posted,
-          source: job.source || "Web Search",
-          external_id: extId,
-        }, { onConflict: "external_id" }).select("id").single().catch(() => {});
-      }
+        return {
+          title: job.title, company: job.company, location: job.location,
+          description: job.description, apply_url: job.apply_url,
+          salary_min: salaryMin, salary_max: salaryMax,
+          job_type: job.job_type, remote: job.remote,
+          date_posted: job.date_posted, source: job.source || "Web Search",
+          external_id: `search_${fp}`,
+        };
+      });
+      // Single batch upsert — fire and forget (no await)
+      sb.from("jobs").upsert(bridgeRows, { onConflict: "external_id" }).then(
+        () => console.log(`Bridged ${bridgeRows.length} jobs to jobs table`),
+        (err: any) => console.error("Bridge to jobs table failed:", err)
+      );
 
       // Save the search → job mapping
       if (jobIds.length > 0) {
