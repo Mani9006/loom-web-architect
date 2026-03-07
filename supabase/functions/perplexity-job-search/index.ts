@@ -1,6 +1,6 @@
-// Perplexity-powered Job Search with caching — returns real job listings via web search
-// Strategy: check cache first → return cached if fresh → else call Perplexity → save to cache
-// v13: Added pagination support — page param, skip_cache for next-page pre-fetch
+// Perplexity-powered Job Search with DB-first approach
+// Strategy: query cached_jobs DB first → return matching jobs → only call Perplexity when DB exhausted
+// v18: DB-first search — no AI tokens wasted filtering, direct SQL queries on cached_jobs
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -73,15 +73,13 @@ function classifyRoleCategory(title: string, description: string): string {
 
 function detectExperienceLevel(title: string, description: string): string {
   const text = `${title} ${description}`;
-  // Check in priority order: Executive > Senior > Entry > Intern (Mid is default)
   for (const { level, patterns } of EXPERIENCE_PATTERNS) {
     for (const p of patterns) {
-      if (p.test(title)) return level; // title match is strongest signal
+      if (p.test(title)) return level;
     }
   }
-  // If not in title, check description (weaker signal)
   for (const { level, patterns } of EXPERIENCE_PATTERNS) {
-    if (level === "Mid-Level") continue; // skip default
+    if (level === "Mid-Level") continue;
     for (const p of patterns) {
       if (p.test(text)) return level;
     }
@@ -99,31 +97,6 @@ function detectIndustry(company: string, description: string): string | null {
   return null;
 }
 
-// Generate a normalized search key for cache lookups
-function buildSearchKey(
-  query: string,
-  location?: string,
-  salaryRange?: string,
-  jobType?: string,
-  datePosted?: string,
-  experienceLevel?: string,
-  remoteFilter?: string,
-  searchSource?: string
-): string {
-  const parts = [
-    (query || "").toLowerCase().trim(),
-    (location || "").toLowerCase().trim(),
-    (salaryRange || "any").toLowerCase(),
-    (jobType || "all").toLowerCase(),
-    (datePosted || "month").toLowerCase(),
-    (experienceLevel || "all").toLowerCase(),
-    (remoteFilter || "all").toLowerCase(),
-    (searchSource || "direct").toLowerCase(),
-  ];
-  return parts.join("|");
-}
-
-// Sanitize date_posted — convert exact dates to relative labels, reject future dates
 function sanitizeDatePosted(raw: string): string {
   if (!raw) return "Recently";
   const s = raw.trim();
@@ -153,7 +126,6 @@ function sanitizeDatePosted(raw: string): string {
   return `${Math.floor(diffDays / 30)} months ago`;
 }
 
-// Convert a relative date label to an ISO timestamp for the `jobs` table (timestamptz)
 function relativeDateToTimestamp(label: string): string {
   if (!label) return new Date().toISOString();
   const s = label.trim().toLowerCase();
@@ -180,8 +152,6 @@ function jobFingerprint(job: { title: string; company: string; location: string 
 }
 
 // ── Quality Validation ─────────────────────────────────────────────────
-// Returns true if a job passes quality checks, false if it should be rejected
-/** Patterns indicating a URL is a generic career/search page, not a specific job */
 const GENERIC_URL_PATTERNS = [
   /\/careers\/?$/i,
   /\/careers\/?\?/i,
@@ -196,14 +166,12 @@ const GENERIC_URL_PATTERNS = [
   /ziprecruiter\.com\/jobs\/search/i,
 ];
 
-/** Build a LinkedIn search URL as fallback for jobs with bad/generic apply URLs */
 function buildFallbackUrl(title: string, company: string, location: string): string {
   const query = `${title} ${company}`.trim();
   const loc = (location || "United States").trim();
   return `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(query)}&location=${encodeURIComponent(loc)}`;
 }
 
-/** Sanitize a job URL: if it's generic/broken, replace with a LinkedIn search fallback */
 function sanitizeApplyUrl(url: string, title: string, company: string, location: string): string {
   if (!url || !url.startsWith("http")) return buildFallbackUrl(title, company, location);
   const lower = url.toLowerCase();
@@ -223,7 +191,6 @@ function validateJob(job: any): { valid: boolean; reason?: string } {
   if (!job.location || job.location.length < 2) return { valid: false, reason: "missing location" };
   if (!job.apply_url || !job.apply_url.startsWith("http")) return { valid: false, reason: "invalid apply_url" };
   if (!job.description || job.description.length < 50) return { valid: false, reason: "description too short" };
-  // Reject non-US locations
   const loc = (job.location || "").toLowerCase();
   const nonUSPatterns = [
     /\bindia\b/, /\bcanada\b/, /\buk\b/, /\bunited kingdom\b/, /\bgermany\b/,
@@ -236,11 +203,118 @@ function validateJob(job: any): { valid: boolean; reason?: string } {
   for (const p of nonUSPatterns) {
     if (p.test(loc)) return { valid: false, reason: `non-US location: ${job.location}` };
   }
-  // Reject generic/spam company names
   const company = (job.company || "").toLowerCase();
   if (company === "unknown" || company === "various" || company === "confidential company")
     return { valid: false, reason: "generic company name" };
   return { valid: true };
+}
+
+// ── Date filter helper: convert date_posted filter to a cutoff timestamp ──
+function getDateCutoff(dateFilter: string): string | null {
+  const now = new Date();
+  switch (dateFilter) {
+    case "today":
+      // Start of today (midnight UTC)
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    case "3days":
+      return new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    case "week":
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    case "month":
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    default:
+      return null; // "all" — no date filter
+  }
+}
+
+// ── DB Search: query cached_jobs directly with SQL filters ─────────────
+async function searchDatabase(
+  sb: any,
+  query: string,
+  filters: {
+    location?: string;
+    experience_level?: string;
+    remote_filter?: string;
+    job_type?: string;
+    date_posted?: string;
+    search_source?: string;
+  },
+  offset: number,
+  limit: number,
+  excludeFingerprints: string[] = []
+): Promise<{ jobs: any[]; total: number }> {
+  const searchTerms = query.toLowerCase().trim().split(/\s+/);
+
+  // Build the query — search title, company, role_category, description
+  let dbQuery = sb
+    .from("cached_jobs")
+    .select("*", { count: "exact" })
+    .gt("expires_at", new Date().toISOString());
+
+  // Text search: match ALL search terms against title OR company OR role_category
+  // Use ilike for each term — job must match ALL terms in at least one of the fields
+  for (const term of searchTerms) {
+    const pattern = `%${term}%`;
+    dbQuery = dbQuery.or(`title.ilike.${pattern},company.ilike.${pattern},role_category.ilike.${pattern},description.ilike.${pattern}`);
+  }
+
+  // Location filter
+  if (filters.location && filters.location.trim()) {
+    const loc = filters.location.trim();
+    dbQuery = dbQuery.ilike("location", `%${loc}%`);
+  }
+
+  // Experience level filter
+  if (filters.experience_level && filters.experience_level !== "all") {
+    dbQuery = dbQuery.eq("experience_level", filters.experience_level);
+  }
+
+  // Remote filter
+  if (filters.remote_filter === "remote-only") {
+    dbQuery = dbQuery.eq("remote", true);
+  } else if (filters.remote_filter === "on-site") {
+    dbQuery = dbQuery.eq("remote", false);
+  }
+  // "hybrid" and "all" — no remote filter needed
+
+  // Job type filter
+  if (filters.job_type && filters.job_type !== "all") {
+    dbQuery = dbQuery.ilike("job_type", `%${filters.job_type}%`);
+  }
+
+  // Date posted filter — use created_at (when job was added to our DB)
+  const dateCutoff = getDateCutoff(filters.date_posted || "month");
+  if (dateCutoff) {
+    dbQuery = dbQuery.gte("created_at", dateCutoff);
+  }
+
+  // Search source filter — filter by source field
+  if (filters.search_source === "direct") {
+    // Exclude aggregator sources
+    const aggregators = ["LinkedIn", "Indeed", "Glassdoor", "ZipRecruiter", "SimplyHired", "Monster"];
+    for (const agg of aggregators) {
+      dbQuery = dbQuery.not("source", "ilike", `%${agg}%`);
+    }
+  }
+
+  // Exclude already-shown fingerprints
+  if (excludeFingerprints.length > 0) {
+    dbQuery = dbQuery.not("job_fingerprint", "in", `(${excludeFingerprints.join(",")})`);
+  }
+
+  // Pagination and ordering
+  dbQuery = dbQuery
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  const { data: jobs, count, error } = await dbQuery;
+
+  if (error) {
+    console.error("DB search error:", error);
+    return { jobs: [], total: 0 };
+  }
+
+  return { jobs: jobs || [], total: count || 0 };
 }
 
 // ── Main Server ────────────────────────────────────────────────────────
@@ -261,59 +335,60 @@ serve(async (req) => {
       date_posted,
       resume_text,
       user_id,
-      experience_level,  // NEW: Entry-Level, Mid-Level, Senior, Executive
-      remote_filter,     // NEW: remote-only, hybrid, on-site, all
-      search_source,     // NEW: "direct" (company careers only) or "all" (include job boards)
-      page,              // NEW: page number for pagination (1-based, default 1)
-      skip_cache,        // NEW: skip cache for pagination fetches
+      experience_level,
+      remote_filter,
+      search_source,
+      page,
+      skip_cache,
+      force_web_search,  // NEW: explicitly request Perplexity search
+      exclude_fingerprints, // NEW: fingerprints already shown to user
     } = await req.json();
 
     const pageNum = parseInt(page, 10) || 1;
+    const pageSize = 15;
+    const offset = (pageNum - 1) * pageSize;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, serviceKey);
 
-    // ── 1. Check cache first (skip for pagination fetches) ─────────────
-    const searchKey = buildSearchKey(
-      query, location, salary_range, job_type, date_posted, experience_level, remote_filter, search_source
-    );
+    const searchQuery = query || "software engineer";
 
-    const shouldSkipCache = skip_cache === true || pageNum > 1;
+    // ── STEP 1: Always try DB first (unless force_web_search) ──────────
+    if (!force_web_search) {
+      const dbResult = await searchDatabase(
+        sb,
+        searchQuery,
+        {
+          location,
+          experience_level,
+          remote_filter,
+          job_type,
+          date_posted,
+          search_source,
+        },
+        offset,
+        pageSize,
+        exclude_fingerprints || []
+      );
 
-    const { data: cachedSearch } = shouldSkipCache
-      ? { data: null }
-      : await sb
-          .from("search_cache")
-          .select("*")
-          .eq("search_key", searchKey)
-          .gt("expires_at", new Date().toISOString())
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
-
-    if (cachedSearch && cachedSearch.job_ids?.length > 0) {
-      const { data: cachedJobs } = await sb
-        .from("cached_jobs")
-        .select("*")
-        .in("id", cachedSearch.job_ids)
-        .gt("expires_at", new Date().toISOString());
-
-      if (cachedJobs && cachedJobs.length > 0) {
-        let filteredJobs = cachedJobs;
+      if (dbResult.jobs.length > 0) {
+        // Filter out jobs already seen by this user
+        let resultJobs = dbResult.jobs;
         if (user_id) {
+          const fingerprints = resultJobs.map((j: any) => j.job_fingerprint);
           const { data: seenJobs } = await sb
             .from("user_seen_jobs")
             .select("job_fingerprint")
-            .eq("user_id", user_id);
+            .eq("user_id", user_id)
+            .in("job_fingerprint", fingerprints);
 
           const seenSet = new Set((seenJobs || []).map((s: any) => s.job_fingerprint));
-          filteredJobs = cachedJobs.filter((j: any) => !seenSet.has(j.job_fingerprint));
+          resultJobs = resultJobs.filter((j: any) => !seenSet.has(j.job_fingerprint));
 
-          if (filteredJobs.length === 0) {
-            console.log("All cached jobs already seen by user, fetching fresh results");
-          } else {
-            const seenInserts = filteredJobs.map((j: any) => ({
+          // Mark these jobs as seen
+          if (resultJobs.length > 0) {
+            const seenInserts = resultJobs.map((j: any) => ({
               user_id,
               job_fingerprint: j.job_fingerprint,
             }));
@@ -321,44 +396,12 @@ serve(async (req) => {
               .from("user_seen_jobs")
               .upsert(seenInserts, { onConflict: "user_id,job_fingerprint" })
               .select();
-
-            const elapsed = Date.now() - startTime;
-            console.log(`Cache HIT: ${filteredJobs.length} jobs in ${elapsed}ms`);
-
-            const normalizedJobs = filteredJobs.map((job: any) => ({
-              id: job.id,
-              title: job.title,
-              company: job.company,
-              location: job.location,
-              description: job.description || "",
-              apply_url: job.apply_url || "",
-              salary: job.salary,
-              job_type: job.job_type,
-              remote: job.remote || false,
-              date_posted: sanitizeDatePosted(job.date_posted || "Recent"),
-              source: job.source || "Web Search",
-              role_category: job.role_category || "Other",
-              experience_level: job.experience_level || "Mid-Level",
-              industry: job.industry || null,
-            }));
-
-            return new Response(
-              JSON.stringify({
-                jobs: normalizedJobs,
-                total: normalizedJobs.length,
-                citations: [],
-                query: query || "software engineer",
-                elapsed_ms: elapsed,
-                from_cache: true,
-              }),
-              { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
           }
-        } else {
-          const elapsed = Date.now() - startTime;
-          console.log(`Cache HIT (anon): ${cachedJobs.length} jobs in ${elapsed}ms`);
+        }
 
-          const normalizedJobs = cachedJobs.map((job: any) => ({
+        // If we have results after filtering seen jobs, return them
+        if (resultJobs.length > 0) {
+          const normalizedJobs = resultJobs.map((job: any) => ({
             id: job.id,
             title: job.title,
             company: job.company,
@@ -375,22 +418,33 @@ serve(async (req) => {
             industry: job.industry || null,
           }));
 
+          const elapsed = Date.now() - startTime;
+          console.log(`DB search: ${normalizedJobs.length} jobs (total: ${dbResult.total}) in ${elapsed}ms for "${searchQuery}"`);
+
           return new Response(
             JSON.stringify({
               jobs: normalizedJobs,
-              total: normalizedJobs.length,
+              total: dbResult.total,
               citations: [],
-              query: query || "software engineer",
+              query: searchQuery,
               elapsed_ms: elapsed,
               from_cache: true,
+              from_db: true,
+              db_total: dbResult.total,
+              has_more_db: dbResult.total > offset + pageSize,
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
+
+        // If all DB jobs are already seen by user, we'll fall through to Perplexity
+        console.log(`All ${dbResult.jobs.length} DB jobs already seen by user, falling through to web search`);
+      } else {
+        console.log(`No DB results for "${searchQuery}" with filters, falling through to web search`);
       }
     }
 
-    // ── 2. Cache MISS — Call Perplexity ──────────────────────────────────
+    // ── STEP 2: DB exhausted or force_web_search — Call Perplexity ─────
     if (!cachedPerplexityKey) {
       cachedPerplexityKey = Deno.env.get("PERPLEXITY_API_KEY") || "";
       if (!cachedPerplexityKey) {
@@ -409,14 +463,12 @@ serve(async (req) => {
     }
 
     // Build search prompt with all filters
-    const searchQuery = query || "software engineer";
     const parts: string[] = [`"${searchQuery}" jobs`];
     const searchLocation = location || "United States";
     parts.push(`in ${searchLocation}, USA`);
     if (job_type && job_type !== "all") parts.push(job_type);
     if (salary_range && salary_range !== "any") parts.push(`salary ${salary_range}`);
     if (date_posted && date_posted !== "all" && date_posted !== "month") parts.push(`posted last ${date_posted}`);
-    // NEW filters in prompt
     if (experience_level && experience_level !== "all") parts.push(`${experience_level} level`);
     if (remote_filter === "remote-only") parts.push("remote");
     else if (remote_filter === "hybrid") parts.push("hybrid");
@@ -426,14 +478,12 @@ serve(async (req) => {
       ? `\nCandidate background: ${resume_text.substring(0, 300)}. Prioritize matching roles.`
       : "";
 
-    // Exact current date/time for accurate date calculations
     const now = new Date();
     const todayStr = now.toLocaleDateString("en-US", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
       timeZone: "America/New_York",
     });
 
-    // Determine source strategy based on search_source param
     const useAllSources = search_source === "all";
 
     const sourceInstruction = useAllSources
@@ -466,12 +516,10 @@ ${sourceInstruction}
       ? `Search ALL major US job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, company career pages) and find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs from different US-based companies and different job board sources. Do NOT include any jobs from outside the United States.${resumeHint}${paginationHint}`
       : `Search company career pages, Greenhouse, Lever, Workday, and direct employer hiring portals to find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs posted directly by companies on their own career sites. Do NOT include results from job board aggregators like Indeed, LinkedIn, ZipRecruiter, Glassdoor, SimplyHired, or Monster. Only return jobs from direct company career pages and employer ATS platforms. Do NOT include any jobs from outside the United States.${resumeHint}${paginationHint}`;
 
-    // Map date filter
     let recencyFilter = "month";
     if (date_posted === "today") recencyFilter = "day";
     else if (date_posted === "3days" || date_posted === "week") recencyFilter = "week";
 
-    // Call Perplexity with timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 25000);
 
@@ -513,7 +561,6 @@ ${sourceInstruction}
       const content = perplexityData.choices?.[0]?.message?.content || "";
       const citations = perplexityData.citations || [];
 
-      // Parse jobs
       let jobs: any[] = [];
       try {
         const jsonMatch = content.match(/\{[\s\S]*"jobs"[\s\S]*\}/);
@@ -532,7 +579,7 @@ ${sourceInstruction}
         }
       }
 
-      // ── 3. Quality validation + categorization ────────────────────────
+      // ── Quality validation + categorization ────────────────────────
       const validatedJobs: any[] = [];
       let rejectedCount = 0;
 
@@ -544,7 +591,6 @@ ${sourceInstruction}
           continue;
         }
 
-        // Auto-classify
         const roleCategory = classifyRoleCategory(job.title || "", job.description || "");
         const expLevel = job.experience_level || detectExperienceLevel(job.title || "", job.description || "");
         const industry = detectIndustry(job.company || "", job.description || "");
@@ -560,7 +606,7 @@ ${sourceInstruction}
       const passRate = jobs.length > 0 ? Math.round((validatedJobs.length / jobs.length) * 100) : 0;
       console.log(`Quality: ${validatedJobs.length}/${jobs.length} passed (${passRate}%), ${rejectedCount} rejected`);
 
-      // ── 4. Save to cached_jobs ────────────────────────────────────────
+      // ── Save to cached_jobs ────────────────────────────────────────
       const normalizedJobs: any[] = [];
       const jobIds: string[] = [];
 
@@ -613,7 +659,7 @@ ${sourceInstruction}
         }
       }
 
-      // ── 5. Fire-and-forget bridge to `jobs` table ─────────────────────
+      // ── Fire-and-forget bridge to `jobs` table ─────────────────────
       const bridgeRows = normalizedJobs.map((job: any) => {
         const fp = jobFingerprint({ title: job.title, company: job.company, location: job.location });
         let salaryMin: number | null = null;
@@ -649,21 +695,6 @@ ${sourceInstruction}
         (err: any) => console.error("Bridge to jobs table failed:", err)
       );
 
-      // ── 6. Save search→job mapping ────────────────────────────────────
-      if (jobIds.length > 0) {
-        await sb.from("search_cache").insert({
-          search_key: searchKey,
-          query: searchQuery,
-          location: location || null,
-          salary_range: salary_range || null,
-          job_type: job_type || null,
-          date_posted: date_posted || null,
-          job_ids: jobIds,
-          result_count: jobIds.length,
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        });
-      }
-
       // Mark jobs as seen by user
       if (user_id && normalizedJobs.length > 0) {
         const seenInserts = normalizedJobs.map((j: any) => ({
@@ -679,9 +710,8 @@ ${sourceInstruction}
       const finalJobs = normalizedJobs;
       const elapsed = Date.now() - startTime;
 
-      // Count source diversity
       const sources = new Set(finalJobs.map((j: any) => (j.source || "").toLowerCase()));
-      console.log(`Cache MISS: ${finalJobs.length} jobs from ${sources.size} sources in ${elapsed}ms (quality: ${passRate}%)`);
+      console.log(`Web search: ${finalJobs.length} jobs from ${sources.size} sources in ${elapsed}ms (quality: ${passRate}%)`);
 
       return new Response(
         JSON.stringify({
@@ -691,6 +721,7 @@ ${sourceInstruction}
           query: searchQuery,
           elapsed_ms: elapsed,
           from_cache: false,
+          from_db: false,
           quality_pass_rate: passRate,
           sources_count: sources.size,
         }),

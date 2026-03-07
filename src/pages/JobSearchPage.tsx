@@ -89,6 +89,9 @@ export default function JobSearchPage() {
   const [currentPage, setCurrentPage] = usePersistedState("jobSearch.currentPage", 1, "sessionStorage");
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [nextPageFetched, setNextPageFetched] = useState(false);
+  const [dbTotal, setDbTotal] = useState(0);
+  const [hasMoreDb, setHasMoreDb] = useState(false);
+  const [dbPageOffset, setDbPageOffset] = useState(0);
 
   const totalPages = Math.max(1, Math.ceil(jobs.length / JOBS_PER_PAGE));
   const paginatedJobs = useMemo(() => {
@@ -268,13 +271,16 @@ export default function JobSearchPage() {
     setSelectedJob(null);
     setCurrentPage(1);
     setNextPageFetched(false);
+    setDbTotal(0);
+    setHasMoreDb(false);
+    setDbPageOffset(0);
 
     const statusMessages = [
-      { at: 0, msg: "Searching job boards...", pct: 10 },
-      { at: 2000, msg: "Scanning LinkedIn, Indeed, Glassdoor...", pct: 30 },
-      { at: 5000, msg: "Analyzing job listings...", pct: 55 },
-      { at: 8000, msg: "Gathering details & URLs...", pct: 70 },
-      { at: 12000, msg: "Almost done...", pct: 85 },
+      { at: 0, msg: "Searching database...", pct: 15 },
+      { at: 1500, msg: "Checking for matching jobs...", pct: 40 },
+      { at: 4000, msg: "Scanning web if needed...", pct: 60 },
+      { at: 8000, msg: "Gathering details & URLs...", pct: 75 },
+      { at: 12000, msg: "Almost done...", pct: 88 },
       { at: 18000, msg: "Taking a bit longer than usual...", pct: 92 },
     ];
     const searchStart = Date.now();
@@ -338,9 +344,12 @@ export default function JobSearchPage() {
       const resultJobs = data.jobs || [];
       setJobs(resultJobs);
       setSearchProgress(100);
-      setSearchStatus(data.from_cache ? "Loaded from cache!" : "Done!");
-      setFromCache(!!data.from_cache);
+      setSearchStatus(data.from_db ? `Found ${data.db_total || resultJobs.length} matching jobs!` : data.from_cache ? "Loaded from cache!" : "Done!");
+      setFromCache(!!data.from_cache || !!data.from_db);
       if (data.elapsed_ms) setElapsedMs(data.elapsed_ms);
+      if (data.db_total) setDbTotal(data.db_total);
+      if (data.has_more_db !== undefined) setHasMoreDb(data.has_more_db);
+      setDbPageOffset(resultJobs.length);
 
       // Auto-select first job for detail panel
       if (resultJobs.length > 0) {
@@ -370,6 +379,7 @@ export default function JobSearchPage() {
   }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText]);
 
   // Pre-fetch more jobs in background for the next page
+  // Strategy: if DB has more results, fetch next page from DB; otherwise use Perplexity
   const fetchMoreJobs = useCallback(async () => {
     if (isFetchingMore || !query.trim()) return;
     setIsFetchingMore(true);
@@ -378,7 +388,25 @@ export default function JobSearchPage() {
       const token = session.data.session?.access_token;
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
       const userId = session.data.session?.user?.id;
-      const payload: Record<string, any> = { query, page: Math.ceil(jobs.length / JOBS_PER_PAGE) + 1, skip_cache: true };
+
+      // Calculate the next page number for the API
+      const nextPage = Math.ceil(jobs.length / JOBS_PER_PAGE) + 1;
+
+      // If DB still has more results, request next page from DB
+      // Otherwise, force a web search via Perplexity
+      const shouldForceWebSearch = !hasMoreDb;
+
+      const payload: Record<string, any> = {
+        query,
+        page: nextPage,
+      };
+
+      // Only force web search when DB is fully exhausted
+      if (shouldForceWebSearch) {
+        payload.force_web_search = true;
+        payload.skip_cache = true;
+      }
+
       if (userId) payload.user_id = userId;
       if (location.trim()) payload.location = location.trim();
       if (salaryRange !== "any") payload.salary_range = salaryRange;
@@ -412,6 +440,9 @@ export default function JobSearchPage() {
             setJobs((prev) => [...prev, ...uniqueNew]);
           }
         }
+        // Update DB tracking state
+        if (data.has_more_db !== undefined) setHasMoreDb(data.has_more_db);
+        if (data.db_total) setDbTotal(data.db_total);
         setNextPageFetched(true);
       }
     } catch (err) {
@@ -419,7 +450,7 @@ export default function JobSearchPage() {
     } finally {
       setIsFetchingMore(false);
     }
-  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText, jobs, isFetchingMore]);
+  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText, jobs, isFetchingMore, hasMoreDb]);
 
   // Auto pre-fetch when user is on the last available page
   useEffect(() => {
