@@ -229,7 +229,9 @@ serve(async (req) => {
     // Build search prompt — ask for maximum results
     const searchQuery = query || "software engineer";
     const parts: string[] = [`"${searchQuery}" jobs`];
-    if (location) parts.push(`in ${location}`);
+    // Always enforce US location — default to "United States" if none specified
+    const searchLocation = location || "United States";
+    parts.push(`in ${searchLocation}, USA`);
     if (job_type && job_type !== "all") parts.push(job_type);
     if (salary_range && salary_range !== "any")
       parts.push(`salary ${salary_range}`);
@@ -244,19 +246,22 @@ serve(async (req) => {
       ? `\nCandidate background: ${resume_text.substring(0, 300)}. Prioritize matching roles.`
       : "";
 
-    const systemPrompt = `You are a job search engine. Return ONLY valid JSON, no markdown, no explanation.
+    const systemPrompt = `You are a job search engine for the United States job market ONLY. Return ONLY valid JSON, no markdown, no explanation.
 Format: {"jobs":[{"title":"","company":"","location":"","description":"2-4 sentence summary of the role, responsibilities, and requirements","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"","source":"LinkedIn/Indeed/Glassdoor/etc"}]}
-IMPORTANT RULES:
+CRITICAL RULES:
+- ONLY return jobs located in the United States — absolutely NO jobs from India, Canada, UK, Europe, Asia, or any other country
+- Every location MUST be a US city/state (e.g. "San Francisco, CA", "New York, NY", "Remote (US)")
+- If a job is remote, it must be US-based remote — mark location as "Remote (US)" not just "Remote"
 - Every job MUST have a description field with 2-4 sentences about the role — never leave it empty
 - Find as many REAL job listings as possible — aim for 15-20 jobs minimum
 - Search across LinkedIn, Indeed, Glassdoor, ZipRecruiter, company career pages, SimplyHired, Dice, AngelList, Built In, and any other job boards
 - Every job MUST have a real, clickable apply_url — not a generic homepage
 - Do NOT make up or fabricate jobs — only return real current listings
-- Include salary info when available
+- Include salary info when available (in USD)
 - Each job must have a different company or be a distinctly different role
 - Return ONLY the JSON object`;
 
-    const userPrompt = `Search all major job boards and find real job listings for: ${parts.join(", ")}. Find at least 15-20 different jobs from different companies and job boards.${resumeHint}`;
+    const userPrompt = `Search all major US job boards and find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs from different US-based companies. Do NOT include any jobs from outside the United States.${resumeHint}`;
 
     // Map date filter
     let recencyFilter = "month";
