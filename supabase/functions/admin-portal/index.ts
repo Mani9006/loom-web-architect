@@ -17,7 +17,6 @@ type ActivityUser = {
   userId: string;
   email: string | null;
   fullName: string | null;
-  location: string | null;
   targetRole: string | null;
   onboardingCompleted: boolean;
   role: AdminRole;
@@ -73,6 +72,7 @@ type AccessControlRow = {
   purchase_state: PurchaseState;
   subscription_plan: string;
   ai_features_enabled: boolean;
+  auto_apply_enabled: boolean;
   blocked_reason: string | null;
   blocked_until: string | null;
 };
@@ -818,7 +818,7 @@ async function buildSummary(
     serviceClient.from("messages").select("id", { count: "exact", head: true }),
     serviceClient
       .from("profiles")
-      .select("user_id,email,full_name,location,target_role,onboarding_completed,created_at,updated_at")
+      .select("user_id,email,full_name,target_role,onboarding_completed,created_at,updated_at")
       .order("updated_at", { ascending: false })
       .limit(1000),
     serviceClient.from("user_roles").select("user_id,role"),
@@ -845,7 +845,7 @@ async function buildSummary(
   let accessControlRows: AccessControlRow[] = [];
   const accessRes = await serviceClient
     .from("user_access_controls")
-    .select("user_id,account_status,purchase_state,subscription_plan,ai_features_enabled,blocked_reason,blocked_until");
+    .select("user_id,account_status,purchase_state,subscription_plan,ai_features_enabled,auto_apply_enabled,blocked_reason,blocked_until");
   if (!accessRes.error) {
     accessControlRows = (accessRes.data || []) as AccessControlRow[];
   }
@@ -874,7 +874,6 @@ async function buildSummary(
     user_id: string;
     email: string | null;
     full_name: string | null;
-    location: string | null;
     target_role: string | null;
     onboarding_completed: boolean;
     created_at: string;
@@ -900,7 +899,6 @@ async function buildSummary(
         userId,
         email: profileRow?.email || authRow?.email || null,
         fullName: profileRow?.full_name || null,
-        location: profileRow?.location || null,
         targetRole: profileRow?.target_role || null,
         onboardingCompleted: Boolean(profileRow?.onboarding_completed),
         role: roleByUser.get(userId) || "user",
@@ -1254,6 +1252,7 @@ serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof Response) return error;
+    console.error("[admin-portal] Unhandled error:", error);
     return new Response(
       JSON.stringify({
         error: "Admin portal failure",

@@ -1533,12 +1533,15 @@ export default function AdminPortal() {
       if (!role) return;
 
       try {
+        setError(null);
         setSavingRoles((prev) => ({ ...prev, [targetUserId]: true }));
         await callAdminPortal({ action: "set-role", targetUserId, role });
         toast({ title: "Role updated" });
         await fetchPortal(true);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to update role");
+        const msg = err instanceof Error ? err.message : "Failed to update role";
+        setError(msg);
+        toast({ title: "Error", description: msg, variant: "destructive" });
       } finally {
         setSavingRoles((prev) => ({ ...prev, [targetUserId]: false }));
       }
@@ -1551,6 +1554,7 @@ export default function AdminPortal() {
       const draft = accessDrafts[targetUserId];
       if (!draft) return;
       try {
+        setError(null);
         setSavingAccess((prev) => ({ ...prev, [targetUserId]: true }));
         await callAdminPortal({
           action: "set-account-access",
@@ -1566,7 +1570,9 @@ export default function AdminPortal() {
         toast({ title: "Access updated" });
         await fetchPortal(true);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to update account access");
+        const msg = err instanceof Error ? err.message : "Failed to update account access";
+        setError(msg);
+        toast({ title: "Error", description: msg, variant: "destructive" });
       } finally {
         setSavingAccess((prev) => ({ ...prev, [targetUserId]: false }));
       }
