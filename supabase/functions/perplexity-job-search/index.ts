@@ -1,6 +1,6 @@
 // Perplexity-powered Job Search with caching — returns real job listings via web search
 // Strategy: check cache first → return cached if fresh → else call Perplexity → save to cache
-// v12: Added search_source toggle — company careers (default) vs all job boards
+// v13: Added pagination support — page param, skip_cache for next-page pre-fetch
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -228,25 +228,33 @@ serve(async (req) => {
       experience_level,  // NEW: Entry-Level, Mid-Level, Senior, Executive
       remote_filter,     // NEW: remote-only, hybrid, on-site, all
       search_source,     // NEW: "direct" (company careers only) or "all" (include job boards)
+      page,              // NEW: page number for pagination (1-based, default 1)
+      skip_cache,        // NEW: skip cache for pagination fetches
     } = await req.json();
+
+    const pageNum = parseInt(page, 10) || 1;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, serviceKey);
 
-    // ── 1. Check cache first ────────────────────────────────────────────
+    // ── 1. Check cache first (skip for pagination fetches) ─────────────
     const searchKey = buildSearchKey(
       query, location, salary_range, job_type, date_posted, experience_level, remote_filter, search_source
     );
 
-    const { data: cachedSearch } = await sb
-      .from("search_cache")
-      .select("*")
-      .eq("search_key", searchKey)
-      .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+    const shouldSkipCache = skip_cache === true || pageNum > 1;
+
+    const { data: cachedSearch } = shouldSkipCache
+      ? { data: null }
+      : await sb
+          .from("search_cache")
+          .select("*")
+          .eq("search_key", searchKey)
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
 
     if (cachedSearch && cachedSearch.job_ids?.length > 0) {
       const { data: cachedJobs } = await sb
@@ -414,9 +422,13 @@ ${sourceInstruction}
 - Each job must have a different company or be a distinctly different role
 - Return ONLY the JSON object`;
 
+    const paginationHint = pageNum > 1
+      ? ` This is page ${pageNum} of search results — return DIFFERENT jobs than typical first-page results. Focus on additional companies, smaller/newer companies, and less-common job boards. Do NOT repeat commonly shown listings.`
+      : "";
+
     const userPrompt = useAllSources
-      ? `Search ALL major US job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, company career pages) and find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs from different US-based companies and different job board sources. Do NOT include any jobs from outside the United States.${resumeHint}`
-      : `Search company career pages, Greenhouse, Lever, Workday, and direct employer hiring portals to find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs posted directly by companies on their own career sites. Do NOT include results from job board aggregators like Indeed, LinkedIn, ZipRecruiter, Glassdoor, SimplyHired, or Monster. Only return jobs from direct company career pages and employer ATS platforms. Do NOT include any jobs from outside the United States.${resumeHint}`;
+      ? `Search ALL major US job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, company career pages) and find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs from different US-based companies and different job board sources. Do NOT include any jobs from outside the United States.${resumeHint}${paginationHint}`
+      : `Search company career pages, Greenhouse, Lever, Workday, and direct employer hiring portals to find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs posted directly by companies on their own career sites. Do NOT include results from job board aggregators like Indeed, LinkedIn, ZipRecruiter, Glassdoor, SimplyHired, or Monster. Only return jobs from direct company career pages and employer ATS platforms. Do NOT include any jobs from outside the United States.${resumeHint}${paginationHint}`;
 
     // Map date filter
     let recencyFilter = "month";

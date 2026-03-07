@@ -15,6 +15,7 @@ import {
   Search, Briefcase, ExternalLink, Building2,
   Clock, DollarSign, Loader2, Globe, Filter, ChevronDown, ChevronUp,
   FileText, MapPin, X, Ban, Bookmark, BookmarkCheck, ArrowLeft,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LocationAutocomplete from "@/components/LocationAutocomplete";
@@ -81,6 +82,18 @@ export default function JobSearchPage() {
   const [fromCache, setFromCache] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Pagination
+  const JOBS_PER_PAGE = 15;
+  const [currentPage, setCurrentPage] = usePersistedState("jobSearch.currentPage", 1, "sessionStorage");
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [nextPageFetched, setNextPageFetched] = useState(false);
+
+  const totalPages = Math.max(1, Math.ceil(jobs.length / JOBS_PER_PAGE));
+  const paginatedJobs = useMemo(() => {
+    const start = (currentPage - 1) * JOBS_PER_PAGE;
+    return jobs.slice(start, start + JOBS_PER_PAGE);
+  }, [jobs, currentPage]);
 
   // Split view: selected job for detail panel — persisted across refresh
   const [selectedJob, setSelectedJob] = usePersistedState<SearchJob | null>("jobSearch.selectedJob", null, "sessionStorage");
@@ -252,6 +265,8 @@ export default function JobSearchPage() {
     setElapsedMs(null);
     setFromCache(false);
     setSelectedJob(null);
+    setCurrentPage(1);
+    setNextPageFetched(false);
 
     const statusMessages = [
       { at: 0, msg: "Searching job boards...", pct: 10 },
@@ -352,6 +367,75 @@ export default function JobSearchPage() {
       setLoading(false);
     }
   }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText]);
+
+  // Pre-fetch more jobs in background for the next page
+  const fetchMoreJobs = useCallback(async () => {
+    if (isFetchingMore || !query.trim()) return;
+    setIsFetchingMore(true);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+      const userId = session.data.session?.user?.id;
+      const payload: Record<string, any> = { query, page: Math.ceil(jobs.length / JOBS_PER_PAGE) + 1, skip_cache: true };
+      if (userId) payload.user_id = userId;
+      if (location.trim()) payload.location = location.trim();
+      if (salaryRange !== "any") payload.salary_range = salaryRange;
+      if (jobType !== "all") payload.job_type = jobType;
+      if (datePosted) payload.date_posted = datePosted;
+      if (experienceLevel !== "all") payload.experience_level = experienceLevel;
+      if (remoteFilter !== "all") payload.remote_filter = remoteFilter;
+      if (searchSource !== "direct") payload.search_source = searchSource;
+      if (resumeText.trim()) payload.resume_text = resumeText.trim();
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/perplexity-job-search`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token || anonKey}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const newJobs = (data.jobs || []) as SearchJob[];
+        if (newJobs.length > 0) {
+          // Deduplicate — don't add jobs already in the list
+          const existingKeys = new Set(jobs.map((j) => `${j.title}:::${j.company}`.toLowerCase()));
+          const uniqueNew = newJobs.filter((j) => !existingKeys.has(`${j.title}:::${j.company}`.toLowerCase()));
+          if (uniqueNew.length > 0) {
+            setJobs((prev) => [...prev, ...uniqueNew]);
+          }
+        }
+        setNextPageFetched(true);
+      }
+    } catch (err) {
+      console.error("Pre-fetch more jobs failed:", err);
+    } finally {
+      setIsFetchingMore(false);
+    }
+  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText, jobs, isFetchingMore]);
+
+  // Auto pre-fetch when user is on the last available page
+  useEffect(() => {
+    if (!hasSearched || loading || jobs.length === 0) return;
+    const remainingAfterCurrent = jobs.length - currentPage * JOBS_PER_PAGE;
+    if (remainingAfterCurrent < JOBS_PER_PAGE && !isFetchingMore && !nextPageFetched) {
+      fetchMoreJobs();
+    }
+  }, [currentPage, jobs.length, hasSearched, loading, isFetchingMore, nextPageFetched]);
+
+  const goToPage = (page: number) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+    setSelectedJob(null);
+    // Reset pre-fetch flag when navigating to allow fetching for new pages
+    if (page >= totalPages) setNextPageFetched(false);
+  };
 
   const handleResumeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -677,8 +761,14 @@ export default function JobSearchPage() {
               <div className="px-4 py-2.5 border-b flex items-center justify-between bg-muted/30">
                 <p className="text-xs text-muted-foreground">
                   {jobs.length} jobs found{elapsedMs ? ` in ${(elapsedMs / 1000).toFixed(1)}s` : ""}
+                  {totalPages > 1 && <span className="ml-1"> · Page {currentPage} of {totalPages}</span>}
                   {fromCache && (
                     <span className="ml-1.5 text-green-600 dark:text-green-400">⚡ Cached</span>
+                  )}
+                  {isFetchingMore && (
+                    <span className="ml-1.5 text-blue-600 dark:text-blue-400 inline-flex items-center gap-1">
+                      <Loader2 className="w-2.5 h-2.5 animate-spin" /> Loading more…
+                    </span>
                   )}
                 </p>
                 {fromCache && (
@@ -696,7 +786,7 @@ export default function JobSearchPage() {
               {/* Job cards list */}
               <ScrollArea className="flex-1">
                 <div className="divide-y">
-                  {jobs.map((job) => {
+                  {paginatedJobs.map((job) => {
                     const selected = selectedJob?.id === job.id;
                     const saved = isJobSaved(job);
                     const saving = savingJobs.has(job.id);
@@ -776,6 +866,59 @@ export default function JobSearchPage() {
                   })}
                 </div>
               </ScrollArea>
+
+              {/* Pagination controls — always visible at bottom */}
+              {totalPages > 0 && (
+                <div className="border-t bg-background px-3 py-2 flex items-center justify-between shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1 px-2"
+                    disabled={currentPage <= 1}
+                    onClick={() => goToPage(currentPage - 1)}
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                  </Button>
+                  <div className="flex items-center gap-1">
+                    {/* Show page numbers */}
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                      let page: number;
+                      if (totalPages <= 5) {
+                        page = i + 1;
+                      } else if (currentPage <= 3) {
+                        page = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        page = totalPages - 4 + i;
+                      } else {
+                        page = currentPage - 2 + i;
+                      }
+                      return (
+                        <Button
+                          key={page}
+                          variant={currentPage === page ? "default" : "ghost"}
+                          size="sm"
+                          className={cn("h-7 w-7 text-xs p-0", currentPage === page && "pointer-events-none")}
+                          onClick={() => goToPage(page)}
+                        >
+                          {page}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1 px-2"
+                    disabled={currentPage >= totalPages && !isFetchingMore}
+                    onClick={() => goToPage(currentPage + 1)}
+                  >
+                    Next <ChevronRight className="w-3.5 h-3.5" />
+                    {isFetchingMore && currentPage >= totalPages && (
+                      <Loader2 className="w-3 h-3 animate-spin ml-0.5" />
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* RIGHT PANE: Job detail (LinkedIn-style) */}
