@@ -1,14 +1,18 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, Briefcase, Building2, Clock, Target, Trash2, Loader2 } from "lucide-react";
+import {
+  Plus, Search, Briefcase, Building2, Clock, Target, Trash2, Loader2,
+  Bookmark, ExternalLink, MapPin, DollarSign, Globe,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -30,15 +34,34 @@ const COLUMNS = [
   { key: "Rejected", color: "border-t-destructive" },
 ];
 
+interface SavedJobDetail {
+  id: string;
+  job_title: string;
+  company: string;
+  location: string | null;
+  description: string | null;
+  apply_url: string | null;
+  salary: string | null;
+  job_type: string | null;
+  remote: boolean;
+  date_posted: string | null;
+  source: string | null;
+  saved_at: string;
+}
+
 export default function JobTracker() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [savedJobDetails, setSavedJobDetails] = useState<SavedJobDetail[]>([]);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newJob, setNewJob] = useState({ title: "", company: "" });
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+
+  const tabView = searchParams.get("tab"); // "saved" or null (all)
 
   useEffect(() => {
     const load = async () => {
@@ -46,6 +69,7 @@ export default function JobTracker() {
       if (!user) { navigate("/auth"); return; }
       setUserId(user.id);
 
+      // Load tracked jobs (Kanban)
       const { data } = await supabase
         .from("tracked_jobs")
         .select("id, title, company, status, created_at")
@@ -53,6 +77,15 @@ export default function JobTracker() {
         .order("created_at", { ascending: false });
 
       setJobs(data || []);
+
+      // Load saved job details (for the Saved Jobs view)
+      const { data: savedData } = await supabase
+        .from("saved_jobs")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("saved_at", { ascending: false });
+
+      setSavedJobDetails((savedData as SavedJobDetail[]) || []);
       setLoading(false);
     };
     load();
@@ -110,8 +143,30 @@ export default function JobTracker() {
     void trackProductEvent("job_deleted");
   };
 
+  const deleteSavedJobDetail = async (savedJob: SavedJobDetail) => {
+    // Remove from saved_jobs
+    await supabase.from("saved_jobs").delete().eq("id", savedJob.id);
+    // Also remove matching tracked_job if status is "Saved"
+    if (userId) {
+      await supabase
+        .from("tracked_jobs")
+        .delete()
+        .eq("user_id", userId)
+        .eq("title", savedJob.job_title)
+        .eq("company", savedJob.company)
+        .eq("status", "Saved");
+    }
+    setSavedJobDetails((prev) => prev.filter((j) => j.id !== savedJob.id));
+    setJobs((prev) => prev.filter((j) => !(j.title === savedJob.job_title && j.company === savedJob.company && j.status === "Saved")));
+    toast({ title: "Saved job removed" });
+  };
+
   const filteredJobs = jobs.filter(
     (j) => j.title.toLowerCase().includes(search.toLowerCase()) || j.company.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const filteredSavedDetails = savedJobDetails.filter(
+    (j) => j.job_title.toLowerCase().includes(search.toLowerCase()) || j.company.toLowerCase().includes(search.toLowerCase())
   );
 
   if (loading) {
@@ -130,6 +185,117 @@ export default function JobTracker() {
     );
   }
 
+  // ===== SAVED JOBS VIEW =====
+  if (tabView === "saved") {
+    return (
+      <div className="p-6 h-full flex flex-col">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              <Bookmark className="w-5 h-5 text-primary" /> Saved Jobs
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {filteredSavedDetails.length} saved job{filteredSavedDetails.length !== 1 ? "s" : ""} from search
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Search saved jobs..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
+            </div>
+            <Button size="sm" variant="outline" className="gap-2" onClick={() => navigate("/job-tracker")}>
+              <Target className="w-4 h-4" /> All Applications
+            </Button>
+          </div>
+        </div>
+
+        {filteredSavedDetails.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <Bookmark className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
+              <h3 className="text-lg font-medium">No saved jobs yet</h3>
+              <p className="text-sm text-muted-foreground mt-1">Save jobs from Job Search to see them here</p>
+              <Button className="mt-4 gap-2" onClick={() => navigate("/job-search")}>
+                <Search className="w-4 h-4" /> Go to Job Search
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto space-y-3">
+            {filteredSavedDetails.map((job) => (
+              <Card key={job.id} className="p-4 hover:shadow-md transition-shadow group">
+                <div className="flex gap-3">
+                  <div className="w-11 h-11 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                    <Building2 className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-base leading-tight">{job.job_title}</h3>
+                        <p className="text-sm text-muted-foreground">{job.company}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {job.apply_url && (
+                          <Button size="sm" className="gap-1.5 h-8" asChild>
+                            <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
+                              Apply <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </Button>
+                        )}
+                        <button
+                          onClick={() => deleteSavedJobDetail(job)}
+                          className="p-1.5 rounded-md hover:bg-destructive/10 transition-all opacity-0 group-hover:opacity-100"
+                          title="Remove from saved"
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {job.location && (
+                        <Badge variant="secondary" className="text-xs gap-1">
+                          <MapPin className="w-3 h-3" /> {job.location}
+                        </Badge>
+                      )}
+                      {job.remote && (
+                        <Badge variant="secondary" className="text-xs gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          <Globe className="w-3 h-3" /> Remote
+                        </Badge>
+                      )}
+                      {job.salary && (
+                        <Badge variant="secondary" className="text-xs gap-1">
+                          <DollarSign className="w-3 h-3" /> {job.salary}
+                        </Badge>
+                      )}
+                      {job.job_type && <Badge variant="outline" className="text-xs">{job.job_type}</Badge>}
+                      {job.date_posted && (
+                        <Badge variant="outline" className="text-xs gap-1">
+                          <Clock className="w-3 h-3" /> {job.date_posted}
+                        </Badge>
+                      )}
+                      {job.source && <Badge variant="outline" className="text-xs capitalize">{job.source}</Badge>}
+                    </div>
+
+                    {job.description && (
+                      <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{job.description}</p>
+                    )}
+
+                    <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1">
+                      <Clock className="w-2.5 h-2.5" />
+                      Saved {formatDistanceToNow(new Date(job.saved_at), { addSuffix: true })}
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ===== DEFAULT: KANBAN VIEW =====
   return (
     <div className="p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">

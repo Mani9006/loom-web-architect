@@ -6,7 +6,7 @@ import {
   Home, Search, FileText, Columns3, Mic, MessageCircle,
   FolderOpen, ChevronDown, ChevronRight, LogOut,
   Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp, Target,
-  Sun, Moon, ShieldCheck, Map, Crown, Zap, ClipboardList,
+  Sun, Moon, ShieldCheck, Map, Crown, Zap, ClipboardList, Bookmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -35,7 +35,15 @@ const baseMainNav: NavItem[] = [
   { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
   { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
   { label: "ATS Checker", icon: Target, path: "/ats-checker" },
-  { label: "Applications", icon: ClipboardList, path: "/job-tracker" },
+  {
+    label: "Applications",
+    icon: ClipboardList,
+    path: "/job-tracker",
+    children: [
+      { label: "All Applications", path: "/job-tracker" },
+      { label: "Saved Jobs", path: "/job-tracker?tab=saved" },
+    ],
+  },
   { label: "Cover Letters", icon: FolderOpen, path: "/cover-letters" },
   { label: "Interviews", icon: Mic, path: "/interview-prep" },
   { label: "AI Chat", icon: MessageCircle, path: "/chat" },
