@@ -10,6 +10,7 @@ import { motion } from "framer-motion";
 import { z } from "zod";
 import Logo from "@/components/shared/Logo";
 import { trackProductEvent } from "@/lib/product-analytics";
+import { sendWelcomeEmail } from "@/lib/email";
 
 const emailSchema = z.string().email("Please enter a valid email address");
 const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
@@ -78,6 +79,7 @@ export default function Auth() {
         else {
           toast({ title: "Welcome!", description: "Account created successfully." });
           void trackProductEvent("auth_signup_success", { provider: "email" });
+          void sendWelcomeEmail(email, fullName);
         }
       }
     } catch { toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" }); }

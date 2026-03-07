@@ -7,6 +7,35 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Email helper ─────────────────────────────────────────────────────
+async function sendEmailNotification(
+  supabaseUrl: string,
+  serviceKey: string,
+  type: string,
+  to: string,
+  data: Record<string, string | undefined>,
+) {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ type, to, data }),
+    });
+    if (!res.ok) console.error(`Email send failed (${type}):`, await res.text());
+    else console.log(`[StripeWebhook] Sent ${type} email to ${to}`);
+  } catch (err) {
+    console.error(`Email send error (${type}):`, err);
+  }
+}
+
+async function getUserEmail(supabase: any, userId: string): Promise<string | null> {
+  const { data } = await supabase.auth.admin.getUserById(userId);
+  return data?.user?.email || null;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -53,6 +82,17 @@ serve(async (req: Request) => {
           }, { onConflict: "user_id" });
 
           console.log(`[StripeWebhook] Activated ${planType} for ${userId}`);
+
+          // Send subscription confirmation email
+          const email = session.customer_email || await getUserEmail(supabase, userId);
+          if (email) {
+            const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+            void sendEmailNotification(supabaseUrl, serviceKey, "subscription", email, {
+              plan_name: planType === "premium" ? "Premium ($120/mo)" : planType,
+              status: "active",
+              period_end: periodEnd,
+            });
+          }
         }
         break;
       }
@@ -99,6 +139,31 @@ serve(async (req: Request) => {
           }).eq("user_id", plans.user_id);
 
           console.log(`[StripeWebhook] Canceled subscription for ${plans.user_id}`);
+
+          // Send cancellation email
+          const cancelEmail = await getUserEmail(supabase, plans.user_id);
+          if (cancelEmail) {
+            void sendEmailNotification(supabaseUrl, serviceKey, "subscription", cancelEmail, {
+              plan_name: "Free",
+              status: "canceled",
+            });
+          }
+        }
+        break;
+      }
+
+      case "invoice.payment_succeeded": {
+        const invoice = event.data.object;
+        const customerEmail = invoice.customer_email;
+        if (customerEmail && invoice.amount_paid > 0) {
+          const amount = `$${(invoice.amount_paid / 100).toFixed(2)}`;
+          const invoiceDate = new Date(invoice.created * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+          void sendEmailNotification(supabaseUrl, serviceKey, "billing-receipt", customerEmail, {
+            amount,
+            plan_name: "Premium",
+            invoice_date: invoiceDate,
+            invoice_url: invoice.hosted_invoice_url,
+          });
         }
         break;
       }
@@ -110,6 +175,14 @@ serve(async (req: Request) => {
             status: "past_due",
             updated_at: new Date().toISOString(),
           }).eq("stripe_subscription_id", invoice.subscription);
+
+          // Send payment failed notification
+          if (invoice.customer_email) {
+            void sendEmailNotification(supabaseUrl, serviceKey, "account-change", invoice.customer_email, {
+              change_type: "Payment Failed",
+              details: "Your latest payment failed. Please update your payment method to keep your Premium subscription active.",
+            });
+          }
         }
         break;
       }
