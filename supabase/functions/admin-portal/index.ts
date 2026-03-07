@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const DEFAULT_OWNER_EMAILS = ["myfamily9006@gmail.com"];
+const DEFAULT_OWNER_EMAILS = ["myfamily9006@gmail.com", "tharunkumar1048@gmail.com"];
 const ROLE_PRIORITY: Record<string, number> = { admin: 3, moderator: 2, user: 1 };
 
 type AdminRole = "admin" | "moderator" | "user";
