@@ -8,15 +8,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sparkles, History, Loader2, Copy, Check, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 
 export default function CoverLettersPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [jobDescription, setJobDescription] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [resumeText, setResumeText] = useState("");
-  const [result, setResult] = useState("");
+  const [jobDescription, setJobDescription] = usePersistedState("coverLetter.jobDescription", "", "localStorage");
+  const [jobTitle, setJobTitle] = usePersistedState("coverLetter.jobTitle", "", "localStorage");
+  const [companyName, setCompanyName] = usePersistedState("coverLetter.companyName", "", "localStorage");
+  const [resumeText, setResumeText] = usePersistedState("coverLetter.resumeText", "", "localStorage");
+  const [result, setResult] = usePersistedState("coverLetter.result", "", "sessionStorage");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 

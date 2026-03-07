@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -55,7 +56,7 @@ export default function JobTracker() {
   const { toast } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [savedJobDetails, setSavedJobDetails] = useState<SavedJobDetail[]>([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = usePersistedState("jobTracker.search", "", "sessionStorage");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newJob, setNewJob] = useState({ title: "", company: "" });
   const [loading, setLoading] = useState(true);

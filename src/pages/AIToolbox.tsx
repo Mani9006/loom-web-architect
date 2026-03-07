@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, Loader2, Send, Wand2, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { cn } from "@/lib/utils";
 
 const AI_TOOLS = [
@@ -22,9 +23,11 @@ const AI_TOOLS = [
 export default function AIToolbox() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [selectedTool, setSelectedTool] = useState(AI_TOOLS[0]);
-  const [input, setInput] = useState("");
-  const [result, setResult] = useState("");
+  const [selectedToolId, setSelectedToolId] = usePersistedState("aiToolbox.selectedToolId", AI_TOOLS[0].id, "sessionStorage");
+  const selectedTool = AI_TOOLS.find((t) => t.id === selectedToolId) || AI_TOOLS[0];
+  const setSelectedTool = (tool: typeof AI_TOOLS[number]) => setSelectedToolId(tool.id);
+  const [input, setInput] = usePersistedState("aiToolbox.input", "", "sessionStorage");
+  const [result, setResult] = usePersistedState("aiToolbox.result", "", "sessionStorage");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 

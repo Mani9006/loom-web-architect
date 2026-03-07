@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -173,11 +174,11 @@ function SectionCard({ config, data, expanded, onToggle }: {
 
 export default function ATSCheckerPage() {
   const { toast } = useToast();
-  const [resumeText, setResumeText] = useState("");
-  const [jobDescription, setJobDescription] = useState("");
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [resumeText, setResumeText] = usePersistedState("atsChecker.resumeText", "", "localStorage");
+  const [jobDescription, setJobDescription] = usePersistedState("atsChecker.jobDescription", "", "localStorage");
+  const [uploadedFileName, setUploadedFileName] = usePersistedState<string | null>("atsChecker.fileName", null, "sessionStorage");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ATSResult | null>(null);
+  const [result, setResult] = usePersistedState<ATSResult | null>("atsChecker.result", null, "sessionStorage");
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
 
   const handleDocumentExtracted = (text: string, fileName: string) => {

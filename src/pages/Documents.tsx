@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -29,7 +30,7 @@ interface Document {
 
 export default function Documents() {
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = usePersistedState("documents.search", "", "sessionStorage");
   const [uploadOpen, setUploadOpen] = useState(false);
   const { toast } = useToast();
 

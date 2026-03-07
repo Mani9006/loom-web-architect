@@ -3,13 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { InterviewPrepPanel, InterviewMessage } from "@/components/chat/InterviewPrepPanel";
 import { useToast } from "@/hooks/use-toast";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 
 export default function InterviewPrepPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [messages, setMessages] = useState<InterviewMessage[]>([]);
+  const [messages, setMessages] = usePersistedState<InterviewMessage[]>("interviewPrep.messages", [], "sessionStorage");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("gemini-flash");
+  const [selectedModel, setSelectedModel] = usePersistedState("interviewPrep.model", "gemini-flash", "localStorage");
   const [session, setSession] = useState<any>(null);
 
   useEffect(() => {

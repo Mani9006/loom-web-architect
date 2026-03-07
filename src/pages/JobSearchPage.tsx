@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,13 +47,13 @@ export default function JobSearchPage() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Search state
-  const [query, setQuery] = useState("");
-  const [location, setLocation] = useState("");
-  const [salaryRange, setSalaryRange] = useState("any");
-  const [jobType, setJobType] = useState("all");
-  const [datePosted, setDatePosted] = useState("month");
-  const [resumeText, setResumeText] = useState("");
+  // Search state — persisted across refresh
+  const [query, setQuery] = usePersistedState("jobSearch.query", "", "sessionStorage");
+  const [location, setLocation] = usePersistedState("jobSearch.location", "", "sessionStorage");
+  const [salaryRange, setSalaryRange] = usePersistedState("jobSearch.salaryRange", "any", "sessionStorage");
+  const [jobType, setJobType] = usePersistedState("jobSearch.jobType", "all", "sessionStorage");
+  const [datePosted, setDatePosted] = usePersistedState("jobSearch.datePosted", "month", "sessionStorage");
+  const [resumeText, setResumeText] = usePersistedState("jobSearch.resumeText", "", "sessionStorage");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showResumeUpload, setShowResumeUpload] = useState(false);
 
@@ -64,10 +65,10 @@ export default function JobSearchPage() {
     return JOB_ROLES.filter((r) => r.toLowerCase().includes(lower)).slice(0, 12);
   }, [query]);
 
-  // Results
-  const [jobs, setJobs] = useState<SearchJob[]>([]);
+  // Results — persisted across refresh
+  const [jobs, setJobs] = usePersistedState<SearchJob[]>("jobSearch.jobs", [], "sessionStorage");
   const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [hasSearched, setHasSearched] = usePersistedState("jobSearch.hasSearched", false, "sessionStorage");
   const [searchProgress, setSearchProgress] = useState(0);
   const [searchStatus, setSearchStatus] = useState("");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
@@ -75,8 +76,8 @@ export default function JobSearchPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Split view: selected job for detail panel
-  const [selectedJob, setSelectedJob] = useState<SearchJob | null>(null);
+  // Split view: selected job for detail panel — persisted across refresh
+  const [selectedJob, setSelectedJob] = usePersistedState<SearchJob | null>("jobSearch.selectedJob", null, "sessionStorage");
 
   // Saved jobs tracking
   const [savedJobKeys, setSavedJobKeys] = useState<Set<string>>(new Set());
