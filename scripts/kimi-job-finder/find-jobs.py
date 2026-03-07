@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """
-Kimi K2.5 Agent Swarm Job Finder — CLI Version
-================================================
+Kimi K2.5 Agent Swarm Job Finder — CLI Version (v2)
+=====================================================
 Uses kimi-cli (premium subscription) to find jobs across all roles
 and saves them directly to the ResumePreps Supabase database.
 
-Designed to run every 2-3 hours on Mac Mini via launchd.
+Requires: Python 3.12+, kimi-cli (pip install kimi-cli)
 
 Usage:
-    python3 find-jobs.py                  # Full run (all roles)
-    python3 find-jobs.py --roles "Software Engineer,Data Scientist"  # Specific roles
-    python3 find-jobs.py --batch-size 15  # Custom batch size
-    python3 find-jobs.py --dry-run        # Don't save to DB, just print
+    python3 find-jobs.py                              # Full run (all 60+ roles)
+    python3 find-jobs.py --roles "Software Engineer,Data Scientist"
+    python3 find-jobs.py --batch-size 15              # Roles per Kimi call
+    python3 find-jobs.py --dry-run                    # Print only, no DB save
+    python3 find-jobs.py --max-batches 2              # Limit for testing
+    python3 find-jobs.py --concurrent 3               # Parallel Kimi calls
+    python3 find-jobs.py --status                     # Show last run summary
 """
 
 import json
@@ -20,12 +23,15 @@ import re
 import subprocess
 import sys
 import time
-import hashlib
 import argparse
 import logging
+import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 # ── Config ────────────────────────────────────────────────────────────
 
@@ -35,6 +41,12 @@ SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 LOG_DIR = Path.home() / ".kimi-job-finder"
 LOG_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOG_DIR / "job-finder.log"
+SUMMARY_FILE = LOG_DIR / "last-run.json"
+ENV_FILE = LOG_DIR / ".env"
+
+# Rotate log if > 5MB
+if LOG_FILE.exists() and LOG_FILE.stat().st_size > 5_000_000:
+    LOG_FILE.rename(LOG_FILE.with_suffix(".log.bak"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,58 +58,81 @@ logging.basicConfig(
 )
 log = logging.getLogger("kimi-job-finder")
 
+
+# ── Load .env if exists ──────────────────────────────────────────────
+
+def load_env():
+    """Load environment variables from ~/.kimi-job-finder/.env"""
+    global SUPABASE_URL, SUPABASE_SERVICE_KEY
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip())
+    SUPABASE_URL = os.environ.get("SUPABASE_URL", SUPABASE_URL)
+    SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_KEY)
+
+
 # ── All roles ─────────────────────────────────────────────────────────
 
 ALL_ROLES = [
-    # Software Engineering
-    "Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer",
-    "Mobile Developer", "iOS Developer", "Android Developer", "DevOps Engineer",
-    "Cloud Engineer", "Site Reliability Engineer", "QA Engineer", "Security Engineer",
-    "Platform Engineer", "Embedded Engineer", "Web Developer", "Software Architect",
-    # Data & AI
-    "Data Scientist", "Data Analyst", "Data Engineer", "Machine Learning Engineer",
-    "AI Engineer", "ML Ops Engineer", "Analytics Engineer", "NLP Engineer",
-    "Computer Vision Engineer", "Business Intelligence Analyst",
-    # Product & Design
+    # Software Engineering (18)
+    "Software Engineer", "Frontend Developer", "Backend Developer",
+    "Full Stack Developer", "Mobile Developer", "iOS Developer",
+    "Android Developer", "DevOps Engineer", "Cloud Engineer",
+    "Site Reliability Engineer", "QA Engineer", "Security Engineer",
+    "Platform Engineer", "Embedded Engineer", "Web Developer",
+    "Software Architect", "Systems Engineer", "Test Engineer",
+    # Data & AI (11)
+    "Data Scientist", "Data Analyst", "Data Engineer",
+    "Machine Learning Engineer", "AI Engineer", "ML Ops Engineer",
+    "Analytics Engineer", "NLP Engineer", "Computer Vision Engineer",
+    "Prompt Engineer", "Business Intelligence Analyst",
+    # Product & Design (7)
     "Product Manager", "Product Designer", "UX Designer", "UI Designer",
-    "UX Researcher", "Graphic Designer",
-    # Management
+    "UX Researcher", "Graphic Designer", "Content Designer",
+    # Management (6)
     "Engineering Manager", "Technical Program Manager", "Project Manager",
-    "Scrum Master", "VP of Engineering",
-    # Business
-    "Business Analyst", "Solutions Architect", "Sales Engineer", "Technical Writer",
-    "Marketing Manager", "Growth Manager", "Customer Success Manager",
-    # Cybersecurity
+    "Scrum Master", "VP of Engineering", "Agile Coach",
+    # Business (7)
+    "Business Analyst", "Solutions Architect", "Sales Engineer",
+    "Technical Writer", "Marketing Manager", "Growth Manager",
+    "Customer Success Manager",
+    # Cybersecurity (5)
     "Cybersecurity Analyst", "Penetration Tester", "Security Architect",
-    "Information Security Manager",
-    # Cloud & Infrastructure
+    "Information Security Manager", "SOC Analyst",
+    # Cloud & Infrastructure (6)
     "Cloud Architect", "AWS Solutions Architect", "Azure Engineer",
     "Kubernetes Engineer", "Infrastructure Engineer", "Network Engineer",
-    # Emerging
+    # Emerging (5)
     "Blockchain Developer", "Robotics Engineer", "Game Developer",
-    "Developer Advocate",
+    "Developer Advocate", "AR/VR Developer",
 ]
 
 # ── URL Validation ────────────────────────────────────────────────────
 
 GENERIC_URL_PATTERNS = [
-    r"/careers/?$", r"/careers/?\?", r"/careers/search",
+    r"/careers/?$", r"/careers/?\?", r"/careers/search", r"/careers/home",
     r"/jobs/?$", r"/jobs/?\?", r"/jobs/search",
     r"linkedin\.com/jobs/search", r"indeed\.com/jobs\?",
-    r"glassdoor\.com/Job/.*-jobs",
+    r"indeed\.com/q-", r"glassdoor\.com/Job/.*-jobs",
+    r"ziprecruiter\.com/jobs/search", r"monster\.com/jobs/search",
 ]
 
 NON_US_PATTERNS = [
     r"\bindia\b", r"\bcanada\b", r"\buk\b", r"\bunited kingdom\b",
     r"\bgermany\b", r"\bfrance\b", r"\baustralia\b", r"\bsingapore\b",
     r"\bjapan\b", r"\bchina\b", r"\bbangalore\b", r"\bhyderabad\b",
-    r"\bmumbai\b", r"\bdelhi\b", r"\btoronto\b", r"\blondon\b",
-    r"\bberlin\b", r"\bparis\b", r"\btokyo\b",
+    r"\bmumbai\b", r"\bdelhi\b", r"\bpune\b", r"\bchennai\b",
+    r"\btoronto\b", r"\bvancouver\b", r"\blondon\b", r"\bberlin\b",
+    r"\bparis\b", r"\btokyo\b", r"\bsydney\b", r"\bmelbourne\b",
+    r"\bdubai\b", r"\bnigeria\b", r"\bphilippines\b",
 ]
 
 
-def is_valid_job(job: dict) -> bool:
-    """Validate a job entry."""
+def is_valid_job(job: dict) -> tuple[bool, str]:
+    """Validate a job entry. Returns (valid, reason)."""
     title = job.get("title", "")
     company = job.get("company", "")
     desc = job.get("description", "")
@@ -105,32 +140,27 @@ def is_valid_job(job: dict) -> bool:
     location = job.get("location", "")
 
     if not title or len(title) < 3:
-        return False
+        return False, "missing title"
     if not company or len(company) < 2:
-        return False
+        return False, "missing company"
     if not desc or len(desc) < 30:
-        return False
+        return False, "short description"
     if not url or not url.startswith("http"):
-        return False
+        return False, "invalid URL"
 
-    # Reject generic URLs
     url_lower = url.lower()
-    for pattern in GENERIC_URL_PATTERNS:
-        if re.search(pattern, url_lower, re.IGNORECASE):
-            return False
+    if any(re.search(p, url_lower) for p in GENERIC_URL_PATTERNS):
+        return False, "generic career page URL"
 
-    # Reject non-US locations
     loc_lower = location.lower()
-    for pattern in NON_US_PATTERNS:
-        if re.search(pattern, loc_lower, re.IGNORECASE):
-            return False
+    if any(re.search(p, loc_lower) for p in NON_US_PATTERNS):
+        return False, f"non-US: {location}"
 
-    # Reject generic companies
     comp_lower = company.lower()
     if comp_lower in ("unknown", "various", "confidential", "confidential company"):
-        return False
+        return False, "generic company"
 
-    return True
+    return True, "ok"
 
 
 def job_fingerprint(title: str, company: str) -> str:
@@ -143,25 +173,35 @@ def job_fingerprint(title: str, company: str) -> str:
 def classify_role(title: str) -> str:
     """Classify a job title into a category."""
     t = title.lower()
-    if re.search(r"front.?end|react|vue|angular", t): return "Engineering"
-    if re.search(r"back.?end|server|api", t): return "Engineering"
-    if re.search(r"full.?stack", t): return "Engineering"
-    if re.search(r"data scien|machine learn|ml |ai eng|deep learn", t): return "AI & ML"
-    if re.search(r"data analy|business intel|analytics", t): return "Data & Analytics"
-    if re.search(r"data eng|etl|pipeline", t): return "Data & Analytics"
-    if re.search(r"devops|sre|site reli|infrastructure|platform eng", t): return "DevOps & Cloud"
-    if re.search(r"cloud|aws|azure|gcp|kubernetes", t): return "DevOps & Cloud"
-    if re.search(r"product manage", t): return "Product"
-    if re.search(r"ux|ui|design|graphic", t): return "Design"
-    if re.search(r"security|cyber|penetration|soc ", t): return "Security"
-    if re.search(r"project manage|scrum|agile", t): return "Management"
-    if re.search(r"mobile|ios|android", t): return "Mobile"
-    if re.search(r"qa|test|quality", t): return "QA & Testing"
-    if re.search(r"software|developer|engineer|programmer", t): return "Engineering"
+    patterns = [
+        (r"front.?end|react|vue|angular|ui developer", "Engineering"),
+        (r"back.?end|server|api", "Engineering"),
+        (r"full.?stack", "Engineering"),
+        (r"data scien|machine learn|ml |ai eng|deep learn", "AI & ML"),
+        (r"data analy|business intel|analytics", "Data & Analytics"),
+        (r"data eng|etl|pipeline", "Data & Analytics"),
+        (r"devops|sre|site reli|infrastructure|platform eng", "DevOps & Cloud"),
+        (r"cloud|aws|azure|gcp|kubernetes", "DevOps & Cloud"),
+        (r"product manage|product own", "Product"),
+        (r"ux|ui|design|graphic", "Design"),
+        (r"security|cyber|penetration|soc ", "Security"),
+        (r"project manage|scrum|agile", "Management"),
+        (r"engineer.*manager|vp.*eng|cto|director.*eng", "Leadership"),
+        (r"mobile|ios|android", "Mobile"),
+        (r"qa|test|quality", "QA & Testing"),
+        (r"marketing|growth|seo", "Marketing"),
+        (r"sales|business dev", "Sales"),
+        (r"technical writ|content|documentation", "Content"),
+        (r"recruit|talent", "Recruiting"),
+        (r"software|developer|engineer|programmer", "Engineering"),
+    ]
+    for pattern, category in patterns:
+        if re.search(pattern, t):
+            return category
     return "Other"
 
 
-def parse_salary(salary: str) -> tuple[Optional[int], Optional[int]]:
+def parse_salary(salary: str | None) -> tuple[int | None, int | None]:
     """Parse salary string into min/max integers."""
     if not salary:
         return None, None
@@ -176,29 +216,118 @@ def parse_salary(salary: str) -> tuple[Optional[int], Optional[int]]:
 
 # ── Kimi CLI Interface ───────────────────────────────────────────────
 
-def call_kimi(prompt: str, timeout: int = 180) -> str:
-    """Call kimi-cli with a prompt and return the response."""
-    try:
-        result = subprocess.run(
-            ["kimi", "-p", prompt],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-        )
-        if result.returncode != 0:
-            log.error(f"kimi-cli error: {result.stderr[:500]}")
+def find_kimi_binary() -> str:
+    """Find the kimi CLI binary path."""
+    # Check standard locations
+    kimi = shutil.which("kimi")
+    if kimi:
+        return kimi
+    # Check common Python bin locations
+    for path in [
+        Path.home() / ".local" / "bin" / "kimi",
+        Path.home() / "Library" / "Python" / "3.12" / "bin" / "kimi",
+        Path.home() / "Library" / "Python" / "3.13" / "bin" / "kimi",
+        Path("/opt/homebrew/bin/kimi"),
+        Path("/usr/local/bin/kimi"),
+    ]:
+        if path.exists():
+            return str(path)
+    return "kimi"  # Fallback — will fail if not on PATH
+
+
+def call_kimi(prompt: str, timeout: int = 240, retries: int = 2) -> str:
+    """Call kimi-cli with a prompt and return the response. Retries on failure."""
+    kimi_bin = find_kimi_binary()
+
+    for attempt in range(retries + 1):
+        try:
+            result = subprocess.run(
+                [kimi_bin, "-p", prompt],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            )
+            if result.returncode != 0:
+                stderr = result.stderr[:500] if result.stderr else "no stderr"
+                if attempt < retries:
+                    log.warning(f"kimi-cli failed (attempt {attempt + 1}): {stderr}")
+                    time.sleep(5)
+                    continue
+                log.error(f"kimi-cli error after {retries + 1} attempts: {stderr}")
+                return ""
+            output = result.stdout.strip()
+            if output:
+                return output
+            if attempt < retries:
+                log.warning(f"Empty response (attempt {attempt + 1}), retrying...")
+                time.sleep(5)
+                continue
             return ""
-        return result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        log.error(f"kimi-cli timed out after {timeout}s")
-        return ""
-    except FileNotFoundError:
-        log.error("kimi-cli not found! Install with: pip install kimi-cli")
-        sys.exit(1)
-    except Exception as e:
-        log.error(f"kimi-cli exception: {e}")
-        return ""
+        except subprocess.TimeoutExpired:
+            log.warning(f"kimi-cli timed out ({timeout}s, attempt {attempt + 1})")
+            if attempt < retries:
+                time.sleep(5)
+                continue
+            return ""
+        except FileNotFoundError:
+            log.error(f"kimi-cli not found at '{kimi_bin}'!")
+            log.error("Install with: pip3 install kimi-cli")
+            sys.exit(1)
+        except Exception as e:
+            log.error(f"kimi-cli exception: {e}")
+            if attempt < retries:
+                time.sleep(5)
+                continue
+            return ""
+    return ""
+
+
+def extract_jobs_json(response: str) -> list[dict]:
+    """Extract job JSON from a Kimi response, handling various formats."""
+    if not response:
+        return []
+
+    # Strategy 1: Direct JSON parse
+    try:
+        parsed = json.loads(response)
+        if isinstance(parsed, dict) and "jobs" in parsed:
+            return parsed["jobs"]
+        if isinstance(parsed, list):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 2: Find JSON object with "jobs" key
+    match = re.search(r'\{[^{}]*"jobs"\s*:\s*\[[\s\S]*?\]\s*\}', response)
+    if match:
+        try:
+            parsed = json.loads(match.group(0))
+            return parsed.get("jobs", [])
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 3: Find the largest JSON-looking block
+    matches = re.findall(r'\{[\s\S]*?\}', response)
+    for m in sorted(matches, key=len, reverse=True):
+        try:
+            parsed = json.loads(m)
+            if isinstance(parsed, dict) and "jobs" in parsed:
+                return parsed["jobs"]
+        except json.JSONDecodeError:
+            continue
+
+    # Strategy 4: Strip markdown code blocks
+    cleaned = re.sub(r'```(?:json)?\s*', '', response)
+    cleaned = re.sub(r'```\s*', '', cleaned).strip()
+    try:
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, dict) and "jobs" in parsed:
+            return parsed["jobs"]
+    except json.JSONDecodeError:
+        pass
+
+    return []
 
 
 def find_jobs_batch(roles: list[str], batch_num: int) -> list[dict]:
@@ -206,59 +335,59 @@ def find_jobs_batch(roles: list[str], batch_num: int) -> list[dict]:
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     roles_str = ", ".join(roles)
 
-    prompt = f"""You are a job search engine. Find REAL, currently open job listings in the UNITED STATES for these roles: {roles_str}
+    prompt = (
+        f"You are a job search engine. Find REAL, currently open job listings in the "
+        f"UNITED STATES for these roles: {roles_str}\n\n"
+        f"Find 2-3 REAL jobs per role ({len(roles) * 2}-{len(roles) * 3} total). "
+        f"Today is {today}.\n\n"
+        f"RULES:\n"
+        f"- ONLY US-based jobs\n"
+        f"- apply_url MUST link to the SPECIFIC job posting page (NOT a generic "
+        f"careers page like company.com/careers, NOT a search page like "
+        f"linkedin.com/jobs/search). The URL should open the individual job listing.\n"
+        f"- Good URLs: greenhouse.io/company/jobs/12345, linkedin.com/jobs/view/123, "
+        f"lever.co/company/abc-def\n"
+        f"- Include detailed descriptions (5+ sentences from the actual posting)\n"
+        f"- Each job from a different company\n"
+        f"- Include salary when available (USD)\n"
+        f"- date_posted: use relative dates (Today, 1 day ago, 2 days ago, etc.)\n"
+        f"- experience_level: one of Internship, Entry-Level, Mid-Level, Senior, Executive\n\n"
+        f'Return ONLY valid JSON:\n'
+        f'{{"jobs":[{{"title":"...","company":"...","location":"...","description":"...",'
+        f'"apply_url":"https://...","salary":"...","job_type":"Full-time","remote":false,'
+        f'"date_posted":"Today","source":"Company Careers","experience_level":"Mid-Level"}}]}}'
+    )
 
-Find 2-3 jobs per role (total {len(roles) * 2}-{len(roles) * 3} jobs). Today is {today}.
-
-RULES:
-- ONLY US jobs
-- apply_url must link to the SPECIFIC job posting (NOT generic careers pages)
-- Include detailed descriptions (5+ sentences)
-- Different companies for variety
-- Include salary when available
-
-Return ONLY valid JSON, nothing else:
-{{"jobs":[{{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time","remote":false,"date_posted":"Today","source":"","experience_level":"Mid-Level"}}]}}"""
-
-    log.info(f"  Batch {batch_num}: Searching {len(roles)} roles...")
-    response = call_kimi(prompt, timeout=180)
+    log.info(f"  Batch {batch_num}: Searching {len(roles)} roles: {roles_str[:80]}...")
+    start = time.time()
+    response = call_kimi(prompt, timeout=240)
+    elapsed = round(time.time() - start)
 
     if not response:
-        log.warning(f"  Batch {batch_num}: Empty response")
+        log.warning(f"  Batch {batch_num}: Empty response after {elapsed}s")
         return []
 
-    # Extract JSON from response
-    jobs = []
-    try:
-        # Try direct parse
-        parsed = json.loads(response)
-        jobs = parsed.get("jobs", [])
-    except json.JSONDecodeError:
-        # Try to find JSON in the response
-        json_match = re.search(r"\{[\s\S]*\"jobs\"[\s\S]*\}", response)
-        if json_match:
-            try:
-                parsed = json.loads(json_match.group(0))
-                jobs = parsed.get("jobs", [])
-            except json.JSONDecodeError:
-                log.warning(f"  Batch {batch_num}: Failed to parse JSON response")
-                # Save raw response for debugging
-                debug_file = LOG_DIR / f"batch_{batch_num}_raw.txt"
-                debug_file.write_text(response[:5000])
+    jobs = extract_jobs_json(response)
 
-    log.info(f"  Batch {batch_num}: {len(jobs)} jobs found")
+    if not jobs:
+        # Save raw response for debugging
+        debug_file = LOG_DIR / f"batch_{batch_num}_debug.txt"
+        debug_file.write_text(response[:10000])
+        log.warning(f"  Batch {batch_num}: No jobs parsed from response ({elapsed}s). "
+                     f"Raw saved to {debug_file.name}")
+        return []
+
+    log.info(f"  Batch {batch_num}: {len(jobs)} jobs found in {elapsed}s")
     return jobs
 
 
 # ── Supabase Database ────────────────────────────────────────────────
 
-def save_to_supabase(jobs: list[dict]) -> int:
-    """Save validated jobs to Supabase using REST API."""
+def supabase_post(table: str, rows: list[dict]) -> tuple[bool, str]:
+    """POST rows to a Supabase table. Returns (success, error_message)."""
     if not SUPABASE_SERVICE_KEY:
-        log.error("SUPABASE_SERVICE_ROLE_KEY not set! Cannot save to database.")
-        return 0
+        return False, "SUPABASE_SERVICE_ROLE_KEY not set"
 
-    saved = 0
     headers = {
         "apikey": SUPABASE_SERVICE_KEY,
         "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
@@ -266,14 +395,46 @@ def save_to_supabase(jobs: list[dict]) -> int:
         "Prefer": "resolution=merge-duplicates",
     }
 
-    # Save to jobs table in batches
+    try:
+        req = Request(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            data=json.dumps(rows).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urlopen(req, timeout=30) as resp:
+            if resp.status in (200, 201):
+                return True, ""
+            body = resp.read().decode()
+            return False, f"HTTP {resp.status}: {body[:200]}"
+    except HTTPError as e:
+        body = e.read().decode()[:200] if hasattr(e, 'read') else ""
+        return False, f"HTTP {e.code}: {body}"
+    except URLError as e:
+        return False, f"URL error: {e.reason}"
+    except Exception as e:
+        return False, str(e)
+
+
+def save_to_supabase(jobs: list[dict]) -> dict:
+    """Save validated jobs to Supabase. Returns stats dict."""
+    stats = {"jobs_saved": 0, "cached_saved": 0, "errors": []}
+
+    if not SUPABASE_SERVICE_KEY:
+        stats["errors"].append("SUPABASE_SERVICE_ROLE_KEY not set!")
+        log.error("SUPABASE_SERVICE_ROLE_KEY not set! Cannot save to database.")
+        log.error("Set it in ~/.kimi-job-finder/.env or as an environment variable.")
+        return stats
+
     BATCH = 25
     for i in range(0, len(jobs), BATCH):
         batch = jobs[i:i + BATCH]
+        ts = int(time.time())
 
+        # ── Save to jobs table ──
         job_rows = []
         for j in batch:
-            sal_min, sal_max = parse_salary(j.get("salary", ""))
+            sal_min, sal_max = parse_salary(j.get("salary"))
             fp = job_fingerprint(j["title"], j["company"])
             job_rows.append({
                 "title": j["title"],
@@ -287,26 +448,17 @@ def save_to_supabase(jobs: list[dict]) -> int:
                 "salary_max": sal_max,
                 "job_type": j.get("job_type"),
                 "remote": j.get("remote", False),
-                "external_id": f"{fp}-{int(time.time())}",
+                "external_id": f"{fp}-{ts}",
             })
 
-        try:
-            import urllib.request
-            req = urllib.request.Request(
-                f"{SUPABASE_URL}/rest/v1/jobs",
-                data=json.dumps(job_rows).encode("utf-8"),
-                headers=headers,
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                if resp.status in (200, 201):
-                    saved += len(batch)
-                else:
-                    log.error(f"Jobs insert failed: {resp.status}")
-        except Exception as e:
-            log.error(f"Jobs insert error: {e}")
+        ok, err = supabase_post("jobs", job_rows)
+        if ok:
+            stats["jobs_saved"] += len(batch)
+        else:
+            stats["errors"].append(f"jobs: {err}")
+            log.error(f"Jobs insert failed: {err}")
 
-        # Also save to cached_jobs
+        # ── Save to cached_jobs table ──
         cached_rows = []
         for j in batch:
             fp = job_fingerprint(j["title"], j["company"])
@@ -327,33 +479,132 @@ def save_to_supabase(jobs: list[dict]) -> int:
                 "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
             })
 
-        try:
-            req2 = urllib.request.Request(
-                f"{SUPABASE_URL}/rest/v1/cached_jobs",
-                data=json.dumps(cached_rows).encode("utf-8"),
-                headers=headers,
-                method="POST",
-            )
-            urllib.request.urlopen(req2, timeout=30)
-        except Exception as e:
-            log.warning(f"Cached jobs insert: {e}")
+        ok, err = supabase_post("cached_jobs", cached_rows)
+        if ok:
+            stats["cached_saved"] += len(batch)
+        else:
+            log.warning(f"Cached jobs insert: {err}")
 
-    return saved
+    return stats
+
+
+# ── Interactive Setup ─────────────────────────────────────────────────
+
+def interactive_setup():
+    """Run first-time setup to configure the service key."""
+    print("\n╔══════════════════════════════════════════╗")
+    print("║  Kimi Job Finder — First Time Setup      ║")
+    print("╚══════════════════════════════════════════╝\n")
+
+    current_key = SUPABASE_SERVICE_KEY
+    if current_key:
+        masked = current_key[:10] + "..." + current_key[-4:]
+        print(f"Current key: {masked}")
+        resp = input("Update key? (y/N): ").strip().lower()
+        if resp != "y":
+            print("Keeping existing key.")
+            return
+    else:
+        print("No Supabase service role key found.")
+        print("Find it at: https://supabase.com/dashboard/project/woxtbyotydxorcdhhivr/settings/api")
+        print("(Look for 'service_role' — the SECRET key, not the anon key)\n")
+
+    key = input("Paste your Supabase service role key: ").strip()
+    if not key:
+        print("No key entered. Exiting setup.")
+        return
+
+    # Save to .env
+    env_content = f"# Kimi Job Finder Config\nSUPABASE_URL={SUPABASE_URL}\nSUPABASE_SERVICE_ROLE_KEY={key}\n"
+    ENV_FILE.write_text(env_content)
+    ENV_FILE.chmod(0o600)
+    print(f"\n✓ Key saved to {ENV_FILE}")
+    print("  Run again to start finding jobs!\n")
+
+
+def show_status():
+    """Show last run summary."""
+    if not SUMMARY_FILE.exists():
+        print("No runs yet. Run the finder first!")
+        return
+
+    summary = json.loads(SUMMARY_FILE.read_text())
+    ts = summary.get("timestamp", "unknown")
+    print(f"\n  Last run: {ts}")
+    print(f"  Roles searched: {summary.get('roles_searched', 0)}")
+    print(f"  Raw jobs found: {summary.get('raw_jobs', 0)}")
+    print(f"  Valid unique jobs: {summary.get('valid_jobs', 0)}")
+    print(f"  Saved to DB: {summary.get('saved_to_db', 0)}")
+    print(f"  Duration: {summary.get('elapsed_seconds', 0)}s")
+    if summary.get("errors"):
+        print(f"  Errors: {len(summary['errors'])}")
+    print(f"\n  Logs: {LOG_FILE}")
+    print(f"  Config: {ENV_FILE}\n")
 
 
 # ── Main ──────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Kimi K2.5 Agent Swarm Job Finder")
+    parser = argparse.ArgumentParser(
+        description="Kimi K2.5 Agent Swarm Job Finder — finds US tech jobs and saves to Supabase",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python3 find-jobs.py                    # Full run, all 65 roles
+  python3 find-jobs.py --dry-run          # Test without saving to DB
+  python3 find-jobs.py --roles "Software Engineer,Data Scientist"
+  python3 find-jobs.py --batch-size 8 --concurrent 2
+  python3 find-jobs.py --setup            # Configure Supabase key
+  python3 find-jobs.py --status           # Show last run summary
+        """,
+    )
     parser.add_argument("--roles", type=str, help="Comma-separated roles to search")
-    parser.add_argument("--batch-size", type=int, default=10, help="Roles per Kimi call (default: 10)")
-    parser.add_argument("--dry-run", action="store_true", help="Don't save to DB, just print results")
-    parser.add_argument("--max-batches", type=int, default=0, help="Limit number of batches (0=all)")
+    parser.add_argument("--batch-size", type=int, default=10,
+                        help="Number of roles per Kimi call (default: 10)")
+    parser.add_argument("--concurrent", type=int, default=2,
+                        help="Max parallel Kimi calls (default: 2)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Don't save to database, just print results")
+    parser.add_argument("--max-batches", type=int, default=0,
+                        help="Limit batches for testing (0 = all)")
+    parser.add_argument("--setup", action="store_true",
+                        help="Run interactive setup (configure Supabase key)")
+    parser.add_argument("--status", action="store_true",
+                        help="Show last run summary")
     args = parser.parse_args()
+
+    # Load .env first
+    load_env()
+
+    if args.status:
+        show_status()
+        return
+
+    if args.setup:
+        interactive_setup()
+        return
+
+    # Check kimi-cli availability
+    kimi_bin = find_kimi_binary()
+    try:
+        subprocess.run([kimi_bin, "--version"], capture_output=True, timeout=10)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        log.error(f"kimi-cli not found or not responding!")
+        log.error("Install with: pip3 install kimi-cli")
+        log.error("Then login with: kimi login")
+        sys.exit(1)
+
+    # Check Supabase key (unless dry run)
+    if not args.dry_run and not SUPABASE_SERVICE_KEY:
+        log.warning("No Supabase service role key configured!")
+        log.warning("Run: python3 find-jobs.py --setup")
+        log.warning("Continuing in dry-run mode...\n")
+        args.dry_run = True
 
     start_time = time.time()
     log.info("=" * 60)
-    log.info(f"Kimi Job Finder starting at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info("Kimi K2.5 Agent Swarm Job Finder v2")
+    log.info(f"Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     # Determine roles
     if args.roles:
@@ -361,67 +612,112 @@ def main():
     else:
         roles = ALL_ROLES.copy()
 
-    log.info(f"Searching {len(roles)} roles with batch size {args.batch_size}")
+    log.info(f"Roles: {len(roles)} | Batch size: {args.batch_size} | "
+             f"Concurrent: {args.concurrent}")
 
     # Split into batches
-    batches = []
-    for i in range(0, len(roles), args.batch_size):
-        batches.append(roles[i:i + args.batch_size])
+    batches = [roles[i:i + args.batch_size]
+               for i in range(0, len(roles), args.batch_size)]
 
     if args.max_batches > 0:
         batches = batches[:args.max_batches]
-        log.info(f"Limited to {len(batches)} batches")
 
-    # Process batches
-    all_jobs = []
-    for i, batch in enumerate(batches):
-        jobs = find_jobs_batch(batch, i + 1)
-        all_jobs.extend(jobs)
-        # Small delay between batches to be nice to Kimi
-        if i < len(batches) - 1:
-            time.sleep(3)
+    log.info(f"Processing {len(batches)} batches...")
 
-    log.info(f"Total raw jobs: {len(all_jobs)}")
+    # Process batches with concurrency
+    all_jobs: list[dict] = []
+    failed_batches = 0
+
+    if args.concurrent > 1 and len(batches) > 1:
+        # Parallel execution
+        with ThreadPoolExecutor(max_workers=args.concurrent) as pool:
+            futures = {
+                pool.submit(find_jobs_batch, batch, i + 1): i
+                for i, batch in enumerate(batches)
+            }
+            for future in as_completed(futures):
+                batch_idx = futures[future]
+                try:
+                    jobs = future.result()
+                    all_jobs.extend(jobs)
+                except Exception as e:
+                    log.error(f"Batch {batch_idx + 1} failed: {e}")
+                    failed_batches += 1
+    else:
+        # Sequential execution
+        for i, batch in enumerate(batches):
+            try:
+                jobs = find_jobs_batch(batch, i + 1)
+                all_jobs.extend(jobs)
+            except Exception as e:
+                log.error(f"Batch {i + 1} failed: {e}")
+                failed_batches += 1
+            # Delay between sequential batches
+            if i < len(batches) - 1:
+                time.sleep(3)
+
+    log.info(f"\nTotal raw jobs: {len(all_jobs)}")
+    if failed_batches:
+        log.warning(f"Failed batches: {failed_batches}/{len(batches)}")
 
     # Validate and deduplicate
-    seen = set()
-    valid_jobs = []
+    seen: set[str] = set()
+    valid_jobs: list[dict] = []
+    rejection_reasons: dict[str, int] = {}
+
     for job in all_jobs:
-        if not is_valid_job(job):
+        ok, reason = is_valid_job(job)
+        if not ok:
+            rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
             continue
         fp = job_fingerprint(job["title"], job["company"])
         if fp in seen:
+            rejection_reasons["duplicate"] = rejection_reasons.get("duplicate", 0) + 1
             continue
         seen.add(fp)
         valid_jobs.append(job)
 
-    log.info(f"After validation: {len(valid_jobs)} unique valid jobs")
+    log.info(f"Valid unique jobs: {len(valid_jobs)}")
+    if rejection_reasons:
+        log.info(f"Rejections: {json.dumps(rejection_reasons)}")
 
+    # Save or print
+    save_stats = {"saved_to_db": 0}
     if args.dry_run:
-        log.info("DRY RUN — not saving to database")
-        for j in valid_jobs[:10]:
-            log.info(f"  {j['title']} @ {j['company']} ({j.get('location', 'N/A')})")
-            log.info(f"    URL: {j.get('apply_url', 'N/A')}")
-        if len(valid_jobs) > 10:
-            log.info(f"  ... and {len(valid_jobs) - 10} more")
+        log.info("\n── DRY RUN ── (not saving to database)")
+        for j in valid_jobs[:20]:
+            log.info(f"  ✓ {j['title']} @ {j['company']} — {j.get('location', 'N/A')}")
+            log.info(f"    {j.get('apply_url', 'N/A')}")
+        if len(valid_jobs) > 20:
+            log.info(f"  ... and {len(valid_jobs) - 20} more")
     else:
-        saved = save_to_supabase(valid_jobs)
-        log.info(f"Saved to database: {saved} jobs")
+        log.info("Saving to Supabase...")
+        db_stats = save_to_supabase(valid_jobs)
+        save_stats["saved_to_db"] = db_stats["jobs_saved"]
+        log.info(f"Saved: {db_stats['jobs_saved']} to jobs, "
+                 f"{db_stats['cached_saved']} to cached_jobs")
+        if db_stats["errors"]:
+            for err in db_stats["errors"][:5]:
+                log.error(f"  DB error: {err}")
 
     elapsed = round(time.time() - start_time)
-    log.info(f"Complete in {elapsed}s — {len(valid_jobs)} jobs found")
+    log.info(f"\nComplete in {elapsed}s")
     log.info("=" * 60)
 
-    # Write summary for monitoring
+    # Write summary
     summary = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "roles_searched": len(roles),
+        "batches": len(batches),
+        "failed_batches": failed_batches,
         "raw_jobs": len(all_jobs),
         "valid_jobs": len(valid_jobs),
+        "rejections": rejection_reasons,
+        "saved_to_db": save_stats["saved_to_db"],
         "elapsed_seconds": elapsed,
+        "dry_run": args.dry_run,
     }
-    summary_file = LOG_DIR / "last-run.json"
-    summary_file.write_text(json.dumps(summary, indent=2))
+    SUMMARY_FILE.write_text(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":

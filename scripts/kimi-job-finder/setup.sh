@@ -1,18 +1,19 @@
 #!/bin/bash
 # ══════════════════════════════════════════════════════════════════
-# Kimi K2.5 Job Finder — Mac Mini Setup Script
+# Kimi K2.5 Job Finder v2 — Mac Setup Script
 # ══════════════════════════════════════════════════════════════════
-# Run this once on the Mac Mini to install everything.
+# Run this once on the Mac (Pro or Mini) to install everything.
 #
 # Usage:
 #   chmod +x setup.sh
 #   ./setup.sh
 #
 # What it does:
-#   1. Installs kimi-cli (if not already installed)
-#   2. Sets up environment variables
-#   3. Creates a launchd job to run every 2 hours automatically
-#   4. Does a test run to verify everything works
+#   1. Checks Python 3.12+ (required for kimi-cli)
+#   2. Installs kimi-cli and requests library
+#   3. Copies scripts and configures environment
+#   4. Creates a launchd job to run every 2 hours automatically
+#   5. Does a test run to verify everything works
 # ══════════════════════════════════════════════════════════════════
 
 set -e
@@ -20,23 +21,36 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="$HOME/.kimi-job-finder"
 PLIST_FILE="$HOME/Library/LaunchAgents/com.resumepreps.kimi-job-finder.plist"
+MIN_PYTHON_MAJOR=3
+MIN_PYTHON_MINOR=12
 
 echo "╔══════════════════════════════════════════╗"
-echo "║  Kimi K2.5 Job Finder — Setup           ║"
+echo "║  Kimi K2.5 Job Finder v2 — Setup        ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 
-# ── 1. Check Python ──────────────────────────────────────────────
+# ── 1. Check Python 3.12+ ─────────────────────────────────────────
 echo "▸ Checking Python..."
 if command -v python3 &>/dev/null; then
     PYTHON=$(command -v python3)
-    echo "  ✓ Python found: $($PYTHON --version)"
+    PY_VERSION=$($PYTHON --version 2>&1 | awk '{print $2}')
+    PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
+    PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+    echo "  Found Python $PY_VERSION"
+
+    if [ "$PY_MAJOR" -lt "$MIN_PYTHON_MAJOR" ] || \
+       ([ "$PY_MAJOR" -eq "$MIN_PYTHON_MAJOR" ] && [ "$PY_MINOR" -lt "$MIN_PYTHON_MINOR" ]); then
+        echo "  ✗ Python 3.12+ required (you have $PY_VERSION)"
+        echo "    Install via: brew install python@3.12"
+        exit 1
+    fi
+    echo "  ✓ Python $PY_VERSION meets requirement (3.12+)"
 else
-    echo "  ✗ Python 3 not found! Install it first."
+    echo "  ✗ Python 3 not found! Install it first: brew install python@3.12"
     exit 1
 fi
 
-# ── 2. Install kimi-cli ─────────────────────────────────────────
+# ── 2. Install dependencies ───────────────────────────────────────
 echo ""
 echo "▸ Checking kimi-cli..."
 if command -v kimi &>/dev/null; then
@@ -52,6 +66,16 @@ else
     fi
 fi
 
+echo ""
+echo "▸ Checking requests library..."
+if $PYTHON -c "import requests" 2>/dev/null; then
+    echo "  ✓ requests already installed"
+else
+    echo "  Installing requests..."
+    pip3 install requests --break-system-packages 2>/dev/null || pip3 install requests
+    echo "  ✓ requests installed"
+fi
+
 # ── 3. Set up install directory ──────────────────────────────────
 echo ""
 echo "▸ Setting up install directory..."
@@ -60,13 +84,13 @@ cp "$SCRIPT_DIR/find-jobs.py" "$INSTALL_DIR/find-jobs.py"
 chmod +x "$INSTALL_DIR/find-jobs.py"
 echo "  ✓ Script copied to $INSTALL_DIR"
 
-# ── 4. Configure environment ────────────────────────────────────
+# ── 4. Configure environment (interactive) ───────────────────────
 ENV_FILE="$INSTALL_DIR/.env"
 echo ""
 echo "▸ Configuring environment..."
 
 if [ -f "$ENV_FILE" ]; then
-    echo "  Found existing .env file"
+    echo "  Found existing .env file — loading..."
     source "$ENV_FILE"
 fi
 
@@ -76,19 +100,27 @@ SUPABASE_URL="${SUPABASE_URL:-https://woxtbyotydxorcdhhivr.supabase.co}"
 # Supabase service role key
 if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
     echo ""
-    echo "  I need your Supabase SERVICE ROLE KEY to save jobs to the database."
-    echo "  Find it at: https://supabase.com/dashboard/project/woxtbyotydxorcdhhivr/settings/api"
-    echo "  (Under 'service_role' — the secret one, NOT the anon key)"
+    echo "  ┌─────────────────────────────────────────────────────────┐"
+    echo "  │  I need your Supabase SERVICE ROLE KEY to save jobs.    │"
+    echo "  │                                                         │"
+    echo "  │  Find it at:                                            │"
+    echo "  │  https://supabase.com/dashboard/project/                │"
+    echo "  │  woxtbyotydxorcdhhivr/settings/api                     │"
+    echo "  │                                                         │"
+    echo "  │  Look for 'service_role' — the secret one, NOT anon.   │"
+    echo "  └─────────────────────────────────────────────────────────┘"
     echo ""
     read -p "  Paste your Supabase service role key: " SUPABASE_SERVICE_ROLE_KEY
     if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-        echo "  ✗ No key provided. You can add it later to $ENV_FILE"
+        echo "  ⚠ No key provided. Jobs will NOT be saved to database."
+        echo "    Add it later: python3 ~/.kimi-job-finder/find-jobs.py --setup"
     fi
 fi
 
 # Write .env file
 cat > "$ENV_FILE" << ENVEOF
-# Kimi Job Finder Environment
+# Kimi Job Finder v2 Environment
+# Auto-generated by setup.sh — $(date)
 SUPABASE_URL=$SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
 ENVEOF
@@ -99,13 +131,16 @@ echo "  ✓ Environment saved to $ENV_FILE"
 RUNNER="$INSTALL_DIR/run.sh"
 cat > "$RUNNER" << 'RUNEOF'
 #!/bin/bash
+# Kimi Job Finder v2 — Runner
+# Called by launchd every 2 hours
+
 # Load environment
 source "$HOME/.kimi-job-finder/.env"
 export SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY
 
-# Run the job finder
+# Run the job finder with default settings
 cd "$HOME/.kimi-job-finder"
-/usr/bin/python3 find-jobs.py "$@" >> "$HOME/.kimi-job-finder/cron.log" 2>&1
+/usr/bin/python3 find-jobs.py --batch-size 15 --concurrent 3 "$@" 2>&1
 RUNEOF
 chmod +x "$RUNNER"
 echo "  ✓ Runner script created"
@@ -152,7 +187,7 @@ echo "  ✓ Auto-scheduler installed — runs every 2 hours"
 
 # ── 7. Test run ──────────────────────────────────────────────────
 echo ""
-echo "▸ Running a quick test (2 roles only)..."
+echo "▸ Running a quick test (dry run, 1 batch)..."
 echo ""
 
 source "$ENV_FILE"
@@ -161,20 +196,21 @@ export SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY
 $PYTHON "$INSTALL_DIR/find-jobs.py" --roles "Software Engineer,Data Scientist" --dry-run --max-batches 1
 
 echo ""
-echo "╔══════════════════════════════════════════╗"
-echo "║  Setup Complete!                         ║"
-echo "╠══════════════════════════════════════════╣"
-echo "║                                          ║"
-echo "║  Auto-runs every 2 hours automatically   ║"
-echo "║                                          ║"
-echo "║  Manual commands:                        ║"
-echo "║  • Full run:   ~/.kimi-job-finder/run.sh ║"
-echo "║  • Test run:   python3 find-jobs.py      ║"
-echo "║                --dry-run                  ║"
-echo "║  • View logs:  cat ~/.kimi-job-finder/   ║"
-echo "║                job-finder.log             ║"
-echo "║  • Stop auto:  launchctl unload          ║"
-echo "║    ~/Library/LaunchAgents/com.            ║"
-echo "║    resumepreps.kimi-job-finder.plist      ║"
-echo "║                                          ║"
-echo "╚══════════════════════════════════════════╝"
+echo "╔════════════════════════════════════════════════╗"
+echo "║  Setup Complete! v2                            ║"
+echo "╠════════════════════════════════════════════════╣"
+echo "║                                                ║"
+echo "║  ✓ Auto-runs every 2 hours automatically       ║"
+echo "║                                                ║"
+echo "║  Commands:                                     ║"
+echo "║  • Full run:    ~/.kimi-job-finder/run.sh      ║"
+echo "║  • Dry run:     python3 find-jobs.py --dry-run ║"
+echo "║  • Status:      python3 find-jobs.py --status  ║"
+echo "║  • Re-config:   python3 find-jobs.py --setup   ║"
+echo "║  • View logs:   cat ~/.kimi-job-finder/        ║"
+echo "║                 job-finder.log                  ║"
+echo "║  • Stop auto:   launchctl unload               ║"
+echo "║    ~/Library/LaunchAgents/com.                  ║"
+echo "║    resumepreps.kimi-job-finder.plist            ║"
+echo "║                                                ║"
+echo "╚════════════════════════════════════════════════╝"
