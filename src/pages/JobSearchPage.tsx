@@ -58,6 +58,7 @@ export default function JobSearchPage() {
   const [datePosted, setDatePosted] = usePersistedState("jobSearch.datePosted", "month", "sessionStorage");
   const [experienceLevel, setExperienceLevel] = usePersistedState("jobSearch.experienceLevel", "all", "sessionStorage");
   const [remoteFilter, setRemoteFilter] = usePersistedState("jobSearch.remoteFilter", "all", "sessionStorage");
+  const [searchSource, setSearchSource] = usePersistedState("jobSearch.searchSource", "direct", "sessionStorage");
   const [resumeText, setResumeText] = usePersistedState("jobSearch.resumeText", "", "sessionStorage");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showResumeUpload, setShowResumeUpload] = useState(false);
@@ -205,6 +206,7 @@ export default function JobSearchPage() {
     datePosted !== "month" ? 1 : 0,
     experienceLevel !== "all" ? 1 : 0,
     remoteFilter !== "all" ? 1 : 0,
+    searchSource !== "direct" ? 1 : 0,
     location ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
@@ -288,6 +290,7 @@ export default function JobSearchPage() {
       if (datePosted) payload.date_posted = datePosted;
       if (experienceLevel !== "all") payload.experience_level = experienceLevel;
       if (remoteFilter !== "all") payload.remote_filter = remoteFilter;
+      if (searchSource !== "direct") payload.search_source = searchSource;
       if (resumeText.trim()) payload.resume_text = resumeText.trim();
 
       const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -348,7 +351,7 @@ export default function JobSearchPage() {
       abortControllerRef.current = null;
       setLoading(false);
     }
-  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, resumeText]);
+  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText]);
 
   const handleResumeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -364,6 +367,7 @@ export default function JobSearchPage() {
     setDatePosted("month");
     setExperienceLevel("all");
     setRemoteFilter("all");
+    setSearchSource("direct");
     setLocation("");
   };
 
@@ -489,11 +493,17 @@ export default function JobSearchPage() {
                 <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setRemoteFilter("all")} />
               </Badge>
             )}
+            {!showAdvanced && searchSource !== "direct" && (
+              <Badge variant="secondary" className="text-[10px] gap-0.5 h-6">
+                All Sources
+                <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setSearchSource("direct")} />
+              </Badge>
+            )}
           </div>
 
           {/* Advanced filters */}
           {showAdvanced && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-2 border-t">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-2 border-t">
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Salary Range</Label>
                 <Select value={salaryRange} onValueChange={setSalaryRange}>
@@ -561,6 +571,16 @@ export default function JobSearchPage() {
                     <SelectItem value="remote-only">Remote Only</SelectItem>
                     <SelectItem value="hybrid">Hybrid</SelectItem>
                     <SelectItem value="on-site">On-site</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Search Source</Label>
+                <Select value={searchSource} onValueChange={setSearchSource}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="direct">Company Careers</SelectItem>
+                    <SelectItem value="all">All Sources</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

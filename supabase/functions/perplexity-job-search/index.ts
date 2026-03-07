@@ -1,6 +1,6 @@
 // Perplexity-powered Job Search with caching — returns real job listings via web search
 // Strategy: check cache first → return cached if fresh → else call Perplexity → save to cache
-// v11: Added role categorization, quality validation, experience level, industry tagging
+// v12: Added search_source toggle — company careers (default) vs all job boards
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -107,7 +107,8 @@ function buildSearchKey(
   jobType?: string,
   datePosted?: string,
   experienceLevel?: string,
-  remoteFilter?: string
+  remoteFilter?: string,
+  searchSource?: string
 ): string {
   const parts = [
     (query || "").toLowerCase().trim(),
@@ -117,6 +118,7 @@ function buildSearchKey(
     (datePosted || "month").toLowerCase(),
     (experienceLevel || "all").toLowerCase(),
     (remoteFilter || "all").toLowerCase(),
+    (searchSource || "direct").toLowerCase(),
   ];
   return parts.join("|");
 }
@@ -225,6 +227,7 @@ serve(async (req) => {
       user_id,
       experience_level,  // NEW: Entry-Level, Mid-Level, Senior, Executive
       remote_filter,     // NEW: remote-only, hybrid, on-site, all
+      search_source,     // NEW: "direct" (company careers only) or "all" (include job boards)
     } = await req.json();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -233,7 +236,7 @@ serve(async (req) => {
 
     // ── 1. Check cache first ────────────────────────────────────────────
     const searchKey = buildSearchKey(
-      query, location, salary_range, job_type, date_posted, experience_level, remote_filter
+      query, location, salary_range, job_type, date_posted, experience_level, remote_filter, search_source
     );
 
     const { data: cachedSearch } = await sb
@@ -386,16 +389,23 @@ serve(async (req) => {
       timeZone: "America/New_York",
     });
 
+    // Determine source strategy based on search_source param
+    const useAllSources = search_source === "all";
+
+    const sourceInstruction = useAllSources
+      ? `- MULTI-SOURCE REQUIREMENT: You MUST search across ALL of these job boards and return jobs from at least 4 different sources: LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, AngelList/Wellfound, company career pages (careers.google.com, jobs.lever.co, greenhouse.io, etc.), USAJobs.gov, Handshake, FlexJobs. For each job, accurately set the "source" field to the job board where you found it.`
+      : `- DIRECT COMPANY SOURCES ONLY: You MUST search ONLY company career pages, hiring platforms, and direct employer portals. Search these sources: Greenhouse (boards.greenhouse.io), Lever (jobs.lever.co), Workday (*.myworkdayjobs.com), iCIMS, Jobvite, BambooHR, SmartRecruiters, company career pages (careers.*.com, *.com/careers, jobs.*.com), and direct employer job postings. Do NOT return jobs from aggregator job boards like Indeed, LinkedIn, ZipRecruiter, Glassdoor, SimplyHired, Monster, or CareerBuilder. The "source" field must be the actual company name or their ATS platform (e.g., "Google Careers", "Greenhouse", "Lever", "Workday"), NEVER a job board aggregator.`;
+
     const systemPrompt = `You are a job search engine for the United States job market ONLY. Return ONLY valid JSON, no markdown, no explanation.
 TODAY'S DATE IS: ${todayStr}. Use this to calculate accurate relative dates for when jobs were posted.
-Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"2 days ago","source":"LinkedIn/Indeed/Glassdoor/etc","experience_level":"Entry-Level/Mid-Level/Senior/Executive"}]}
+Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"2 days ago","source":"${useAllSources ? "LinkedIn/Indeed/Glassdoor/etc" : "Company Careers/Greenhouse/Lever/Workday"}","experience_level":"Entry-Level/Mid-Level/Senior/Executive"}]}
 CRITICAL RULES:
 - ONLY return jobs located in the United States — absolutely NO jobs from India, Canada, UK, Europe, Asia, or any other country
 - Every location MUST be a US city/state (e.g. "San Francisco, CA", "New York, NY", "Remote (US)")
 - If a job is remote, it must be US-based remote — mark location as "Remote (US)" not just "Remote"
 - DESCRIPTION RULES: Each job MUST include a detailed description (5-10 sentences) pulled directly from the actual job posting. Include the real responsibilities, requirements, qualifications, and any listed benefits. Do NOT summarize or paraphrase — use the actual content from the job posting as closely as possible. Never leave the description empty.
 - Find as many REAL job listings as possible — aim for 15-20 jobs minimum
-- MULTI-SOURCE REQUIREMENT: You MUST search across ALL of these job boards and return jobs from at least 4 different sources: LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, AngelList/Wellfound, company career pages (careers.google.com, jobs.lever.co, greenhouse.io, etc.), USAJobs.gov, Handshake, FlexJobs. For each job, accurately set the "source" field to the job board where you found it.
+${sourceInstruction}
 - Every job MUST have a real, clickable apply_url — NOT a generic homepage. The URL should go directly to the job application page.
 - DATE RULES: Today is ${todayStr}. For date_posted, calculate relative time from TODAY and use labels like "Today", "1 day ago", "2 days ago", "3 days ago", "1 week ago", "2 weeks ago", "1 month ago", etc. NEVER use exact calendar dates. If a job posting says it was posted on a specific date, calculate how many days ago that was from today (${todayStr}) and use the relative label. If you cannot determine when a job was posted, use "Recently". NEVER return a future date.
 - EXPERIENCE LEVEL: For each job, determine the experience_level from the job title and requirements. Use EXACTLY one of: "Internship", "Entry-Level", "Mid-Level", "Senior", "Executive"
@@ -404,7 +414,9 @@ CRITICAL RULES:
 - Each job must have a different company or be a distinctly different role
 - Return ONLY the JSON object`;
 
-    const userPrompt = `Search ALL major US job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, company career pages) and find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs from different US-based companies and different job board sources. Do NOT include any jobs from outside the United States.${resumeHint}`;
+    const userPrompt = useAllSources
+      ? `Search ALL major US job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, company career pages) and find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs from different US-based companies and different job board sources. Do NOT include any jobs from outside the United States.${resumeHint}`
+      : `Search company career pages, Greenhouse, Lever, Workday, and direct employer hiring portals to find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs posted directly by companies on their own career sites. Do NOT include results from job board aggregators like Indeed, LinkedIn, ZipRecruiter, Glassdoor, SimplyHired, or Monster. Only return jobs from direct company career pages and employer ATS platforms. Do NOT include any jobs from outside the United States.${resumeHint}`;
 
     // Map date filter
     let recencyFilter = "month";
