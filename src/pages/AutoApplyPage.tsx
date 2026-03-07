@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,8 @@ import {
   Wrench, AlertCircle, Building2, Sparkles, Send, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import LocationAutocomplete from "@/components/LocationAutocomplete";
+import { JOB_ROLES, COMMON_SKILLS } from "@/data/job-roles";
 
 // ─── Types ───
 interface ProfileData {
@@ -83,6 +85,24 @@ export default function AutoApplyPage() {
 
   // Skills input
   const [skillInput, setSkillInput] = useState("");
+  const [showRoleSuggestions, setShowRoleSuggestions] = useState(false);
+  const [showSkillSuggestions, setShowSkillSuggestions] = useState(false);
+
+  // Role/skill suggestions
+  const filteredRoleSuggestions = useMemo(() => {
+    if (!profile.target_role?.trim()) return [];
+    const lower = profile.target_role.toLowerCase();
+    return JOB_ROLES.filter((r) => r.toLowerCase().includes(lower)).slice(0, 10);
+  }, [profile.target_role]);
+
+  const filteredSkillSuggestions = useMemo(() => {
+    if (!skillInput.trim()) return [];
+    const lower = skillInput.toLowerCase();
+    const existing = new Set((profile.skills || []).map((s) => s.toLowerCase()));
+    return COMMON_SKILLS.filter(
+      (s) => s.toLowerCase().includes(lower) && !existing.has(s.toLowerCase())
+    ).slice(0, 10);
+  }, [skillInput, profile.skills]);
 
   // Jobs
   const [matchedJobs, setMatchedJobs] = useState<MatchedJob[]>([]);
@@ -534,7 +554,12 @@ export default function AutoApplyPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className={errors.location ? "text-destructive" : ""}>Location *</Label>
-                    <Input placeholder="City, State" value={profile.location || ""} onChange={(e) => setProfile((p) => ({ ...p, location: e.target.value }))} className={errors.location ? "border-destructive" : ""} />
+                    <LocationAutocomplete
+                      value={profile.location || ""}
+                      onChange={(v) => setProfile((p) => ({ ...p, location: v }))}
+                      placeholder="City, State (US only)"
+                      error={!!errors.location}
+                    />
                     {errors.location && <p className="text-xs text-destructive">{errors.location}</p>}
                   </div>
                   <div className="space-y-1.5">
@@ -555,9 +580,30 @@ export default function AutoApplyPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 relative">
                     <Label className={errors.target_role ? "text-destructive" : ""}>Target Role *</Label>
-                    <Input placeholder="e.g. Software Engineer" value={profile.target_role || ""} onChange={(e) => setProfile((p) => ({ ...p, target_role: e.target.value }))} className={errors.target_role ? "border-destructive" : ""} />
+                    <Input
+                      placeholder="e.g. Software Engineer"
+                      value={profile.target_role || ""}
+                      onChange={(e) => { setProfile((p) => ({ ...p, target_role: e.target.value })); setShowRoleSuggestions(true); }}
+                      onFocus={() => { if (profile.target_role) setShowRoleSuggestions(true); }}
+                      onBlur={() => { setTimeout(() => setShowRoleSuggestions(false), 150); }}
+                      className={errors.target_role ? "border-destructive" : ""}
+                      autoComplete="off"
+                    />
+                    {showRoleSuggestions && filteredRoleSuggestions.length > 0 && (
+                      <ul className="absolute z-50 top-full mt-1 w-full bg-popover border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto py-1">
+                        {filteredRoleSuggestions.map((role) => (
+                          <li
+                            key={role}
+                            onMouseDown={(e) => { e.preventDefault(); setProfile((p) => ({ ...p, target_role: role })); setShowRoleSuggestions(false); }}
+                            className="px-3 py-2 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors"
+                          >
+                            {role}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     {errors.target_role && <p className="text-xs text-destructive">{errors.target_role}</p>}
                   </div>
                   <div className="space-y-1.5">
@@ -626,8 +672,37 @@ export default function AutoApplyPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex gap-2">
-                  <Input placeholder="Add a skill..." value={skillInput} onChange={(e) => setSkillInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSkill()} className={errors.skills ? "border-destructive" : ""} />
+                <div className="flex gap-2 relative">
+                  <div className="flex-1 relative">
+                    <Input
+                      placeholder="Type to search skills..."
+                      value={skillInput}
+                      onChange={(e) => { setSkillInput(e.target.value); setShowSkillSuggestions(true); }}
+                      onFocus={() => { if (skillInput) setShowSkillSuggestions(true); }}
+                      onBlur={() => { setTimeout(() => setShowSkillSuggestions(false), 150); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") addSkill(); }}
+                      className={errors.skills ? "border-destructive" : ""}
+                      autoComplete="off"
+                    />
+                    {showSkillSuggestions && filteredSkillSuggestions.length > 0 && (
+                      <ul className="absolute z-50 top-full mt-1 w-full bg-popover border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto py-1">
+                        {filteredSkillSuggestions.map((skill) => (
+                          <li
+                            key={skill}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setProfile((prev) => ({ ...prev, skills: [...new Set([...(prev.skills || []), skill])] }));
+                              setSkillInput("");
+                              setShowSkillSuggestions(false);
+                            }}
+                            className="px-3 py-2 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors"
+                          >
+                            {skill}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                   <Button onClick={addSkill} size="sm">Add</Button>
                 </div>
                 {errors.skills && <p className="text-xs text-destructive">{errors.skills}</p>}
@@ -637,8 +712,26 @@ export default function AutoApplyPage() {
                       {skill} <XCircle className="w-3 h-3" />
                     </Badge>
                   ))}
-                  {(profile.skills || []).length === 0 && <p className="text-xs text-muted-foreground">No skills added yet</p>}
+                  {(profile.skills || []).length === 0 && <p className="text-xs text-muted-foreground">No skills added yet — type to search or add custom skills</p>}
                 </div>
+                {/* Quick add popular skills */}
+                {(profile.skills || []).length < 5 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1.5">Quick add:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {["JavaScript", "Python", "React", "SQL", "AWS", "TypeScript", "Java", "Node.js", "Docker", "Git", "Agile", "Communication"].filter((s) => !(profile.skills || []).includes(s)).slice(0, 8).map((skill) => (
+                        <Badge
+                          key={skill}
+                          variant="outline"
+                          className="text-xs cursor-pointer hover:bg-primary/10"
+                          onClick={() => setProfile((prev) => ({ ...prev, skills: [...new Set([...(prev.skills || []), skill])] }))}
+                        >
+                          + {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
