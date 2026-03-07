@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { usePersistedState } from "@/hooks/use-persisted-state";
@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import {
   Plus, Search, Briefcase, Building2, Clock, Target, Trash2, Loader2,
-  Bookmark, ExternalLink, MapPin, DollarSign, Globe,
+  Bookmark, ExternalLink, MapPin, DollarSign, Globe, X, FileText,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -50,6 +51,99 @@ interface SavedJobDetail {
   saved_at: string;
 }
 
+function JobDetailPanel({
+  job,
+  onClose,
+}: {
+  job: { title: string; company: string; location?: string | null; description?: string | null; apply_url?: string | null; salary?: string | null; job_type?: string | null; remote?: boolean; date_posted?: string | null; source?: string | null };
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      {/* Panel */}
+      <div className="relative w-full max-w-lg bg-background shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h2 className="text-base font-semibold truncate">Job Details</h2>
+          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-muted transition-colors" title="Close">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <ScrollArea className="flex-1">
+          <div className="p-5 space-y-5">
+            {/* Job header */}
+            <div className="flex gap-3">
+              <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                <Building2 className="w-6 h-6 text-muted-foreground" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold leading-tight">{job.title}</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">{job.company}</p>
+                {job.location && (
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                    <MapPin className="w-3 h-3" /> {job.location}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div className="flex flex-wrap gap-1.5">
+              {job.remote && (
+                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs gap-1">
+                  <Globe className="w-3 h-3" /> Remote
+                </Badge>
+              )}
+              {job.job_type && <Badge variant="secondary" className="text-xs">{job.job_type}</Badge>}
+              {job.salary && (
+                <Badge variant="secondary" className="text-xs gap-1">
+                  <DollarSign className="w-3 h-3" /> {job.salary}
+                </Badge>
+              )}
+              {job.date_posted && (
+                <Badge variant="outline" className="text-xs gap-1">
+                  <Clock className="w-3 h-3" /> {job.date_posted}
+                </Badge>
+              )}
+              {job.source && <Badge variant="outline" className="text-xs capitalize">{job.source}</Badge>}
+            </div>
+
+            {/* Apply button */}
+            {job.apply_url && (
+              <Button className="gap-1.5 w-full" asChild>
+                <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
+                  Apply Now <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </Button>
+            )}
+
+            {/* Description */}
+            <div className="border-t pt-4">
+              <h4 className="font-semibold text-sm mb-2">About the Job</h4>
+              {job.description ? (
+                <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">
+                  {job.description}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
+                  <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+                  <p>No description available.</p>
+                  {job.apply_url && (
+                    <p className="text-xs mt-1">Click "Apply Now" to see full details on the job board.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
+  );
+}
+
 export default function JobTracker() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -61,6 +155,16 @@ export default function JobTracker() {
   const [newJob, setNewJob] = useState({ title: "", company: "" });
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+
+  const [selectedSavedJob, setSelectedSavedJob] = useState<SavedJobDetail | null>(null);
+  const [selectedKanbanJob, setSelectedKanbanJob] = useState<Job | null>(null);
+  // Look up saved_jobs detail for kanban card if available
+  const kanbanJobDetail = useMemo(() => {
+    if (!selectedKanbanJob) return null;
+    return savedJobDetails.find(
+      (s) => s.job_title === selectedKanbanJob.title && s.company === selectedKanbanJob.company
+    ) || null;
+  }, [selectedKanbanJob, savedJobDetails]);
 
   const tabView = searchParams.get("tab"); // "saved" or null (all)
 
@@ -224,7 +328,11 @@ export default function JobTracker() {
         ) : (
           <div className="flex-1 overflow-y-auto space-y-3">
             {filteredSavedDetails.map((job) => (
-              <Card key={job.id} className="p-4 hover:shadow-md transition-shadow group">
+              <Card
+                key={job.id}
+                className="p-4 hover:shadow-md transition-shadow group cursor-pointer"
+                onClick={() => setSelectedSavedJob(job)}
+              >
                 <div className="flex gap-3">
                   <div className="w-11 h-11 rounded-lg bg-muted flex items-center justify-center shrink-0">
                     <Building2 className="w-5 h-5 text-muted-foreground" />
@@ -237,14 +345,14 @@ export default function JobTracker() {
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {job.apply_url && (
-                          <Button size="sm" className="gap-1.5 h-8" asChild>
+                          <Button size="sm" className="gap-1.5 h-8" asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
                             <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
                               Apply <ExternalLink className="w-3.5 h-3.5" />
                             </a>
                           </Button>
                         )}
                         <button
-                          onClick={() => deleteSavedJobDetail(job)}
+                          onClick={(e) => { e.stopPropagation(); deleteSavedJobDetail(job); }}
                           className="p-1.5 rounded-md hover:bg-destructive/10 transition-all opacity-0 group-hover:opacity-100"
                           title="Remove from saved"
                         >
@@ -291,6 +399,26 @@ export default function JobTracker() {
               </Card>
             ))}
           </div>
+
+        )}
+
+        {/* Job detail slide-over panel */}
+        {selectedSavedJob && (
+          <JobDetailPanel
+            job={{
+              title: selectedSavedJob.job_title,
+              company: selectedSavedJob.company,
+              location: selectedSavedJob.location,
+              description: selectedSavedJob.description,
+              apply_url: selectedSavedJob.apply_url,
+              salary: selectedSavedJob.salary,
+              job_type: selectedSavedJob.job_type,
+              remote: selectedSavedJob.remote,
+              date_posted: selectedSavedJob.date_posted,
+              source: selectedSavedJob.source,
+            }}
+            onClose={() => setSelectedSavedJob(null)}
+          />
         )}
       </div>
     );
@@ -358,6 +486,7 @@ export default function JobTracker() {
                     key={job.id}
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData("jobId", job.id)}
+                    onClick={() => setSelectedKanbanJob(job)}
                     className="p-3 cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow-card-hover)] transition-all group"
                   >
                     <div className="flex items-start gap-2.5">
@@ -388,6 +517,28 @@ export default function JobTracker() {
           );
         })}
       </div>
+
+      {/* Job detail slide-over panel for kanban cards */}
+      {selectedKanbanJob && (
+        <JobDetailPanel
+          job={kanbanJobDetail ? {
+            title: kanbanJobDetail.job_title,
+            company: kanbanJobDetail.company,
+            location: kanbanJobDetail.location,
+            description: kanbanJobDetail.description,
+            apply_url: kanbanJobDetail.apply_url,
+            salary: kanbanJobDetail.salary,
+            job_type: kanbanJobDetail.job_type,
+            remote: kanbanJobDetail.remote,
+            date_posted: kanbanJobDetail.date_posted,
+            source: kanbanJobDetail.source,
+          } : {
+            title: selectedKanbanJob.title,
+            company: selectedKanbanJob.company,
+          }}
+          onClose={() => setSelectedKanbanJob(null)}
+        />
+      )}
     </div>
   );
 }

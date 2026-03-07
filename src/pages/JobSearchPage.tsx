@@ -32,6 +32,9 @@ interface SearchJob {
   remote: boolean;
   date_posted: string;
   source: string;
+  role_category?: string;
+  experience_level?: string;
+  industry?: string;
 }
 
 const QUICK_ROLES = [
@@ -53,6 +56,8 @@ export default function JobSearchPage() {
   const [salaryRange, setSalaryRange] = usePersistedState("jobSearch.salaryRange", "any", "sessionStorage");
   const [jobType, setJobType] = usePersistedState("jobSearch.jobType", "all", "sessionStorage");
   const [datePosted, setDatePosted] = usePersistedState("jobSearch.datePosted", "month", "sessionStorage");
+  const [experienceLevel, setExperienceLevel] = usePersistedState("jobSearch.experienceLevel", "all", "sessionStorage");
+  const [remoteFilter, setRemoteFilter] = usePersistedState("jobSearch.remoteFilter", "all", "sessionStorage");
   const [resumeText, setResumeText] = usePersistedState("jobSearch.resumeText", "", "sessionStorage");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showResumeUpload, setShowResumeUpload] = useState(false);
@@ -198,6 +203,8 @@ export default function JobSearchPage() {
     salaryRange !== "any" ? 1 : 0,
     jobType !== "all" ? 1 : 0,
     datePosted !== "month" ? 1 : 0,
+    experienceLevel !== "all" ? 1 : 0,
+    remoteFilter !== "all" ? 1 : 0,
     location ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
@@ -279,6 +286,8 @@ export default function JobSearchPage() {
       if (salaryRange !== "any") payload.salary_range = salaryRange;
       if (jobType !== "all") payload.job_type = jobType;
       if (datePosted) payload.date_posted = datePosted;
+      if (experienceLevel !== "all") payload.experience_level = experienceLevel;
+      if (remoteFilter !== "all") payload.remote_filter = remoteFilter;
       if (resumeText.trim()) payload.resume_text = resumeText.trim();
 
       const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -339,7 +348,7 @@ export default function JobSearchPage() {
       abortControllerRef.current = null;
       setLoading(false);
     }
-  }, [query, location, salaryRange, jobType, datePosted, resumeText]);
+  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, resumeText]);
 
   const handleResumeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -353,6 +362,8 @@ export default function JobSearchPage() {
     setSalaryRange("any");
     setJobType("all");
     setDatePosted("month");
+    setExperienceLevel("all");
+    setRemoteFilter("all");
     setLocation("");
   };
 
@@ -466,11 +477,23 @@ export default function JobSearchPage() {
                 <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setJobType("all")} />
               </Badge>
             )}
+            {!showAdvanced && experienceLevel !== "all" && (
+              <Badge variant="secondary" className="text-[10px] gap-0.5 h-6">
+                {experienceLevel}
+                <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setExperienceLevel("all")} />
+              </Badge>
+            )}
+            {!showAdvanced && remoteFilter !== "all" && (
+              <Badge variant="secondary" className="text-[10px] gap-0.5 h-6">
+                {remoteFilter}
+                <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setRemoteFilter("all")} />
+              </Badge>
+            )}
           </div>
 
           {/* Advanced filters */}
           {showAdvanced && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-2 border-t">
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Salary Range</Label>
                 <Select value={salaryRange} onValueChange={setSalaryRange}>
@@ -512,6 +535,32 @@ export default function JobSearchPage() {
                     <SelectItem value="week">Past Week</SelectItem>
                     <SelectItem value="2weeks">Past 2 Weeks</SelectItem>
                     <SelectItem value="month">Past Month</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Experience Level</Label>
+                <Select value={experienceLevel} onValueChange={setExperienceLevel}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Levels</SelectItem>
+                    <SelectItem value="Internship">Internship</SelectItem>
+                    <SelectItem value="Entry-Level">Entry Level</SelectItem>
+                    <SelectItem value="Mid-Level">Mid Level</SelectItem>
+                    <SelectItem value="Senior">Senior</SelectItem>
+                    <SelectItem value="Executive">Executive / Director</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Work Type</Label>
+                <Select value={remoteFilter} onValueChange={setRemoteFilter}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Work Types</SelectItem>
+                    <SelectItem value="remote-only">Remote Only</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                    <SelectItem value="on-site">On-site</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -687,7 +736,13 @@ export default function JobSearchPage() {
                             {job.description && (
                               <p className="text-xs text-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">{job.description}</p>
                             )}
-                            <div className="flex items-center gap-2 mt-1.5">
+                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                              {job.role_category && job.role_category !== "Other" && (
+                                <Badge className="text-[10px] h-4 px-1.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{job.role_category}</Badge>
+                              )}
+                              {job.experience_level && job.experience_level !== "Mid-Level" && (
+                                <Badge className="text-[10px] h-4 px-1.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">{job.experience_level}</Badge>
+                              )}
                               {job.job_type && <Badge variant="outline" className="text-[10px] h-4 px-1.5">{job.job_type}</Badge>}
                               <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                                 <Clock className="w-2.5 h-2.5" /> {job.date_posted}
@@ -738,6 +793,12 @@ export default function JobSearchPage() {
 
                       {/* Tags */}
                       <div className="flex flex-wrap gap-1.5">
+                        {selectedJob.role_category && selectedJob.role_category !== "Other" && (
+                          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs">{selectedJob.role_category}</Badge>
+                        )}
+                        {selectedJob.experience_level && (
+                          <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 text-xs">{selectedJob.experience_level}</Badge>
+                        )}
                         {selectedJob.remote && (
                           <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs gap-1">
                             <Globe className="w-3 h-3" /> Remote
@@ -750,6 +811,9 @@ export default function JobSearchPage() {
                           <Badge variant="secondary" className="text-xs gap-1">
                             <DollarSign className="w-3 h-3" /> {selectedJob.salary}
                           </Badge>
+                        )}
+                        {selectedJob.industry && (
+                          <Badge variant="outline" className="text-xs">{selectedJob.industry}</Badge>
                         )}
                         <Badge variant="outline" className="text-xs capitalize">{selectedJob.source}</Badge>
                       </div>
