@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Import Kimi Web Session Excel Results → Supabase
+Import Kimi Web Session Results → Supabase
 ==================================================
-Takes the Excel/CSV file that Kimi's 100-agent web session produces
-and imports it directly into the ResumePreps Supabase database.
+Takes the Excel/CSV/JSON files that Kimi's 100-agent web session produces
+and imports them directly into the ResumePreps Supabase database.
 
 This saves credits by reusing web session results instead of running
 kimi-cli again.
@@ -11,7 +11,9 @@ kimi-cli again.
 Usage:
     python3 import-excel.py jobs.xlsx
     python3 import-excel.py jobs.csv
-    python3 import-excel.py jobs.xlsx --dry-run    # Preview only
+    python3 import-excel.py jobs.json
+    python3 import-excel.py ~/Downloads/kimi-output/     # Import ALL files in folder
+    python3 import-excel.py jobs.xlsx --dry-run           # Preview only
 """
 
 import csv
@@ -132,6 +134,34 @@ def parse_salary(salary) -> tuple:
 
 # ── File Parsing ──────────────────────────────────────────────────────
 
+def read_json(filepath: str) -> list:
+    """Read a JSON file and return list of dicts."""
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Handle various JSON structures Kimi agents produce
+    jobs_raw = []
+    if isinstance(data, list):
+        jobs_raw = data
+    elif isinstance(data, dict):
+        # Look for common keys: "jobs", "results", "data", or the first list value
+        for key in ["jobs", "results", "data", "listings", "job_listings"]:
+            if key in data and isinstance(data[key], list):
+                jobs_raw = data[key]
+                break
+        if not jobs_raw:
+            # Try first list-type value in the dict
+            for v in data.values():
+                if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
+                    jobs_raw = v
+                    break
+        if not jobs_raw and all(k in data for k in ["title", "company"]):
+            # Single job object
+            jobs_raw = [data]
+
+    return [normalize_row(r) for r in jobs_raw if isinstance(r, dict)]
+
+
 def read_csv(filepath: str) -> list:
     """Read a CSV file and return list of dicts."""
     jobs = []
@@ -244,18 +274,36 @@ def supabase_post(table: str, rows: list) -> tuple:
 
 # ── Main ──────────────────────────────────────────────────────────────
 
+def read_file(filepath: str) -> list:
+    """Read a single file and return list of normalized job dicts."""
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == ".csv":
+        return read_csv(filepath)
+    elif ext in (".xlsx", ".xls"):
+        return read_excel(filepath)
+    elif ext == ".json":
+        return read_json(filepath)
+    else:
+        print(f"  ⚠ Skipping unsupported file: {filepath}")
+        return []
+
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3 import-excel.py <file.xlsx or file.csv> [--dry-run]")
+        print("Usage: python3 import-excel.py <file_or_folder> [--dry-run]")
         print("\nImports Kimi web session job results into ResumePreps database.")
-        print("Supports .xlsx, .xls, and .csv files.")
+        print("Supports: .json, .xlsx, .xls, .csv files, or a folder containing them.")
+        print("\nExamples:")
+        print("  python3 import-excel.py ~/Downloads/senior_software_engineer_jobs.json")
+        print("  python3 import-excel.py ~/Downloads/kimi-output/    # all files in folder")
+        print("  python3 import-excel.py jobs.xlsx --dry-run")
         sys.exit(1)
 
     filepath = sys.argv[1]
     dry_run = "--dry-run" in sys.argv
 
     if not os.path.exists(filepath):
-        print(f"ERROR: File not found: {filepath}")
+        print(f"ERROR: File/folder not found: {filepath}")
         sys.exit(1)
 
     load_env()
@@ -265,20 +313,34 @@ def main():
         print("Run: python3 find-jobs.py --setup")
         sys.exit(1)
 
-    # Read file
-    ext = os.path.splitext(filepath)[1].lower()
-    print(f"\n▸ Reading {filepath}...")
+    # Determine what to read
+    raw_jobs = []
 
-    if ext == ".csv":
-        raw_jobs = read_csv(filepath)
-    elif ext in (".xlsx", ".xls"):
-        raw_jobs = read_excel(filepath)
+    if os.path.isdir(filepath):
+        # Read ALL supported files in folder
+        supported = (".json", ".csv", ".xlsx", ".xls")
+        files = sorted([
+            os.path.join(filepath, f) for f in os.listdir(filepath)
+            if os.path.splitext(f)[1].lower() in supported
+        ])
+        if not files:
+            print(f"ERROR: No .json/.csv/.xlsx files found in {filepath}")
+            sys.exit(1)
+        print(f"\n▸ Found {len(files)} files in {filepath}")
+        for f in files:
+            fname = os.path.basename(f)
+            try:
+                jobs = read_file(f)
+                print(f"  ✓ {fname}: {len(jobs)} jobs")
+                raw_jobs.extend(jobs)
+            except Exception as e:
+                print(f"  ✗ {fname}: {e}")
     else:
-        print(f"ERROR: Unsupported file type: {ext}")
-        print("  Supported: .xlsx, .xls, .csv")
-        sys.exit(1)
+        # Single file
+        print(f"\n▸ Reading {filepath}...")
+        raw_jobs = read_file(filepath)
 
-    print(f"  Found {len(raw_jobs)} rows")
+    print(f"\n  Total rows loaded: {len(raw_jobs)}")
 
     # Validate
     valid_jobs = []
