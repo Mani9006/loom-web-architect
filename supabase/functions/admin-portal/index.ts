@@ -305,15 +305,22 @@ async function writeAuditLog(
   metadata: Record<string, unknown>,
   req: Request,
 ) {
-  await serviceClient.rpc("write_audit_log", {
-    p_actor_id: actorId,
-    p_action: action,
-    p_resource: resource,
-    p_resource_id: resourceId,
-    p_metadata: metadata,
-    p_ip_address: getClientIp(req),
-    p_user_agent: req.headers.get("user-agent"),
-  }).catch(() => null);
+  try {
+    const { error } = await serviceClient.rpc("write_audit_log", {
+      p_actor_id: actorId,
+      p_action: action,
+      p_resource: resource,
+      p_resource_id: resourceId,
+      p_metadata: metadata,
+      p_ip_address: getClientIp(req),
+      p_user_agent: req.headers.get("user-agent"),
+    });
+    if (error) {
+      console.error("[admin-portal] Audit log write failed:", error.message);
+    }
+  } catch (err) {
+    console.error("[admin-portal] Audit log exception:", err);
+  }
 }
 
 async function authenticateOwner(req: Request) {
