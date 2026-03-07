@@ -684,7 +684,7 @@ export default function JobSearchPage() {
                               )}
                             </div>
                             {job.description && (
-                              <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">{job.description}</p>
+                              <p className="text-xs text-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">{job.description}</p>
                             )}
                             <div className="flex items-center gap-2 mt-1.5">
                               {job.job_type && <Badge variant="outline" className="text-[10px] h-4 px-1.5">{job.job_type}</Badge>}
@@ -783,9 +783,17 @@ export default function JobSearchPage() {
                     {/* Description */}
                     <div className="border-t pt-5">
                       <h3 className="font-semibold text-base mb-3">About the job</h3>
-                      <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-                        {selectedJob.description || "No description available."}
-                      </div>
+                      {selectedJob.description ? (
+                        <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">
+                          {selectedJob.description}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
+                          <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+                          <p>No description available for this listing.</p>
+                          <p className="text-xs mt-1">Click "Apply" to see full details on the job board.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </ScrollArea>

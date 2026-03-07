@@ -245,8 +245,9 @@ serve(async (req) => {
       : "";
 
     const systemPrompt = `You are a job search engine. Return ONLY valid JSON, no markdown, no explanation.
-Format: {"jobs":[{"title":"","company":"","location":"","description":"Brief 1 sentence","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"","source":"LinkedIn/Indeed/Glassdoor/etc"}]}
+Format: {"jobs":[{"title":"","company":"","location":"","description":"2-4 sentence summary of the role, responsibilities, and requirements","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"","source":"LinkedIn/Indeed/Glassdoor/etc"}]}
 IMPORTANT RULES:
+- Every job MUST have a description field with 2-4 sentences about the role — never leave it empty
 - Find as many REAL job listings as possible — aim for 15-20 jobs minimum
 - Search across LinkedIn, Indeed, Glassdoor, ZipRecruiter, company career pages, SimplyHired, Dice, AngelList, Built In, and any other job boards
 - Every job MUST have a real, clickable apply_url — not a generic homepage
