@@ -68,6 +68,7 @@ export default function JobSearchPage() {
   const [searchProgress, setSearchProgress] = useState(0);
   const [searchStatus, setSearchStatus] = useState("");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const [fromCache, setFromCache] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -121,6 +122,7 @@ export default function JobSearchPage() {
     setShowRoleSuggestions(false);
     setSearchProgress(0);
     setElapsedMs(null);
+    setFromCache(false);
 
     // Progress animation — updates status messages as time passes
     const statusMessages = [
@@ -153,7 +155,9 @@ export default function JobSearchPage() {
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndveHRieW90eWR4b3JjZGhoaXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzODY2NjksImV4cCI6MjA4Njk2MjY2OX0.jUt4F8lRVSDf2kxOuX1bVZwcmlcUw8NnfrZonj6aV-g";
 
       // Build payload — only include non-empty/non-default values
+      const userId = session.data.session?.user?.id;
       const payload: Record<string, any> = { query: q };
+      if (userId) payload.user_id = userId;
       if (location.trim()) payload.location = location.trim();
       if (salaryRange !== "any") payload.salary_range = salaryRange;
       if (jobType !== "all") payload.job_type = jobType;
@@ -189,7 +193,8 @@ export default function JobSearchPage() {
       const data = await response.json();
       setJobs(data.jobs || []);
       setSearchProgress(100);
-      setSearchStatus("Done!");
+      setSearchStatus(data.from_cache ? "Loaded from cache!" : "Done!");
+      setFromCache(!!data.from_cache);
       if (data.elapsed_ms) setElapsedMs(data.elapsed_ms);
 
       if ((data.jobs || []).length === 0) {
@@ -502,9 +507,28 @@ export default function JobSearchPage() {
         {/* Results */}
         {!loading && jobs.length > 0 && (
           <>
-            <p className="text-sm text-muted-foreground">
-              {jobs.length} jobs found{elapsedMs ? ` in ${(elapsedMs / 1000).toFixed(1)}s` : ""}
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {jobs.length} jobs found{elapsedMs ? ` in ${(elapsedMs / 1000).toFixed(1)}s` : ""}
+                {fromCache && (
+                  <span className="ml-2 text-xs text-green-600 dark:text-green-400">⚡ Instant results</span>
+                )}
+              </p>
+              {fromCache && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7 text-muted-foreground"
+                  onClick={() => {
+                    // Force fresh search by adding a tiny variation
+                    setFromCache(false);
+                    searchJobs();
+                  }}
+                >
+                  🔄 Refresh results
+                </Button>
+              )}
+            </div>
             <div className="space-y-3">
               {jobs.map((job) => (
                 <Card key={job.id} className="hover:shadow-md transition-shadow">
