@@ -31,6 +31,29 @@ function buildSearchKey(
 }
 
 // Generate a fingerprint for deduplication of the same job
+// Sanitize date_posted — convert exact dates to relative labels, reject future dates
+function sanitizeDatePosted(raw: string): string {
+  if (!raw) return "Recently";
+  const s = raw.trim();
+  // If already a relative label, pass through
+  if (/ago|today|yesterday|recently|just now/i.test(s)) return s;
+  // Try to parse as a date
+  const parsed = new Date(s);
+  if (isNaN(parsed.getTime())) return s; // not a date, leave as-is
+  const now = new Date();
+  const diffMs = now.getTime() - parsed.getTime();
+  // Future date or same day → "Today"
+  if (diffMs < 0) return "Recently";
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "1 day ago";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 14) return "1 week ago";
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  if (diffDays < 60) return "1 month ago";
+  return `${Math.floor(diffDays / 30)} months ago`;
+}
+
 function jobFingerprint(job: {
   title: string;
   company: string;
@@ -140,7 +163,7 @@ serve(async (req) => {
                 salary: job.salary,
                 job_type: job.job_type,
                 remote: job.remote || false,
-                date_posted: job.date_posted || "Recent",
+                date_posted: sanitizeDatePosted(job.date_posted || "Recent"),
                 source: job.source || "Web Search",
               })
             );
@@ -180,7 +203,7 @@ serve(async (req) => {
               salary: job.salary,
               job_type: job.job_type,
               remote: job.remote || false,
-              date_posted: job.date_posted || "Recent",
+              date_posted: sanitizeDatePosted(job.date_posted || "Recent"),
               source: job.source || "Web Search",
             })
           );
@@ -247,7 +270,7 @@ serve(async (req) => {
       : "";
 
     const systemPrompt = `You are a job search engine for the United States job market ONLY. Return ONLY valid JSON, no markdown, no explanation.
-Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"","source":"LinkedIn/Indeed/Glassdoor/etc"}]}
+Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"2 days ago","source":"LinkedIn/Indeed/Glassdoor/etc"}]}
 CRITICAL RULES:
 - ONLY return jobs located in the United States — absolutely NO jobs from India, Canada, UK, Europe, Asia, or any other country
 - Every location MUST be a US city/state (e.g. "San Francisco, CA", "New York, NY", "Remote (US)")
@@ -256,6 +279,7 @@ CRITICAL RULES:
 - Find as many REAL job listings as possible — aim for 15-20 jobs minimum
 - Search across LinkedIn, Indeed, Glassdoor, ZipRecruiter, company career pages, SimplyHired, Dice, AngelList, Built In, and any other job boards
 - Every job MUST have a real, clickable apply_url — not a generic homepage
+- DATE RULES: For date_posted, use RELATIVE time labels like "Today", "1 day ago", "2 days ago", "3 days ago", "1 week ago", "2 weeks ago", "1 month ago", etc. NEVER use exact calendar dates like "March 7, 2026" — these are often inaccurate and misleading. If you cannot determine when a job was posted, use "Recently". NEVER return a future date.
 - Do NOT make up or fabricate jobs — only return real current listings
 - Include salary info when available (in USD)
 - Each job must have a different company or be a distinctly different role
@@ -357,7 +381,7 @@ CRITICAL RULES:
           salary: job.salary || null,
           job_type: job.job_type || null,
           remote: job.remote || false,
-          date_posted: job.date_posted || "Recent",
+          date_posted: sanitizeDatePosted(job.date_posted || "Recent"),
           source: job.source || "Web Search",
           job_fingerprint: fp,
           expires_at: new Date(
