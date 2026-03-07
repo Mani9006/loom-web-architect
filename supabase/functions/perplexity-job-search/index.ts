@@ -37,21 +37,69 @@ function sanitizeDatePosted(raw: string): string {
   const s = raw.trim();
   // If already a relative label, pass through
   if (/ago|today|yesterday|recently|just now/i.test(s)) return s;
-  // Try to parse as a date
-  const parsed = new Date(s);
-  if (isNaN(parsed.getTime())) return s; // not a date, leave as-is
+  // Try to parse as a date — handle various formats
+  let parsed: Date | null = null;
+  // Try standard Date parse first
+  const attempt = new Date(s);
+  if (!isNaN(attempt.getTime())) {
+    parsed = attempt;
+  } else {
+    // Try "Month Day, Year" or "Month Day Year" patterns
+    const match = s.match(/(\w+)\s+(\d{1,2}),?\s*(\d{4})/);
+    if (match) {
+      parsed = new Date(`${match[1]} ${match[2]}, ${match[3]}`);
+      if (isNaN(parsed.getTime())) parsed = null;
+    }
+  }
+  if (!parsed) return s; // not a date, leave as-is (e.g. "Recent")
   const now = new Date();
   const diffMs = now.getTime() - parsed.getTime();
-  // Future date or same day → "Today"
+  // Future date → "Recently" (Perplexity hallucinated a future date)
   if (diffMs < 0) return "Recently";
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "1 day ago";
+  if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays} days ago`;
   if (diffDays < 14) return "1 week ago";
   if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
   if (diffDays < 60) return "1 month ago";
   return `${Math.floor(diffDays / 30)} months ago`;
+}
+
+// Convert a relative date label (e.g. "2 days ago") to an ISO timestamp string
+// Used for the `jobs` table which has date_posted as timestamptz
+function relativeDateToTimestamp(label: string): string {
+  if (!label) return new Date().toISOString();
+  const s = label.trim().toLowerCase();
+  const now = new Date();
+
+  if (s === "today" || s === "just now" || s === "recently") return now.toISOString();
+  if (s === "yesterday" || s === "1 day ago") {
+    return new Date(now.getTime() - 1 * 86400000).toISOString();
+  }
+
+  // "X days ago"
+  const daysMatch = s.match(/^(\d+)\s*days?\s*ago$/);
+  if (daysMatch) {
+    return new Date(now.getTime() - parseInt(daysMatch[1], 10) * 86400000).toISOString();
+  }
+
+  // "X weeks ago"
+  const weeksMatch = s.match(/^(\d+)\s*weeks?\s*ago$/);
+  if (weeksMatch) {
+    return new Date(now.getTime() - parseInt(weeksMatch[1], 10) * 7 * 86400000).toISOString();
+  }
+
+  // "X months ago"
+  const monthsMatch = s.match(/^(\d+)\s*months?\s*ago$/);
+  if (monthsMatch) {
+    return new Date(now.getTime() - parseInt(monthsMatch[1], 10) * 30 * 86400000).toISOString();
+  }
+
+  // Fallback: try parsing directly, else use now
+  const attempt = new Date(s);
+  if (!isNaN(attempt.getTime())) return attempt.toISOString();
+  return now.toISOString();
 }
 
 function jobFingerprint(job: {
@@ -269,7 +317,12 @@ serve(async (req) => {
       ? `\nCandidate background: ${resume_text.substring(0, 300)}. Prioritize matching roles.`
       : "";
 
+    // Exact current date/time for accurate date calculations
+    const now = new Date();
+    const todayStr = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "America/New_York" });
+
     const systemPrompt = `You are a job search engine for the United States job market ONLY. Return ONLY valid JSON, no markdown, no explanation.
+TODAY'S DATE IS: ${todayStr}. Use this to calculate accurate relative dates for when jobs were posted.
 Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"2 days ago","source":"LinkedIn/Indeed/Glassdoor/etc"}]}
 CRITICAL RULES:
 - ONLY return jobs located in the United States — absolutely NO jobs from India, Canada, UK, Europe, Asia, or any other country
@@ -279,7 +332,7 @@ CRITICAL RULES:
 - Find as many REAL job listings as possible — aim for 15-20 jobs minimum
 - Search across LinkedIn, Indeed, Glassdoor, ZipRecruiter, company career pages, SimplyHired, Dice, AngelList, Built In, and any other job boards
 - Every job MUST have a real, clickable apply_url — not a generic homepage
-- DATE RULES: For date_posted, use RELATIVE time labels like "Today", "1 day ago", "2 days ago", "3 days ago", "1 week ago", "2 weeks ago", "1 month ago", etc. NEVER use exact calendar dates like "March 7, 2026" — these are often inaccurate and misleading. If you cannot determine when a job was posted, use "Recently". NEVER return a future date.
+- DATE RULES: Today is ${todayStr}. For date_posted, calculate relative time from TODAY and use labels like "Today", "1 day ago", "2 days ago", "3 days ago", "1 week ago", "2 weeks ago", "1 month ago", etc. NEVER use exact calendar dates like "March 7, 2026". If a job posting says it was posted on a specific date, calculate how many days ago that was from today (${todayStr}) and use the relative label. If you cannot determine when a job was posted, use "Recently". NEVER return a future date.
 - Do NOT make up or fabricate jobs — only return real current listings
 - Include salary info when available (in USD)
 - Each job must have a different company or be a distinctly different role
@@ -449,7 +502,7 @@ CRITICAL RULES:
           description: job.description, apply_url: job.apply_url,
           salary_min: salaryMin, salary_max: salaryMax,
           job_type: job.job_type, remote: job.remote,
-          date_posted: job.date_posted, source: job.source || "Web Search",
+          date_posted: relativeDateToTimestamp(job.date_posted), source: job.source || "Web Search",
           external_id: `search_${fp}`,
         };
       });
