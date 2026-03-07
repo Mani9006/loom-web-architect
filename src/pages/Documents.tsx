@@ -102,26 +102,26 @@ export default function Documents() {
   const filtered = documents.filter((d) => d.title.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <FolderOpen className="w-5 h-5 text-primary" /> Documents
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">All your resumes, cover letters, and materials</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search documents..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-52" />
+            <Input placeholder="Search documents..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-full sm:w-52" />
           </div>
-          <Button size="sm" className="gap-2" onClick={() => setUploadOpen(true)}>
-            <Plus className="w-4 h-4" /> Add document
+          <Button size="sm" className="gap-2 shrink-0" onClick={() => setUploadOpen(true)}>
+            <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add document</span><span className="sm:hidden">Add</span>
           </Button>
         </div>
       </div>
 
-      <div className="border rounded-xl overflow-hidden">
+      <div className="border rounded-xl overflow-hidden overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/30">

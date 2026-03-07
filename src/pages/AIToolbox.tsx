@@ -97,7 +97,7 @@ export default function AIToolbox() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-6 max-w-6xl mx-auto">
       <div>
         <h1 className="text-xl font-bold flex items-center gap-2">
           <Wand2 className="w-5 h-5 text-accent" /> AI Toolbox
@@ -106,7 +106,7 @@ export default function AIToolbox() {
       </div>
 
       {/* Tool Selector */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         {AI_TOOLS.map((tool) => (
           <button
             key={tool.id}

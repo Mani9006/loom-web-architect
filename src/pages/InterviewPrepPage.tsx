@@ -134,7 +134,7 @@ export default function InterviewPrepPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-68px)] flex flex-col">
+    <div className="h-[calc(100vh-68px)] md:h-[calc(100vh-68px)] flex flex-col overflow-hidden">
       <InterviewPrepPanel
         messages={messages}
         isLoading={isLoading}

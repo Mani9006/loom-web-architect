@@ -56,12 +56,17 @@ export default function Dashboard() {
       if (!user) { navigate("/auth"); return; }
       setUserEmail(user.email || null);
 
-      const [profileResult, conversationsResult, messagesResult, coverLettersResult] = await Promise.all([
-        supabase.from("profiles").select("full_name, email, phone, location, avatar_url").eq("user_id", user.id).maybeSingle(),
+      const [profileResult, conversationsResult, coverLettersResult] = await Promise.all([
+        supabase.from("profiles").select("full_name, email, phone, location, avatar_url" as any).eq("user_id", user.id).maybeSingle() as any,
         supabase.from("conversations").select("id, title, chat_mode, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
-        supabase.from("messages").select("id, conversation_id, created_at"),
         supabase.from("cover_letters").select("id, title, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
       ]);
+
+      // Fetch messages only for this user's conversations
+      const convIds = (conversationsResult.data || []).map((c: any) => c.id);
+      const messagesResult = convIds.length > 0
+        ? await supabase.from("messages").select("id, conversation_id, created_at").in("conversation_id", convIds)
+        : { data: [] };
 
       if (profileResult.data) setProfile(profileResult.data);
 

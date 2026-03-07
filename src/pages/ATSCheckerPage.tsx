@@ -199,7 +199,7 @@ export default function ATSCheckerPage() {
       const token = sessionData.session?.access_token;
       if (!token) throw new Error("Not authenticated");
 
-      const baseUrl = import.meta.env.VITE_SUPABASE_URL || "https://woxtbyotydxorcdhhivr.supabase.co";
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL;
 
       // Try new structured endpoint first
       let response = await fetch(`${baseUrl}/functions/v1/ats-score`, {

@@ -22,7 +22,7 @@ const quickActions = [
     icon: Mail,
     label: "Cover Letter",
     description: "Generate a tailored cover letter",
-    route: "/cover-letter",
+    route: "/cover-letters",
   },
   {
     icon: Target,

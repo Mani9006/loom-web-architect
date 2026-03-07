@@ -66,13 +66,42 @@ type PortalRole = "admin" | "moderator" | "user";
 type AccountStatus = "active" | "suspended" | "blocked";
 type PurchaseState = "trial" | "active" | "past_due" | "canceled" | "manual";
 
-type Tenant = Database["public"]["Tables"]["enterprise_tenants"]["Row"];
-type Membership = Database["public"]["Tables"]["enterprise_memberships"]["Row"] & {
+type Tenant = {
+  id: string;
+  name: string;
+  slug: string;
+  max_seats: number;
+  sso_enabled: boolean;
+  plan: string;
+  created_at: string;
+  updated_at: string;
+};
+type Membership = {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  tenant_role: string;
+  created_at: string;
   profiles?: { full_name: string | null; email: string | null } | null;
 };
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-type AuditEntry = Database["public"]["Tables"]["audit_log_entries"]["Row"];
-type SsoConfig = Database["public"]["Tables"]["sso_configurations"]["Row"];
+type AuditEntry = {
+  id: string;
+  action: string;
+  resource: string | null;
+  actor_id: string | null;
+  created_at: string;
+  details: Record<string, unknown> | null;
+};
+type SsoConfig = {
+  id: string;
+  tenant_id: string;
+  protocol: string;
+  issuer_url: string | null;
+  idp_metadata_url: string | null;
+  enabled: boolean;
+  created_at: string;
+};
 
 interface PortalResponse {
   generatedAt: string;
@@ -186,6 +215,7 @@ interface PortalResponse {
     inputTokens30d: number;
     outputTokens30d: number;
     estimatedAiCost30dUsd: number;
+    autoApplyEnabled?: boolean;
   }>;
 }
 
@@ -882,7 +912,7 @@ function OverviewTab({
                   purchaseState: item.purchaseState,
                   subscriptionPlan: item.subscriptionPlan || "free",
                   aiFeaturesEnabled: item.aiFeaturesEnabled,
-                  autoApplyEnabled: (item as any).autoApplyEnabled ?? false,
+                  autoApplyEnabled: item.autoApplyEnabled ?? false,
                   blockedReason: item.blockedReason || "",
                   blockedUntil: item.blockedUntil || "",
                 };
@@ -1064,10 +1094,10 @@ function TenantsTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("enterprise_tenants")
+    const { data, error } = await (supabase
+      .from("enterprise_tenants" as any)
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }) as any);
     if (error) toast({ title: "Error loading tenants", description: error.message, variant: "destructive" });
     setTenants(data ?? []);
     setLoading(false);
@@ -1081,7 +1111,7 @@ function TenantsTab() {
     e.preventDefault();
     if (!name.trim() || !slug.trim()) return;
     setCreating(true);
-    const { error } = await supabase.from("enterprise_tenants").insert({ name: name.trim(), slug: slug.trim() });
+    const { error } = await (supabase.from("enterprise_tenants" as any).insert({ name: name.trim(), slug: slug.trim() }) as any);
     if (error) {
       toast({ title: "Failed to create tenant", description: error.message, variant: "destructive" });
     } else {
@@ -1175,11 +1205,11 @@ function MembersTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("enterprise_memberships")
+    const { data, error } = await (supabase
+      .from("enterprise_memberships" as any)
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(100) as any);
 
     if (error) {
       toast({ title: "Error loading members", description: error.message, variant: "destructive" });
@@ -1188,8 +1218,8 @@ function MembersTab() {
       return;
     }
 
-    const memberships = data ?? [];
-    const userIds = Array.from(new Set(memberships.map((item) => item.user_id)));
+    const memberships = (data ?? []) as Membership[];
+    const userIds = Array.from(new Set(memberships.map((item) => item.user_id))) as string[];
     const profileMap = new Map<string, Pick<Profile, "full_name" | "email">>();
 
     if (userIds.length > 0) {
@@ -1272,10 +1302,10 @@ function SsoTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("sso_configurations")
+    const { data, error } = await (supabase
+      .from("sso_configurations" as any)
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }) as any);
     if (error) toast({ title: "Error loading SSO configs", description: error.message, variant: "destructive" });
     setConfigs(data ?? []);
     setLoading(false);
@@ -1332,11 +1362,11 @@ function AuditLogTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("audit_log_entries")
+    const { data, error } = await (supabase
+      .from("audit_log_entries" as any)
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(200);
+      .limit(200) as any);
     if (error) toast({ title: "Error loading audit log", description: error.message, variant: "destructive" });
     setEntries(data ?? []);
     setLoading(false);
@@ -1472,7 +1502,7 @@ export default function AdminPortal() {
               purchaseState: item.purchaseState,
               subscriptionPlan: item.subscriptionPlan || "free",
               aiFeaturesEnabled: item.aiFeaturesEnabled,
-              autoApplyEnabled: (item as any).autoApplyEnabled ?? false,
+              autoApplyEnabled: item.autoApplyEnabled ?? false,
               blockedReason: item.blockedReason || "",
               blockedUntil: item.blockedUntil || "",
             };
@@ -1592,7 +1622,7 @@ export default function AdminPortal() {
   if (!isOwnerEmail(user.email)) return <Navigate to="/home" replace />;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -1622,26 +1652,28 @@ export default function AdminPortal() {
       )}
 
       <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview" className="gap-1.5">
-            <ShieldCheck className="w-4 h-4" /> Overview
-          </TabsTrigger>
-          <TabsTrigger value="operations" className="gap-1.5">
-            <Rocket className="w-4 h-4" /> Operations
-          </TabsTrigger>
-          <TabsTrigger value="tenants" className="gap-1.5">
-            <Building2 className="w-4 h-4" /> Tenants
-          </TabsTrigger>
-          <TabsTrigger value="members" className="gap-1.5">
-            <Users className="w-4 h-4" /> Members
-          </TabsTrigger>
-          <TabsTrigger value="sso" className="gap-1.5">
-            <KeyRound className="w-4 h-4" /> SSO
-          </TabsTrigger>
-          <TabsTrigger value="audit" className="gap-1.5">
-            <ClipboardList className="w-4 h-4" /> Audit
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-6 px-6">
+          <TabsList className="w-max">
+            <TabsTrigger value="overview" className="gap-1.5">
+              <ShieldCheck className="w-4 h-4" /> Overview
+            </TabsTrigger>
+            <TabsTrigger value="operations" className="gap-1.5">
+              <Rocket className="w-4 h-4" /> Operations
+            </TabsTrigger>
+            <TabsTrigger value="tenants" className="gap-1.5">
+              <Building2 className="w-4 h-4" /> Tenants
+            </TabsTrigger>
+            <TabsTrigger value="members" className="gap-1.5">
+              <Users className="w-4 h-4" /> Members
+            </TabsTrigger>
+            <TabsTrigger value="sso" className="gap-1.5">
+              <KeyRound className="w-4 h-4" /> SSO
+            </TabsTrigger>
+            <TabsTrigger value="audit" className="gap-1.5">
+              <ClipboardList className="w-4 h-4" /> Audit
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="overview" className="mt-4">
           <OverviewTab

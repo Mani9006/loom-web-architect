@@ -42,7 +42,7 @@ const quickActions = [
   { label: "Job Search", icon: Search, path: "/job-search", desc: "AI-matched roles", gradient: "from-accent/10 to-primary/5" },
   { label: "Job Tracker", icon: Columns3, path: "/job-tracker", desc: "Kanban pipeline", gradient: "from-primary/10 to-accent/5" },
   { label: "Mock Interview", icon: Mic, path: "/interview-prep", desc: "Voice practice", gradient: "from-accent/10 to-primary/5" },
-  { label: "Cover Letter", icon: Mail, path: "/cover-letter", desc: "Tailored letters", gradient: "from-primary/10 to-accent/5" },
+  { label: "Cover Letter", icon: Mail, path: "/cover-letters", desc: "Tailored letters", gradient: "from-primary/10 to-accent/5" },
   { label: "AI Toolbox", icon: Wand2, path: "/ai-toolbox", desc: "6 career tools", gradient: "from-accent/10 to-primary/5" },
 ];
 

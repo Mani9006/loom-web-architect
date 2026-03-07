@@ -82,7 +82,7 @@ export default function ResetPassword() {
               <Sparkles className="w-5 h-5 text-primary-foreground" />
             </div>
             <span className="text-xl font-bold">
-              CareerPrep<span className="text-primary">.ai</span>
+              Resume<span className="text-primary">Preps</span>
             </span>
           </div>
           <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">

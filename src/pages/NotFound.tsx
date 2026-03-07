@@ -22,7 +22,7 @@ const NotFound = () => {
           <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
             <Sparkles className="w-5 h-5" />
           </div>
-          <span className="text-xl font-bold">CareerPrep.ai</span>
+          <span className="text-xl font-bold">ResumePreps</span>
         </div>
 
         <h1 className="text-3xl sm:text-4xl font-bold">This is not the page you were looking for (404)</h1>

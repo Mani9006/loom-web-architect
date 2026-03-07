@@ -95,9 +95,9 @@ export default function CoverLettersPage() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col md:flex-row h-full">
       {/* Left - Form */}
-      <div className="w-[500px] border-r border-border overflow-y-auto p-6 space-y-5 shrink-0">
+      <div className="w-full md:w-[420px] lg:w-[500px] border-b md:border-b-0 md:border-r border-border overflow-y-auto p-4 md:p-6 space-y-5 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-accent" />
@@ -146,7 +146,7 @@ export default function CoverLettersPage() {
       </div>
 
       {/* Right - Result */}
-      <div className="flex-1 p-6 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-6 overflow-y-auto">
         <Card className="border-dashed h-full">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">

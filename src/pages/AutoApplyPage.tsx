@@ -132,7 +132,7 @@ export default function AutoApplyPage() {
           full_name: data.full_name || "",
           email: user.email || "",
           phone: (data as any).phone || "",
-          location: data.location || "",
+          location: (data as any).location || "",
           linkedin_url: (data as any).linkedin_url || "",
           target_role: data.target_role || "",
           desired_roles: (data as any).desired_roles || [],
@@ -179,10 +179,10 @@ export default function AutoApplyPage() {
       // Call parse-document edge function
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndveHRieW90eWR4b3JjZGhoaXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzODY2NjksImV4cCI6MjA4Njk2MjY2OX0.jUt8F8lRVSDf2kxOuX1bVZwcmlcUw8NnfrZonj6aV-g";
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL || "https://woxtbyotydxorcdhhivr.supabase.co"}/functions/v1/parse-document`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-document`,
         {
           method: "POST",
           headers: {
@@ -259,7 +259,7 @@ export default function AutoApplyPage() {
     setSaving(true);
     try {
       const completeness = calculateCompleteness();
-      const { error } = await supabase
+      const { error } = await (supabase
         .from("profiles")
         .update({
           full_name: profile.full_name,
@@ -282,7 +282,7 @@ export default function AutoApplyPage() {
           profile_setup_completed: markComplete || profile.profile_setup_completed as any,
           updated_at: new Date().toISOString(),
         } as any)
-        .eq("user_id", user.id);
+        .eq("user_id", user.id) as any);
 
       if (error) throw error;
 
@@ -323,10 +323,10 @@ export default function AutoApplyPage() {
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndveHRieW90eWR4b3JjZGhoaXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzODY2NjksImV4cCI6MjA4Njk2MjY2OX0.jUt8F8lRVSDf2kxOuX1bVZwcmlcUw8NnfrZonj6aV-g";
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL || "https://woxtbyotydxorcdhhivr.supabase.co"}/functions/v1/ats-score`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ats-score`,
         {
           method: "POST",
           headers: {
@@ -356,10 +356,10 @@ export default function AutoApplyPage() {
       // First try to trigger match computation
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndveHRieW90eWR4b3JjZGhoaXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzODY2NjksImV4cCI6MjA4Njk2MjY2OX0.jUt8F8lRVSDf2kxOuX1bVZwcmlcUw8NnfrZonj6aV-g";
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
       await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL || "https://woxtbyotydxorcdhhivr.supabase.co"}/functions/v1/match-jobs`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-jobs`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token || anonKey}` },

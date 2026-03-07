@@ -45,11 +45,11 @@ export default function Profile() {
   const fetchProfile = async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from("profiles")
-        .select("full_name, email, phone, location")
+        .select("full_name, email, phone, location" as any)
         .eq("user_id", user.id)
-        .maybeSingle();
+        .maybeSingle() as any);
       if (error) throw error;
       if (data) {
         setProfile({
