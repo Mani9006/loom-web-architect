@@ -635,8 +635,8 @@ export default function JobSearchPage() {
                         key={job.id}
                         onClick={() => setSelectedJob(job)}
                         className={cn(
-                          "px-4 py-3.5 cursor-pointer transition-colors hover:bg-accent/50 group relative",
-                          selected && "bg-accent/70 border-l-[3px] border-l-primary"
+                          "px-4 py-3.5 cursor-pointer transition-colors hover:bg-muted/60 group relative",
+                          selected && "bg-muted border-l-[3px] border-l-primary"
                         )}
                       >
                         <div className="flex gap-3">
