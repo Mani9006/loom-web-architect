@@ -181,6 +181,42 @@ function jobFingerprint(job: { title: string; company: string; location: string 
 
 // ── Quality Validation ─────────────────────────────────────────────────
 // Returns true if a job passes quality checks, false if it should be rejected
+/** Patterns indicating a URL is a generic career/search page, not a specific job */
+const GENERIC_URL_PATTERNS = [
+  /\/careers\/?$/i,
+  /\/careers\/?\?/i,
+  /\/careers\/search/i,
+  /\/careers\/home/i,
+  /\/jobs\/?$/i,
+  /\/jobs\/?\?/i,
+  /\/jobs\/search/i,
+  /linkedin\.com\/jobs\/search/i,
+  /indeed\.com\/jobs\?/i,
+  /glassdoor\.com\/Job\/.*-jobs/i,
+  /ziprecruiter\.com\/jobs\/search/i,
+];
+
+/** Build a LinkedIn search URL as fallback for jobs with bad/generic apply URLs */
+function buildFallbackUrl(title: string, company: string, location: string): string {
+  const query = `${title} ${company}`.trim();
+  const loc = (location || "United States").trim();
+  return `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(query)}&location=${encodeURIComponent(loc)}`;
+}
+
+/** Sanitize a job URL: if it's generic/broken, replace with a LinkedIn search fallback */
+function sanitizeApplyUrl(url: string, title: string, company: string, location: string): string {
+  if (!url || !url.startsWith("http")) return buildFallbackUrl(title, company, location);
+  const lower = url.toLowerCase();
+  if (/fake|placeholder|example\.com|undefined|null/.test(lower)) return buildFallbackUrl(title, company, location);
+  for (const pattern of GENERIC_URL_PATTERNS) {
+    if (pattern.test(lower)) {
+      console.log(`Generic URL detected for ${title} at ${company}: ${url}`);
+      return buildFallbackUrl(title, company, location);
+    }
+  }
+  return url;
+}
+
 function validateJob(job: any): { valid: boolean; reason?: string } {
   if (!job.title || job.title.length < 3) return { valid: false, reason: "missing/short title" };
   if (!job.company || job.company.length < 2) return { valid: false, reason: "missing company" };
@@ -414,7 +450,7 @@ CRITICAL RULES:
 - DESCRIPTION RULES: Each job MUST include a detailed description (5-10 sentences) pulled directly from the actual job posting. Include the real responsibilities, requirements, qualifications, and any listed benefits. Do NOT summarize or paraphrase — use the actual content from the job posting as closely as possible. Never leave the description empty.
 - Find as many REAL job listings as possible — aim for 15-20 jobs minimum
 ${sourceInstruction}
-- Every job MUST have a real, clickable apply_url — NOT a generic homepage. The URL should go directly to the job application page.
+- APPLY URL RULES: Every job MUST have a real, clickable apply_url that goes DIRECTLY to that specific job's application page — NOT a generic company careers homepage (e.g., NOT "company.com/careers"), NOT a job board search results page (e.g., NOT "linkedin.com/jobs/search/..."), and NOT a filtered search page. The URL must point to the individual job posting where the user can see the full description and click "Apply". Examples of GOOD URLs: "https://boards.greenhouse.io/company/jobs/12345", "https://www.linkedin.com/jobs/view/123456789", "https://company.com/careers/apply/12345". Examples of BAD URLs: "https://company.com/careers", "https://indeed.com/jobs?q=engineer", "https://linkedin.com/jobs/search/?keywords=engineer".
 - DATE RULES: Today is ${todayStr}. For date_posted, calculate relative time from TODAY and use labels like "Today", "1 day ago", "2 days ago", "3 days ago", "1 week ago", "2 weeks ago", "1 month ago", etc. NEVER use exact calendar dates. If a job posting says it was posted on a specific date, calculate how many days ago that was from today (${todayStr}) and use the relative label. If you cannot determine when a job was posted, use "Recently". NEVER return a future date.
 - EXPERIENCE LEVEL: For each job, determine the experience_level from the job title and requirements. Use EXACTLY one of: "Internship", "Entry-Level", "Mid-Level", "Senior", "Executive"
 - Do NOT make up or fabricate jobs — only return real current listings
@@ -536,7 +572,7 @@ ${sourceInstruction}
           company: job.company || "Unknown Company",
           location: job.location || "Not specified",
           description: job.description || "",
-          apply_url: job.apply_url || job.url || "",
+          apply_url: sanitizeApplyUrl(job.apply_url || job.url || "", job.title || "", job.company || "", job.location || ""),
           salary: job.salary || null,
           job_type: job.job_type || null,
           remote: job.remote || false,

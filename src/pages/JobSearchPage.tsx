@@ -18,6 +18,7 @@ import {
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { resolveJobUrl } from "@/lib/job-url";
 import LocationAutocomplete from "@/components/LocationAutocomplete";
 import { JOB_ROLES } from "@/data/job-roles";
 
@@ -983,13 +984,16 @@ export default function JobSearchPage() {
 
                       {/* Action buttons */}
                       <div className="flex gap-2">
-                        {selectedJob.apply_url && (
-                          <Button className="gap-1.5" asChild>
-                            <a href={selectedJob.apply_url} target="_blank" rel="noopener noreferrer">
-                              Apply <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
-                          </Button>
-                        )}
+                        {(() => {
+                          const resolved = resolveJobUrl(selectedJob.apply_url, selectedJob.title, selectedJob.company, selectedJob.location);
+                          return (
+                            <Button className="gap-1.5" asChild>
+                              <a href={resolved.url} target="_blank" rel="noopener noreferrer">
+                                {resolved.label} <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            </Button>
+                          );
+                        })()}
                         <Button
                           variant={isJobSaved(selectedJob) ? "secondary" : "outline"}
                           className="gap-1.5"

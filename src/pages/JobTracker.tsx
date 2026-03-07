@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { resolveJobUrl } from "@/lib/job-url";
 import { useToast } from "@/hooks/use-toast";
 import { trackProductEvent } from "@/lib/product-analytics";
 
@@ -112,13 +113,16 @@ function JobDetailPanel({
             </div>
 
             {/* Apply button */}
-            {job.apply_url && (
-              <Button className="gap-1.5 w-full" asChild>
-                <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
-                  Apply Now <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </Button>
-            )}
+            {(() => {
+              const resolved = resolveJobUrl(job.apply_url, job.title, job.company, job.location);
+              return (
+                <Button className="gap-1.5 w-full" asChild>
+                  <a href={resolved.url} target="_blank" rel="noopener noreferrer">
+                    {resolved.isFallback ? resolved.label : "Apply Now"} <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </Button>
+              );
+            })()}
 
             {/* Description */}
             <div className="border-t pt-4">
@@ -344,13 +348,16 @@ export default function JobTracker() {
                         <p className="text-sm text-muted-foreground">{job.company}</p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {job.apply_url && (
-                          <Button size="sm" className="gap-1.5 h-8" asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                            <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
-                              Apply <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
-                          </Button>
-                        )}
+                        {(() => {
+                          const resolved = resolveJobUrl(job.apply_url, job.job_title, job.company, job.location);
+                          return (
+                            <Button size="sm" className="gap-1.5 h-8" asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                              <a href={resolved.url} target="_blank" rel="noopener noreferrer">
+                                {resolved.label} <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            </Button>
+                          );
+                        })()}
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteSavedJobDetail(job); }}
                           className="p-1.5 rounded-md hover:bg-destructive/10 transition-all opacity-0 group-hover:opacity-100"
