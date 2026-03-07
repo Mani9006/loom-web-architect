@@ -13,7 +13,7 @@ export default function OwnerProtectedRoute({
   children,
   redirectTo = "/home",
 }: OwnerProtectedRouteProps) {
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
 
   if (loading) {
     return <LoadingSpinner fullScreen />;
@@ -23,7 +23,7 @@ export default function OwnerProtectedRoute({
     return <Navigate to="/auth" replace />;
   }
 
-  if (!isOwnerEmail(user.email)) {
+  if (!isOwnerEmail(user.email) && !isAdmin) {
     return <Navigate to={redirectTo} replace />;
   }
 

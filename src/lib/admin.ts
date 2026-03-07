@@ -1,4 +1,4 @@
-const DEFAULT_OWNER_EMAILS = ["myfamily9006@gmail.com", "tharunkumar1048@gmail.com"];
+const DEFAULT_OWNER_EMAILS = ["myfamily9006@gmail.com"];
 
 function normalizeEmail(value: string | null | undefined): string {
   return String(value || "").trim().toLowerCase();

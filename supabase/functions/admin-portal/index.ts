@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const DEFAULT_OWNER_EMAILS = ["myfamily9006@gmail.com", "tharunkumar1048@gmail.com"];
+const DEFAULT_OWNER_EMAILS = ["myfamily9006@gmail.com"];
 const ROLE_PRIORITY: Record<string, number> = { admin: 3, moderator: 2, user: 1 };
 
 type AdminRole = "admin" | "moderator" | "user";
@@ -358,18 +358,7 @@ async function authenticateOwner(req: Request) {
 
   const ownerEmails = parseOwnerEmails();
   const email = toLower(user.email);
-  if (!ownerEmails.includes(email)) {
-    throw new Response(
-      JSON.stringify({
-        error: "Forbidden",
-        reason: "This portal is restricted to owner accounts",
-      }),
-      {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
-  }
+  const isOwner = ownerEmails.includes(email);
 
   const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!serviceRole) {
@@ -380,6 +369,30 @@ async function authenticateOwner(req: Request) {
   }
 
   const serviceClient = createClient(supabaseUrl, serviceRole);
+
+  // Allow access if user is an owner OR has admin role in user_roles table
+  if (!isOwner) {
+    const { data: adminRole } = await serviceClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (!adminRole) {
+      throw new Response(
+        JSON.stringify({
+          error: "Forbidden",
+          reason: "This portal is restricted to owner and admin accounts",
+        }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+  }
+
   return { user, ownerEmails, serviceClient, supabaseUrl, serviceRole };
 }
 

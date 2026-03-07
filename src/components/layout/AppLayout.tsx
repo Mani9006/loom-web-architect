@@ -86,7 +86,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [displayName, setDisplayName] = useState("");
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
@@ -135,7 +135,8 @@ export default function AppLayout() {
   const mainNav = autoApplyEnabled
     ? [baseMainNav[0], baseMainNav[1], autoApplyNav, ...baseMainNav.slice(2)]
     : baseMainNav;
-  const secondaryNav = isOwnerEmail(user.email) ? [...secondaryNavBase, ownerNav] : secondaryNavBase;
+  const hasAdminAccess = isOwnerEmail(user.email) || isAdmin;
+  const secondaryNav = hasAdminAccess ? [...secondaryNavBase, ownerNav] : secondaryNavBase;
 
   const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;
@@ -327,7 +328,7 @@ export default function AppLayout() {
               <DropdownMenuItem onClick={() => navigate("/dashboard")} className="cursor-pointer gap-2.5 rounded-xl">
                 <Home className="w-4 h-4" /> Dashboard
               </DropdownMenuItem>
-              {isOwnerEmail(user.email) && (
+              {hasAdminAccess && (
                 <DropdownMenuItem onClick={() => navigate("/admin")} className="cursor-pointer gap-2.5 rounded-xl">
                   <Crown className="w-4 h-4" /> Admin Portal
                 </DropdownMenuItem>
