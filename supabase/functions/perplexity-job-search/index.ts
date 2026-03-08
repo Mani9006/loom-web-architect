@@ -1,8 +1,31 @@
 // Perplexity-powered Job Search with DB-first approach
 // Strategy: query cached_jobs DB first → return matching jobs → only call Perplexity when DB exhausted
-// v19: Fix timezone issue — "today" now means last 24 hours rolling window instead of UTC midnight
+// v20: Full CST (America/Chicago) timezone support + comprehensive debug logging
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// ── CST Timezone Helper ─────────────────────────────────────────────────
+// Returns current date/time in America/Chicago (CST/CDT) timezone
+function getCSTNow(): { date: Date; isoString: string; display: string; dateOnly: string } {
+  const now = new Date();
+  // Format in CST for display
+  const display = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
+  const dateOnly = now.toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+  // Get CST offset: parse the CST time and compute the offset from UTC
+  const cstParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const p: Record<string, string> = {};
+  for (const part of cstParts) {
+    if (part.type !== "literal") p[part.type] = part.value;
+  }
+  // Build a Date object representing CST "wall clock" time for date comparisons
+  const cstDate = new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`);
+  return { date: cstDate, isoString: now.toISOString(), display, dateOnly };
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -210,25 +233,36 @@ function validateJob(job: any): { valid: boolean; reason?: string } {
 }
 
 // ── Date filter helper: convert date_posted filter to a cutoff timestamp ──
-// Uses America/Chicago (US Central) as the reference timezone so "today"
-// means today in the user's local time, not UTC.
+// All date math uses CST (America/Chicago) so "today" means today in user's local time.
 function getDateCutoff(dateFilter: string): string | null {
   const now = new Date();
+  const hoursMs = 60 * 60 * 1000;
+  const dayMs = 24 * hoursMs;
+
+  let cutoff: Date | null = null;
   switch (dateFilter) {
-    case "today": {
-      // "Today" = last 24 hours rolling window so we never miss recent jobs
-      // due to timezone edge cases (UTC vs US timezones).
-      return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-    }
+    case "today":
+      // Rolling 36-hour window to be generous with timezone differences
+      cutoff = new Date(now.getTime() - 36 * hoursMs);
+      break;
     case "3days":
-      return new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      cutoff = new Date(now.getTime() - 3 * dayMs);
+      break;
     case "week":
-      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      cutoff = new Date(now.getTime() - 7 * dayMs);
+      break;
+    case "2weeks":
+      cutoff = new Date(now.getTime() - 14 * dayMs);
+      break;
     case "month":
-      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      cutoff = new Date(now.getTime() - 30 * dayMs);
+      break;
     default:
       return null; // "all" — no date filter
   }
+  const iso = cutoff.toISOString();
+  console.log(`[DateCutoff] filter="${dateFilter}" → cutoff=${iso} (CST now: ${getCSTNow().display})`);
+  return iso;
 }
 
 // ── DB Search: query cached_jobs directly with SQL filters ─────────────
@@ -314,9 +348,12 @@ async function searchDatabase(
   const { data: jobs, count, error } = await dbQuery;
 
   if (error) {
-    console.error("DB search error:", error);
+    console.error("[DB] Search error:", JSON.stringify(error));
     return { jobs: [], total: 0 };
   }
+
+  const cst = getCSTNow();
+  console.log(`[DB] Query "${query}" → ${jobs?.length || 0} results (total: ${count || 0}), filters: ${JSON.stringify(filters)}, offset=${offset}, limit=${limit}, CST time: ${cst.display}`);
 
   return { jobs: jobs || [], total: count || 0 };
 }
@@ -357,6 +394,12 @@ serve(async (req) => {
     const sb = createClient(supabaseUrl, serviceKey);
 
     const searchQuery = query || "software engineer";
+    const cstInfo = getCSTNow();
+    console.log(`[SEARCH] ===== NEW REQUEST =====`);
+    console.log(`[SEARCH] query="${searchQuery}", page=${pageNum}, offset=${offset}, user_id=${user_id || "anon"}`);
+    console.log(`[SEARCH] filters: date_posted=${date_posted}, location=${location}, experience=${experience_level}, remote=${remote_filter}, job_type=${job_type}, source=${search_source}`);
+    console.log(`[SEARCH] CST time: ${cstInfo.display}, UTC: ${cstInfo.isoString}`);
+    console.log(`[SEARCH] force_web_search=${!!force_web_search}, skip_cache=${!!skip_cache}`);
 
     // ── STEP 1: Always try DB first (unless force_web_search) ──────────
     if (!force_web_search) {
@@ -376,9 +419,53 @@ serve(async (req) => {
         exclude_fingerprints || []
       );
 
+      console.log(`[STEP1] DB returned ${dbResult.jobs.length} jobs (total: ${dbResult.total})`);
+
       if (dbResult.jobs.length > 0) {
+        // Post-query filter: enforce date_posted matches the requested filter
+        // date_posted in DB can be: "March 5, 2026", "2026-03-05", "Recently", "1 week ago", etc.
+        let dateFilteredJobs = dbResult.jobs;
+        if (date_posted && date_posted !== "all" && date_posted !== "month") {
+          const cstNow = getCSTNow();
+          const nowMs = cstNow.date.getTime();
+          const dayMs = 24 * 60 * 60 * 1000;
+          let maxAgeDays: number;
+          switch (date_posted) {
+            case "today": maxAgeDays = 1; break;
+            case "3days": maxAgeDays = 3; break;
+            case "week": maxAgeDays = 7; break;
+            case "2weeks": maxAgeDays = 14; break;
+            default: maxAgeDays = 9999; break;
+          }
+
+          dateFilteredJobs = dbResult.jobs.filter((j: any) => {
+            const dp = (j.date_posted || "").trim();
+            if (!dp || /recently|just now/i.test(dp)) return true; // keep ambiguous ones
+
+            // Try parsing as an actual date ("March 5, 2026" or "2026-03-05")
+            const parsed = new Date(dp);
+            if (!isNaN(parsed.getTime())) {
+              const ageDays = Math.floor((nowMs - parsed.getTime()) / dayMs);
+              return ageDays <= maxAgeDays;
+            }
+
+            // Try parsing relative strings ("2 days ago", "1 week ago", etc.)
+            const daysAgo = dp.match(/(\d+)\s*days?\s*ago/i);
+            if (daysAgo) return parseInt(daysAgo[1], 10) <= maxAgeDays;
+            const weeksAgo = dp.match(/(\d+)\s*weeks?\s*ago/i);
+            if (weeksAgo) return parseInt(weeksAgo[1], 10) * 7 <= maxAgeDays;
+            const monthsAgo = dp.match(/(\d+)\s*months?\s*ago/i);
+            if (monthsAgo) return parseInt(monthsAgo[1], 10) * 30 <= maxAgeDays;
+            if (/today|yesterday/i.test(dp)) return maxAgeDays >= 1;
+
+            // Can't determine age — keep it
+            return true;
+          });
+          console.log(`[STEP1] Date post-filter "${date_posted}" (max ${maxAgeDays}d): ${dbResult.jobs.length} → ${dateFilteredJobs.length} jobs`);
+        }
+
         // Filter out jobs already seen by this user
-        let resultJobs = dbResult.jobs;
+        let resultJobs = dateFilteredJobs;
         if (user_id) {
           const fingerprints = resultJobs.map((j: any) => j.job_fingerprint);
           const { data: seenJobs } = await sb
@@ -387,8 +474,10 @@ serve(async (req) => {
             .eq("user_id", user_id)
             .in("job_fingerprint", fingerprints);
 
+          const seenCount = (seenJobs || []).length;
           const seenSet = new Set((seenJobs || []).map((s: any) => s.job_fingerprint));
           resultJobs = resultJobs.filter((j: any) => !seenSet.has(j.job_fingerprint));
+          console.log(`[STEP1] Seen filter: ${seenCount} seen, ${resultJobs.length} remaining`);
 
           // Mark these jobs as seen
           if (resultJobs.length > 0) {
@@ -423,7 +512,7 @@ serve(async (req) => {
           }));
 
           const elapsed = Date.now() - startTime;
-          console.log(`DB search: ${normalizedJobs.length} jobs (total: ${dbResult.total}) in ${elapsed}ms for "${searchQuery}"`);
+          console.log(`[RESULT] DB SUCCESS: ${normalizedJobs.length} jobs (db_total: ${dbResult.total}) in ${elapsed}ms for "${searchQuery}"`);
 
           return new Response(
             JSON.stringify({
@@ -442,9 +531,9 @@ serve(async (req) => {
         }
 
         // If all DB jobs are already seen by user, we'll fall through to Perplexity
-        console.log(`All ${dbResult.jobs.length} DB jobs already seen by user, falling through to web search`);
+        console.log(`[STEP1] All ${dateFilteredJobs.length} DB jobs already seen by user, falling through to web search`);
       } else {
-        console.log(`No DB results for "${searchQuery}" with filters, falling through to web search`);
+        console.log(`[STEP1] No DB results for "${searchQuery}" with filters, falling through to web search`);
       }
     }
 
@@ -485,8 +574,9 @@ serve(async (req) => {
     const now = new Date();
     const todayStr = now.toLocaleDateString("en-US", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
-      timeZone: "America/New_York",
+      timeZone: "America/Chicago",
     });
+    console.log(`[STEP2] Falling through to Perplexity. Today (CST): ${todayStr}`);
 
     const useAllSources = search_source === "all";
 

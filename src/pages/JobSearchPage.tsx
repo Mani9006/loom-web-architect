@@ -380,9 +380,12 @@ export default function JobSearchPage() {
 
   // Pre-fetch more jobs in background for the next page
   // Strategy: if DB has more results, fetch next page from DB; otherwise use Perplexity
+  // Prefetch runs silently — no loading spinner shown to user
+  const prefetchRef = useRef(false); // tracks if a prefetch is in-flight
   const fetchMoreJobs = useCallback(async () => {
-    if (isFetchingMore || !query.trim()) return;
-    setIsFetchingMore(true);
+    if (prefetchRef.current || !query.trim()) return;
+    prefetchRef.current = true;
+    // Don't set isFetchingMore to true — we want SILENT prefetch with no loading UI
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
@@ -448,25 +451,28 @@ export default function JobSearchPage() {
     } catch (err) {
       console.error("Pre-fetch more jobs failed:", err);
     } finally {
-      setIsFetchingMore(false);
+      prefetchRef.current = false;
     }
-  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText, jobs, isFetchingMore, hasMoreDb]);
+  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText, jobs, hasMoreDb]);
 
-  // Auto pre-fetch when user is on the last available page
+  // Auto pre-fetch: as soon as page 1 loads, start fetching page 2 data silently
+  // When user navigates to page N, immediately start fetching page N+1
   useEffect(() => {
     if (!hasSearched || loading || jobs.length === 0) return;
-    const remainingAfterCurrent = jobs.length - currentPage * JOBS_PER_PAGE;
-    if (remainingAfterCurrent < JOBS_PER_PAGE && !isFetchingMore && !nextPageFetched) {
+    const totalLoaded = jobs.length;
+    const jobsNeededForNextPage = (currentPage + 1) * JOBS_PER_PAGE;
+    // If we don't have enough jobs for the NEXT page, prefetch now
+    if (totalLoaded < jobsNeededForNextPage && !prefetchRef.current && !nextPageFetched) {
       fetchMoreJobs();
     }
-  }, [currentPage, jobs.length, hasSearched, loading, isFetchingMore, nextPageFetched]);
+  }, [currentPage, jobs.length, hasSearched, loading, nextPageFetched, fetchMoreJobs]);
 
   const goToPage = (page: number) => {
     if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
     setSelectedJob(null);
     // Reset pre-fetch flag when navigating to allow fetching for new pages
-    if (page >= totalPages) setNextPageFetched(false);
+    setNextPageFetched(false);
   };
 
   const handleResumeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -797,11 +803,7 @@ export default function JobSearchPage() {
                   {fromCache && (
                     <span className="ml-1.5 text-green-600 dark:text-green-400">⚡ Cached</span>
                   )}
-                  {isFetchingMore && (
-                    <span className="ml-1.5 text-blue-600 dark:text-blue-400 inline-flex items-center gap-1">
-                      <Loader2 className="w-2.5 h-2.5 animate-spin" /> Loading more…
-                    </span>
-                  )}
+                  {/* Prefetch is silent — no loading indicator */}
                 </p>
                 {fromCache && (
                   <Button
@@ -941,13 +943,10 @@ export default function JobSearchPage() {
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs gap-1 px-2"
-                    disabled={currentPage >= totalPages && !isFetchingMore}
+                    disabled={currentPage >= totalPages}
                     onClick={() => goToPage(currentPage + 1)}
                   >
                     Next <ChevronRight className="w-3.5 h-3.5" />
-                    {isFetchingMore && currentPage >= totalPages && (
-                      <Loader2 className="w-3 h-3 animate-spin ml-0.5" />
-                    )}
                   </Button>
                 </div>
               )}
