@@ -1427,8 +1427,9 @@ function AuditLogTab() {
 
 export default function AdminPortal() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { toast } = useToast();
+  const hasAccess = isOwnerEmail(user?.email) || isAdmin;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1481,7 +1482,7 @@ export default function AdminPortal() {
   const fetchPortal = useCallback(
     async (isRefresh = false) => {
       if (!user) return;
-      if (!isOwnerEmail(user.email)) return;
+      if (!hasAccess) return;
 
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
@@ -1522,7 +1523,7 @@ export default function AdminPortal() {
 
   useEffect(() => {
     if (!user) return;
-    if (!isOwnerEmail(user.email)) return;
+    if (!hasAccess) return;
     void fetchPortal();
   }, [fetchPortal, user]);
 
@@ -1625,7 +1626,7 @@ export default function AdminPortal() {
 
   if (!user) return null;
 
-  if (!isOwnerEmail(user.email)) return <Navigate to="/home" replace />;
+  if (!hasAccess) return <Navigate to="/home" replace />;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
