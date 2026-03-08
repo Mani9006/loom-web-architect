@@ -56,6 +56,9 @@ const BRAND = {
   logo: "https://resumepreps.com/lovable-uploads/bb2d8416-e498-4920-8c1e-e0cca5eaa52d.png",
   supportEmail: "support@resumepreps.com",
   siteUrl: "https://resumepreps.com",
+  // Sender addresses
+  noReplyFrom: "ResumePreps <donotreply@resumepreps.com>",
+  supportFrom: "ResumePreps Support <support@resumepreps.com>",
 };
 
 function baseLayout(title: string, content: string): string {
@@ -332,7 +335,7 @@ async function sendEmail(to: string, subject: string, html: string, from?: strin
     return { success: false, error: "Email service not configured" };
   }
 
-  const fromAddress = from || `${BRAND.name} <noreply@${Deno.env.get("RESEND_DOMAIN") || "resumepreps.com"}>`;
+  const fromAddress = from || BRAND.noReplyFrom;
 
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -419,7 +422,8 @@ async function handleAuthHook(payload: any): Promise<Response> {
       emailContent = verifyEmail(token, confirmUrl, userEmail);
   }
 
-  const result = await sendEmail(userEmail, emailContent.subject, emailContent.html);
+  // Auth emails always come from donotreply@
+  const result = await sendEmail(userEmail, emailContent.subject, emailContent.html, BRAND.noReplyFrom);
 
   if (!result.success) {
     return new Response(JSON.stringify({ error: result.error }), {
@@ -447,6 +451,9 @@ async function handleDirectEmail(body: any): Promise<Response> {
   }
 
   let emailContent: { subject: string; html: string };
+  // Use support@ for support-related emails, donotreply@ for everything else
+  const supportTypes = ["account-change", "subscription", "billing-receipt"];
+  const fromAddress = supportTypes.includes(type) ? BRAND.supportFrom : BRAND.noReplyFrom;
 
   switch (type) {
     case "welcome":
@@ -494,7 +501,7 @@ async function handleDirectEmail(body: any): Promise<Response> {
       });
   }
 
-  const result = await sendEmail(to, emailContent.subject, emailContent.html);
+  const result = await sendEmail(to, emailContent.subject, emailContent.html, fromAddress);
 
   return new Response(JSON.stringify(result), {
     status: result.success ? 200 : 500,
