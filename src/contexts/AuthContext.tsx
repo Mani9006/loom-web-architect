@@ -41,29 +41,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Set up auth listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
+      async (event, newSession) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         if (event === "SIGNED_OUT") {
           setSession(null);
           setUser(null);
           setRoles([]);
+          setLoading(false);
+          return;
         }
         if (newSession?.user) {
-          void fetchRoles(newSession.user.id);
+          await fetchRoles(newSession.user.id);
         }
         setLoading(false);
       }
     );
 
     // Then check initial session
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
       if (!initializedRef.current) {
         initializedRef.current = true;
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
         if (initialSession?.user) {
-          void fetchRoles(initialSession.user.id);
+          await fetchRoles(initialSession.user.id);
         }
         setLoading(false);
       }
