@@ -380,8 +380,12 @@ async function handleAuthHook(payload: any): Promise<Response> {
 
   // Build confirmation URL from token hash
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  // For password recovery, always redirect to /reset-password regardless of what the client sent
+  const effectiveRedirect = (emailAction === "recovery" || emailAction === "reset")
+    ? BRAND.siteUrl + "/reset-password"
+    : (redirectTo || BRAND.siteUrl + "/home");
   const confirmUrl = tokenHash
-    ? `${supabaseUrl}/auth/v1/verify?token=${tokenHash}&type=${emailAction}&redirect_to=${encodeURIComponent(redirectTo || BRAND.siteUrl + "/home")}`
+    ? `${supabaseUrl}/auth/v1/verify?token=${tokenHash}&type=${emailAction}&redirect_to=${encodeURIComponent(effectiveRedirect)}`
     : redirectTo || BRAND.siteUrl;
 
   let emailContent: { subject: string; html: string };

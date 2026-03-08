@@ -11,6 +11,7 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import OwnerProtectedRoute from "@/components/OwnerProtectedRoute";
 import RouteAnalyticsTracker from "@/components/RouteAnalyticsTracker";
+import GlobalAuthRedirect from "@/components/GlobalAuthRedirect";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 
 // Eager-loaded routes (critical path)
@@ -60,6 +61,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <RouteAnalyticsTracker />
+            <GlobalAuthRedirect />
             <Suspense fallback={<SuspenseFallback />}>
               <Routes>
                 {/* Public routes */}
