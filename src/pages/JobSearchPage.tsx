@@ -15,7 +15,7 @@ import {
   Search, Briefcase, Building2,
   Clock, DollarSign, Loader2, Globe, Filter, ChevronDown, ChevronUp,
   FileText, MapPin, X, Ban, Bookmark, BookmarkCheck, ArrowLeft,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Sparkles, RefreshCw, ThumbsUp, ThumbsDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 // resolveJobUrl moved into JobApplyButton component
@@ -38,6 +38,13 @@ interface SearchJob {
   role_category?: string;
   experience_level?: string;
   industry?: string;
+}
+
+interface MatchedJob extends SearchJob {
+  match_score: number;
+  match_reasons: Record<string, number>;
+  match_id: string;
+  liked: boolean | null;
 }
 
 const QUICK_ROLES = [
@@ -65,6 +72,12 @@ export default function JobSearchPage() {
   const [resumeText, setResumeText] = usePersistedState("jobSearch.resumeText", "", "sessionStorage");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showResumeUpload, setShowResumeUpload] = useState(false);
+
+  // Tab mode
+  const [viewMode, setViewMode] = useState<"search" | "matched">("search");
+  const [matchedJobs, setMatchedJobs] = useState<MatchedJob[]>([]);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [matchRefreshing, setMatchRefreshing] = useState(false);
 
   // Role search autocomplete
   const [showRoleSuggestions, setShowRoleSuggestions] = useState(false);
@@ -494,6 +507,118 @@ export default function JobSearchPage() {
     setLocation("");
   };
 
+  // Load matched jobs from DB
+  const loadMatchedJobs = useCallback(async () => {
+    if (!user) return;
+    setMatchLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("job_matches")
+        .select(`
+          id,
+          match_score,
+          match_reasons,
+          liked,
+          created_at,
+          jobs!inner (
+            id, title, company, location, description, apply_url,
+            salary, job_type, remote, date_posted, source,
+            role_category, experience_level, industry
+          )
+        `)
+        .eq("user_id", user.id)
+        .order("match_score", { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      if (data) {
+        const mapped: MatchedJob[] = data.map((m: any) => ({
+          id: m.jobs.id,
+          title: m.jobs.title,
+          company: m.jobs.company || "Unknown",
+          location: m.jobs.location || "Remote",
+          description: m.jobs.description || "",
+          apply_url: m.jobs.apply_url || "",
+          salary: m.jobs.salary,
+          job_type: m.jobs.job_type,
+          remote: m.jobs.remote || false,
+          date_posted: m.jobs.date_posted || "",
+          source: m.jobs.source || "matched",
+          role_category: m.jobs.role_category,
+          experience_level: m.jobs.experience_level,
+          industry: m.jobs.industry,
+          match_score: m.match_score,
+          match_reasons: m.match_reasons || {},
+          match_id: m.id,
+          liked: m.liked,
+        }));
+        setMatchedJobs(mapped);
+      }
+    } catch (err) {
+      console.error("Load matched jobs failed:", err);
+      toast({ title: "Failed to load matches", variant: "destructive" });
+    } finally {
+      setMatchLoading(false);
+    }
+  }, [user, toast]);
+
+  // Refresh matches by calling edge function
+  const refreshMatches = useCallback(async () => {
+    if (!user) return;
+    setMatchRefreshing(true);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-jobs`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token || anonKey}`,
+          },
+          body: JSON.stringify({ user_id: user.id }),
+        }
+      );
+
+      if (response.ok) {
+        toast({ title: "Matches refreshed!", description: "Loading updated matches..." });
+        await loadMatchedJobs();
+      } else {
+        const err = await response.json().catch(() => ({}));
+        toast({ title: "Refresh failed", description: err.error || "Try again later", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Refresh failed", variant: "destructive" });
+    } finally {
+      setMatchRefreshing(false);
+    }
+  }, [user, loadMatchedJobs, toast]);
+
+  // Like/dislike a match
+  const toggleMatchFeedback = useCallback(async (matchId: string, liked: boolean | null) => {
+    try {
+      await supabase
+        .from("job_matches")
+        .update({ liked })
+        .eq("id", matchId);
+      setMatchedJobs((prev) =>
+        prev.map((j) => (j.match_id === matchId ? { ...j, liked } : j))
+      );
+    } catch {
+      toast({ title: "Failed to update feedback", variant: "destructive" });
+    }
+  }, [toast]);
+
+  // Auto-load matches when switching to matched tab
+  useEffect(() => {
+    if (viewMode === "matched" && matchedJobs.length === 0 && !matchLoading) {
+      loadMatchedJobs();
+    }
+  }, [viewMode, matchedJobs.length, matchLoading, loadMatchedJobs]);
+
   // Whether we're in split view (results exist)
   const showSplitView = !loading && jobs.length > 0;
 
@@ -502,15 +627,43 @@ export default function JobSearchPage() {
       {/* Search Header - always visible */}
       <div className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-[1440px] mx-auto p-3 sm:p-4 space-y-3">
-          {/* Title row */}
-          <div className="flex items-center gap-2">
-            <Search className="w-5 h-5 text-primary" />
-            <h1 className="text-lg font-bold">Job Search</h1>
-            <span className="text-xs text-muted-foreground">— AI-powered across the web</span>
+          {/* Tab row */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setViewMode("search")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                viewMode === "search"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              <Search className="w-4 h-4" />
+              Search
+            </button>
+            <button
+              onClick={() => setViewMode("matched")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                viewMode === "matched"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              <Sparkles className="w-4 h-4" />
+              Matched For You
+              {matchedJobs.length > 0 && (
+                <span className="ml-1 bg-primary-foreground/20 text-[10px] rounded-full px-1.5 py-0.5">
+                  {matchedJobs.length}
+                </span>
+              )}
+            </button>
           </div>
 
-          {/* Search row */}
-          <div className="flex flex-col sm:flex-row gap-2">
+          {viewMode === "search" && (
+            <>
+              {/* Search row */}
+              <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
               <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
               <Input
@@ -710,16 +863,36 @@ export default function JobSearchPage() {
             </div>
           )}
 
-          {/* Resume upload */}
-          {showResumeUpload && (
-            <div className="pt-2 border-t space-y-2">
-              <Label className="text-xs">Upload resume for better relevance (optional)</Label>
-              <Input type="file" accept=".txt,.pdf,.doc,.docx" onChange={handleResumeFile} className="h-8 text-xs" />
-              {resumeText && (
-                <p className="text-xs text-green-600 flex items-center gap-1">
-                  <FileText className="w-3 h-3" /> Resume loaded ({resumeText.length} chars)
-                </p>
+              {/* Resume upload */}
+              {showResumeUpload && (
+                <div className="pt-2 border-t space-y-2">
+                  <Label className="text-xs">Upload resume for better relevance (optional)</Label>
+                  <Input type="file" accept=".txt,.pdf,.doc,.docx" onChange={handleResumeFile} className="h-8 text-xs" />
+                  {resumeText && (
+                    <p className="text-xs text-green-600 flex items-center gap-1">
+                      <FileText className="w-3 h-3" /> Resume loaded ({resumeText.length} chars)
+                    </p>
+                  )}
+                </div>
               )}
+            </>
+          )}
+
+          {viewMode === "matched" && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Jobs matched to your profile preferences
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-7 text-xs"
+                onClick={refreshMatches}
+                disabled={matchRefreshing}
+              >
+                {matchRefreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                Refresh Matches
+              </Button>
             </div>
           )}
         </div>
@@ -728,7 +901,7 @@ export default function JobSearchPage() {
       {/* Main content area */}
       <div className="flex-1 min-h-0 overflow-hidden">
         {/* Loading state */}
-        {loading && (
+        {viewMode === "search" && loading && (
           <div className="max-w-2xl mx-auto p-6">
             <Card>
               <CardContent className="p-6 space-y-4">
@@ -751,7 +924,7 @@ export default function JobSearchPage() {
         )}
 
         {/* Empty state */}
-        {!loading && hasSearched && jobs.length === 0 && (
+        {viewMode === "search" && !loading && hasSearched && jobs.length === 0 && (
           <div className="text-center py-20">
             <Search className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
             <h3 className="text-lg font-medium">No jobs found</h3>
@@ -760,7 +933,7 @@ export default function JobSearchPage() {
         )}
 
         {/* Initial state — quick roles */}
-        {!loading && !hasSearched && (
+        {viewMode === "search" && !loading && !hasSearched && (
           <div className="max-w-3xl mx-auto p-6">
             <div className="text-center py-12">
               <Globe className="w-16 h-16 mx-auto text-primary/20 mb-4" />
@@ -789,7 +962,7 @@ export default function JobSearchPage() {
         )}
 
         {/* ===== LINKEDIN-STYLE SPLIT VIEW ===== */}
-        {showSplitView && (
+        {viewMode === "search" && showSplitView && (
           <div className="flex h-full overflow-hidden">
             {/* LEFT PANE: Job list */}
             <div className={cn(
@@ -1073,6 +1246,240 @@ export default function JobSearchPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Matched jobs view */}
+        {viewMode === "matched" && (
+          <>
+            {matchLoading && (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            )}
+
+            {!matchLoading && matchedJobs.length === 0 && (
+              <div className="text-center py-20">
+                <Sparkles className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
+                <h3 className="text-lg font-medium">No matches yet</h3>
+                <p className="text-muted-foreground mt-1 max-w-md mx-auto">
+                  Complete your profile setup to get AI-powered job matches based on your skills, experience, and preferences.
+                </p>
+                <Button className="mt-4 gap-2" onClick={refreshMatches} disabled={matchRefreshing}>
+                  {matchRefreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  Generate Matches
+                </Button>
+              </div>
+            )}
+
+            {!matchLoading && matchedJobs.length > 0 && (
+              <div className="flex h-full overflow-hidden">
+                {/* LEFT PANE: Matched job list */}
+                <div className={cn(
+                  "border-r bg-background flex flex-col",
+                  selectedJob ? "hidden md:flex md:w-[420px] lg:w-[460px]" : "w-full md:w-[420px] lg:w-[460px]"
+                )}>
+                  <div className="px-4 py-2.5 border-b flex items-center justify-between bg-muted/30">
+                    <p className="text-xs text-muted-foreground">
+                      {matchedJobs.length} matched jobs · Sorted by match score
+                    </p>
+                  </div>
+                  <ScrollArea className="flex-1">
+                    <div className="divide-y">
+                      {matchedJobs.map((job) => {
+                        const selected = selectedJob?.id === job.id;
+                        const saved = isJobSaved(job);
+                        const saving = savingJobs.has(job.id);
+                        return (
+                          <div
+                            key={job.match_id}
+                            onClick={() => setSelectedJob(job)}
+                            className={cn(
+                              "px-4 py-3.5 cursor-pointer transition-colors hover:bg-muted/60 group relative",
+                              selected && "bg-muted border-l-[3px] border-l-primary"
+                            )}
+                          >
+                            <div className="flex gap-3">
+                              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                                style={{
+                                  background: job.match_score >= 80 ? 'rgb(220 252 231)' : job.match_score >= 60 ? 'rgb(254 249 195)' : 'rgb(241 245 249)',
+                                }}
+                              >
+                                <span className={cn(
+                                  "text-xs font-bold",
+                                  job.match_score >= 80 ? "text-green-700" : job.match_score >= 60 ? "text-yellow-700" : "text-slate-600"
+                                )}>
+                                  {job.match_score}%
+                                </span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-1">
+                                  <h3 className="font-semibold text-sm leading-tight line-clamp-1">{job.title}</h3>
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); toggleMatchFeedback(job.match_id, job.liked === true ? null : true); }}
+                                      className={cn("p-0.5 rounded transition-all", job.liked === true ? "text-green-600" : "text-muted-foreground/30 opacity-0 group-hover:opacity-100")}
+                                    >
+                                      <ThumbsUp className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); toggleMatchFeedback(job.match_id, job.liked === false ? null : false); }}
+                                      className={cn("p-0.5 rounded transition-all", job.liked === false ? "text-red-500" : "text-muted-foreground/30 opacity-0 group-hover:opacity-100")}
+                                    >
+                                      <ThumbsDown className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">{job.company}</p>
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                    <MapPin className="w-2.5 h-2.5" /> {job.location}
+                                  </span>
+                                  {job.remote && (
+                                    <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Remote</Badge>
+                                  )}
+                                  {job.salary && (
+                                    <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                      <DollarSign className="w-2.5 h-2.5" /> {job.salary}
+                                    </span>
+                                  )}
+                                </div>
+                                {/* Match reason tags */}
+                                {job.match_reasons && Object.keys(job.match_reasons).length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1.5">
+                                    {Object.entries(job.match_reasons)
+                                      .sort(([,a], [,b]) => (b as number) - (a as number))
+                                      .slice(0, 3)
+                                      .map(([reason, score]) => (
+                                        <Badge key={reason} variant="outline" className="text-[10px] h-4 px-1.5 gap-0.5">
+                                          {reason}: {score}pts
+                                        </Badge>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </div>
+
+                {/* RIGHT PANE: reuse the same detail panel as search */}
+                {selectedJob ? (
+                  <div className={cn("flex-1 flex flex-col bg-background overflow-hidden", "w-full md:w-auto")}>
+                    <div className="md:hidden px-4 py-2 border-b">
+                      <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setSelectedJob(null)}>
+                        <ArrowLeft className="w-3.5 h-3.5" /> Back to matches
+                      </Button>
+                    </div>
+                    <ScrollArea className="flex-1">
+                      <div className="max-w-3xl p-6 space-y-5">
+                        {/* Match score banner */}
+                        {"match_score" in selectedJob && (
+                          <div className={cn(
+                            "rounded-lg p-3 flex items-center gap-3",
+                            (selectedJob as MatchedJob).match_score >= 80 ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900" :
+                            (selectedJob as MatchedJob).match_score >= 60 ? "bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-900" :
+                            "bg-slate-50 dark:bg-slate-950/30 border border-slate-200 dark:border-slate-900"
+                          )}>
+                            <div className={cn(
+                              "w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg",
+                              (selectedJob as MatchedJob).match_score >= 80 ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" :
+                              (selectedJob as MatchedJob).match_score >= 60 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" :
+                              "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                            )}>
+                              {(selectedJob as MatchedJob).match_score}%
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">Match Score</p>
+                              <p className="text-xs text-muted-foreground">Based on your profile, skills, and preferences</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Job header - same as search view */}
+                        <div className="space-y-3">
+                          <div className="flex gap-4">
+                            <div className="w-14 h-14 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                              <Building2 className="w-7 h-7 text-muted-foreground" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h2 className="text-xl font-bold leading-tight">{selectedJob.title}</h2>
+                              <p className="text-sm text-muted-foreground mt-0.5">{selectedJob.company}</p>
+                              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {selectedJob.location}</span>
+                                {selectedJob.date_posted && (
+                                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {selectedJob.date_posted}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedJob.role_category && selectedJob.role_category !== "Other" && (
+                              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs">{selectedJob.role_category}</Badge>
+                            )}
+                            {selectedJob.remote && (
+                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs gap-1">
+                                <Globe className="w-3 h-3" /> Remote
+                              </Badge>
+                            )}
+                            {selectedJob.salary && (
+                              <Badge variant="secondary" className="text-xs gap-1">
+                                <DollarSign className="w-3 h-3" /> {selectedJob.salary}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <JobApplyButton
+                              job={{
+                                id: selectedJob.id,
+                                title: selectedJob.title,
+                                company: selectedJob.company,
+                                location: selectedJob.location,
+                                apply_url: selectedJob.apply_url,
+                                source: selectedJob.source,
+                              }}
+                              variant="compact"
+                            />
+                            <Button
+                              variant={isJobSaved(selectedJob) ? "secondary" : "outline"}
+                              size="sm"
+                              className="gap-1.5 h-8"
+                              onClick={() => toggleSaveJob(selectedJob)}
+                              disabled={savingJobs.has(selectedJob.id)}
+                            >
+                              {isJobSaved(selectedJob) ? <BookmarkCheck className="w-4 h-4 fill-current" /> : <Bookmark className="w-4 h-4" />}
+                              {isJobSaved(selectedJob) ? "Saved" : "Save"}
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="border-t pt-5">
+                          <h3 className="font-semibold text-base mb-3">About the job</h3>
+                          {selectedJob.description ? (
+                            <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">{selectedJob.description}</div>
+                          ) : (
+                            <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
+                              <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+                              <p>No description available for this listing.</p>
+                              <p className="text-xs mt-1">Click "Apply" to see full details on the job board.</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </ScrollArea>
+                  </div>
+                ) : (
+                  <div className="hidden md:flex flex-1 items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm">Select a matched job to view details</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

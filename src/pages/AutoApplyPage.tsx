@@ -19,8 +19,10 @@ import {
   Zap, Settings, BarChart3, Loader2, Save, Upload,
   Briefcase, MapPin, DollarSign, Shield, ClipboardList, TrendingUp,
   CheckCircle2, Clock, XCircle, FileText, User, GraduationCap,
-  Wrench, AlertCircle, Building2, Sparkles, Send, ChevronRight,
+  Wrench, AlertCircle, Building2, Sparkles, Send, ChevronRight, Crown,
 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { useSubscription } from "@/components/SubscriptionGate";
 import { cn } from "@/lib/utils";
 import LocationAutocomplete from "@/components/LocationAutocomplete";
 import { JOB_ROLES, COMMON_SKILLS } from "@/data/job-roles";
@@ -70,6 +72,7 @@ interface MatchedJob {
 export default function AutoApplyPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { isPremium, loading: subLoading } = useSubscription();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -480,6 +483,59 @@ export default function AutoApplyPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Premium gate for Auto Apply
+  if (!subLoading && !isPremium) {
+    return (
+      <div className="bg-muted/30 min-h-full">
+        <div className="max-w-5xl mx-auto p-4 sm:p-6">
+          <Card className="border-2 border-amber-200 bg-amber-50">
+            <CardHeader className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Crown className="w-6 h-6 text-amber-600" />
+                <CardTitle className="text-2xl text-amber-900">Premium Feature</CardTitle>
+              </div>
+              <CardDescription className="text-amber-800 text-base">
+                Auto-Apply automatically submits applications to matched jobs on your behalf.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="bg-white rounded-lg p-4 space-y-3">
+                <p className="font-semibold text-sm text-gray-700">What you get:</p>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    AI-optimized applications
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    Apply to 50+ jobs per day
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    Smart targeting based on your profile
+                  </li>
+                </ul>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <Link to="/pricing" className="flex-1">
+                  <Button className="w-full bg-amber-600 hover:bg-amber-700 text-white" size="lg">
+                    <Crown className="w-4 h-4 mr-2" />
+                    Upgrade to Premium — $120/mo
+                  </Button>
+                </Link>
+              </div>
+
+              <p className="text-sm text-gray-600 text-center">
+                Currently on Free plan · Manual apply is always available
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }

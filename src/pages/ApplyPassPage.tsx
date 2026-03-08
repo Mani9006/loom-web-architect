@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, Search } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search, Crown, CheckCircle2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { useSubscription } from "@/components/SubscriptionGate";
 import ApplyPassWorkspace from "@/components/chat/ApplyPassWorkspace";
 import {
   APPLYPASS_LATEST_SEARCH_KEY,
@@ -56,6 +58,7 @@ function readSessionState(): ApplyPassSearchState | null {
 export default function ApplyPassPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isPremium, loading: subLoading } = useSubscription();
   const [searchState, setSearchState] = useState<ApplyPassSearchState | null>(() => {
     return normalizeSearchState(location.state) || readSessionState();
   });
@@ -77,6 +80,59 @@ export default function ApplyPassPage() {
     if (Number.isNaN(parsed.getTime())) return "";
     return parsed.toLocaleString();
   }, [searchState?.searchedAt]);
+
+  // Premium gate for ApplyPass
+  if (!subLoading && !isPremium) {
+    return (
+      <div className="h-[calc(100vh-68px)] overflow-y-auto">
+        <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-4">
+          <Card className="border-2 border-amber-200 bg-amber-50">
+            <CardHeader className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Crown className="w-6 h-6 text-amber-600" />
+                <CardTitle className="text-2xl text-amber-900">Premium Feature</CardTitle>
+              </div>
+              <CardDescription className="text-amber-800 text-base">
+                Auto-Apply automatically submits applications to matched jobs on your behalf.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="bg-white rounded-lg p-4 space-y-3">
+                <p className="font-semibold text-sm text-gray-700">What you get:</p>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    AI-optimized applications
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    Apply to 50+ jobs per day
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    Smart targeting based on your profile
+                  </li>
+                </ul>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <Link to="/pricing" className="flex-1">
+                  <Button className="w-full bg-amber-600 hover:bg-amber-700 text-white" size="lg">
+                    <Crown className="w-4 h-4 mr-2" />
+                    Upgrade to Premium — $120/mo
+                  </Button>
+                </Link>
+              </div>
+
+              <p className="text-sm text-gray-600 text-center">
+                Currently on Free plan · Manual apply is always available
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[calc(100vh-68px)] overflow-y-auto">
