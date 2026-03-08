@@ -1,6 +1,6 @@
 // Perplexity-powered Job Search with DB-first approach
 // Strategy: query cached_jobs DB first → return matching jobs → only call Perplexity when DB exhausted
-// v18: DB-first search — no AI tokens wasted filtering, direct SQL queries on cached_jobs
+// v19: Fix timezone issue — "today" now means last 24 hours rolling window instead of UTC midnight
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -210,12 +210,16 @@ function validateJob(job: any): { valid: boolean; reason?: string } {
 }
 
 // ── Date filter helper: convert date_posted filter to a cutoff timestamp ──
+// Uses America/Chicago (US Central) as the reference timezone so "today"
+// means today in the user's local time, not UTC.
 function getDateCutoff(dateFilter: string): string | null {
   const now = new Date();
   switch (dateFilter) {
-    case "today":
-      // Start of today (midnight UTC)
-      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    case "today": {
+      // "Today" = last 24 hours rolling window so we never miss recent jobs
+      // due to timezone edge cases (UTC vs US timezones).
+      return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    }
     case "3days":
       return new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
     case "week":
