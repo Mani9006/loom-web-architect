@@ -1,4 +1,46 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// Cache vault secret in memory so we only query once per cold start
+let _cachedResendKey: string | null = null;
+
+async function getResendApiKey(): Promise<string | null> {
+  // 1. Check Deno env first (set via supabase secrets)
+  const envKey = Deno.env.get("RESEND_API_KEY");
+  if (envKey) return envKey;
+
+  // 2. Fallback: read from vault.decrypted_secrets
+  if (_cachedResendKey) return _cachedResendKey;
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!supabaseUrl || !serviceKey) return null;
+
+    const sb = createClient(supabaseUrl, serviceKey);
+    const { data } = await sb.rpc("read_secret", { secret_name: "RESEND_API_KEY" });
+    // read_secret RPC might not exist, so also try direct query
+    if (data) {
+      _cachedResendKey = typeof data === "string" ? data : null;
+      return _cachedResendKey;
+    }
+
+    // Direct vault query fallback
+    const { data: vaultData } = await sb
+      .from("vault.decrypted_secrets")
+      .select("decrypted_secret")
+      .eq("name", "RESEND_API_KEY")
+      .single();
+    if (vaultData?.decrypted_secret) {
+      _cachedResendKey = vaultData.decrypted_secret;
+      return _cachedResendKey;
+    }
+  } catch (err) {
+    console.warn("Vault lookup failed:", err);
+  }
+
+  return null;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -284,9 +326,9 @@ function marketingEmail(subject: string, heading: string, body: string, ctaText?
 // ── Send via Resend ────────────────────────────────────────────────────
 
 async function sendEmail(to: string, subject: string, html: string, from?: string): Promise<{ success: boolean; error?: string; id?: string }> {
-  const apiKey = Deno.env.get("RESEND_API_KEY");
+  const apiKey = await getResendApiKey();
   if (!apiKey) {
-    console.error("RESEND_API_KEY not set");
+    console.error("RESEND_API_KEY not found in env or vault");
     return { success: false, error: "Email service not configured" };
   }
 
