@@ -12,14 +12,15 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Search, Briefcase, ExternalLink, Building2,
+  Search, Briefcase, Building2,
   Clock, DollarSign, Loader2, Globe, Filter, ChevronDown, ChevronUp,
   FileText, MapPin, X, Ban, Bookmark, BookmarkCheck, ArrowLeft,
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { resolveJobUrl } from "@/lib/job-url";
+// resolveJobUrl moved into JobApplyButton component
 import LocationAutocomplete from "@/components/LocationAutocomplete";
+import { JobApplyButton } from "@/components/JobApplyButton";
 import { JOB_ROLES } from "@/data/job-roles";
 
 interface SearchJob {
@@ -1013,20 +1014,22 @@ export default function JobSearchPage() {
                       </div>
 
                       {/* Action buttons */}
-                      <div className="flex gap-2">
-                        {(() => {
-                          const resolved = resolveJobUrl(selectedJob.apply_url, selectedJob.title, selectedJob.company, selectedJob.location);
-                          return (
-                            <Button className="gap-1.5" asChild>
-                              <a href={resolved.url} target="_blank" rel="noopener noreferrer">
-                                {resolved.label} <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            </Button>
-                          );
-                        })()}
+                      <div className="flex items-center gap-2">
+                        <JobApplyButton
+                          job={{
+                            id: selectedJob.id,
+                            title: selectedJob.title,
+                            company: selectedJob.company,
+                            location: selectedJob.location,
+                            apply_url: selectedJob.apply_url,
+                            source: selectedJob.source,
+                          }}
+                          variant="compact"
+                        />
                         <Button
                           variant={isJobSaved(selectedJob) ? "secondary" : "outline"}
-                          className="gap-1.5"
+                          size="sm"
+                          className="gap-1.5 h-8"
                           onClick={() => toggleSaveJob(selectedJob)}
                           disabled={savingJobs.has(selectedJob.id)}
                         >

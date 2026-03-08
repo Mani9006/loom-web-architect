@@ -13,13 +13,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import {
   Plus, Search, Briefcase, Building2, Clock, Target, Trash2, Loader2,
-  Bookmark, ExternalLink, MapPin, DollarSign, Globe, X, FileText,
+  Bookmark, MapPin, DollarSign, Globe, X, FileText,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
-import { resolveJobUrl } from "@/lib/job-url";
 import { useToast } from "@/hooks/use-toast";
 import { trackProductEvent } from "@/lib/product-analytics";
+import { JobApplyButton } from "@/components/JobApplyButton";
 
 interface Job {
   id: string;
@@ -113,16 +113,15 @@ function JobDetailPanel({
             </div>
 
             {/* Apply button */}
-            {(() => {
-              const resolved = resolveJobUrl(job.apply_url, job.title, job.company, job.location);
-              return (
-                <Button className="gap-1.5 w-full" asChild>
-                  <a href={resolved.url} target="_blank" rel="noopener noreferrer">
-                    {resolved.isFallback ? resolved.label : "Apply Now"} <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </Button>
-              );
-            })()}
+            <JobApplyButton
+              job={{
+                title: job.title,
+                company: job.company,
+                location: job.location,
+                apply_url: job.apply_url,
+                source: job.source,
+              }}
+            />
 
             {/* Description */}
             <div className="border-t pt-4">
@@ -348,16 +347,18 @@ export default function JobTracker() {
                         <p className="text-sm text-muted-foreground">{job.company}</p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {(() => {
-                          const resolved = resolveJobUrl(job.apply_url, job.job_title, job.company, job.location);
-                          return (
-                            <Button size="sm" className="gap-1.5 h-8" asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                              <a href={resolved.url} target="_blank" rel="noopener noreferrer">
-                                {resolved.label} <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            </Button>
-                          );
-                        })()}
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <JobApplyButton
+                            job={{
+                              title: job.job_title,
+                              company: job.company,
+                              location: job.location,
+                              apply_url: job.apply_url,
+                              source: job.source,
+                            }}
+                            variant="compact"
+                          />
+                        </div>
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteSavedJobDetail(job); }}
                           className="p-1.5 rounded-md hover:bg-destructive/10 transition-all opacity-0 group-hover:opacity-100"
@@ -460,6 +461,19 @@ export default function JobTracker() {
             </DialogContent>
           </Dialog>
         </div>
+      </div>
+
+      {/* Stats header */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        {COLUMNS.map((col) => {
+          const count = jobs.filter((j) => j.status === col.key).length;
+          return (
+            <div key={col.key} className={cn("rounded-lg border px-3 py-2 border-t-2", col.color)}>
+              <p className="text-xs text-muted-foreground">{col.key}</p>
+              <p className="text-lg font-bold">{count}</p>
+            </div>
+          );
+        })}
       </div>
 
       <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-4 min-h-0 overflow-x-auto">
