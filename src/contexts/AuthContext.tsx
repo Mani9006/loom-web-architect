@@ -26,48 +26,57 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
+  const [rolesReady, setRolesReady] = useState(false);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const initializedRef = useRef(false);
 
   const fetchRoles = useCallback(async (userId: string) => {
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId);
-    setRoles(data ? data.map((r) => r.role) : []);
+    try {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId);
+      setRoles(data ? data.map((r) => r.role) : []);
+    } catch {
+      setRoles([]);
+    } finally {
+      setRolesReady(true);
+    }
   }, []);
 
   useEffect(() => {
     // Set up auth listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
+      (event, newSession) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         if (event === "SIGNED_OUT") {
           setSession(null);
           setUser(null);
           setRoles([]);
-          setLoading(false);
-          return;
+          setRolesReady(true);
         }
+        setAuthReady(true);
         if (newSession?.user) {
-          await fetchRoles(newSession.user.id);
+          setRolesReady(false);
+          void fetchRoles(newSession.user.id);
         }
-        setLoading(false);
       }
     );
 
     // Then check initial session
-    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       if (!initializedRef.current) {
         initializedRef.current = true;
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
+        setAuthReady(true);
         if (initialSession?.user) {
-          await fetchRoles(initialSession.user.id);
+          void fetchRoles(initialSession.user.id);
+        } else {
+          setRolesReady(true);
         }
-        setLoading(false);
       }
     });
 
@@ -79,6 +88,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isAdmin = roles.includes("admin");
+  // loading stays true until BOTH auth state and roles are resolved
+  const loading = !authReady || !rolesReady;
 
   return (
     <AuthContext.Provider value={{ user, session, loading, roles, isAdmin, signOut }}>
