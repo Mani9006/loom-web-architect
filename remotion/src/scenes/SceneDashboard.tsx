@@ -32,13 +32,14 @@ export const SceneDashboard: React.FC = () => {
     extrapolateRight: "clamp",
   });
 
-  // Camera: subtle push-in starting at frame 50
-  const camScale = interpolate(frame, [0, 50, 100], [1, 1, 1.18], {
+  // Camera: subtle push-in toward the sidebar item (which sits on left side of canvas).
+  // Push the camera LEFT (negative X) so the left side of the frame moves into center.
+  const camScale = interpolate(frame, [0, 50, 110], [1, 1, 1.25], {
     extrapolateRight: "clamp",
     easing: easeInOut,
   });
-  const camX = interpolate(frame, [0, 50, 100], [0, 0, 220], { extrapolateRight: "clamp", easing: easeInOut });
-  const camY = interpolate(frame, [0, 50, 100], [0, 0, 60], { extrapolateRight: "clamp", easing: easeInOut });
+  const camX = interpolate(frame, [0, 50, 110], [0, 0, -380], { extrapolateRight: "clamp", easing: easeInOut });
+  const camY = interpolate(frame, [0, 50, 110], [0, 0, -60], { extrapolateRight: "clamp", easing: easeInOut });
 
   // Caption
   const captionEnter = spring({ frame: frame - 8, fps, config: { damping: 22 } });
