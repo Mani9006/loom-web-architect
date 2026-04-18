@@ -5,8 +5,8 @@ import {
   Home, FileText, Search, Target, Mic, Mail, Wand2,
   MessageCircle, Folder, Zap, Columns3, Sparkles, TrendingUp, Map,
   ShieldCheck, Crown, ChevronDown, ChevronRight, LogOut, Settings,
-  User as UserIcon, Menu, X, PanelLeftClose, PanelLeft, Send,
-  Bell, HelpCircle, MoreHorizontal, UserPlus,
+  User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
+  Bell, HelpCircle, MoreHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -19,6 +19,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { isOwnerEmail } from "@/lib/admin";
+import AnuChat from "@/components/AnuChat";
 
 interface NavItem {
   label: string;
@@ -62,6 +63,7 @@ export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
+  const [anuOpen, setAnuOpen] = useState(false);
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
   useEffect(() => { if (isMobile) setSidebarOpen(true); }, [isMobile]);
@@ -146,11 +148,44 @@ export default function AppLayout() {
 
       {showText && (
         <div className="px-3 pt-2 pb-1">
-          <button className="w-full flex items-center gap-2.5 h-10 px-2.5 rounded-lg bg-white border border-black/[0.06] hover:border-black/[0.1] transition-colors">
-            <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 shrink-0" />
-            <span className="flex-1 text-left text-[13px] font-medium text-foreground truncate">My Workspace</span>
-            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={2} />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="w-full flex items-center gap-2.5 h-10 px-2.5 rounded-lg bg-white border border-black/[0.06] hover:border-black/[0.1] transition-colors">
+                <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 shrink-0" />
+                <span className="flex-1 text-left text-[13px] font-medium text-foreground truncate">My Workspace</span>
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={2} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-60 rounded-xl p-1.5">
+              <div className="px-3 py-2.5">
+                <p className="text-[12px] text-muted-foreground">Signed in as</p>
+                <p className="text-[13px] font-semibold text-foreground leading-tight mt-0.5 truncate">{displayName}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{user.email}</p>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
+                <UserIcon className="w-3.5 h-3.5" strokeWidth={1.75} /> Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/career-ops/preferences")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
+                <Settings className="w-3.5 h-3.5" strokeWidth={1.75} /> Preferences
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/pricing")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
+                <Zap className="w-3.5 h-3.5" strokeWidth={1.75} /> Billing
+              </DropdownMenuItem>
+              {hasAdminAccess && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/admin")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
+                    <Crown className="w-3.5 h-3.5" strokeWidth={1.75} /> Admin Portal
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer rounded-md gap-2 text-[12.5px] text-destructive focus:text-destructive">
+                <LogOut className="w-3.5 h-3.5" strokeWidth={1.75} /> Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
 
@@ -200,19 +235,23 @@ export default function AppLayout() {
         </div>
       </nav>
 
-      {showText && (
+      {/* Upgrade card — only for non-Pro, non-owner users */}
+      {showText && !hasAdminAccess && (
         <div className="px-3 pb-3">
-          <div className="rounded-xl bg-white border border-black/[0.05] p-3 shadow-[0_1px_2px_0_hsl(0_0%_0%/0.03)]">
+          <button
+            onClick={() => navigate("/pricing")}
+            className="w-full text-left rounded-xl bg-white border border-black/[0.05] p-3 shadow-[0_1px_2px_0_hsl(0_0%_0%/0.03)] hover:border-black/[0.1] transition-colors"
+          >
             <div className="flex items-start gap-2.5">
               <div className="w-7 h-7 rounded-md bg-foreground/[0.04] flex items-center justify-center shrink-0">
-                <Send className="w-3.5 h-3.5 text-foreground -rotate-12" strokeWidth={1.75} />
+                <Zap className="w-3.5 h-3.5 text-foreground" strokeWidth={1.75} />
               </div>
               <div className="min-w-0">
-                <p className="text-[12.5px] font-semibold text-foreground leading-tight">Invite team members</p>
-                <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">Bring your team in to collaborate.</p>
+                <p className="text-[12.5px] font-semibold text-foreground leading-tight">Upgrade to Pro</p>
+                <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">Unlimited résumés, matches, and Greenhouse auto-apply.</p>
               </div>
             </div>
-          </div>
+          </button>
         </div>
       )}
 
@@ -220,7 +259,7 @@ export default function AppLayout() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className={cn("flex items-center gap-2.5 h-8 text-[12.5px] text-muted-foreground hover:text-foreground transition-colors", !showText && "mx-auto")}>
-              <UserPlus className="w-4 h-4" strokeWidth={1.75} />
+              <Settings className="w-4 h-4" strokeWidth={1.75} />
               {showText && <span>Account</span>}
             </button>
           </DropdownMenuTrigger>
@@ -283,27 +322,52 @@ export default function AppLayout() {
 
           <div className="flex items-center gap-1.5">
             <a
-              href="https://github.com/Mani9006/loom-web-architect/issues/new"
-              target="_blank"
-              rel="noreferrer noopener"
+              href="/feedback"
+              onClick={(e) => handleLinkClick(e, "/feedback")}
               className="hidden sm:inline-flex items-center h-8 px-3 rounded-md text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors no-underline"
             >
               Feedback
             </a>
             <a
               href="/docs"
-              onClick={(e) => { e.preventDefault(); }}
+              onClick={(e) => handleLinkClick(e, "/docs")}
               className="hidden sm:inline-flex items-center h-8 px-3 rounded-md text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors no-underline"
             >
               Docs
             </a>
-            <button className="hidden sm:inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+            <button
+              onClick={() => setAnuOpen((v) => !v)}
+              aria-pressed={anuOpen}
+              className={cn(
+                "hidden sm:inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[12.5px] transition-colors",
+                anuOpen
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
+              )}
+            >
               <HelpCircle className="w-3.5 h-3.5" strokeWidth={1.75} />
               Ask
             </button>
-            <button className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-              <Bell className="w-[15px] h-[15px]" strokeWidth={1.75} />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors relative">
+                  <Bell className="w-[15px] h-[15px]" strokeWidth={1.75} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72 rounded-xl p-1.5">
+                <div className="px-3 py-2.5">
+                  <p className="text-[13px] font-semibold text-foreground">Notifications</p>
+                  <p className="text-[11.5px] text-muted-foreground mt-0.5">You're all caught up.</p>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate("/matches")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
+                  Check today's matches
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/job-tracker")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
+                  Open pipeline
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-foreground/[0.06] text-[11px] font-semibold text-foreground hover:bg-foreground/[0.1] transition-colors">
@@ -343,6 +407,9 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* ANU help chat — mounted once at layout root */}
+      <AnuChat open={anuOpen} onClose={() => setAnuOpen(false)} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { isOwnerEmail } from "@/lib/admin";
 import { useToast } from "@/hooks/use-toast";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Button } from "@/components/ui/button";
@@ -487,8 +488,12 @@ export default function AutoApplyPage() {
     );
   }
 
+  // Owner + admin bypass: always open for the account owner so we can test
+  // Auto-Apply end-to-end without a paid subscription.
+  const isOwnerOrAdmin = isOwnerEmail(user?.email) || (user as { isAdmin?: boolean } | null)?.isAdmin;
+
   // Premium gate for Auto Apply
-  if (!subLoading && !isPremium) {
+  if (!subLoading && !isPremium && !isOwnerOrAdmin) {
     return (
       <div className="bg-muted/30 min-h-full">
         <div className="max-w-5xl mx-auto p-4 sm:p-6">
