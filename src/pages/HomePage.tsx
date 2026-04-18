@@ -127,8 +127,8 @@ export default function HomePage() {
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
             {greeting}, {displayName || "Friend"}
           </p>
-          <h1 className="font-display text-[54px] sm:text-[68px] lg:text-[84px] leading-[0.98] -tracking-[0.03em] text-foreground font-semibold">
-            Today&rsquo;s composition.
+          <h1 className="font-display text-[54px] sm:text-[68px] lg:text-[92px] leading-[0.98] -tracking-[0.02em] text-foreground font-semibold">
+            Today&rsquo;s <em className="italic font-medium text-foreground/95">composition</em>.
           </h1>
         </motion.header>
 
@@ -150,14 +150,14 @@ export default function HomePage() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-start sm:items-end gap-6 sm:gap-10">
-              <div className="font-display text-[120px] sm:text-[144px] leading-none font-semibold tabular-nums -tracking-[0.04em] text-foreground">
+              <div className="font-display text-[128px] sm:text-[168px] leading-[0.85] font-medium tabular-nums -tracking-[0.04em] text-foreground">
                 {score}
               </div>
-              <div className="flex-1 pb-4">
-                <p className="text-[18px] sm:text-[20px] text-foreground leading-snug">
+              <div className="flex-1 pb-5">
+                <p className="font-display text-[22px] sm:text-[24px] text-foreground leading-snug italic font-normal">
                   Exceptional — ready to submit.
                 </p>
-                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground mt-2">
+                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground mt-3">
                   +7 vs cohort <span className="opacity-50">·</span> last edited 4 min ago
                 </p>
               </div>
@@ -167,7 +167,7 @@ export default function HomePage() {
               </svg>
             </div>
 
-            <div className="mt-12 grid grid-cols-4 gap-6 border-t border-foreground/10 pt-6">
+            <div className="mt-10 grid grid-cols-4 gap-6 border-t border-foreground/15 pt-6">
               {([
                 ["Keywords", subScores.keywords],
                 ["Format", subScores.format],
@@ -176,10 +176,10 @@ export default function HomePage() {
               ] as const).map(([label, val]) => (
                 <div key={label}>
                   <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{label}</p>
-                  <div className="font-display text-[44px] sm:text-[52px] leading-tight font-semibold tabular-nums -tracking-[0.03em] text-foreground">
+                  <div className="font-display text-[48px] sm:text-[60px] leading-none font-medium tabular-nums -tracking-[0.03em] text-foreground mt-2">
                     {val}
                   </div>
-                  <div className="h-px w-full bg-foreground/15 mt-2" />
+                  <div className="h-px w-full bg-foreground/25 mt-3" />
                 </div>
               ))}
             </div>
@@ -193,7 +193,7 @@ export default function HomePage() {
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-background/55">
               Pipeline <span className="opacity-60">·</span> Today
             </p>
-            <p className="mt-6 text-[22px] sm:text-[24px] leading-snug text-background/95 font-medium">
+            <p className="font-display italic mt-6 text-[22px] sm:text-[26px] leading-snug text-background/95 font-normal">
               {applied || 3} application{applied === 1 ? "" : "s"} drafted.<br />
               {interviewing || 2} interview{interviewing === 1 ? "" : "s"} scheduled.<br />
               {offers || 1} offer{offers === 1 ? "" : "s"} anticipated.
@@ -208,7 +208,7 @@ export default function HomePage() {
                 [offers || 3, "Onsite"],
               ] as const).map(([n, label]) => (
                 <div key={label}>
-                  <div className="font-display text-[44px] sm:text-[52px] leading-none font-semibold tabular-nums -tracking-[0.03em] text-background">{n}</div>
+                  <div className="font-display text-[52px] sm:text-[64px] leading-none font-medium tabular-nums -tracking-[0.03em] text-background">{n}</div>
                   <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-background/55 mt-3">{label}</p>
                 </div>
               ))}
@@ -227,12 +227,12 @@ export default function HomePage() {
               View all
             </button>
           </div>
-          <ul className="divide-y divide-foreground/10">
+          <ul className="divide-y divide-foreground/15">
             {activity.map((a) => (
-              <li key={a.num} className="grid grid-cols-[40px_1fr_auto_80px] items-center gap-4 py-4 text-[14px]">
+              <li key={a.num} className="grid grid-cols-[40px_1fr_auto_96px] items-center gap-4 py-5">
                 <span className="font-mono text-[11px] text-muted-foreground">{a.num}</span>
-                <span className="text-foreground truncate">{a.title}</span>
-                <span className="font-mono text-[11px] text-muted-foreground hidden sm:inline">{a.meta}</span>
+                <span className="font-display italic text-[17px] text-foreground truncate">{a.title}</span>
+                <span className="font-display italic text-[13px] text-muted-foreground hidden sm:inline">{a.meta}</span>
                 <span className="font-mono text-[11px] text-muted-foreground text-right">{a.when}</span>
               </li>
             ))}

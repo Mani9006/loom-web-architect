@@ -1,11 +1,9 @@
-/* Claude-style UI stack — Inter (Styrene-adjacent grotesque) handles
- * both display and body. Tight letter-spacing + heavier weights do the
- * heavy lifting on headlines. JetBrains Mono for numerics / kbd.
+/* Claude-style type stack — Source Serif 4 (Copernicus/Tiempos-adjacent)
+ * for display, Inter for UI body, JetBrains Mono for numerics + labels.
  */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500;1,8..60,600;1,8..60,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
-/* Legacy stacks kept for any screens still referencing them. */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -30,7 +28,7 @@
     --secondary-foreground: 30 12% 12%;
 
     --muted: 40 15% 88%;
-    --muted-foreground: 30 10% 42%;
+    --muted-foreground: 30 10% 34%;
 
     --accent: 12 82% 58%;
     --accent-foreground: 42 22% 96%;
@@ -76,8 +74,8 @@
     --chart-5: 12 45% 40%;
     --sidebar: 42 20% 90%;
     --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-serif: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-display: 'Source Serif 4', ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+    --font-serif: 'Source Serif 4', ui-serif, Georgia, Cambria, 'Times New Roman', serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     --shadow-2xs: 0 1px 2px 0 hsl(190 30% 8% / 0.02);
     --shadow-xs: 0 1px 2px 0 hsl(190 30% 8% / 0.04);
@@ -91,63 +89,7 @@
     --spacing: 0.25rem;
   }
 
-  .dark {
-    /* Editorial dark — warm ink with cream ink */
-    --background: 30 10% 6%;
-    --foreground: 42 22% 92%;
-
-    --card: 30 10% 9%;
-    --card-foreground: 42 22% 92%;
-
-    --popover: 30 10% 9%;
-    --popover-foreground: 42 22% 92%;
-
-    --primary: 42 22% 92%;
-    --primary-foreground: 30 10% 6%;
-
-    --secondary: 30 8% 14%;
-    --secondary-foreground: 42 22% 90%;
-
-    --muted: 30 8% 14%;
-    --muted-foreground: 40 8% 60%;
-
-    --accent: 12 82% 60%;
-    --accent-foreground: 30 10% 6%;
-
-    --destructive: 12 82% 54%;
-    --destructive-foreground: 42 22% 96%;
-
-    --border: 30 8% 18%;
-    --input: 30 8% 18%;
-    --ring: 42 22% 92%;
-
-    --sidebar-background: 30 10% 8%;
-    --sidebar-foreground: 40 8% 60%;
-    --sidebar-primary: 42 22% 92%;
-    --sidebar-primary-foreground: 30 10% 6%;
-    --sidebar-accent: 30 8% 12%;
-    --sidebar-accent-foreground: 42 22% 90%;
-    --sidebar-border: 30 8% 16%;
-    --sidebar-ring: 42 22% 92%;
-
-    --shadow-card: 0 1px 4px 0 hsl(0 0% 0% / 0.3);
-    --shadow-card-hover: 0 20px 48px -16px hsl(0 0% 0% / 0.5);
-    --chart-1: 42 22% 92%;
-    --chart-2: 12 82% 60%;
-    --chart-3: 40 8% 60%;
-    --chart-4: 42 40% 70%;
-    --chart-5: 12 45% 40%;
-    --sidebar: 30 10% 8%;
-    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.1);
-    --shadow-xs: 0 1px 2px 0 hsl(0 0% 0% / 0.1);
-    --shadow-sm: 0 2px 4px 0 hsl(0 0% 0% / 0.15), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow: 0 2px 6px 0 hsl(0 0% 0% / 0.15), 0 1px 3px -1px hsl(0 0% 0% / 0.1);
-    --shadow-md: 0 6px 12px -2px hsl(0 0% 0% / 0.15), 0 3px 6px -3px hsl(0 0% 0% / 0.08);
-    --shadow-lg: 0 12px 24px -4px hsl(0 0% 0% / 0.15), 0 4px 8px -4px hsl(0 0% 0% / 0.08);
-    --shadow-xl: 0 20px 40px -8px hsl(0 0% 0% / 0.2), 0 8px 16px -6px hsl(0 0% 0% / 0.08);
-    --shadow-2xl: 0 32px 64px -16px hsl(0 0% 0% / 0.3);
-    --radius: 1rem;
-  }
+  /* Dark mode intentionally removed — single editorial light mode only. */
 }
 
 @layer base {
@@ -169,19 +111,17 @@
     background-attachment: fixed;
   }
 
-  .dark body {
-    background-image:
-      radial-gradient(60% 40% at 20% 10%, hsl(30 10% 12% / 0.8) 0%, transparent 60%),
-      radial-gradient(50% 40% at 85% 15%, hsl(12 45% 20% / 0.4) 0%, transparent 60%),
-      radial-gradient(60% 50% at 50% 100%, hsl(30 10% 10% / 0.7) 0%, transparent 60%);
-  }
-
-  /* Display utility — big, tight, heavier weight. */
+  /* Display utility — serif, optical-size aware, tight tracking. */
   .font-display, .font-serif {
     font-family: var(--font-display) !important;
-    font-feature-settings: "ss01", "cv11";
+    font-feature-settings: "ss01";
+    letter-spacing: -0.02em;
   }
-  .font-display { letter-spacing: -0.03em; }
+  .font-display em, .font-display i,
+  .font-serif em, .font-serif i {
+    font-style: italic;
+    font-variation-settings: "opsz" 60;
+  }
 }
 
 @layer utilities {
@@ -246,35 +186,12 @@
     pointer-events: none;
   }
 
-  .dark .glass-card {
-    background: linear-gradient(180deg, hsl(30 10% 12% / 0.72) 0%, hsl(30 10% 8% / 0.5) 100%);
-    border-color: hsl(42 22% 92% / 0.08);
-    box-shadow:
-      inset 0 1px 0 0 hsl(42 22% 92% / 0.08),
-      inset 0 -1px 0 0 hsl(0 0% 0% / 0.3),
-      0 20px 48px -24px hsl(0 0% 0% / 0.5);
-  }
-  .dark .glass-card::before {
-    background: linear-gradient(135deg,
-      hsl(42 22% 92% / 0.22) 0%,
-      hsl(42 22% 92% / 0.02) 45%,
-      hsl(12 82% 60% / 0.18) 100%);
-    opacity: 0.5;
-  }
-  .dark .glass-card::after {
-    background: radial-gradient(120% 55% at 50% -15%, hsl(42 22% 92% / 0.1), transparent 65%);
-  }
-
   /* Nav chrome — thinner, tonal with the cream canvas. */
   .liquid-nav {
-    background: linear-gradient(180deg, hsl(42 30% 100% / 0.72), hsl(42 30% 100% / 0.38));
+    background: linear-gradient(180deg, hsl(42 30% 100% / 0.78), hsl(42 30% 100% / 0.44));
     backdrop-filter: blur(20px) saturate(1.4);
     -webkit-backdrop-filter: blur(20px) saturate(1.4);
     border-bottom: 1px solid hsl(30 12% 9% / 0.06);
-  }
-  .dark .liquid-nav {
-    background: linear-gradient(180deg, hsl(30 10% 6% / 0.72), hsl(30 10% 6% / 0.38));
-    border-bottom-color: hsl(42 22% 92% / 0.08);
   }
 
   /* Ink panel — for the dark pipeline card */
@@ -312,14 +229,6 @@
     background-size: 200% 200%;
     animation: aurora-drift 22s ease-in-out infinite;
   }
-  .dark .aurora {
-    opacity: 0.5;
-    background:
-      radial-gradient(36% 36% at 18% 28%, hsl(30 20% 18% / 0.6), transparent 72%),
-      radial-gradient(32% 32% at 82% 22%, hsl(12 50% 30% / 0.28), transparent 72%),
-      radial-gradient(42% 42% at 62% 82%, hsl(30 15% 12% / 0.6), transparent 72%);
-  }
-
   /* Chroma orb — quiet color blob for ambient depth. */
   .orb {
     position: absolute;
@@ -330,7 +239,6 @@
     opacity: 0.55;
     animation: orb-float 14s ease-in-out infinite;
   }
-  .dark .orb { mix-blend-mode: lighten; opacity: 0.3; }
 
   .chat-input-glow {
     box-shadow: var(--shadow-glow);

@@ -265,7 +265,7 @@ export default function AppLayout() {
         </div>
       </nav>
 
-      {/* Footer: compact user chip + theme toggle */}
+      {/* Footer: compact user chip */}
       <div className="border-t border-sidebar-border/60 p-3">
         <div className="flex items-center gap-3 px-2 py-2">
           <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center text-[11px] font-medium text-foreground shrink-0 ring-1 ring-foreground/10">
@@ -276,15 +276,6 @@ export default function AppLayout() {
               <p className="text-[13px] font-medium text-foreground leading-none truncate">{displayName || "Guest"}</p>
               <p className="text-[10px] font-mono uppercase tracking-widest text-sidebar-foreground/60 mt-1">Studio plan</p>
             </div>
-          )}
-          {showText && (
-            <button
-              onClick={toggleTheme}
-              title={theme === "light" ? "Dark mode" : "Light mode"}
-              className="p-1.5 rounded-full text-sidebar-foreground/70 hover:text-foreground hover:bg-background/60 transition-colors"
-            >
-              {theme === "light" ? <Moon className="w-3.5 h-3.5" strokeWidth={1.6} /> : <Sun className="w-3.5 h-3.5" strokeWidth={1.6} />}
-            </button>
           )}
         </div>
       </div>

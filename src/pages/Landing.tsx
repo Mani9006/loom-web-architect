@@ -104,10 +104,10 @@ export default function Landing() {
 
           <motion.h1
             initial="hidden" animate="visible" variants={fadeUp} custom={1}
-            className="font-display text-[60px] sm:text-[96px] lg:text-[128px] leading-[0.94] -tracking-[0.035em] text-foreground font-semibold max-w-[18ch]"
+            className="font-display text-[60px] sm:text-[96px] lg:text-[128px] leading-[0.94] -tracking-[0.025em] text-foreground font-medium max-w-[18ch]"
           >
             Write the résumé{" "}
-            <span className="italic font-light text-foreground/80">that lands</span>
+            <em className="italic font-normal text-foreground/90">that lands</em>
             {" "}the job.
           </motion.h1>
 
@@ -154,15 +154,15 @@ export default function Landing() {
               </span>
             </div>
             <div className="flex items-end gap-10">
-              <div className="font-display text-[96px] sm:text-[128px] leading-none font-semibold tabular-nums -tracking-[0.04em] text-foreground">94</div>
-              <p className="pb-3 text-[18px] text-foreground">Exceptional — ready to submit.</p>
+              <div className="font-display text-[112px] sm:text-[144px] leading-[0.85] font-medium tabular-nums -tracking-[0.04em] text-foreground">94</div>
+              <p className="pb-4 font-display italic text-[22px] text-foreground">Exceptional — ready to submit.</p>
             </div>
-            <div className="mt-10 grid grid-cols-4 gap-6 border-t border-foreground/10 pt-6">
+            <div className="mt-10 grid grid-cols-4 gap-6 border-t border-foreground/15 pt-6">
               {[["Keywords", 94], ["Format", 98], ["Brevity", 87], ["Verbs", 95]].map(([l, v]) => (
                 <div key={l as string}>
                   <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{l as string}</p>
-                  <div className="font-display text-[40px] sm:text-[48px] font-semibold tabular-nums -tracking-[0.03em] text-foreground">{v as number}</div>
-                  <div className="h-px w-full bg-foreground/15 mt-2" />
+                  <div className="font-display text-[44px] sm:text-[56px] font-medium tabular-nums -tracking-[0.03em] text-foreground mt-2">{v as number}</div>
+                  <div className="h-px w-full bg-foreground/25 mt-3" />
                 </div>
               ))}
             </div>
@@ -176,8 +176,8 @@ export default function Landing() {
           <div className="flex items-end justify-between mb-16 flex-wrap gap-6">
             <div>
               <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground mb-3">The studio</p>
-              <h2 className="font-display text-[40px] sm:text-[56px] -tracking-[0.03em] leading-[1] text-foreground font-semibold max-w-[22ch]">
-                Six rooms. One quiet building.
+              <h2 className="font-display text-[44px] sm:text-[64px] -tracking-[0.02em] leading-[1] text-foreground font-medium max-w-[22ch]">
+                Six rooms. <em className="italic font-normal">One quiet building.</em>
               </h2>
             </div>
             <p className="max-w-[40ch] text-[15px] text-muted-foreground">
@@ -198,7 +198,7 @@ export default function Landing() {
                   </span>
                   <span aria-hidden className="text-muted-foreground/50 group-hover:text-foreground/70 group-hover:translate-x-1 transition-all duration-300">→</span>
                 </div>
-                <h3 className="font-display text-[28px] leading-tight -tracking-[0.02em] text-foreground font-medium">
+                <h3 className="font-display text-[30px] leading-[1.05] -tracking-[0.015em] text-foreground font-medium">
                   {f.title}
                 </h3>
                 <p className="text-[14px] leading-relaxed text-muted-foreground">{f.desc}</p>
@@ -222,7 +222,7 @@ export default function Landing() {
                 initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }} variants={fadeUp} custom={i}
                 className="border-t border-foreground/15 pt-10 grid grid-cols-1 md:grid-cols-[1fr_220px] gap-8"
               >
-                <blockquote className="font-display text-[26px] sm:text-[36px] leading-[1.2] -tracking-[0.02em] text-foreground font-medium">
+                <blockquote className="font-display italic text-[28px] sm:text-[40px] leading-[1.2] -tracking-[0.015em] text-foreground font-normal">
                   &ldquo;{p.q}&rdquo;
                 </blockquote>
                 <figcaption className="md:text-right">
@@ -239,8 +239,8 @@ export default function Landing() {
       <section id="pricing" className="relative z-10 py-28">
         <div className="max-w-[1280px] mx-auto px-6 lg:px-10">
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground mb-3">Pricing</p>
-          <h2 className="font-display text-[40px] sm:text-[56px] -tracking-[0.03em] leading-none text-foreground font-semibold mb-16">
-            Transparent, by the month.
+          <h2 className="font-display text-[44px] sm:text-[64px] -tracking-[0.02em] leading-none text-foreground font-medium mb-16">
+            Transparent, <em className="italic font-normal">by the month.</em>
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -261,7 +261,7 @@ export default function Landing() {
                 )}
                 <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{plan.name}</p>
                 <div className="mt-6 flex items-baseline gap-2">
-                  <span className="font-display text-[56px] leading-none font-semibold -tracking-[0.03em] text-foreground">{plan.price}</span>
+                  <span className="font-display text-[64px] leading-[0.9] font-medium -tracking-[0.03em] text-foreground">{plan.price}</span>
                   <span className="text-[12px] text-muted-foreground">{plan.sub}</span>
                 </div>
                 <button
@@ -291,9 +291,9 @@ export default function Landing() {
       {/* Closing CTA — quiet, no pressure */}
       <section className="relative z-10 py-28">
         <div className="max-w-[900px] mx-auto px-6 lg:px-10 text-center">
-          <h2 className="font-display text-[48px] sm:text-[72px] -tracking-[0.03em] leading-[1] text-foreground font-semibold">
+          <h2 className="font-display text-[52px] sm:text-[80px] -tracking-[0.025em] leading-[1] text-foreground font-medium">
             Your best work, submitted{" "}
-            <span className="italic font-light text-foreground/80">on purpose.</span>
+            <em className="italic font-normal text-foreground/90">on purpose.</em>
           </h2>
           <button
             onClick={() => navigate("/auth?mode=signup")}
