@@ -1,42 +1,27 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import {
-  CheckCircle2, ArrowRight, Clock, Heart, Shield,
-  Star, ArrowUpRight,
-} from "lucide-react";
-import { RPIcon, type RPIconName } from "@/components/shared/RPIcon";
-import Logo, { LogoIcon } from "@/components/shared/Logo";
-import heroBg from "@/assets/hero-bg.png";
+import Logo from "@/components/shared/Logo";
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] as const } }),
+  hidden: { opacity: 0, y: 24 },
+  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.7, ease: [0.16, 1, 0.3, 1] as const } }),
 };
 
-const features: Array<{ icon: RPIconName; tag: string; title: string; desc: string; color: string }> = [
-  { icon: "resume", tag: "Resume Builder", title: "Build resumes that actually land interviews", desc: "AI crafts ATS-optimized resumes from your experience. Every bullet point is engineered to pass automated screening.", color: "from-primary/10 to-accent/5" },
-  { icon: "score", tag: "ATS Checker", title: "Score your resume before recruiters do", desc: "Get detailed compatibility scores, missing keyword analysis, and formatting fixes — before you hit submit.", color: "from-accent/10 to-primary/5" },
-  { icon: "search", tag: "Smart Job Search", title: "Discover roles that match your DNA", desc: "AI analyzes your skills across LinkedIn, Indeed, and Google Jobs to surface roles you'd never find manually.", color: "from-primary/10 to-accent/5" },
-  { icon: "letter", tag: "Cover Letters", title: "One-click tailored cover letters", desc: "Generate personalized letters that align your achievements with each job's specific requirements in seconds.", color: "from-accent/10 to-primary/5" },
-  { icon: "interview", tag: "Interview Prep", title: "Practice interviews with voice AI", desc: "Voice-powered mock interviews with real-time scoring, behavioral question practice, and improvement coaching.", color: "from-primary/10 to-accent/5" },
-  { icon: "tailor", tag: "AI Toolbox", title: "6 AI tools for your entire career", desc: "LinkedIn optimizer, email writer, elevator pitch generator, brand statement, and more — all in one workspace.", color: "from-accent/10 to-primary/5" },
+const features = [
+  { num: "01", label: "Resume studio", title: "Write, score, submit.", desc: "Compose editorial-grade resumes with live ATS feedback. Every sentence measured, every verb considered.", meta: "Keywords · Format · Brevity · Verbs" },
+  { num: "02", label: "Voice practice", title: "Rehearse the room.", desc: "Voice-driven mock interviews with STAR scoring and tone coaching. Speak into it, get graded.", meta: "STAR 88 · 04:23" },
+  { num: "03", label: "Search", title: "Matches that fit your shape.", desc: "Roles ranked by how your work actually lines up — across LinkedIn, Indeed, Google.", meta: "97% compat · 142 open" },
+  { num: "04", label: "Letters", title: "Tailored, not generic.", desc: "Cover letters tuned for each posting in seconds. Evidence-led, never breathless.", meta: "218 words · tuned" },
+  { num: "05", label: "Agents", title: "A studio of collaborators.", desc: "Delegate to specialist agents — brand voice, LinkedIn, email writer, elevator pitch, headline.", meta: "6 specialists" },
+  { num: "06", label: "Pipeline", title: "See the whole board.", desc: "Saved, applied, interviewing, offers — one pane, editorial clarity, no noise.", meta: "Saved → Offer" },
 ];
 
-const stats = [
-  { value: "50K+", label: "Resumes optimized" },
-  { value: "3x", label: "More callbacks" },
-  { value: "85%", label: "Land jobs faster" },
-  { value: "< 5min", label: "Per application" },
-];
-
-const testimonials = [
-  { name: "Sarah Chen", role: "Software Engineer → Google", content: "ResumePreps' ATS checker found 12 missing keywords. After optimizing, I got callbacks from 5 FAANG companies in 2 weeks.", avatar: "SC" },
-  { name: "Michael Torres", role: "PM → Meta", content: "The voice interview simulation was incredibly realistic. I practiced behavioral questions until I could answer them in my sleep.", avatar: "MT" },
-  { name: "Priya Sharma", role: "Data Scientist → Amazon", content: "Generated 8 tailored cover letters in 20 minutes. Each one perfectly aligned my experience with the job requirements.", avatar: "PS" },
-  { name: "David Gartner", role: "Financial Analyst", content: "The job match scoring saved me from applying to positions I wasn't qualified for and found roles I never would have searched for.", avatar: "DG" },
+const proofs = [
+  { q: "ResumePreps found twelve missing keywords. Five FAANG callbacks in two weeks.", name: "Sarah Chen", role: "SWE → Google" },
+  { q: "The voice rehearsals were uncannily realistic. I walked into the room already warmed up.", name: "Michael Torres", role: "PM → Meta" },
+  { q: "Tailored eight cover letters in twenty minutes. Every one of them read like me.", name: "Priya Sharma", role: "DS → Amazon" },
 ];
 
 export default function Landing() {
@@ -44,8 +29,7 @@ export default function Landing() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    // SEO meta tags
-    document.title = "ResumePreps - AI-Powered Resume Builder & Career Platform";
+    document.title = "ResumePreps — the studio for your career composition";
     const setMeta = (name: string, content: string) => {
       let el = document.querySelector(`meta[name="${name}"]`) || document.querySelector(`meta[property="${name}"]`);
       if (!el) {
@@ -55,19 +39,11 @@ export default function Landing() {
       }
       el.setAttribute("content", content);
     };
-    setMeta("description", "Build ATS-optimized resumes, generate tailored cover letters, practice voice interviews, and discover matching jobs — all in one AI-powered platform.");
-    setMeta("og:title", "ResumePreps - AI-Powered Resume Builder & Career Platform");
-    setMeta("og:description", "Build ATS-optimized resumes, generate tailored cover letters, practice voice interviews, and discover matching jobs.");
+    setMeta("description", "Write, score, and submit résumés with editorial rigor. Voice-driven interview rehearsal. One studio for the whole career composition.");
+    setMeta("og:title", "ResumePreps — career composition studio");
+    setMeta("og:description", "Write, score, and submit résumés with editorial rigor. Voice rehearsal. One studio for the whole career composition.");
     setMeta("og:type", "website");
     setMeta("og:url", window.location.origin);
-
-    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
-    if (!canonical) {
-      canonical = document.createElement("link");
-      canonical.rel = "canonical";
-      document.head.appendChild(canonical);
-    }
-    canonical.href = window.location.origin;
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) setIsLoggedIn(true);
@@ -75,280 +51,265 @@ export default function Landing() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background overflow-hidden relative aurora-host">
-      {/* Animated aurora + chroma orbs (Apple liquid-glass backdrop) */}
+    <div className="min-h-screen bg-background text-foreground relative overflow-hidden">
+      {/* Warm aurora + chroma orbs — quiet, editorial */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="aurora" />
-        <div className="orb w-[520px] h-[520px] -top-32 -right-32"
-          style={{ background: "hsl(174 62% 55% / 0.35)" }} />
-        <div className="orb w-[460px] h-[460px] top-1/3 -left-32"
-          style={{ background: "hsl(12 80% 65% / 0.32)", animationDelay: "2.5s" }} />
-        <div className="orb w-[380px] h-[380px] -bottom-32 right-1/4"
-          style={{ background: "hsl(45 90% 60% / 0.28)", animationDelay: "5s" }} />
-        <div className="orb w-[300px] h-[300px] top-2/3 right-1/3"
-          style={{ background: "hsl(200 75% 60% / 0.22)", animationDelay: "7.5s" }} />
+        <div className="orb w-[640px] h-[640px] -top-40 -right-40" style={{ background: "hsl(12 75% 80% / 0.35)" }} />
+        <div className="orb w-[520px] h-[520px] top-1/3 -left-40" style={{ background: "hsl(42 60% 88% / 0.55)", animationDelay: "3s" }} />
+        <div className="orb w-[460px] h-[460px] -bottom-32 left-1/3" style={{ background: "hsl(25 50% 82% / 0.35)", animationDelay: "6s" }} />
       </div>
 
       {/* Nav */}
       <nav className="sticky top-0 z-50 liquid-nav">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Logo size="md" />
-            <div className="hidden md:flex items-center gap-8">
-              {["Features", "How It Works", "Testimonials", "Pricing"].map((l) => (
-                <a key={l} href={`#${l.toLowerCase().replace(/ /g, "-")}`} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">{l}</a>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              {isLoggedIn ? (
-                <Button onClick={() => navigate("/home")} className="gap-2 rounded-2xl h-10">Dashboard <ArrowRight className="w-4 h-4" /></Button>
-              ) : (
-                <>
-                  <Button variant="ghost" onClick={() => navigate("/auth?mode=login")} className="font-medium rounded-2xl h-10">Log In</Button>
-                  <Button onClick={() => navigate("/auth?mode=signup")} className="rounded-2xl h-10 shadow-lg shadow-primary/20">Get Started</Button>
-                </>
-              )}
-            </div>
+        <div className="max-w-[1280px] mx-auto px-6 lg:px-10 h-[72px] flex items-center justify-between">
+          <Logo size="md" />
+          <div className="hidden md:flex items-center gap-10">
+            {[
+              ["Studio", "#features"],
+              ["Method", "#how"],
+              ["Proof", "#proof"],
+              ["Pricing", "#pricing"],
+            ].map(([l, href]) => (
+              <a key={l} href={href} className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
+                {l}
+              </a>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            {isLoggedIn ? (
+              <button onClick={() => navigate("/home")} className="h-10 px-5 rounded-full text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors shadow-[0_10px_24px_-12px_hsl(30_12%_9%/0.45)]">
+                Dashboard →
+              </button>
+            ) : (
+              <>
+                <button onClick={() => navigate("/auth?mode=login")} className="h-10 px-4 rounded-full text-[13px] text-foreground hover:bg-foreground/5 transition-colors">
+                  Log in
+                </button>
+                <button onClick={() => navigate("/auth?mode=signup")} className="h-10 px-5 rounded-full text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors shadow-[0_10px_24px_-12px_hsl(30_12%_9%/0.45)]">
+                  Apply →
+                </button>
+              </>
+            )}
           </div>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="relative pt-20 sm:pt-28 pb-20 overflow-hidden">
-        {/* Hero background illustration */}
-        <div className="absolute inset-0 pointer-events-none">
-          <img src={heroBg} alt="" className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[1400px] max-w-none opacity-[0.07] blur-sm select-none" />
-        </div>
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative z-10">
-          <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0}>
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card text-sm font-medium text-muted-foreground mb-8 shadow-sm">
-              <span className="text-primary"><RPIcon name="spark" size={16} /></span>
-              AI-Powered Career Platform
-            </div>
-          </motion.div>
-
-          <motion.h1 initial="hidden" animate="visible" variants={fadeUp} custom={1}
-            className="text-5xl sm:text-6xl lg:text-[72px] font-extrabold tracking-tight mb-6 leading-[1.05]">
-            <span className="text-foreground">Land your dream job</span>
-            <br />
-            <span className="gradient-text">with AI superpowers.</span>
-          </motion.h1>
-
-          <motion.p initial="hidden" animate="visible" variants={fadeUp} custom={2}
-            className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-            Build ATS-perfect resumes, generate tailored cover letters, practice voice interviews, and discover matching jobs — all in one beautiful workspace.
+      <section className="relative z-10 pt-16 sm:pt-24 pb-20">
+        <div className="max-w-[1280px] mx-auto px-6 lg:px-10">
+          <motion.p initial="hidden" animate="visible" variants={fadeUp} custom={0} className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground mb-6">
+            A career composition studio
           </motion.p>
 
-          <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={3}
-            className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">
-            <Button size="lg" onClick={() => navigate("/auth?mode=signup")}
-              className="text-base px-10 gap-2 shadow-xl shadow-primary/25 font-semibold rounded-2xl h-13 text-lg">
-              Start Free <ArrowRight className="w-5 h-5" />
-            </Button>
-            <Button size="lg" variant="outline" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
-              className="text-base px-10 font-medium rounded-2xl h-13 gap-2 text-lg glass-card border-border/50">
-              <RPIcon name="play" size={16} filled /> Watch Demo
-            </Button>
+          <motion.h1
+            initial="hidden" animate="visible" variants={fadeUp} custom={1}
+            className="font-display text-[60px] sm:text-[96px] lg:text-[128px] leading-[0.94] -tracking-[0.035em] text-foreground font-semibold max-w-[18ch]"
+          >
+            Write the résumé{" "}
+            <span className="italic font-light text-foreground/80">that lands</span>
+            {" "}the job.
+          </motion.h1>
+
+          <motion.p
+            initial="hidden" animate="visible" variants={fadeUp} custom={2}
+            className="mt-10 max-w-[52ch] text-[18px] leading-relaxed text-muted-foreground"
+          >
+            ResumePreps is the quiet workbench for serious candidates. Score every page, rehearse every answer, and submit with the confidence of someone who&rsquo;s read it aloud.
+          </motion.p>
+
+          <motion.div
+            initial="hidden" animate="visible" variants={fadeUp} custom={3}
+            className="mt-12 flex flex-col sm:flex-row items-start sm:items-center gap-4"
+          >
+            <button
+              onClick={() => navigate("/auth?mode=signup")}
+              className="h-12 px-7 rounded-full text-[14px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors shadow-[0_20px_40px_-18px_hsl(30_12%_9%/0.5)]"
+            >
+              Open the studio →
+            </button>
+            <button
+              onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
+              className="h-12 px-6 rounded-full text-[14px] text-foreground border border-foreground/15 hover:bg-foreground/5 transition-colors backdrop-blur-md"
+            >
+              See the method
+            </button>
+            <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground sm:ml-3">
+              No credit card · free forever tier
+            </span>
           </motion.div>
 
-          <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={4}
-            className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-muted-foreground">
-            {["No credit card required", "Free forever plan", "Set up in 2 minutes"].map((item) => (
-              <div key={item} className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-primary" />{item}
-              </div>
-            ))}
+          {/* Preview glass card — the "Today's composition" window peeking in */}
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+            className="mt-20 glass-card p-8 sm:p-10 max-w-[920px]"
+          >
+            <div className="flex items-start justify-between mb-8">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Active resume · Stripe · Senior PM</p>
+              <span className="inline-flex items-center gap-2 h-7 px-3 rounded-full bg-background/60 border border-foreground/10 text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                Drafting
+              </span>
+            </div>
+            <div className="flex items-end gap-10">
+              <div className="font-display text-[96px] sm:text-[128px] leading-none font-semibold tabular-nums -tracking-[0.04em] text-foreground">94</div>
+              <p className="pb-3 text-[18px] text-foreground">Exceptional — ready to submit.</p>
+            </div>
+            <div className="mt-10 grid grid-cols-4 gap-6 border-t border-foreground/10 pt-6">
+              {[["Keywords", 94], ["Format", 98], ["Brevity", 87], ["Verbs", 95]].map(([l, v]) => (
+                <div key={l as string}>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{l as string}</p>
+                  <div className="font-display text-[40px] sm:text-[48px] font-semibold tabular-nums -tracking-[0.03em] text-foreground">{v as number}</div>
+                  <div className="h-px w-full bg-foreground/15 mt-2" />
+                </div>
+              ))}
+            </div>
           </motion.div>
         </div>
       </section>
 
-      {/* Stats — floating glass pills */}
-      <section className="py-12 relative z-10">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {stats.map((stat, i) => (
-              <motion.div key={stat.label} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
-                className="glass-card rounded-2xl p-5 text-center relative overflow-hidden">
-                <div className="relative text-3xl sm:text-4xl font-extrabold text-foreground mb-1">{stat.value}</div>
-                <div className="relative text-sm text-muted-foreground font-medium">{stat.label}</div>
-              </motion.div>
-            ))}
+      {/* Features — numbered editorial grid */}
+      <section id="features" className="relative z-10 py-28">
+        <div className="max-w-[1280px] mx-auto px-6 lg:px-10">
+          <div className="flex items-end justify-between mb-16 flex-wrap gap-6">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground mb-3">The studio</p>
+              <h2 className="font-display text-[40px] sm:text-[56px] -tracking-[0.03em] leading-[1] text-foreground font-semibold max-w-[22ch]">
+                Six rooms. One quiet building.
+              </h2>
+            </div>
+            <p className="max-w-[40ch] text-[15px] text-muted-foreground">
+              Each surface holds a single discipline. Move between them as the work demands; the pieces add up into a composition that reads like you.
+            </p>
           </div>
-        </div>
-      </section>
-
-      {/* Features — Bento grid */}
-      <section id="features" className="py-24">
-        <div className="max-w-6xl mx-auto px-4">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold mb-4">PLATFORM</div>
-            <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-foreground tracking-tight">Six AI tools.<br/>One workspace.</h2>
-            <p className="text-muted-foreground max-w-md mx-auto text-lg">Everything to go from job search to job offer</p>
-          </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {features.map((f, i) => (
-              <motion.div key={f.tag} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
-                className={`glass-card rounded-3xl p-6 group relative overflow-hidden transition-transform duration-300 hover:-translate-y-1 ${i === 0 ? "md:col-span-2 lg:col-span-1" : ""}`}>
-                <div className="relative flex items-center gap-3 mb-5">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors group-hover:scale-105 transition-transform duration-300 text-primary ring-1 ring-white/40 shadow-inner">
-                    <RPIcon name={f.icon} size={24} />
-                  </div>
-                  <span className="text-[11px] font-bold text-primary uppercase tracking-widest">{f.tag}</span>
+              <motion.article
+                key={f.num}
+                initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }} variants={fadeUp} custom={i}
+                className="glass-card p-7 flex flex-col gap-5 group transition-transform duration-500 hover:-translate-y-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                    {f.num} <span className="text-foreground/50">·</span> {f.label}
+                  </span>
+                  <span aria-hidden className="text-muted-foreground/50 group-hover:text-foreground/70 group-hover:translate-x-1 transition-all duration-300">→</span>
                 </div>
-                <h3 className="relative text-lg font-bold mb-2 text-foreground leading-snug">{f.title}</h3>
-                <p className="relative text-sm text-muted-foreground leading-relaxed">{f.desc}</p>
-                <div className="relative mt-5 flex items-center gap-1.5 text-sm font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                  Learn more <ArrowUpRight className="w-4 h-4" />
+                <h3 className="font-display text-[28px] leading-tight -tracking-[0.02em] text-foreground font-medium">
+                  {f.title}
+                </h3>
+                <p className="text-[14px] leading-relaxed text-muted-foreground">{f.desc}</p>
+                <div className="mt-auto pt-5 border-t border-foreground/10 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  {f.meta}
                 </div>
-              </motion.div>
+              </motion.article>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Before/After — Split Visual */}
-      <section id="how-it-works" className="py-24">
-        <div className="max-w-5xl mx-auto px-4">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold mb-4">THE DIFFERENCE</div>
-            <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-foreground tracking-tight">Stop struggling.<br/>Start landing.</h2>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0}
-              className="rounded-3xl border border-destructive/10 bg-destructive/[0.02] p-8 space-y-6">
-              <div className="flex items-center gap-2 text-destructive font-bold text-sm"><span className="text-2xl">😔</span> The old way</div>
-              {[
-                { rp: "reject" as const, icon: null, title: "Silent Rejections", desc: "75% of resumes filtered by ATS bots" },
-                { rp: null, icon: Clock, title: "Hours Per Application", desc: "2-3 hours manually tailoring each one" },
-                { rp: null, icon: Shield, title: "Tool Overload", desc: "Juggling 5+ separate apps and tabs" },
-              ].map((item) => (
-                <div key={item.title} className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-destructive/10 flex items-center justify-center shrink-0 text-destructive">
-                    {item.rp ? <RPIcon name={item.rp} size={20} /> : item.icon ? <item.icon className="w-5 h-5" /> : null}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">{item.title}</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </motion.div>
-
-            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={1}
-              className="rounded-3xl border border-primary/15 bg-gradient-to-br from-primary/[0.03] to-accent/[0.03] p-8 space-y-6">
-              <div className="flex items-center gap-2 text-primary font-bold text-sm"><span className="text-2xl">🚀</span> With ResumePreps</div>
-              {[
-                { rp: null, icon: Heart, title: "ATS-Optimized", desc: "AI ensures every resume passes screening" },
-                { rp: "zap" as const, icon: null, title: "5 Minutes Flat", desc: "AI generates everything you need instantly" },
-                { rp: "applied" as const, icon: null, title: "All-in-One", desc: "Resume to offer letter, single workspace" },
-              ].map((item) => (
-                <div key={item.title} className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
-                    {item.rp ? <RPIcon name={item.rp} size={20} /> : item.icon ? <item.icon className="w-5 h-5" /> : null}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">{item.title}</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section id="testimonials" className="py-24">
-        <div className="max-w-5xl mx-auto px-4">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold mb-4">TESTIMONIALS</div>
-            <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-foreground tracking-tight">Loved by job seekers<br/>everywhere.</h2>
-          </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {testimonials.map((t, i) => (
-              <motion.div key={t.name} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
-                className="bento-card">
-                <div className="flex items-center gap-1 mb-4">
-                  {[...Array(5)].map((_, j) => <Star key={j} className="w-4 h-4 fill-primary/70 text-primary/70" />)}
-                </div>
-                <p className="text-foreground mb-6 leading-relaxed">"{t.content}"</p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center text-[12px] font-bold text-primary">{t.avatar}</div>
-                  <div>
-                    <p className="font-semibold text-sm text-foreground">{t.name}</p>
-                    <p className="text-[12px] text-muted-foreground">{t.role}</p>
-                  </div>
-                </div>
-              </motion.div>
+      {/* Proof — testimonial column set in large quiet type */}
+      <section id="proof" className="relative z-10 py-28">
+        <div className="max-w-[1100px] mx-auto px-6 lg:px-10">
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground mb-10">Proof</p>
+          <div className="space-y-12">
+            {proofs.map((p, i) => (
+              <motion.figure
+                key={p.name}
+                initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }} variants={fadeUp} custom={i}
+                className="border-t border-foreground/15 pt-10 grid grid-cols-1 md:grid-cols-[1fr_220px] gap-8"
+              >
+                <blockquote className="font-display text-[26px] sm:text-[36px] leading-[1.2] -tracking-[0.02em] text-foreground font-medium">
+                  &ldquo;{p.q}&rdquo;
+                </blockquote>
+                <figcaption className="md:text-right">
+                  <p className="text-[14px] font-medium text-foreground">{p.name}</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground mt-1">{p.role}</p>
+                </figcaption>
+              </motion.figure>
             ))}
           </div>
         </div>
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="py-24">
-        <div className="max-w-4xl mx-auto px-4">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={0} className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold mb-4">PRICING</div>
-            <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-foreground tracking-tight">Simple, transparent<br/>pricing.</h2>
-          </motion.div>
+      <section id="pricing" className="relative z-10 py-28">
+        <div className="max-w-[1280px] mx-auto px-6 lg:px-10">
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground mb-3">Pricing</p>
+          <h2 className="font-display text-[40px] sm:text-[56px] -tracking-[0.03em] leading-none text-foreground font-semibold mb-16">
+            Transparent, by the month.
+          </h2>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {[
-              { name: "Starter", price: "Free", cta: "Get started", variant: "outline" as const, features: ["3 AI Resume Builds", "ATS Score Checking", "Basic Job Search", "5 Cover Letters/mo"] },
-              { name: "Pro", price: "$12", cta: "Start free trial", variant: "default" as const, popular: true, features: ["Unlimited Resumes", "AI Resume Optimizer", "Unlimited Cover Letters", "Voice Interview Prep", "Real-time Job Matching", "Priority Support"] },
-              { name: "Enterprise", price: "$29", cta: "Contact us", variant: "outline" as const, features: ["Everything in Pro", "AI Application Autofill", "LinkedIn Optimizer", "Skill Gap Analyzer", "Career Coach AI", "API Access"] },
+              { name: "Draft", price: "Free", sub: "forever", popular: false, features: ["Three compositions", "ATS score checks", "Basic search", "Five letters / month"] },
+              { name: "Studio", price: "$12", sub: "per month", popular: true, features: ["Unlimited compositions", "Full agent studio", "Unlimited letters", "Voice rehearsal", "Real-time matching", "Priority support"] },
+              { name: "Bureau", price: "$29", sub: "per month", popular: false, features: ["Everything in Studio", "AI autofill", "LinkedIn optimizer", "Skill gap analyzer", "Career coach", "API access"] },
             ].map((plan, i) => (
-              <motion.div key={plan.name} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
-                className={`bento-card relative ${plan.popular ? "border-primary/30 shadow-xl shadow-primary/10 ring-1 ring-primary/20" : ""}`}>
+              <motion.div
+                key={plan.name}
+                initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
+                className={`glass-card p-8 relative flex flex-col ${plan.popular ? "ring-1 ring-foreground/25" : ""}`}
+              >
                 {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[11px] font-bold px-4 py-1 rounded-full shadow-lg">
-                    MOST POPULAR
-                  </div>
+                  <span className="absolute -top-3 left-8 text-[9px] font-mono uppercase tracking-[0.22em] bg-foreground text-background px-3 py-1 rounded-full">
+                    Most popular
+                  </span>
                 )}
-                <h3 className="text-lg font-bold mb-1 text-foreground">{plan.name}</h3>
-                <div className="flex items-baseline gap-0.5 mb-6">
-                  <span className="text-4xl font-extrabold text-foreground">{plan.price}</span>
-                  {plan.price !== "Free" && <span className="text-muted-foreground">/mo</span>}
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{plan.name}</p>
+                <div className="mt-6 flex items-baseline gap-2">
+                  <span className="font-display text-[56px] leading-none font-semibold -tracking-[0.03em] text-foreground">{plan.price}</span>
+                  <span className="text-[12px] text-muted-foreground">{plan.sub}</span>
                 </div>
-                <Button variant={plan.variant} className="w-full mb-6 font-semibold rounded-2xl h-11" onClick={() => navigate("/auth?mode=signup")}>{plan.cta}</Button>
-                <div className="space-y-3">
+                <button
+                  onClick={() => navigate("/auth?mode=signup")}
+                  className={`mt-8 h-11 w-full rounded-full text-[13px] font-medium transition-colors ${
+                    plan.popular
+                      ? "bg-foreground text-background hover:bg-foreground/90"
+                      : "border border-foreground/15 text-foreground hover:bg-foreground/5"
+                  }`}
+                >
+                  {plan.popular ? "Open the studio →" : "Choose"}
+                </button>
+                <ul className="mt-8 space-y-3 text-[13px] text-muted-foreground">
                   {plan.features.map((f) => (
-                    <div key={f} className="flex items-center gap-2.5 text-sm text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary shrink-0" />{f}</div>
+                    <li key={f} className="flex items-start gap-2">
+                      <span className="font-mono text-[10px] text-foreground/40 mt-1 shrink-0">—</span>
+                      <span>{f}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-24 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary via-accent to-primary rounded-[40px] mx-4 sm:mx-8 lg:mx-16" />
-        <div className="absolute inset-0 mx-4 sm:mx-8 lg:mx-16 rounded-[40px] overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,hsl(0_0%_100%/0.12),transparent)]" />
-        </div>
-        <div className="max-w-3xl mx-auto px-8 text-center relative z-10">
-          <h2 className="text-3xl sm:text-5xl font-bold text-primary-foreground mb-5 tracking-tight">Ready to land your<br/>dream job?</h2>
-          <p className="text-primary-foreground/70 mb-8 max-w-lg mx-auto text-lg">
-            Join thousands who've transformed their job search with AI.
-          </p>
-          <Button size="lg" onClick={() => navigate("/auth?mode=signup")}
-            className="text-lg px-10 gap-2 font-semibold rounded-2xl h-13 bg-primary-foreground text-foreground hover:bg-primary-foreground/90 shadow-2xl">
-            Get Started Free <ArrowRight className="w-5 h-5" />
-          </Button>
+      {/* Closing CTA — quiet, no pressure */}
+      <section className="relative z-10 py-28">
+        <div className="max-w-[900px] mx-auto px-6 lg:px-10 text-center">
+          <h2 className="font-display text-[48px] sm:text-[72px] -tracking-[0.03em] leading-[1] text-foreground font-semibold">
+            Your best work, submitted{" "}
+            <span className="italic font-light text-foreground/80">on purpose.</span>
+          </h2>
+          <button
+            onClick={() => navigate("/auth?mode=signup")}
+            className="mt-10 h-12 px-8 rounded-full text-[14px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors shadow-[0_20px_40px_-18px_hsl(30_12%_9%/0.5)]"
+          >
+            Apply →
+          </button>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-14 border-t border-border/50">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <Logo size="sm" />
-            <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} ResumePreps. All rights reserved.</p>
-          </div>
+      <footer className="relative z-10 border-t border-foreground/10">
+        <div className="max-w-[1280px] mx-auto px-6 lg:px-10 py-10 flex flex-col md:flex-row items-center justify-between gap-4">
+          <Logo size="sm" />
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+            © {new Date().getFullYear()} ResumePreps · Studio plan
+          </p>
         </div>
       </footer>
     </div>

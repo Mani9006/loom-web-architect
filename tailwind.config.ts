@@ -15,22 +15,26 @@ export default {
 		extend: {
 			fontFamily: {
 				sans: [
-					'Outfit',
+					'Inter',
 					'ui-sans-serif',
 					'system-ui',
+					'-apple-system',
+					'Segoe UI',
 					'sans-serif',
 					'Apple Color Emoji',
-					'Segoe UI Emoji',
-					'Segoe UI Symbol',
-					'Noto Color Emoji'
+					'Segoe UI Emoji'
 				],
 				serif: [
-					'ui-serif',
-					'Georgia',
-					'Cambria',
-					'Times New Roman',
-					'Times',
-					'serif'
+					'Inter',
+					'ui-sans-serif',
+					'system-ui',
+					'sans-serif'
+				],
+				display: [
+					'Inter',
+					'ui-sans-serif',
+					'system-ui',
+					'sans-serif'
 				],
 				mono: [
 					'JetBrains Mono',
