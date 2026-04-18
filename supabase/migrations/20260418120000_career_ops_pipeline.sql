@@ -15,6 +15,7 @@
 -- ─────────────────────────────────────────────────────────────────
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ── scan_companies ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.scan_companies (
@@ -252,9 +253,6 @@ DROP TRIGGER IF EXISTS update_draft_applications_updated_at ON public.draft_appl
 CREATE TRIGGER update_draft_applications_updated_at
   BEFORE UPDATE ON public.draft_applications
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
--- ── pg_trgm extension for fuzzy title search ─────────────────────
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ── Seed: 20 top AI companies (portals.yml excerpt) ─────────────
 INSERT INTO public.scan_companies (slug, name, api_type, api_identifier, careers_url, category) VALUES
