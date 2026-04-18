@@ -1,8 +1,6 @@
-/* Claude-style type stack — Source Serif 4 (Copernicus/Tiempos-adjacent)
- * for display, Inter for UI body, JetBrains Mono for numerics + labels.
- */
-@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500;1,8..60,600;1,8..60,700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+/* ElevenLabs-style stack — Inter throughout (display + body).
+ * No serif. JetBrains Mono for monospace / numerics. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
@@ -11,71 +9,79 @@
 
 @layer base {
   :root {
-    /* Editorial — warm cream + ink black, accent coral */
-    --background: 42 22% 92%;
-    --foreground: 30 12% 9%;
+    /* Clean SaaS surface — pure white canvas, warm-grey sidebar, ink text */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 4%;
 
-    --card: 42 22% 96%;
-    --card-foreground: 30 12% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
 
-    --popover: 42 22% 96%;
-    --popover-foreground: 30 12% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
 
-    --primary: 30 12% 9%;
-    --primary-foreground: 42 22% 96%;
+    --primary: 0 0% 4%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 40 15% 88%;
-    --secondary-foreground: 30 12% 12%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 12%;
 
-    --muted: 40 15% 88%;
-    --muted-foreground: 30 10% 34%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 42%;
 
-    --accent: 12 82% 58%;
-    --accent-foreground: 42 22% 96%;
+    --accent: 0 0% 94%;
+    --accent-foreground: 0 0% 4%;
 
-    --destructive: 12 82% 52%;
-    --destructive-foreground: 42 22% 96%;
+    --destructive: 0 72% 52%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 36 12% 82%;
-    --input: 36 12% 82%;
-    --ring: 30 12% 9%;
+    --border: 0 0% 92%;
+    --input: 0 0% 92%;
+    --ring: 0 0% 4%;
 
-    --radius: 1.25rem;
+    --radius: 0.875rem;
 
-    /* Sidebar — tonal with the canvas, slightly warmer */
-    --sidebar-background: 42 20% 90%;
-    --sidebar-foreground: 30 10% 35%;
-    --sidebar-primary: 30 12% 9%;
-    --sidebar-primary-foreground: 42 22% 96%;
-    --sidebar-accent: 40 18% 86%;
-    --sidebar-accent-foreground: 30 12% 12%;
-    --sidebar-border: 36 12% 80%;
-    --sidebar-ring: 30 12% 9%;
+    /* Sidebar — a single shade warmer than the canvas */
+    --sidebar-background: 30 8% 97%;
+    --sidebar-foreground: 0 0% 30%;
+    --sidebar-primary: 0 0% 4%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 30 8% 94%;
+    --sidebar-accent-foreground: 0 0% 4%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 0 0% 4%;
 
-    /* Editorial gradients — cream + faint coral wash + parchment */
-    --gradient-hero: linear-gradient(135deg, hsl(30 12% 9%) 0%, hsl(12 60% 30%) 60%, hsl(30 12% 9%) 100%);
-    --gradient-primary: linear-gradient(135deg, hsl(30 12% 9%), hsl(30 12% 16%));
-    --gradient-shimmer: linear-gradient(90deg, hsl(30 12% 9%), hsl(12 82% 58%), hsl(30 12% 9%));
-    --gradient-glass: linear-gradient(135deg, hsl(42 30% 100% / 0.7), hsl(42 30% 100% / 0.3));
-    --gradient-mesh:
-      radial-gradient(60% 40% at 20% 10%, hsl(42 40% 96% / 0.9) 0px, transparent 60%),
-      radial-gradient(50% 40% at 85% 15%, hsl(12 60% 75% / 0.22) 0px, transparent 60%),
-      radial-gradient(60% 50% at 50% 100%, hsl(42 30% 90% / 0.6) 0px, transparent 60%);
-    --shadow-glow: 0 0 80px -24px hsl(30 12% 9% / 0.18);
-    --shadow-subtle: 0 1px 3px 0 hsl(30 12% 9% / 0.04);
-    --shadow-card: 0 1px 2px 0 hsl(30 12% 9% / 0.03), 0 0 0 1px hsl(30 12% 9% / 0.04);
-    --shadow-card-hover: 0 20px 48px -16px hsl(30 12% 9% / 0.14), 0 4px 12px -4px hsl(30 12% 9% / 0.06);
-    --shadow-elevated: 0 32px 64px -20px hsl(30 12% 9% / 0.18);
+    /* Feature-tile accent palette (ElevenLabs-style — soft) */
+    --tile-indigo: 240 90% 60%;
+    --tile-violet: 270 85% 60%;
+    --tile-rose:   350 80% 60%;
+    --tile-emerald: 160 60% 42%;
+    --tile-amber:  28 90% 55%;
+    --tile-orange: 22 92% 58%;
+    --tile-sky:    210 85% 55%;
 
-    --chart-1: 30 12% 9%;
-    --chart-2: 12 82% 58%;
-    --chart-3: 30 10% 42%;
-    --chart-4: 42 40% 70%;
-    --chart-5: 12 45% 40%;
-    --sidebar: 42 20% 90%;
+    /* Gradients reduced to utilities — no full-page color washes */
+    --gradient-hero: linear-gradient(135deg, hsl(0 0% 4%) 0%, hsl(0 0% 18%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(0 0% 4%), hsl(0 0% 18%));
+    --gradient-shimmer: linear-gradient(90deg, hsl(0 0% 96%), hsl(0 0% 100%), hsl(0 0% 96%));
+    --gradient-glass: linear-gradient(135deg, hsl(0 0% 100% / 0.9), hsl(0 0% 100% / 0.6));
+    --gradient-mesh: none;
+
+    /* Shadows — tight, cool, low-alpha. Matches the ElevenLabs cards. */
+    --shadow-glow: 0 0 60px -20px hsl(0 0% 4% / 0.18);
+    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 4% / 0.04);
+    --shadow-card: 0 1px 2px 0 hsl(0 0% 4% / 0.04), 0 0 0 1px hsl(0 0% 0% / 0.05);
+    --shadow-card-hover: 0 8px 24px -8px hsl(0 0% 4% / 0.08), 0 2px 4px -2px hsl(0 0% 4% / 0.04);
+    --shadow-elevated: 0 20px 48px -12px hsl(0 0% 4% / 0.12);
+
+    --chart-1: 0 0% 4%;
+    --chart-2: 240 90% 60%;
+    --chart-3: 0 0% 42%;
+    --chart-4: 160 60% 42%;
+    --chart-5: 22 92% 58%;
+    --sidebar: 30 8% 97%;
     --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-display: 'Source Serif 4', ui-serif, Georgia, Cambria, 'Times New Roman', serif;
-    --font-serif: 'Source Serif 4', ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+    --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-serif: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     --shadow-2xs: 0 1px 2px 0 hsl(190 30% 8% / 0.02);
     --shadow-xs: 0 1px 2px 0 hsl(190 30% 8% / 0.04);
@@ -104,23 +110,12 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    background-image:
-      radial-gradient(60% 40% at 20% 10%, hsl(42 40% 100% / 0.6) 0%, transparent 60%),
-      radial-gradient(50% 40% at 85% 15%, hsl(12 60% 75% / 0.15) 0%, transparent 60%),
-      radial-gradient(60% 50% at 50% 100%, hsl(42 30% 88% / 0.6) 0%, transparent 60%);
-    background-attachment: fixed;
   }
 
-  /* Display utility — serif, optical-size aware, tight tracking. */
+  /* Display utility — now just Inter with tight tracking, no italic serif */
   .font-display, .font-serif {
     font-family: var(--font-display) !important;
-    font-feature-settings: "ss01";
     letter-spacing: -0.02em;
-  }
-  .font-display em, .font-display i,
-  .font-serif em, .font-serif i {
-    font-style: italic;
-    font-variation-settings: "opsz" 60;
   }
 }
 
@@ -134,74 +129,50 @@
     animation: gradient-flow 4s ease infinite;
   }
 
-  /* ── Editorial Liquid Glass ────────────────────────────────
-   * Cream-tinted frosted panel with a hairline ring, a very
-   * quiet top specular highlight, and a barely-there coral
-   * edge wash. Tuned for restraint — ElevenLabs / Apple tier.
+  /* ── Flat-white card (ElevenLabs quality) ─────────────────
+   * Pure white, hairline 1px border, soft 8px-blur shadow.
+   * Hover adds a slightly deeper shadow and raises 1px.
    */
   .glass-card {
     position: relative;
-    isolation: isolate;
-    background:
-      linear-gradient(180deg, hsl(42 30% 100% / 0.78) 0%, hsl(42 30% 100% / 0.52) 100%);
-    backdrop-filter: blur(24px) saturate(1.4);
-    -webkit-backdrop-filter: blur(24px) saturate(1.4);
-    border: 1px solid hsl(30 12% 9% / 0.06);
+    background: hsl(var(--card));
+    border: 1px solid hsl(0 0% 92%);
     border-radius: var(--radius);
-    box-shadow:
-      inset 0 1px 0 0 hsl(0 0% 100% / 0.7),
-      inset 0 -1px 0 0 hsl(30 12% 9% / 0.03),
-      0 1px 2px 0 hsl(30 12% 9% / 0.03),
-      0 18px 40px -24px hsl(30 12% 9% / 0.12);
+    box-shadow: 0 1px 2px 0 hsl(0 0% 4% / 0.04);
+    transition: box-shadow 200ms ease, transform 200ms ease;
   }
-  .glass-card::before,
-  .glass-card::after { z-index: -1; }
-
-  .glass-card::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg,
-      hsl(42 30% 100% / 0.9) 0%,
-      hsl(42 30% 100% / 0.1) 40%,
-      hsl(12 82% 65% / 0.22) 80%,
-      hsl(42 30% 100% / 0.4) 100%);
-    -webkit-mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-            mask-composite: exclude;
-    pointer-events: none;
-    opacity: 0.55;
+  .glass-card:hover {
+    box-shadow: 0 6px 20px -8px hsl(0 0% 4% / 0.1), 0 2px 4px -2px hsl(0 0% 4% / 0.04);
   }
 
-  .glass-card::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: radial-gradient(120% 55% at 50% -15%, hsl(0 0% 100% / 0.6), transparent 65%);
-    pointer-events: none;
-  }
-
-  /* Nav chrome — thinner, tonal with the cream canvas. */
+  /* Nav chrome — flat white with a hairline bottom border. */
   .liquid-nav {
-    background: linear-gradient(180deg, hsl(42 30% 100% / 0.78), hsl(42 30% 100% / 0.44));
-    backdrop-filter: blur(20px) saturate(1.4);
-    -webkit-backdrop-filter: blur(20px) saturate(1.4);
-    border-bottom: 1px solid hsl(30 12% 9% / 0.06);
+    background: hsl(0 0% 100% / 0.85);
+    backdrop-filter: blur(12px) saturate(1.1);
+    -webkit-backdrop-filter: blur(12px) saturate(1.1);
+    border-bottom: 1px solid hsl(0 0% 92%);
   }
 
-  /* Ink panel — for the dark pipeline card */
+  /* Ink panel — kept for any ink-on-white card moment */
   .ink-panel {
-    background: hsl(30 12% 9%);
-    color: hsl(42 22% 92%);
+    background: hsl(0 0% 6%);
+    color: hsl(0 0% 98%);
     border-radius: var(--radius);
-    box-shadow:
-      inset 0 1px 0 0 hsl(42 22% 92% / 0.06),
-      0 20px 48px -24px hsl(30 12% 9% / 0.3);
+    box-shadow: 0 8px 24px -12px hsl(0 0% 4% / 0.2);
+  }
+
+  /* Iconized feature tile — ElevenLabs home-page style.
+   * Soft grey fill, centered icon stack with small accent chip. */
+  .feature-tile {
+    position: relative;
+    background: hsl(0 0% 97%);
+    border: 1px solid hsl(0 0% 94%);
+    border-radius: calc(var(--radius) + 4px);
+    transition: background 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+  }
+  .feature-tile:hover {
+    background: hsl(0 0% 99%);
+    box-shadow: 0 8px 20px -10px hsl(0 0% 4% / 0.08);
   }
 
   .glass-surface {
@@ -212,33 +183,11 @@
     background-image: var(--gradient-mesh);
   }
 
-  /* Editorial aurora — warm peach + parchment breathing softly.
-   * Much subtler than the Tropical Parrot version. */
-  .aurora {
-    position: absolute;
-    inset: -20%;
-    pointer-events: none;
-    z-index: 0;
-    filter: blur(90px) saturate(1.1);
-    opacity: 0.9;
-    background:
-      radial-gradient(36% 36% at 18% 28%, hsl(42 50% 98% / 0.6), transparent 72%),
-      radial-gradient(32% 32% at 82% 22%, hsl(12 70% 78% / 0.22), transparent 72%),
-      radial-gradient(42% 42% at 62% 82%, hsl(42 40% 92% / 0.5), transparent 72%),
-      radial-gradient(28% 28% at 8% 78%, hsl(30 30% 88% / 0.4), transparent 72%);
-    background-size: 200% 200%;
-    animation: aurora-drift 22s ease-in-out infinite;
-  }
+  /* Aurora — neutralised. Kept as a no-op so existing pages that still
+   * reference it don't break, but visually absent on the clean canvas. */
+  .aurora { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
   /* Chroma orb — quiet color blob for ambient depth. */
-  .orb {
-    position: absolute;
-    border-radius: 9999px;
-    filter: blur(70px);
-    mix-blend-mode: multiply;
-    pointer-events: none;
-    opacity: 0.55;
-    animation: orb-float 14s ease-in-out infinite;
-  }
+  .orb { position: absolute; opacity: 0; pointer-events: none; }
 
   .chat-input-glow {
     box-shadow: var(--shadow-glow);
