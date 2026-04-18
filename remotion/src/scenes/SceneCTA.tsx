@@ -2,7 +2,7 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, spring } fr
 import { palette, interFont, serifFont } from "../theme";
 import { LogoMark } from "../components/Logo";
 
-// Scene 6 — CTA close
+// Outro CTA
 export const SceneCTA: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -12,11 +12,43 @@ export const SceneCTA: React.FC = () => {
   const urlEnter = spring({ frame: frame - 55, fps, config: { damping: 18 } });
   const logoEnter = spring({ frame: frame - 10, fps, config: { damping: 20 } });
 
-  // breathing accent
   const pulse = 1 + Math.sin(frame / 12) * 0.02;
 
   return (
-    <AbsoluteFill style={{ fontFamily: interFont.fontFamily, color: palette.paper, alignItems: "center", justifyContent: "center" }}>
+    <AbsoluteFill
+      style={{
+        background: palette.ink,
+        color: palette.paper,
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: interFont.fontFamily,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          width: 1400,
+          height: 1400,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${palette.primary}40 0%, transparent 60%)`,
+          filter: "blur(50px)",
+          left: -300,
+          top: -400,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          width: 1100,
+          height: 1100,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${palette.accent}30 0%, transparent 65%)`,
+          filter: "blur(50px)",
+          right: -200,
+          bottom: -300,
+        }}
+      />
+
       <div style={{ opacity: logoEnter, transform: `scale(${logoEnter})`, marginBottom: 40 }}>
         <LogoMark size={100} color={palette.paper} accent={palette.accent} />
       </div>
@@ -38,22 +70,22 @@ export const SceneCTA: React.FC = () => {
 
       <div
         style={{
-          fontSize: 36,
+          fontSize: 32,
           fontWeight: 500,
           color: palette.mute,
-          marginTop: 40,
+          marginTop: 36,
           maxWidth: 1100,
           textAlign: "center",
           opacity: subEnter,
           transform: `translateY(${(1 - subEnter) * 20}px)`,
         }}
       >
-        AI résumé, ATS scoring, cover letters, interview prep — together.
+        AI résumé · ATS scoring · cover letters · job search · interview prep
       </div>
 
       <div
         style={{
-          marginTop: 70,
+          marginTop: 56,
           display: "flex",
           alignItems: "center",
           gap: 22,
