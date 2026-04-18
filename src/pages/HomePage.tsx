@@ -152,8 +152,9 @@ export default function HomePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Hero CTA card */}
           <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1}
-            className="lg:col-span-2 bento-card relative overflow-hidden bg-gradient-to-br from-primary/[0.06] via-card to-accent/[0.04]">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-primary/[0.05] rounded-full blur-3xl -mr-10 -mt-10" />
+            className="lg:col-span-2 glass-card rounded-3xl p-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-primary/[0.15] rounded-full blur-3xl -mr-10 -mt-10" />
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-accent/[0.12] rounded-full blur-3xl -ml-10 -mb-10" />
             <div className="relative">
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold">
@@ -176,7 +177,7 @@ export default function HomePage() {
           </motion.div>
 
           {/* Progress card — REAL progress from Supabase */}
-          <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={2} className="bento-card">
+          <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={2} className="glass-card rounded-3xl p-6 relative overflow-hidden">
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-bold text-foreground flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">

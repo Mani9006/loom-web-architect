@@ -303,7 +303,7 @@ export default function AppLayout() {
       {!isMobile && sidebarContent}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-[68px] flex items-center justify-between px-6 border-b border-border/50 bg-background/80 backdrop-blur-xl shrink-0">
+        <header className="h-[68px] flex items-center justify-between px-6 liquid-nav shrink-0 relative z-20">
           {isMobile ? (
             <button onClick={() => setMobileOpen(true)} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
               <Menu className="w-5 h-5" />
@@ -352,8 +352,18 @@ export default function AppLayout() {
           </DropdownMenu>
         </header>
 
-        <main className="flex-1 overflow-y-auto mesh-bg min-h-0">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto mesh-bg min-h-0 relative aurora-host">
+          {/* Ambient aurora + chroma orbs behind content */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="aurora" style={{ opacity: 0.45 }} />
+            <div className="orb w-[460px] h-[460px] -top-24 -right-24"
+              style={{ background: "hsl(174 62% 55% / 0.22)" }} />
+            <div className="orb w-[380px] h-[380px] top-1/2 -left-24"
+              style={{ background: "hsl(12 80% 65% / 0.18)", animationDelay: "3s" }} />
+          </div>
+          <div className="relative z-10">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
