@@ -291,6 +291,32 @@ export default function AutoApplyPage() {
 
       if (error) throw error;
 
+      // Mirror key prefs into user_job_prefs so the career-ops Matches +
+      // evaluate pipeline uses the same targeting. Upsert keeps the row
+      // aligned with the latest Auto Apply setup.
+      const targetRoles = [
+        profile.target_role,
+        ...(Array.isArray(profile.desired_roles) ? profile.desired_roles : []),
+      ].filter((s): s is string => Boolean(s && s.trim())).map((s) => s.trim());
+      const locations = Array.isArray(profile.desired_locations)
+        ? profile.desired_locations.filter((l): l is string => Boolean(l)).map((s) => s.trim())
+        : [];
+      const remoteOnly = (profile.preferred_work_type || "").toLowerCase() === "remote";
+      const salary = profile.salary_expectations as { min?: number; max?: number } | null;
+      const prefsUpsert = {
+        user_id: user.id,
+        target_roles: targetRoles,
+        locations,
+        remote_only: remoteOnly,
+        comp_target_usd_min: salary?.min ?? null,
+        comp_target_usd_max: salary?.max ?? null,
+        updated_at: new Date().toISOString(),
+      };
+      const { error: prefsErr } = await supabase
+        .from("user_job_prefs")
+        .upsert(prefsUpsert, { onConflict: "user_id" });
+      if (prefsErr) console.error("user_job_prefs mirror:", prefsErr);
+
       if (markComplete) {
         setProfileComplete(true);
         setActiveTab("jobs");

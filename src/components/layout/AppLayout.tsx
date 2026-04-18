@@ -146,50 +146,7 @@ export default function AppLayout() {
         )}
       </div>
 
-      {showText && (
-        <div className="px-3 pt-2 pb-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="w-full flex items-center gap-2.5 h-10 px-2.5 rounded-lg bg-white border border-black/[0.06] hover:border-black/[0.1] transition-colors">
-                <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 shrink-0" />
-                <span className="flex-1 text-left text-[13px] font-medium text-foreground truncate">My Workspace</span>
-                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={2} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-60 rounded-xl p-1.5">
-              <div className="px-3 py-2.5">
-                <p className="text-[12px] text-muted-foreground">Signed in as</p>
-                <p className="text-[13px] font-semibold text-foreground leading-tight mt-0.5 truncate">{displayName}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{user.email}</p>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
-                <UserIcon className="w-3.5 h-3.5" strokeWidth={1.75} /> Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/career-ops/preferences")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
-                <Settings className="w-3.5 h-3.5" strokeWidth={1.75} /> Preferences
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/pricing")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
-                <Zap className="w-3.5 h-3.5" strokeWidth={1.75} /> Billing
-              </DropdownMenuItem>
-              {hasAdminAccess && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/admin")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
-                    <Crown className="w-3.5 h-3.5" strokeWidth={1.75} /> Admin Portal
-                  </DropdownMenuItem>
-                </>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer rounded-md gap-2 text-[12.5px] text-destructive focus:text-destructive">
-                <LogOut className="w-3.5 h-3.5" strokeWidth={1.75} /> Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
-
-      <nav className="flex-1 overflow-y-auto px-3 pt-2 pb-3 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto px-3 pt-3 pb-3 space-y-0.5">
         {mainNav.map((i) => <NavButton key={i.path} item={i} />)}
 
         {showText && (
