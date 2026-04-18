@@ -73,12 +73,14 @@ export default function MatchesPage() {
   const [prefs, setPrefs] = useState<UserPrefs | null>(null);
   const [filter, setFilter] = useState<"all" | "scored" | "unscored" | "top">("all");
   const [evaluating, setEvaluating] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, { id: string; status: string }>>({});
 
   useEffect(() => {
     if (!user) return;
     (async () => {
       setLoading(true);
-      const [jobsRes, evalRes, prefRes] = await Promise.all([
+      const [jobsRes, evalRes, prefRes, draftsRes] = await Promise.all([
         supabase
           .from("scanned_jobs")
           .select("id,title,location,department,remote_policy,compensation_text,apply_url,posted_at,last_seen_at,company:scan_companies(id,name,slug,category)")
@@ -95,11 +97,20 @@ export default function MatchesPage() {
           .select("target_roles,negative_keywords,auto_apply_min_score,daily_apply_cap,auto_apply_enabled")
           .eq("user_id", user.id)
           .maybeSingle(),
+        supabase
+          .from("draft_applications")
+          .select("id,evaluation_id,status")
+          .eq("user_id", user.id),
       ]);
       setJobs((jobsRes.data || []) as unknown as ScannedJob[]);
       const map: Record<string, Evaluation> = {};
       for (const e of (evalRes.data || []) as Evaluation[]) map[e.scanned_job_id] = e;
       setEvaluations(map);
+      const draftMap: Record<string, { id: string; status: string }> = {};
+      for (const d of (draftsRes.data || []) as Array<{ id: string; evaluation_id: string; status: string }>) {
+        draftMap[d.evaluation_id] = { id: d.id, status: d.status };
+      }
+      setDrafts(draftMap);
       setPrefs((prefRes.data as UserPrefs | null) ?? {
         target_roles: [],
         negative_keywords: [],
@@ -138,6 +149,30 @@ export default function MatchesPage() {
       top: readyToApply.length,
     };
   }, [jobs, evaluations, prefs]);
+
+  const prepareApplication = async (evaluationId: string) => {
+    setPreparing(evaluationId);
+    try {
+      const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
+        body: { evaluation_id: evaluationId },
+      });
+      if (error) throw error;
+      const draft = (data as { draft: { id: string; status: string } }).draft;
+      setDrafts((prev) => ({ ...prev, [evaluationId]: { id: draft.id, status: draft.status } }));
+      toast.success("Application prepared — review before submitting");
+      navigate(`/applications/${draft.id}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(
+        msg.includes("412") ? "Add a resume first." :
+        msg.includes("429") ? "Daily tailor cap hit — upgrade for more." :
+        msg.includes("402") ? "Account not active." :
+        `Prepare failed: ${msg}`
+      );
+    } finally {
+      setPreparing(null);
+    }
+  };
 
   const runEvaluation = async (scannedJobId: string) => {
     setEvaluating(scannedJobId);
@@ -268,20 +303,28 @@ export default function MatchesPage() {
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     {evaluation ? (
                       <>
-                        <a
-                          href={job.apply_url}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="inline-flex h-9 px-4 items-center rounded-full text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
-                        >
-                          Apply →
-                        </a>
+                        {drafts[evaluation.id] ? (
+                          <button
+                            onClick={() => navigate(`/applications/${drafts[evaluation.id].id}`)}
+                            className="inline-flex h-9 px-4 items-center rounded-full text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
+                          >
+                            Review →
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => prepareApplication(evaluation.id)}
+                            disabled={preparing === evaluation.id}
+                            className="inline-flex h-9 px-4 items-center rounded-full text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
+                          >
+                            {preparing === evaluation.id ? "Preparing…" : "Prepare"}
+                          </button>
+                        )}
                         <button
                           onClick={() => runEvaluation(job.id)}
                           disabled={evaluating === job.id}
                           className="ml-2 inline-flex h-9 px-3 items-center rounded-full text-[11px] text-muted-foreground border border-foreground/10 hover:bg-foreground/5 hover:text-foreground transition-colors disabled:opacity-50"
                         >
-                          {evaluating === job.id ? "Rescoring…" : "Rescore"}
+                          {evaluating === job.id ? "…" : "Rescore"}
                         </button>
                       </>
                     ) : (
@@ -306,10 +349,10 @@ export default function MatchesPage() {
           Rescans hourly · {Object.keys(evaluations).length}/{prefs?.daily_apply_cap ?? 20} evaluated today
         </p>
         <button
-          onClick={() => navigate("/profile")}
+          onClick={() => navigate("/career-ops/preferences")}
           className="underline-offset-2 hover:underline hover:text-foreground transition-colors"
         >
-          Tune target roles →
+          Tune preferences →
         </button>
       </div>
     </div>
