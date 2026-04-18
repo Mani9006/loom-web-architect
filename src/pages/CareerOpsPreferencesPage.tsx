@@ -50,7 +50,7 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
   return (
     <div className="space-y-3">
       <div>
-        <p className="font-display text-[17px] text-foreground">{label}</p>
+        <p className="text-[14px] font-semibold text-foreground">{label}</p>
         <p className="text-[12px] text-muted-foreground">{hint}</p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -124,14 +124,14 @@ export default function CareerOpsPreferencesPage() {
   return (
     <div className="px-6 lg:px-12 py-10 lg:py-12 max-w-[960px] mx-auto space-y-10">
       <motion.header initial="hidden" animate="visible" variants={fadeUp} custom={0}>
-        <button onClick={() => navigate("/matches")} className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground hover:text-foreground transition-colors mb-4">
+        <button onClick={() => navigate("/matches")} className="text-[12px] text-muted-foreground hover:text-foreground transition-colors mb-3">
           ← Matches
         </button>
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Preferences</p>
-        <h1 className="font-display text-[40px] sm:text-[56px] lg:text-[68px] leading-[1] -tracking-[0.02em] text-foreground font-medium mt-2">
-          Tune the <em className="italic font-normal">shortlist.</em>
+        <p className="text-[12px] font-medium text-muted-foreground mb-1.5">Preferences</p>
+        <h1 className="text-[28px] sm:text-[32px] font-bold text-foreground tracking-tight leading-tight">
+          Tune the shortlist
         </h1>
-        <p className="mt-4 max-w-[60ch] text-[15px] text-muted-foreground">
+        <p className="mt-2 max-w-[64ch] text-[14px] text-muted-foreground leading-relaxed">
           These preferences control what the scanner surfaces, how the evaluator scores, and whether the auto-submitter engages.
         </p>
       </motion.header>
@@ -139,7 +139,7 @@ export default function CareerOpsPreferencesPage() {
       {/* Targeting */}
       <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-8 space-y-8">
         <div className="flex items-baseline justify-between">
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Targeting</p>
+          <p className="text-[13px] font-semibold text-foreground">Targeting</p>
         </div>
         <TagEditor
           label="Target roles"
@@ -164,7 +164,7 @@ export default function CareerOpsPreferencesPage() {
         />
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-display text-[17px] text-foreground">Remote only</p>
+            <p className="text-[14px] font-semibold text-foreground">Remote only</p>
             <p className="text-[12px] text-muted-foreground">Hide on-site and hybrid roles.</p>
           </div>
           <button
@@ -180,7 +180,7 @@ export default function CareerOpsPreferencesPage() {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="font-display text-[15px] text-foreground mb-1">Comp min (USD)</p>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Comp min (USD)</p>
             <input
               type="number"
               value={prefs.comp_target_usd_min ?? ""}
@@ -190,7 +190,7 @@ export default function CareerOpsPreferencesPage() {
             />
           </div>
           <div>
-            <p className="font-display text-[15px] text-foreground mb-1">Comp max (USD)</p>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Comp max (USD)</p>
             <input
               type="number"
               value={prefs.comp_target_usd_max ?? ""}
@@ -206,8 +206,8 @@ export default function CareerOpsPreferencesPage() {
       <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={2} className="glass-card p-8 space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Auto-submit</p>
-            <p className="font-display text-[17px] text-foreground mt-2">
+            <p className="text-[13px] font-semibold text-foreground">Auto-submit</p>
+            <p className="text-[14px] font-semibold text-foreground mt-2">
               Submit to Greenhouse portals <em className="italic font-normal">on your behalf.</em>
             </p>
             <p className="text-[13px] text-muted-foreground mt-1 max-w-[60ch]">
@@ -230,7 +230,7 @@ export default function CareerOpsPreferencesPage() {
 
         <div className={cn("grid grid-cols-2 gap-6 pt-4 border-t border-foreground/10", !prefs.auto_apply_enabled && "opacity-50 pointer-events-none")}>
           <div>
-            <p className="font-display text-[15px] text-foreground mb-1">Minimum score</p>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Minimum score</p>
             <p className="text-[12px] text-muted-foreground mb-2">Only submit to roles scored ≥ this.</p>
             <input
               type="number"
@@ -243,7 +243,7 @@ export default function CareerOpsPreferencesPage() {
             />
           </div>
           <div>
-            <p className="font-display text-[15px] text-foreground mb-1">Daily submit cap</p>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Daily submit cap</p>
             <p className="text-[12px] text-muted-foreground mb-2">Hard limit to protect your applicant reputation.</p>
             <input
               type="number"
@@ -258,7 +258,7 @@ export default function CareerOpsPreferencesPage() {
 
         {prefs.auto_apply_enabled && (
           <div className="pt-4 border-t border-foreground/10">
-            <p className="font-display text-[15px] text-foreground mb-1">Enabled portals</p>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Enabled portals</p>
             <div className="flex gap-2 flex-wrap mt-2">
               {(["greenhouse", "ashby", "lever"] as const).map((p) => {
                 const active = prefs.auto_apply_portals.includes(p);

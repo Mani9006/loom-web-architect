@@ -2,17 +2,14 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Skeleton } from "@/components/ui/skeleton";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { OnboardingModal } from "@/components/OnboardingModal";
+import {
+  FileText, Search, Target, Mail, Mic, ArrowUpRight, Sparkles, Columns3,
+} from "lucide-react";
 
 interface Stats {
-  saved: number;
-  applied: number;
-  interviewing: number;
-  offer: number;
-  rejected: number;
+  saved: number; applied: number; interviewing: number; offer: number; rejected: number;
 }
 
 interface TopMatch {
@@ -20,83 +17,72 @@ interface TopMatch {
   score: number;
   tier: string;
   summary: string | null;
-  job_id: string;
   title: string;
   company: string;
   apply_url: string;
 }
 
-interface ProgressData {
-  hasResume: boolean;
-  hasApplied: boolean;
-  hasCoverLetter: boolean;
-  hasInterviewPrep: boolean;
-}
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.06, duration: 0.55, ease: [0.16, 1, 0.3, 1] as const } }),
-};
-
-type Activity = { num: string; title: string; meta: string; when: string };
+const tiles: Array<{
+  label: string;
+  desc: string;
+  icon: React.ElementType;
+  accent: string;
+  path: string;
+}> = [
+  { label: "Resume Builder", desc: "Draft and edit", icon: FileText, accent: "from-indigo-500 to-indigo-600", path: "/resume-builder" },
+  { label: "ATS Checker", desc: "Score and fix", icon: Target, accent: "from-emerald-500 to-emerald-600", path: "/ats-checker" },
+  { label: "Job Search", desc: "Find matches", icon: Search, accent: "from-violet-500 to-violet-600", path: "/job-search" },
+  { label: "Matches", desc: "Pre-scored roles", icon: Sparkles, accent: "from-amber-500 to-orange-500", path: "/matches" },
+  { label: "Cover Letters", desc: "Tailor per job", icon: Mail, accent: "from-rose-500 to-pink-500", path: "/cover-letters" },
+  { label: "Interview Prep", desc: "Rehearse with AI", icon: Mic, accent: "from-sky-500 to-cyan-500", path: "/interview-prep" },
+];
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [stats, setStats] = useState<Stats>({ saved: 0, applied: 0, interviewing: 0, offer: 0, rejected: 0 });
-  const [progress, setProgress] = useState<ProgressData>({ hasResume: false, hasApplied: false, hasCoverLetter: false, hasInterviewPrep: false });
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [topMatches, setTopMatches] = useState<TopMatch[]>([]);
+  const [recentResumes, setRecentResumes] = useState<Array<{ id: string; title: string; updated_at: string }>>([]);
 
   useEffect(() => {
     if (!user) return;
-    const load = async () => {
-      const [profileRes, resumesRes, jobsRes, clRes, convsRes] = await Promise.all([
+    (async () => {
+      const [profileRes, jobsRes, resumesRes, matchesRes] = await Promise.all([
         supabase.from("profiles").select("full_name, onboarding_completed").eq("user_id", user.id).maybeSingle(),
-        supabase.from("resumes").select("id", { count: "exact", head: true }).eq("user_id", user.id),
-        supabase.from("tracked_jobs").select("id, status").eq("user_id", user.id),
-        supabase.from("cover_letters").select("id", { count: "exact", head: true }).eq("user_id", user.id),
-        supabase.from("conversations").select("chat_mode").eq("user_id", user.id),
+        supabase.from("tracked_jobs").select("status").eq("user_id", user.id),
+        supabase.from("resumes").select("id, title, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(4),
+        supabase
+          .from("job_evaluations")
+          .select("id,score,tier,summary,scanned_job_id,scanned_jobs(title,apply_url,company:scan_companies(name))")
+          .eq("user_id", user.id)
+          .order("score", { ascending: false })
+          .limit(3),
       ]);
+
       const profile = profileRes.data as { full_name?: string; onboarding_completed?: boolean } | null;
       setDisplayName(profile?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "there");
       if (profile && !profile.onboarding_completed) setShowOnboarding(true);
 
       const jobs = (jobsRes.data || []) as Array<{ status: string }>;
-      const hasApplied = jobs.some((j) => j.status !== "Saved");
-      const convModes = new Set(((convsRes.data || []) as Array<{ chat_mode: string }>).map((c) => c.chat_mode));
-
-      setProgress({
-        hasResume: (resumesRes.count || 0) > 0,
-        hasApplied,
-        hasCoverLetter: (clRes.count || 0) > 0,
-        hasInterviewPrep: convModes.has("interview-prep"),
-      });
-
       const counts: Record<string, number> = { saved: 0, applied: 0, interviewing: 0, offer: 0, rejected: 0 };
       jobs.forEach((j) => {
-        const key = j.status.toLowerCase();
+        const key = (j.status || "").toLowerCase();
         if (key in counts) counts[key]++;
       });
       setStats(counts as unknown as Stats);
 
-      // Top scored matches for the shortlist widget.
-      const { data: matchesData } = await supabase
-        .from("job_evaluations")
-        .select("id,score,tier,summary,scanned_job_id,scanned_jobs(title,apply_url,company:scan_companies(name))")
-        .eq("user_id", user.id)
-        .order("score", { ascending: false })
-        .limit(4);
-      const matches: TopMatch[] = ((matchesData || []) as any[])
+      setRecentResumes((resumesRes.data || []) as Array<{ id: string; title: string; updated_at: string }>);
+
+      const matches: TopMatch[] = ((matchesRes.data || []) as any[])
         .filter((m) => m.scanned_jobs)
         .map((m) => ({
           evaluation_id: m.id,
           score: Number(m.score),
           tier: m.tier,
           summary: m.summary,
-          job_id: m.scanned_job_id,
           title: m.scanned_jobs.title,
           company: m.scanned_jobs.company?.name ?? "—",
           apply_url: m.scanned_jobs.apply_url,
@@ -104,48 +90,18 @@ export default function HomePage() {
       setTopMatches(matches);
 
       setLoading(false);
-    };
-    load();
+    })();
   }, [user]);
-
-  const completedCount =
-    (progress.hasResume ? 1 : 0) +
-    (progress.hasApplied ? 1 : 0) +
-    (progress.hasCoverLetter ? 1 : 0) +
-    (progress.hasInterviewPrep ? 1 : 0);
-
-  // Score (illustrative) — keywords/format/brevity/verbs driven by progress for now.
-  const score = Math.max(60, Math.min(99, 70 + completedCount * 7));
-  const subScores = {
-    keywords: Math.min(99, score + 0),
-    format: Math.min(99, score + 4),
-    brevity: Math.max(50, score - 7),
-    verbs: Math.min(99, score + 1),
-  };
-
-  const interviewing = stats.interviewing;
-  const offers = stats.offer;
-  const applied = stats.applied;
 
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening";
 
-  const activity: Activity[] = [
-    { num: "01", title: 'Voice session · "Checkout redesign story"', meta: "STAR 88 · 04:23", when: "4 min ago" },
-    { num: "02", title: "Resume rewritten for Stripe · Senior PM", meta: "+12 keywords · ATS 94", when: "28 min ago" },
-    { num: "03", title: "Cover letter · Linear · Product Lead", meta: "tuned · 218 words", when: "2 h ago" },
-    { num: "04", title: "New match · Figma · Staff Product Designer", meta: "compat. 97%", when: "yesterday" },
-  ];
-
   if (loading) {
     return (
-      <div className="p-6 lg:p-12 max-w-[1280px] mx-auto space-y-10">
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-20 w-[70%]" />
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <Skeleton className="h-72 lg:col-span-2 rounded-[20px]" />
-          <Skeleton className="h-72 rounded-[20px]" />
+      <div className="px-6 lg:px-10 pt-10 pb-16 max-w-[1200px] mx-auto">
+        <div className="h-8 w-64 bg-muted rounded-md animate-pulse mb-3" />
+        <div className="h-10 w-96 bg-muted rounded-md animate-pulse mb-10" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[...Array(6)].map((_, i) => <div key={i} className="h-[136px] bg-muted rounded-xl animate-pulse" />)}
         </div>
       </div>
     );
@@ -154,186 +110,162 @@ export default function HomePage() {
   return (
     <>
       <OnboardingModal open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
-
-      <div className="px-6 lg:px-12 py-10 lg:py-12 max-w-[1280px] mx-auto space-y-10">
-        {/* Editorial header */}
-        <motion.header initial="hidden" animate="visible" variants={fadeUp} custom={0} className="space-y-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-            {greeting}, {displayName || "Friend"}
-          </p>
-          <h1 className="font-display text-[54px] sm:text-[68px] lg:text-[92px] leading-[0.98] -tracking-[0.02em] text-foreground font-semibold">
-            Today&rsquo;s <em className="italic font-medium text-foreground/95">composition</em>.
+      <div className="px-6 lg:px-10 pt-10 pb-16 max-w-[1200px] mx-auto">
+        <div className="mb-10">
+          <p className="text-[12px] text-muted-foreground mb-1">My Workspace</p>
+          <h1 className="text-[32px] sm:text-[36px] font-bold text-foreground tracking-tight leading-tight">
+            {greeting}, {displayName}
           </h1>
-        </motion.header>
-
-        {/* Top bento row: Score card (wide) + Pipeline (ink panel) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Score card */}
-          <motion.section
-            initial="hidden" animate="visible" variants={fadeUp} custom={1}
-            className="glass-card lg:col-span-2 p-8 sm:p-10 relative overflow-hidden"
-          >
-            <div className="flex items-start justify-between mb-10">
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                Active resume <span className="opacity-50">·</span> Figma <span className="opacity-50">·</span> Growth
-              </p>
-              <span className="inline-flex items-center gap-2 h-7 px-3 rounded-full bg-background/60 border border-foreground/10 text-[11px] text-foreground">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                Drafting
-              </span>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-6 sm:gap-10">
-              <div className="font-display text-[128px] sm:text-[168px] leading-[0.85] font-medium tabular-nums -tracking-[0.04em] text-foreground">
-                {score}
-              </div>
-              <div className="flex-1 pb-5">
-                <p className="font-display text-[22px] sm:text-[24px] text-foreground leading-snug italic font-normal">
-                  Exceptional — ready to submit.
-                </p>
-                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground mt-3">
-                  +7 vs cohort <span className="opacity-50">·</span> last edited 4 min ago
-                </p>
-              </div>
-              {/* Trend spark */}
-              <svg className="w-32 h-16 text-foreground/70 shrink-0 hidden sm:block" viewBox="0 0 200 80" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <path d="M4 66 C 40 58, 80 44, 120 30 S 180 14, 196 10" />
-              </svg>
-            </div>
-
-            <div className="mt-10 grid grid-cols-4 gap-6 border-t border-foreground/15 pt-6">
-              {([
-                ["Keywords", subScores.keywords],
-                ["Format", subScores.format],
-                ["Brevity", subScores.brevity],
-                ["Verbs", subScores.verbs],
-              ] as const).map(([label, val]) => (
-                <div key={label}>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{label}</p>
-                  <div className="font-display text-[48px] sm:text-[60px] leading-none font-medium tabular-nums -tracking-[0.03em] text-foreground mt-2">
-                    {val}
-                  </div>
-                  <div className="h-px w-full bg-foreground/25 mt-3" />
-                </div>
-              ))}
-            </div>
-          </motion.section>
-
-          {/* Ink pipeline panel */}
-          <motion.section
-            initial="hidden" animate="visible" variants={fadeUp} custom={2}
-            className="ink-panel p-8 sm:p-10 relative overflow-hidden"
-          >
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-background/55">
-              Pipeline <span className="opacity-60">·</span> Today
-            </p>
-            <p className="font-display italic mt-6 text-[22px] sm:text-[26px] leading-snug text-background/95 font-normal">
-              {applied || 3} application{applied === 1 ? "" : "s"} drafted.<br />
-              {interviewing || 2} interview{interviewing === 1 ? "" : "s"} scheduled.<br />
-              {offers || 1} offer{offers === 1 ? "" : "s"} anticipated.
-            </p>
-
-            <div className="my-10 h-px bg-background/15" />
-
-            <div className="grid grid-cols-3 gap-6">
-              {([
-                [stats.applied || 28, "Applied"],
-                [stats.interviewing || 7, "Call"],
-                [offers || 3, "Onsite"],
-              ] as const).map(([n, label]) => (
-                <div key={label}>
-                  <div className="font-display text-[52px] sm:text-[64px] leading-none font-medium tabular-nums -tracking-[0.03em] text-background">{n}</div>
-                  <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-background/55 mt-3">{label}</p>
-                </div>
-              ))}
-            </div>
-          </motion.section>
         </div>
 
-        {/* Today's shortlist — top scored matches from scan pipeline */}
-        {topMatches.length > 0 && (
-          <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={3} className="glass-card p-8">
-            <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Today&rsquo;s shortlist</p>
-                <h3 className="font-display text-[26px] sm:text-[30px] leading-[1.1] -tracking-[0.02em] text-foreground font-medium mt-2">
-                  {topMatches.length} role{topMatches.length === 1 ? "" : "s"} worth <em className="italic font-normal">your time.</em>
-                </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-14">
+          {tiles.map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.path}
+                onClick={() => navigate(t.path)}
+                className="feature-tile group flex flex-col items-start gap-4 p-4 text-left"
+              >
+                <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center shadow-sm bg-gradient-to-br", t.accent)}>
+                  <Icon className="w-5 h-5 text-white" strokeWidth={2} />
+                </div>
+                <div className="min-w-0 w-full">
+                  <p className="text-[13.5px] font-semibold text-foreground leading-tight">{t.label}</p>
+                  <p className="text-[11.5px] text-muted-foreground mt-1 truncate">{t.desc}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-10">
+          <section>
+            <h2 className="text-[17px] font-semibold text-foreground tracking-tight mb-4">
+              Latest in your workspace
+            </h2>
+            {recentResumes.length === 0 ? (
+              <div className="glass-card p-8 text-center">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-muted flex items-center justify-center mb-3">
+                  <FileText className="w-5 h-5 text-muted-foreground" strokeWidth={1.75} />
+                </div>
+                <p className="text-[14px] font-medium text-foreground">No resumes yet</p>
+                <p className="text-[12.5px] text-muted-foreground mt-1 mb-4">Create your first to get started.</p>
+                <button
+                  onClick={() => navigate("/resume-builder")}
+                  className="inline-flex items-center h-9 px-4 rounded-md text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
+                >
+                  Create resume
+                </button>
               </div>
+            ) : (
+              <ul className="space-y-1.5">
+                {recentResumes.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      onClick={() => navigate(`/resume-builder/${r.id}`)}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted/70 transition-colors text-left"
+                    >
+                      <div className="w-9 h-9 rounded-md bg-indigo-500/10 flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4 text-indigo-600" strokeWidth={1.75} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">{r.title || "Untitled resume"}</p>
+                        <p className="text-[11.5px] text-muted-foreground mt-0.5">
+                          Updated {new Date(r.updated_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <ArrowUpRight className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button
+              onClick={() => navigate("/documents")}
+              className="mt-3 inline-flex items-center h-9 px-4 rounded-md text-[12.5px] text-foreground border border-border hover:bg-muted/70 transition-colors"
+            >
+              Browse all documents
+            </button>
+          </section>
+
+          <section>
+            <h2 className="text-[17px] font-semibold text-foreground tracking-tight mb-4">
+              Create or discover
+            </h2>
+            <div className="space-y-2.5">
+              <button
+                onClick={() => navigate("/resume-builder")}
+                className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border hover:bg-muted/40 transition-colors text-left"
+              >
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5 text-white" strokeWidth={2} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[13.5px] font-semibold text-foreground">New resume</p>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">Start from a blank template</p>
+                </div>
+              </button>
               <button
                 onClick={() => navigate("/matches")}
-                className="text-[12px] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors"
+                className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border hover:bg-muted/40 transition-colors text-left"
               >
-                See all matches →
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5 text-white" strokeWidth={2} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[13.5px] font-semibold text-foreground">Find matches</p>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">AI-scored roles across tracked portals</p>
+                </div>
+              </button>
+              <button
+                onClick={() => navigate("/job-tracker")}
+                className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border hover:bg-muted/40 transition-colors text-left"
+              >
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shrink-0">
+                  <Columns3 className="w-5 h-5 text-white" strokeWidth={2} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[13.5px] font-semibold text-foreground">Open pipeline</p>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">
+                    {stats.applied + stats.interviewing + stats.offer} active · {stats.saved} saved
+                  </p>
+                </div>
               </button>
             </div>
-            <ul className="divide-y divide-foreground/10">
-              {topMatches.map((m) => (
-                <li key={m.evaluation_id} className="grid grid-cols-[56px_1fr_auto] items-center gap-4 py-4">
-                  <span className="font-display text-[22px] leading-none font-medium tabular-nums text-foreground">
-                    {m.score.toFixed(1)}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="font-display text-[17px] text-foreground leading-tight truncate">{m.title}</div>
-                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground mt-1 truncate">
-                      {m.company}{m.summary ? <span className="italic font-normal normal-case tracking-normal text-[12px]"> — {m.summary}</span> : null}
-                    </div>
-                  </div>
-                  <a
-                    href={m.apply_url}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="inline-flex h-9 px-4 items-center rounded-full text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
-                  >
-                    Apply →
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </motion.section>
-        )}
-
-        {/* Recent activity */}
-        <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={3} className="glass-card p-8">
-          <div className="flex items-center justify-between mb-6">
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Recent activity</p>
-            <button
-              onClick={() => navigate("/job-tracker")}
-              className="text-[12px] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors"
-            >
-              View all
-            </button>
-          </div>
-          <ul className="divide-y divide-foreground/15">
-            {activity.map((a) => (
-              <li key={a.num} className="grid grid-cols-[40px_1fr_auto_96px] items-center gap-4 py-5">
-                <span className="font-mono text-[11px] text-muted-foreground">{a.num}</span>
-                <span className="font-display italic text-[17px] text-foreground truncate">{a.title}</span>
-                <span className="font-display italic text-[13px] text-muted-foreground hidden sm:inline">{a.meta}</span>
-                <span className="font-mono text-[11px] text-muted-foreground text-right">{a.when}</span>
-              </li>
-            ))}
-          </ul>
-        </motion.section>
-
-        {/* Landing / Dashboard pill (decorative — signals active surface) */}
-        <div className="flex justify-center">
-          <div className="inline-flex items-center gap-1 p-1 rounded-full bg-background/60 border border-foreground/10 backdrop-blur-md">
-            <button
-              onClick={() => navigate("/")}
-              className="h-8 px-5 rounded-full text-[12px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Landing
-            </button>
-            <button
-              className={cn(
-                "h-8 px-5 rounded-full text-[12px] font-medium bg-foreground text-background",
-              )}
-            >
-              Dashboard
-            </button>
-          </div>
+          </section>
         </div>
+
+        {topMatches.length > 0 && (
+          <section className="mt-14">
+            <h2 className="text-[17px] font-semibold text-foreground tracking-tight mb-4">
+              Top matches today
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {topMatches.map((m) => (
+                <a
+                  key={m.evaluation_id}
+                  href={m.apply_url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="glass-card p-5 block hover:-translate-y-0.5 transition-transform no-underline"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                      <span className="text-[13px] font-bold text-amber-600 tabular-nums">{m.score.toFixed(1)}</span>
+                    </div>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{m.tier}</span>
+                  </div>
+                  <p className="text-[14px] font-semibold text-foreground leading-tight line-clamp-2">{m.title}</p>
+                  <p className="text-[12px] text-muted-foreground mt-1">{m.company}</p>
+                  {m.summary && (
+                    <p className="text-[12px] text-muted-foreground mt-3 line-clamp-2 leading-relaxed">{m.summary}</p>
+                  )}
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </>
   );

@@ -211,40 +211,40 @@ export default function MatchesPage() {
 
   return (
     <div className="px-6 lg:px-12 py-10 lg:py-12 max-w-[1280px] mx-auto space-y-10">
-      <motion.header initial="hidden" animate="visible" variants={fadeUp} custom={0} className="space-y-3">
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Matches</p>
-        <h1 className="font-display text-[54px] sm:text-[68px] lg:text-[84px] leading-[0.98] -tracking-[0.02em] text-foreground font-semibold">
-          The shortlist, <em className="italic font-medium text-foreground/90">scored.</em>
+      <motion.header initial="hidden" animate="visible" variants={fadeUp} custom={0} className="mb-8">
+        <p className="text-[12px] font-medium text-muted-foreground mb-1.5">Matches</p>
+        <h1 className="text-[28px] sm:text-[32px] font-bold text-foreground tracking-tight leading-tight">
+          The shortlist, scored
         </h1>
-        <p className="max-w-[60ch] text-[15px] text-muted-foreground leading-relaxed">
-          Every hour we pull fresh postings from Greenhouse, Ashby, and Lever across our tracked companies. Evaluate any role against your resume to see how you stack up.
+        <p className="mt-2 max-w-[64ch] text-[14px] text-muted-foreground leading-relaxed">
+          Every hour we pull fresh postings from Greenhouse, Ashby, and Lever across tracked companies. Evaluate any role against your resume to see how you stack up.
         </p>
       </motion.header>
 
       {/* Stat strip */}
-      <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-6 sm:p-8 flex flex-wrap gap-8">
+      <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-5 sm:p-6 flex flex-wrap gap-8">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Open roles</p>
-          <div className="font-display text-[48px] leading-none font-medium tabular-nums -tracking-[0.03em] text-foreground mt-2">{stats.total}</div>
+          <p className="text-[11.5px] font-medium text-muted-foreground">Open roles</p>
+          <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.total}</div>
         </div>
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Scored</p>
-          <div className="font-display text-[48px] leading-none font-medium tabular-nums -tracking-[0.03em] text-foreground mt-2">{stats.scored}</div>
+          <p className="text-[11.5px] font-medium text-muted-foreground">Scored</p>
+          <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.scored}</div>
         </div>
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Ready to apply</p>
-          <div className="font-display text-[48px] leading-none font-medium tabular-nums -tracking-[0.03em] text-foreground mt-2">{stats.top}</div>
+          <p className="text-[11.5px] font-medium text-muted-foreground">Ready to apply</p>
+          <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.top}</div>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
           {(["all", "top", "scored", "unscored"] as const).map((k) => (
             <button
               key={k}
               onClick={() => setFilter(k)}
               className={cn(
-                "h-9 px-4 rounded-full text-[12px] transition-colors",
+                "h-8 px-3 rounded-md text-[12px] font-medium transition-colors",
                 filter === k
                   ? "bg-foreground text-background"
-                  : "text-muted-foreground border border-foreground/10 hover:bg-foreground/5 hover:text-foreground",
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               {k === "all" ? "All" : k === "top" ? "Top" : k === "scored" ? "Scored" : "Unscored"}
@@ -256,65 +256,65 @@ export default function MatchesPage() {
       {/* Table */}
       {filtered.length === 0 ? (
         <div className="glass-card p-12 text-center">
-          <p className="font-display italic text-[20px] text-foreground">No roles match right now.</p>
+          <p className="text-[16px] font-semibold text-foreground">No roles match right now.</p>
           <p className="text-[13px] text-muted-foreground mt-2">
             Adjust your target roles in preferences or wait for the next hourly scan.
           </p>
         </div>
       ) : (
         <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={2} className="glass-card overflow-hidden">
-          <table className="w-full text-[14px]">
+          <table className="w-full text-[13.5px]">
             <thead>
-              <tr className="border-b border-foreground/10">
-                <th className="text-left font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground px-6 py-4 w-16">Score</th>
-                <th className="text-left font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground px-3 py-4">Role</th>
-                <th className="text-left font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground px-3 py-4">Location</th>
-                <th className="text-left font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground px-3 py-4 hidden lg:table-cell">Seen</th>
-                <th className="text-right font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground px-6 py-4">Action</th>
+              <tr className="border-b border-border">
+                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-5 py-3 w-16">Score</th>
+                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Role</th>
+                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Location</th>
+                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 hidden lg:table-cell">Seen</th>
+                <th className="text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-5 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(({ job, evaluation }) => (
-                <tr key={job.id} className="border-b border-foreground/8 last:border-0 hover:bg-foreground/[0.025] transition-colors">
-                  <td className="px-6 py-4">
+                <tr key={job.id} className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors">
+                  <td className="px-5 py-4">
                     {evaluation ? (
-                      <span className={cn("inline-flex items-center justify-center w-10 h-10 rounded-full font-display text-[15px] font-medium tabular-nums", tierColor(evaluation.tier))}>
+                      <span className={cn("inline-flex items-center justify-center w-10 h-10 rounded-full text-[13px] font-bold tabular-nums", tierColor(evaluation.tier))}>
                         {evaluation.score.toFixed(1)}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-dashed border-foreground/20 text-muted-foreground text-[11px] font-mono">—</span>
+                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-dashed border-border text-muted-foreground text-[11px]">—</span>
                     )}
                   </td>
                   <td className="px-3 py-4">
-                    <div className="font-display text-[17px] text-foreground leading-tight">{job.title}</div>
-                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground mt-1">
+                    <div className="text-[14px] font-semibold text-foreground leading-tight">{job.title}</div>
+                    <div className="text-[11.5px] text-muted-foreground mt-1">
                       {job.company.name}
-                      {job.department ? <span className="opacity-50"> · {job.department}</span> : null}
+                      {job.department ? <span className="opacity-60"> · {job.department}</span> : null}
                     </div>
                     {evaluation?.summary ? (
-                      <div className="text-[13px] text-muted-foreground mt-2 italic max-w-[60ch] truncate">{evaluation.summary}</div>
+                      <div className="text-[12.5px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">{evaluation.summary}</div>
                     ) : null}
                   </td>
-                  <td className="px-3 py-4 text-muted-foreground">
+                  <td className="px-3 py-4 text-[13px] text-muted-foreground">
                     {job.location || "—"}
-                    {job.remote_policy ? <div className="font-mono text-[10px] uppercase tracking-[0.18em] opacity-70">{job.remote_policy}</div> : null}
+                    {job.remote_policy ? <div className="text-[11px] text-muted-foreground/80 mt-0.5">{job.remote_policy}</div> : null}
                   </td>
-                  <td className="px-3 py-4 font-mono text-[11px] text-muted-foreground hidden lg:table-cell">{relativeTime(job.last_seen_at)}</td>
-                  <td className="px-6 py-4 text-right whitespace-nowrap">
+                  <td className="px-3 py-4 text-[12px] text-muted-foreground hidden lg:table-cell">{relativeTime(job.last_seen_at)}</td>
+                  <td className="px-5 py-4 text-right whitespace-nowrap">
                     {evaluation ? (
                       <>
                         {drafts[evaluation.id] ? (
                           <button
                             onClick={() => navigate(`/applications/${drafts[evaluation.id].id}`)}
-                            className="inline-flex h-9 px-4 items-center rounded-full text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
+                            className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
                           >
-                            Review →
+                            Review
                           </button>
                         ) : (
                           <button
                             onClick={() => prepareApplication(evaluation.id)}
                             disabled={preparing === evaluation.id}
-                            className="inline-flex h-9 px-4 items-center rounded-full text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
+                            className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
                           >
                             {preparing === evaluation.id ? "Preparing…" : "Prepare"}
                           </button>
@@ -322,7 +322,7 @@ export default function MatchesPage() {
                         <button
                           onClick={() => runEvaluation(job.id)}
                           disabled={evaluating === job.id}
-                          className="ml-2 inline-flex h-9 px-3 items-center rounded-full text-[11px] text-muted-foreground border border-foreground/10 hover:bg-foreground/5 hover:text-foreground transition-colors disabled:opacity-50"
+                          className="ml-1.5 inline-flex h-8 px-3 items-center rounded-md text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
                         >
                           {evaluating === job.id ? "…" : "Rescore"}
                         </button>
@@ -331,7 +331,7 @@ export default function MatchesPage() {
                       <button
                         onClick={() => runEvaluation(job.id)}
                         disabled={evaluating === job.id}
-                        className="inline-flex h-9 px-4 items-center rounded-full text-[12px] font-medium border border-foreground/15 text-foreground hover:bg-foreground/5 transition-colors disabled:opacity-50"
+                        className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                       >
                         {evaluating === job.id ? "Scoring…" : "Score"}
                       </button>
@@ -344,13 +344,13 @@ export default function MatchesPage() {
         </motion.div>
       )}
 
-      <div className="flex items-center justify-between text-[12px] text-muted-foreground">
-        <p className="font-mono uppercase tracking-[0.18em]">
+      <div className="flex items-center justify-between text-[12px] text-muted-foreground mt-6">
+        <p>
           Rescans hourly · {Object.keys(evaluations).length}/{prefs?.daily_apply_cap ?? 20} evaluated today
         </p>
         <button
           onClick={() => navigate("/career-ops/preferences")}
-          className="underline-offset-2 hover:underline hover:text-foreground transition-colors"
+          className="hover:text-foreground transition-colors"
         >
           Tune preferences →
         </button>
