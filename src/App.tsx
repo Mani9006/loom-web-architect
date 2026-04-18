@@ -13,6 +13,7 @@ import OwnerProtectedRoute from "@/components/OwnerProtectedRoute";
 import RouteAnalyticsTracker from "@/components/RouteAnalyticsTracker";
 import GlobalAuthRedirect from "@/components/GlobalAuthRedirect";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
+import RPIconSprite from "@/components/shared/RPIconSprite";
 
 // Eager-loaded routes (critical path)
 import Landing from "./pages/Landing";
@@ -57,6 +58,7 @@ const App = () => (
       <AuthProvider>
         <SubscriptionProvider>
         <TooltipProvider>
+          <RPIconSprite />
           <Toaster />
           <Sonner />
           <BrowserRouter>

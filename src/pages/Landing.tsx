@@ -4,10 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import {
-  FileText, Search, Target, Mail,
-  CheckCircle2, ArrowRight, Zap, Clock, Heart, Shield,
-  Star, Lightbulb, Mic, Sparkles, Play, ArrowUpRight
+  CheckCircle2, ArrowRight, Clock, Heart, Shield,
+  Star, ArrowUpRight,
 } from "lucide-react";
+import { RPIcon, type RPIconName } from "@/components/shared/RPIcon";
 import Logo, { LogoIcon } from "@/components/shared/Logo";
 import heroBg from "@/assets/hero-bg.png";
 
@@ -16,13 +16,13 @@ const fadeUp = {
   visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] as const } }),
 };
 
-const features = [
-  { icon: FileText, tag: "Resume Builder", title: "Build resumes that actually land interviews", desc: "AI crafts ATS-optimized resumes from your experience. Every bullet point is engineered to pass automated screening.", color: "from-primary/10 to-accent/5" },
-  { icon: Target, tag: "ATS Checker", title: "Score your resume before recruiters do", desc: "Get detailed compatibility scores, missing keyword analysis, and formatting fixes — before you hit submit.", color: "from-accent/10 to-primary/5" },
-  { icon: Search, tag: "Smart Job Search", title: "Discover roles that match your DNA", desc: "AI analyzes your skills across LinkedIn, Indeed, and Google Jobs to surface roles you'd never find manually.", color: "from-primary/10 to-accent/5" },
-  { icon: Mail, tag: "Cover Letters", title: "One-click tailored cover letters", desc: "Generate personalized letters that align your achievements with each job's specific requirements in seconds.", color: "from-accent/10 to-primary/5" },
-  { icon: Mic, tag: "Interview Prep", title: "Practice interviews with voice AI", desc: "Voice-powered mock interviews with real-time scoring, behavioral question practice, and improvement coaching.", color: "from-primary/10 to-accent/5" },
-  { icon: Lightbulb, tag: "AI Toolbox", title: "6 AI tools for your entire career", desc: "LinkedIn optimizer, email writer, elevator pitch generator, brand statement, and more — all in one workspace.", color: "from-accent/10 to-primary/5" },
+const features: Array<{ icon: RPIconName; tag: string; title: string; desc: string; color: string }> = [
+  { icon: "resume", tag: "Resume Builder", title: "Build resumes that actually land interviews", desc: "AI crafts ATS-optimized resumes from your experience. Every bullet point is engineered to pass automated screening.", color: "from-primary/10 to-accent/5" },
+  { icon: "score", tag: "ATS Checker", title: "Score your resume before recruiters do", desc: "Get detailed compatibility scores, missing keyword analysis, and formatting fixes — before you hit submit.", color: "from-accent/10 to-primary/5" },
+  { icon: "search", tag: "Smart Job Search", title: "Discover roles that match your DNA", desc: "AI analyzes your skills across LinkedIn, Indeed, and Google Jobs to surface roles you'd never find manually.", color: "from-primary/10 to-accent/5" },
+  { icon: "letter", tag: "Cover Letters", title: "One-click tailored cover letters", desc: "Generate personalized letters that align your achievements with each job's specific requirements in seconds.", color: "from-accent/10 to-primary/5" },
+  { icon: "interview", tag: "Interview Prep", title: "Practice interviews with voice AI", desc: "Voice-powered mock interviews with real-time scoring, behavioral question practice, and improvement coaching.", color: "from-primary/10 to-accent/5" },
+  { icon: "tailor", tag: "AI Toolbox", title: "6 AI tools for your entire career", desc: "LinkedIn optimizer, email writer, elevator pitch generator, brand statement, and more — all in one workspace.", color: "from-accent/10 to-primary/5" },
 ];
 
 const stats = [
@@ -75,16 +75,22 @@ export default function Landing() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background overflow-hidden">
-      {/* Floating blobs */}
+    <div className="min-h-screen bg-background overflow-hidden relative aurora-host">
+      {/* Animated aurora + chroma orbs (Apple liquid-glass backdrop) */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-[600px] h-[600px] rounded-full bg-primary/[0.04] blur-3xl animate-blob" />
-        <div className="absolute top-1/3 -left-40 w-[500px] h-[500px] rounded-full bg-accent/[0.04] blur-3xl animate-blob" style={{ animationDelay: "2s" }} />
-        <div className="absolute -bottom-40 right-1/4 w-[400px] h-[400px] rounded-full bg-primary/[0.03] blur-3xl animate-blob" style={{ animationDelay: "4s" }} />
+        <div className="aurora" />
+        <div className="orb w-[520px] h-[520px] -top-32 -right-32"
+          style={{ background: "hsl(174 62% 55% / 0.35)" }} />
+        <div className="orb w-[460px] h-[460px] top-1/3 -left-32"
+          style={{ background: "hsl(12 80% 65% / 0.32)", animationDelay: "2.5s" }} />
+        <div className="orb w-[380px] h-[380px] -bottom-32 right-1/4"
+          style={{ background: "hsl(45 90% 60% / 0.28)", animationDelay: "5s" }} />
+        <div className="orb w-[300px] h-[300px] top-2/3 right-1/3"
+          style={{ background: "hsl(200 75% 60% / 0.22)", animationDelay: "7.5s" }} />
       </div>
 
       {/* Nav */}
-      <nav className="sticky top-0 z-50 bg-background/60 backdrop-blur-2xl border-b border-border/30">
+      <nav className="sticky top-0 z-50 liquid-nav">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Logo size="md" />
@@ -116,7 +122,7 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative z-10">
           <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0}>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card text-sm font-medium text-muted-foreground mb-8 shadow-sm">
-              <Sparkles className="w-4 h-4 text-primary" />
+              <span className="text-primary"><RPIcon name="spark" size={16} /></span>
               AI-Powered Career Platform
             </div>
           </motion.div>
@@ -141,7 +147,7 @@ export default function Landing() {
             </Button>
             <Button size="lg" variant="outline" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
               className="text-base px-10 font-medium rounded-2xl h-13 gap-2 text-lg glass-card border-border/50">
-              <Play className="w-4 h-4" /> Watch Demo
+              <RPIcon name="play" size={16} filled /> Watch Demo
             </Button>
           </motion.div>
 
@@ -157,14 +163,14 @@ export default function Landing() {
       </section>
 
       {/* Stats — floating glass pills */}
-      <section className="py-12">
+      <section className="py-12 relative z-10">
         <div className="max-w-4xl mx-auto px-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {stats.map((stat, i) => (
               <motion.div key={stat.label} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
-                className="glass-card rounded-2xl p-5 text-center shadow-sm">
-                <div className="text-3xl sm:text-4xl font-extrabold text-foreground mb-1">{stat.value}</div>
-                <div className="text-sm text-muted-foreground font-medium">{stat.label}</div>
+                className="glass-card rounded-2xl p-5 text-center relative overflow-hidden">
+                <div className="relative text-3xl sm:text-4xl font-extrabold text-foreground mb-1">{stat.value}</div>
+                <div className="relative text-sm text-muted-foreground font-medium">{stat.label}</div>
               </motion.div>
             ))}
           </div>
@@ -183,16 +189,16 @@ export default function Landing() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {features.map((f, i) => (
               <motion.div key={f.tag} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
-                className={`bento-card group bg-gradient-to-br ${f.color} border-border/40 ${i === 0 ? "md:col-span-2 lg:col-span-1" : ""}`}>
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors group-hover:scale-105 transition-transform duration-300">
-                    <f.icon className="w-6 h-6 text-primary" />
+                className={`glass-card rounded-3xl p-6 group relative overflow-hidden transition-transform duration-300 hover:-translate-y-1 ${i === 0 ? "md:col-span-2 lg:col-span-1" : ""}`}>
+                <div className="relative flex items-center gap-3 mb-5">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors group-hover:scale-105 transition-transform duration-300 text-primary ring-1 ring-white/40 shadow-inner">
+                    <RPIcon name={f.icon} size={24} />
                   </div>
                   <span className="text-[11px] font-bold text-primary uppercase tracking-widest">{f.tag}</span>
                 </div>
-                <h3 className="text-lg font-bold mb-2 text-foreground leading-snug">{f.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{f.desc}</p>
-                <div className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                <h3 className="relative text-lg font-bold mb-2 text-foreground leading-snug">{f.title}</h3>
+                <p className="relative text-sm text-muted-foreground leading-relaxed">{f.desc}</p>
+                <div className="relative mt-5 flex items-center gap-1.5 text-sm font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
                   Learn more <ArrowUpRight className="w-4 h-4" />
                 </div>
               </motion.div>
@@ -214,13 +220,13 @@ export default function Landing() {
               className="rounded-3xl border border-destructive/10 bg-destructive/[0.02] p-8 space-y-6">
               <div className="flex items-center gap-2 text-destructive font-bold text-sm"><span className="text-2xl">😔</span> The old way</div>
               {[
-                { icon: FileText, title: "Silent Rejections", desc: "75% of resumes filtered by ATS bots" },
-                { icon: Clock, title: "Hours Per Application", desc: "2-3 hours manually tailoring each one" },
-                { icon: Shield, title: "Tool Overload", desc: "Juggling 5+ separate apps and tabs" },
+                { rp: "reject" as const, icon: null, title: "Silent Rejections", desc: "75% of resumes filtered by ATS bots" },
+                { rp: null, icon: Clock, title: "Hours Per Application", desc: "2-3 hours manually tailoring each one" },
+                { rp: null, icon: Shield, title: "Tool Overload", desc: "Juggling 5+ separate apps and tabs" },
               ].map((item) => (
                 <div key={item.title} className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-destructive/10 flex items-center justify-center shrink-0">
-                    <item.icon className="w-5 h-5 text-destructive" />
+                  <div className="w-10 h-10 rounded-2xl bg-destructive/10 flex items-center justify-center shrink-0 text-destructive">
+                    {item.rp ? <RPIcon name={item.rp} size={20} /> : item.icon ? <item.icon className="w-5 h-5" /> : null}
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">{item.title}</p>
@@ -234,13 +240,13 @@ export default function Landing() {
               className="rounded-3xl border border-primary/15 bg-gradient-to-br from-primary/[0.03] to-accent/[0.03] p-8 space-y-6">
               <div className="flex items-center gap-2 text-primary font-bold text-sm"><span className="text-2xl">🚀</span> With ResumePreps</div>
               {[
-                { icon: Heart, title: "ATS-Optimized", desc: "AI ensures every resume passes screening" },
-                { icon: Zap, title: "5 Minutes Flat", desc: "AI generates everything you need instantly" },
-                { icon: CheckCircle2, title: "All-in-One", desc: "Resume to offer letter, single workspace" },
+                { rp: null, icon: Heart, title: "ATS-Optimized", desc: "AI ensures every resume passes screening" },
+                { rp: "zap" as const, icon: null, title: "5 Minutes Flat", desc: "AI generates everything you need instantly" },
+                { rp: "applied" as const, icon: null, title: "All-in-One", desc: "Resume to offer letter, single workspace" },
               ].map((item) => (
                 <div key={item.title} className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <item.icon className="w-5 h-5 text-primary" />
+                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                    {item.rp ? <RPIcon name={item.rp} size={20} /> : item.icon ? <item.icon className="w-5 h-5" /> : null}
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">{item.title}</p>
