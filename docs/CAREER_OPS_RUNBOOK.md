@@ -1,5 +1,79 @@
 # Career-Ops Pipeline — Deploy Runbook
 
+## Agents update (April 2026)
+
+Latest PR adds the agent layer: LinkedIn optimizer, real ATS scoring,
+story bank, and tiered model routing. All new functions share a single
+AI client and a single guards helper to keep behavior consistent.
+
+### Model routing policy
+
+| Tier                    | Model                          | Used by                                             |
+|-------------------------|--------------------------------|-----------------------------------------------------|
+| `simple`                | `claude-haiku-4-5-20251001`    | career-ops-ats keyword extract, connection notes    |
+| `complex` / `research`  | `claude-sonnet-4-6`            | evaluate, tailor, linkedin-{headline,about,post}, story-bank |
+| `opus-4-7-auto-apply`   | `claude-opus-4-7`              | RESERVED — only auto-apply form-filling is allowed to use Opus. |
+
+Every call uses prompt caching on the system prompt + (optional) cached
+context (e.g. the user's résumé). ~85% cache hit rate at normal usage
+→ ~6× cost reduction vs uncached.
+
+### New edge functions
+
+- **`career-ops-linkedin`** — headline / about / post / connection_note
+  optimizer, grounded in the user's latest résumé. Writes to
+  `linkedin_optimizations`.
+- **`career-ops-ats`** — real ATS scoring. Deterministic format / bullet
+  analysis + Haiku 4.5 keyword extraction from a JD. Six dimensions 0-100,
+  weighted overall score. Writes to `ats_scores`.
+- **`career-ops-story-bank`** — STAR+R story extractor. Reads résumé +
+  recent evaluations, produces 5-7 reusable behavioural answers. Writes to
+  `interview_stories`.
+
+### New tables (migration `20260420100000_career_ops_agents.sql`)
+
+- `linkedin_optimizations` — history of LinkedIn AI outputs
+- `ats_scores` — dimensional ATS scoring results
+- `interview_stories` — STAR+R stories (user-editable)
+- `company_research` — cached deep research per company/role
+- `application_followups` — follow-up email drafts per application
+
+All with RLS bound to `auth.uid()`. Writes to `linkedin_optimizations`
+and `ats_scores` are service-role-only to keep scores honest.
+
+### Daily caps (per user, per kind)
+
+| Kind          | Free | Pro |
+|---------------|------|-----|
+| evaluation    | 20   | 200 |
+| tailor        | 10   | 100 |
+| linkedin      | 10   | 100 |
+| ats           | 25   | 500 |
+| story         | 15   | 150 |
+
+### Deploy sequence (this release)
+
+```bash
+# Migrations (new tables + widen ai_usage_daily kind check)
+supabase db push
+
+# Deploy edge functions (old + new)
+supabase functions deploy career-ops-scan
+supabase functions deploy career-ops-evaluate
+supabase functions deploy career-ops-tailor
+supabase functions deploy career-ops-submit
+supabase functions deploy career-ops-linkedin
+supabase functions deploy career-ops-ats
+supabase functions deploy career-ops-story-bank
+```
+
+No new secrets needed — all edge functions use the existing
+`ANTHROPIC_API_KEY`.
+
+---
+
+
+
 ## Why the site showed "no changes" after merging PR #30
 
 The code shipped, but the **feature is dormant** until the Supabase-side

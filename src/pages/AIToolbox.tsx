@@ -31,6 +31,15 @@ export default function AIToolbox() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // LinkedIn-specific tools route through career-ops-linkedin (structured,
+  // grounded in the user's résumé, stored for history). Other tools keep the
+  // streaming ai-orchestrator flow.
+  const linkedinKind: Record<string, "headline" | "about" | "post" | "connection_note"> = {
+    "linkedin-headline": "headline",
+    "linkedin-about":    "about",
+    "linkedin-post":     "post",
+  };
+
   const generate = async () => {
     if (!input.trim()) return;
     setLoading(true);
@@ -40,6 +49,23 @@ export default function AIToolbox() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { navigate("/auth"); return; }
 
+      // ── LinkedIn path: grounded, single-shot, stored
+      const kind = linkedinKind[selectedTool.id];
+      if (kind) {
+        const { data, error } = await supabase.functions.invoke("career-ops-linkedin", {
+          body: {
+            kind,
+            source_text: input,
+            context: kind === "post" ? input : undefined,
+          },
+        });
+        if (error) throw error;
+        const output = (data as { optimization: { output_text: string; rationale: string } })?.optimization;
+        if (output) setResult(`${output.output_text}\n\n---\nRationale: ${output.rationale}`);
+        return;
+      }
+
+      // ── General path: streaming ai-orchestrator
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`,
         {
@@ -85,8 +111,13 @@ export default function AIToolbox() {
           }
         }
       }
-    } catch {
-      toast({ title: "Error", description: "Failed to generate content", variant: "destructive" });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to generate content";
+      toast({ title: "Error", description: msg.includes("412")
+        ? "Upload or build a résumé first — we use it to ground the writing."
+        : msg.includes("429")
+        ? "Daily cap hit. Upgrade for more."
+        : "Failed to generate content", variant: "destructive" });
     } finally {
       setLoading(false);
     }
