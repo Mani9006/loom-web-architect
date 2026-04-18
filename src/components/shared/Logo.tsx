@@ -4,44 +4,43 @@ interface LogoProps {
   size?: "sm" | "md" | "lg" | "xl";
   className?: string;
   dark?: boolean;
+  /** When true, renders just the circled R mark without wordmark. */
+  markOnly?: boolean;
 }
 
 const sizes = {
-  sm: { icon: "w-7 h-7", text: "text-sm" },
-  md: { icon: "w-9 h-9", text: "text-base" },
-  lg: { icon: "w-12 h-12", text: "text-lg" },
-  xl: { icon: "w-16 h-16", text: "text-2xl" },
+  sm: { mark: "w-7 h-7", text: "text-sm" },
+  md: { mark: "w-8 h-8", text: "text-[15px]" },
+  lg: { mark: "w-10 h-10", text: "text-lg" },
+  xl: { mark: "w-14 h-14", text: "text-2xl" },
 };
 
 export function LogoIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      {/* Document shape */}
-      <rect x="6" y="4" width="22" height="28" rx="3" stroke="currentColor" strokeWidth="2.5" fill="none" />
-      {/* Lines on document */}
-      <line x1="11" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <line x1="11" y1="17" x2="20" y2="17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <line x1="11" y1="22" x2="17" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      {/* Arrow pointing up-right */}
-      <path d="M22 26L32 16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M26 15H33V22" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <div
+      className={cn(
+        "rounded-full flex items-center justify-center font-semibold select-none",
+        "bg-foreground text-background",
+        className,
+      )}
+      aria-hidden="true"
+    >
+      <span className="leading-none" style={{ fontSize: "0.56em", letterSpacing: "-0.03em" }}>R</span>
+    </div>
   );
 }
 
-export default function Logo({ size = "md", className, dark }: LogoProps) {
+export default function Logo({ size = "md", className, dark, markOnly }: LogoProps) {
   const s = sizes[size];
+  const textCls = dark ? "text-sidebar-accent-foreground" : "text-foreground";
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      <div className={cn(s.icon, "shrink-0", dark ? "text-sidebar-accent-foreground" : "text-foreground")}>
-        <LogoIcon className="w-full h-full" />
-      </div>
-      <span className={cn(
-        s.text, "font-bold tracking-tight",
-        dark ? "text-sidebar-accent-foreground" : "text-foreground"
-      )}>
-        Resume<span className="text-primary">Preps</span>
-      </span>
+      <LogoIcon className={s.mark} />
+      {!markOnly && (
+        <span className={cn(s.text, "font-medium tracking-tight", textCls)}>
+          ResumePreps
+        </span>
+      )}
     </div>
   );
 }

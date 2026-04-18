@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 export default {
-	darkMode: ["class"],
+	darkMode: "class",
 	content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
 	prefix: "",
 	theme: {
@@ -15,21 +15,27 @@ export default {
 		extend: {
 			fontFamily: {
 				sans: [
-					'Outfit',
+					'Inter',
 					'ui-sans-serif',
 					'system-ui',
+					'-apple-system',
+					'Segoe UI',
 					'sans-serif',
 					'Apple Color Emoji',
-					'Segoe UI Emoji',
-					'Segoe UI Symbol',
-					'Noto Color Emoji'
+					'Segoe UI Emoji'
 				],
 				serif: [
+					'Source Serif 4',
 					'ui-serif',
 					'Georgia',
 					'Cambria',
 					'Times New Roman',
-					'Times',
+					'serif'
+				],
+				display: [
+					'Source Serif 4',
+					'ui-serif',
+					'Georgia',
 					'serif'
 				],
 				mono: [

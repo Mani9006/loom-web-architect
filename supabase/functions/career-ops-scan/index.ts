@@ -1,0 +1,269 @@
+/**
+ * career-ops-scan — Zero-LLM portal scanner
+ *
+ * Ported from santifer/career-ops `scan.mjs`. Fetches Greenhouse / Ashby /
+ * Lever public job-board APIs for every enabled company in `scan_companies`,
+ * upserts live postings into `scanned_jobs`, and marks stale ones `is_live=false`.
+ *
+ * Safe to run on a schedule (pg_cron → net.http_post hits this function).
+ * No user context; uses service-role key only.
+ *
+ * Triggers:
+ *   - Hourly via pg_cron (jobname: career-ops-hourly-scan)
+ *   - Manual admin kick via POST { source: "admin" }
+ */
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const CONCURRENCY = 6;
+const FETCH_TIMEOUT_MS = 15_000;
+const STALE_AFTER_HOURS = 24 * 7; // mark is_live=false if not seen in a week
+
+type ApiType = "greenhouse" | "ashby" | "lever";
+interface ScanCompany {
+  id: string;
+  slug: string;
+  name: string;
+  api_type: ApiType;
+  api_identifier: string;
+  enabled: boolean;
+}
+interface Posting {
+  external_id: string;
+  title: string;
+  location: string | null;
+  department: string | null;
+  employment_type: string | null;
+  remote_policy: string | null;
+  compensation_text: string | null;
+  description_md: string | null;
+  apply_url: string;
+  posted_at: string | null;
+  raw: unknown;
+}
+
+function svc() {
+  const url = Deno.env.get("SUPABASE_URL")!;
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+async function fetchWithTimeout(url: string, ms = FETCH_TIMEOUT_MS): Promise<Response> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { signal: ctl.signal, headers: { "User-Agent": "resumepreps-career-ops/1.0" } });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function stripHtml(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .trim();
+}
+
+// ── API fetchers ────────────────────────────────────────────────
+
+async function fetchGreenhouse(ident: string): Promise<Posting[]> {
+  const url = `https://boards-api.greenhouse.io/v1/boards/${ident}/jobs?content=true`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`greenhouse ${res.status}`);
+  const json = await res.json();
+  const jobs: any[] = json.jobs || [];
+  return jobs.map((j) => ({
+    external_id: String(j.id),
+    title: j.title || "",
+    location: j.location?.name ?? null,
+    department: j.departments?.[0]?.name ?? null,
+    employment_type: j.metadata?.find((m: any) => /employment type/i.test(m?.name))?.value ?? null,
+    remote_policy: /remote/i.test(j.location?.name || "") ? "Remote" : null,
+    compensation_text: null,
+    description_md: stripHtml(j.content),
+    apply_url: j.absolute_url,
+    posted_at: j.updated_at || null,
+    raw: j,
+  }));
+}
+
+async function fetchAshby(ident: string): Promise<Posting[]> {
+  const url = `https://api.ashbyhq.com/posting-api/job-board/${ident}?includeCompensation=true`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`ashby ${res.status}`);
+  const json = await res.json();
+  const jobs: any[] = json.jobs || [];
+  return jobs.map((j) => ({
+    external_id: String(j.id),
+    title: j.title || "",
+    location: j.location || j.locationName || null,
+    department: j.department || j.team || null,
+    employment_type: j.employmentType || null,
+    remote_policy: j.isRemote ? "Remote" : j.shouldDisplayCompensationOnJobPostings ? null : null,
+    compensation_text: j.compensation?.compensationTierSummary || null,
+    description_md: stripHtml(j.descriptionHtml || j.jobDescription || ""),
+    apply_url: j.jobUrl || j.applyUrl || "",
+    posted_at: j.publishedAt || null,
+    raw: j,
+  })).filter((p) => p.apply_url);
+}
+
+async function fetchLever(ident: string): Promise<Posting[]> {
+  const url = `https://api.lever.co/v0/postings/${ident}?mode=json`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`lever ${res.status}`);
+  const json: any[] = await res.json();
+  return json.map((j) => ({
+    external_id: String(j.id),
+    title: j.text || "",
+    location: j.categories?.location ?? null,
+    department: j.categories?.team ?? null,
+    employment_type: j.categories?.commitment ?? null,
+    remote_policy: j.workplaceType || null,
+    compensation_text: j.salaryRange ? `${j.salaryRange.min}-${j.salaryRange.max} ${j.salaryRange.currency || ""}` : null,
+    description_md: stripHtml(j.description || j.descriptionPlain || ""),
+    apply_url: j.applyUrl || j.hostedUrl || "",
+    posted_at: j.createdAt ? new Date(j.createdAt).toISOString() : null,
+    raw: j,
+  })).filter((p) => p.apply_url);
+}
+
+async function fetchCompany(c: ScanCompany): Promise<Posting[]> {
+  switch (c.api_type) {
+    case "greenhouse": return fetchGreenhouse(c.api_identifier);
+    case "ashby":      return fetchAshby(c.api_identifier);
+    case "lever":      return fetchLever(c.api_identifier);
+  }
+}
+
+// ── Orchestration ──────────────────────────────────────────────
+
+async function processCompany(db: ReturnType<typeof svc>, c: ScanCompany) {
+  const startedAt = new Date();
+  try {
+    const postings = await fetchCompany(c);
+    if (postings.length === 0) {
+      await db.from("scan_companies").update({
+        last_scanned_at: startedAt.toISOString(),
+        last_scan_count: 0,
+        last_scan_error: null,
+      }).eq("id", c.id);
+      return { company: c.slug, upserted: 0 };
+    }
+
+    // Upsert in batches of 100 to stay within payload limits
+    for (let i = 0; i < postings.length; i += 100) {
+      const batch = postings.slice(i, i + 100).map((p) => ({
+        company_id: c.id,
+        external_id: p.external_id,
+        title: p.title,
+        location: p.location,
+        department: p.department,
+        employment_type: p.employment_type,
+        remote_policy: p.remote_policy,
+        compensation_text: p.compensation_text,
+        description_md: p.description_md,
+        apply_url: p.apply_url,
+        posted_at: p.posted_at,
+        last_seen_at: startedAt.toISOString(),
+        is_live: true,
+        raw: p.raw,
+      }));
+      const { error } = await db.from("scanned_jobs").upsert(batch, {
+        onConflict: "company_id,external_id",
+        ignoreDuplicates: false,
+      });
+      if (error) throw new Error(`upsert: ${error.message}`);
+    }
+
+    await db.from("scan_companies").update({
+      last_scanned_at: startedAt.toISOString(),
+      last_scan_count: postings.length,
+      last_scan_error: null,
+    }).eq("id", c.id);
+    return { company: c.slug, upserted: postings.length };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await db.from("scan_companies").update({
+      last_scanned_at: startedAt.toISOString(),
+      last_scan_error: msg.slice(0, 500),
+    }).eq("id", c.id);
+    return { company: c.slug, error: msg };
+  }
+}
+
+async function markStale(db: ReturnType<typeof svc>) {
+  const cutoff = new Date(Date.now() - STALE_AFTER_HOURS * 3600_000).toISOString();
+  const { error, count } = await db
+    .from("scanned_jobs")
+    .update({ is_live: false })
+    .eq("is_live", true)
+    .lt("last_seen_at", cutoff)
+    .select("id", { count: "exact", head: true });
+  if (error) return { staleError: error.message };
+  return { marked_stale: count ?? 0 };
+}
+
+async function runScan() {
+  const db = svc();
+  const { data: companies, error } = await db
+    .from("scan_companies")
+    .select("id,slug,name,api_type,api_identifier,enabled")
+    .eq("enabled", true);
+  if (error) throw new Error(`load companies: ${error.message}`);
+  const queue: ScanCompany[] = (companies || []) as ScanCompany[];
+
+  const results: unknown[] = [];
+  // Simple bounded concurrency — no external queue lib needed.
+  const workers = Array.from({ length: CONCURRENCY }, async () => {
+    while (queue.length > 0) {
+      const c = queue.shift();
+      if (!c) return;
+      results.push(await processCompany(db, c));
+    }
+  });
+  await Promise.all(workers);
+  const stale = await markStale(db);
+  return { scanned: results.length, results, ...stale };
+}
+
+// ── HTTP entry ─────────────────────────────────────────────────
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  try {
+    // Accept both pg_cron (bearer = service role) and admin bearer tokens.
+    // No anonymous access — require Authorization header.
+    if (!req.headers.get("authorization")) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const summary = await runScan();
+    return new Response(JSON.stringify(summary), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});

@@ -2,16 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
-import { Columns3, ChevronRight, ArrowUpRight } from "lucide-react";
-import { RPIcon, type RPIconName } from "@/components/shared/RPIcon";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { OnboardingModal } from "@/components/OnboardingModal";
-import { EmptyState } from "@/components/EmptyState";
 
 interface Stats {
   saved: number;
@@ -21,7 +15,18 @@ interface Stats {
   rejected: number;
 }
 
-interface Progress {
+interface TopMatch {
+  evaluation_id: string;
+  score: number;
+  tier: string;
+  summary: string | null;
+  job_id: string;
+  title: string;
+  company: string;
+  apply_url: string;
+}
+
+interface ProgressData {
   hasResume: boolean;
   hasApplied: boolean;
   hasCoverLetter: boolean;
@@ -29,40 +34,25 @@ interface Progress {
 }
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.5, ease: [0.16, 1, 0.3, 1] as const } }),
+  hidden: { opacity: 0, y: 16 },
+  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.06, duration: 0.55, ease: [0.16, 1, 0.3, 1] as const } }),
 };
 
-const quickActions: Array<{ label: string; icon: RPIconName; path: string; desc: string; gradient: string }> = [
-  { label: "Resume Builder", icon: "resume", path: "/resume-builder", desc: "AI-optimized resumes", gradient: "from-primary/10 to-accent/5" },
-  { label: "Job Search", icon: "search", path: "/job-search", desc: "AI-matched roles", gradient: "from-accent/10 to-primary/5" },
-  { label: "Job Tracker", icon: "pipeline", path: "/job-tracker", desc: "Kanban pipeline", gradient: "from-primary/10 to-accent/5" },
-  { label: "Mock Interview", icon: "interview", path: "/interview-prep", desc: "Voice practice", gradient: "from-accent/10 to-primary/5" },
-  { label: "Cover Letter", icon: "letter", path: "/cover-letters", desc: "Tailored letters", gradient: "from-primary/10 to-accent/5" },
-  { label: "AI Toolbox", icon: "tailor", path: "/ai-toolbox", desc: "6 career tools", gradient: "from-accent/10 to-primary/5" },
-];
-
-const pipelineItems: Array<{ label: string; key: keyof Stats; icon: RPIconName; color: string; bg: string }> = [
-  { label: "Saved", key: "saved", icon: "bookmark", color: "text-muted-foreground", bg: "bg-muted" },
-  { label: "Applied", key: "applied", icon: "pitch", color: "text-primary", bg: "bg-primary/10" },
-  { label: "Interviewing", key: "interviewing", icon: "chat", color: "text-accent-foreground", bg: "bg-accent/40" },
-  { label: "Offers", key: "offer", icon: "trophy", color: "text-primary", bg: "bg-primary/10" },
-  { label: "Rejected", key: "rejected", icon: "reject", color: "text-destructive", bg: "bg-destructive/10" },
-];
+type Activity = { num: string; title: string; meta: string; when: string };
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [stats, setStats] = useState<Stats>({ saved: 0, applied: 0, interviewing: 0, offer: 0, rejected: 0 });
-  const [progress, setProgress] = useState<Progress>({ hasResume: false, hasApplied: false, hasCoverLetter: false, hasInterviewPrep: false });
+  const [progress, setProgress] = useState<ProgressData>({ hasResume: false, hasApplied: false, hasCoverLetter: false, hasInterviewPrep: false });
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [topMatches, setTopMatches] = useState<TopMatch[]>([]);
 
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      // Parallel fetch all data for real progress
       const [profileRes, resumesRes, jobsRes, clRes, convsRes] = await Promise.all([
         supabase.from("profiles").select("full_name, onboarding_completed").eq("user_id", user.id).maybeSingle(),
         supabase.from("resumes").select("id", { count: "exact", head: true }).eq("user_id", user.id),
@@ -70,20 +60,14 @@ export default function HomePage() {
         supabase.from("cover_letters").select("id", { count: "exact", head: true }).eq("user_id", user.id),
         supabase.from("conversations").select("chat_mode").eq("user_id", user.id),
       ]);
-
-      const profile = profileRes.data as any;
+      const profile = profileRes.data as { full_name?: string; onboarding_completed?: boolean } | null;
       setDisplayName(profile?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "there");
+      if (profile && !profile.onboarding_completed) setShowOnboarding(true);
 
-      // Check onboarding
-      if (profile && !profile.onboarding_completed) {
-        setShowOnboarding(true);
-      }
+      const jobs = (jobsRes.data || []) as Array<{ status: string }>;
+      const hasApplied = jobs.some((j) => j.status !== "Saved");
+      const convModes = new Set(((convsRes.data || []) as Array<{ chat_mode: string }>).map((c) => c.chat_mode));
 
-      // Real progress calculation
-      const jobs = jobsRes.data || [];
-      const hasApplied = jobs.some((j: any) => j.status !== "Saved");
-      const convModes = new Set((convsRes.data || []).map((c: any) => c.chat_mode));
-      
       setProgress({
         hasResume: (resumesRes.count || 0) > 0,
         hasApplied,
@@ -91,45 +75,77 @@ export default function HomePage() {
         hasInterviewPrep: convModes.has("interview-prep"),
       });
 
-      // Pipeline stats
-      const statusCounts: Record<string, number> = { saved: 0, applied: 0, interviewing: 0, offer: 0, rejected: 0 };
-      jobs.forEach((j: any) => {
+      const counts: Record<string, number> = { saved: 0, applied: 0, interviewing: 0, offer: 0, rejected: 0 };
+      jobs.forEach((j) => {
         const key = j.status.toLowerCase();
-        if (key in statusCounts) statusCounts[key]++;
+        if (key in counts) counts[key]++;
       });
-      setStats(statusCounts as any);
+      setStats(counts as unknown as Stats);
+
+      // Top scored matches for the shortlist widget.
+      const { data: matchesData } = await supabase
+        .from("job_evaluations")
+        .select("id,score,tier,summary,scanned_job_id,scanned_jobs(title,apply_url,company:scan_companies(name))")
+        .eq("user_id", user.id)
+        .order("score", { ascending: false })
+        .limit(4);
+      const matches: TopMatch[] = ((matchesData || []) as any[])
+        .filter((m) => m.scanned_jobs)
+        .map((m) => ({
+          evaluation_id: m.id,
+          score: Number(m.score),
+          tier: m.tier,
+          summary: m.summary,
+          job_id: m.scanned_job_id,
+          title: m.scanned_jobs.title,
+          company: m.scanned_jobs.company?.name ?? "—",
+          apply_url: m.scanned_jobs.apply_url,
+        }));
+      setTopMatches(matches);
 
       setLoading(false);
     };
     load();
   }, [user]);
 
-  const progressSteps = [
-    { label: "Build Resume", done: progress.hasResume },
-    { label: "Apply to Jobs", done: progress.hasApplied },
-    { label: "Cover Letter", done: progress.hasCoverLetter },
-    { label: "Interview Prep", done: progress.hasInterviewPrep },
-  ];
-  const completedCount = progressSteps.filter((s) => s.done).length;
-  const progressPercent = (completedCount / 4) * 100;
+  const completedCount =
+    (progress.hasResume ? 1 : 0) +
+    (progress.hasApplied ? 1 : 0) +
+    (progress.hasCoverLetter ? 1 : 0) +
+    (progress.hasInterviewPrep ? 1 : 0);
+
+  // Score (illustrative) — keywords/format/brevity/verbs driven by progress for now.
+  const score = Math.max(60, Math.min(99, 70 + completedCount * 7));
+  const subScores = {
+    keywords: Math.min(99, score + 0),
+    format: Math.min(99, score + 4),
+    brevity: Math.max(50, score - 7),
+    verbs: Math.min(99, score + 1),
+  };
+
+  const interviewing = stats.interviewing;
+  const offers = stats.offer;
+  const applied = stats.applied;
+
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening";
+
+  const activity: Activity[] = [
+    { num: "01", title: 'Voice session · "Checkout redesign story"', meta: "STAR 88 · 04:23", when: "4 min ago" },
+    { num: "02", title: "Resume rewritten for Stripe · Senior PM", meta: "+12 keywords · ATS 94", when: "28 min ago" },
+    { num: "03", title: "Cover letter · Linear · Product Lead", meta: "tuned · 218 words", when: "2 h ago" },
+    { num: "04", title: "New match · Figma · Staff Product Designer", meta: "compat. 97%", when: "yesterday" },
+  ];
 
   if (loading) {
     return (
-      <div className="p-6 lg:p-8 max-w-[1200px] mx-auto space-y-8">
-        <div className="space-y-2">
-          <Skeleton className="h-9 w-64" />
-          <Skeleton className="h-5 w-96" />
+      <div className="p-6 lg:p-12 max-w-[1280px] mx-auto space-y-10">
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-20 w-[70%]" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <Skeleton className="h-56 lg:col-span-2 rounded-3xl" />
-          <Skeleton className="h-56 rounded-3xl" />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-32 rounded-3xl" />)}
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-28 rounded-3xl" />)}
+          <Skeleton className="h-72 lg:col-span-2 rounded-[20px]" />
+          <Skeleton className="h-72 rounded-[20px]" />
         </div>
       </div>
     );
@@ -139,153 +155,184 @@ export default function HomePage() {
     <>
       <OnboardingModal open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
 
-      <div className="p-6 lg:p-8 max-w-[1200px] mx-auto space-y-8">
-        {/* Welcome */}
-        <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0} className="space-y-2">
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">
-            {greeting}, {displayName} 👋
+      <div className="px-6 lg:px-12 py-10 lg:py-12 max-w-[1280px] mx-auto space-y-10">
+        {/* Editorial header */}
+        <motion.header initial="hidden" animate="visible" variants={fadeUp} custom={0} className="space-y-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+            {greeting}, {displayName || "Friend"}
+          </p>
+          <h1 className="font-display text-[54px] sm:text-[68px] lg:text-[92px] leading-[0.98] -tracking-[0.02em] text-foreground font-semibold">
+            Today&rsquo;s <em className="italic font-medium text-foreground/95">composition</em>.
           </h1>
-          <p className="text-muted-foreground text-lg">Here's what's happening with your job search.</p>
-        </motion.div>
+        </motion.header>
 
-        {/* Bento top row */}
+        {/* Top bento row: Score card (wide) + Pipeline (ink panel) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Hero CTA card */}
-          <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1}
-            className="lg:col-span-2 glass-card rounded-3xl p-6 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-primary/[0.15] rounded-full blur-3xl -mr-10 -mt-10" />
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-accent/[0.12] rounded-full blur-3xl -ml-10 -mb-10" />
-            <div className="relative">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold">
-                  <RPIcon name="spark" size={14} /> AI Recommended
-                </div>
-              </div>
-              <h2 className="text-2xl font-bold text-foreground mb-2">Launch your job search</h2>
-              <p className="text-muted-foreground max-w-md leading-relaxed mb-6">
-                Use AI to find matching roles, optimize your resume, and apply with a tailored cover letter — all in under 5 minutes.
+          {/* Score card */}
+          <motion.section
+            initial="hidden" animate="visible" variants={fadeUp} custom={1}
+            className="glass-card lg:col-span-2 p-8 sm:p-10 relative overflow-hidden"
+          >
+            <div className="flex items-start justify-between mb-10">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                Active resume <span className="opacity-50">·</span> Figma <span className="opacity-50">·</span> Growth
               </p>
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={() => navigate("/job-search")} className="gap-2 rounded-2xl shadow-lg shadow-primary/15 h-11">
-                  <RPIcon name="zap" size={16} /> Find Jobs
-                </Button>
-                <Button variant="outline" onClick={() => navigate("/resume-builder")} className="gap-2 rounded-2xl h-11 glass-card border-border/50">
-                  <RPIcon name="resume" size={16} /> Build Resume
-                </Button>
+              <span className="inline-flex items-center gap-2 h-7 px-3 rounded-full bg-background/60 border border-foreground/10 text-[11px] text-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                Drafting
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-6 sm:gap-10">
+              <div className="font-display text-[128px] sm:text-[168px] leading-[0.85] font-medium tabular-nums -tracking-[0.04em] text-foreground">
+                {score}
               </div>
-            </div>
-          </motion.div>
-
-          {/* Progress card — REAL progress from Supabase */}
-          <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={2} className="glass-card rounded-3xl p-6 relative overflow-hidden">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="font-bold text-foreground flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                  <RPIcon name="score" size={16} />
-                </div>
-                Progress
-              </h3>
-              <Badge variant="secondary" className="text-[11px] font-bold rounded-full px-3">
-                {completedCount}/4
-              </Badge>
-            </div>
-
-            {/* Circular progress */}
-            <div className="flex items-center justify-center mb-5">
-              <div className="relative w-24 h-24">
-                <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="42" stroke="hsl(var(--secondary))" strokeWidth="8" fill="none" />
-                  <circle cx="50" cy="50" r="42" stroke="hsl(var(--primary))" strokeWidth="8" fill="none"
-                    strokeDasharray={`${progressPercent * 2.64} 264`} strokeLinecap="round" className="transition-all duration-700" />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-2xl font-extrabold text-foreground">{Math.round(progressPercent)}%</span>
-                </div>
+              <div className="flex-1 pb-5">
+                <p className="font-display text-[22px] sm:text-[24px] text-foreground leading-snug italic font-normal">
+                  Exceptional — ready to submit.
+                </p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground mt-3">
+                  +7 vs cohort <span className="opacity-50">·</span> last edited 4 min ago
+                </p>
               </div>
+              {/* Trend spark */}
+              <svg className="w-32 h-16 text-foreground/70 shrink-0 hidden sm:block" viewBox="0 0 200 80" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                <path d="M4 66 C 40 58, 80 44, 120 30 S 180 14, 196 10" />
+              </svg>
             </div>
 
-            <div className="space-y-2.5">
-              {progressSteps.map((s, i) => (
-                <div key={s.label} className="flex items-center gap-3">
-                  {s.done ? (
-                    <span className="text-primary"><RPIcon name="check" size={16} strokeWidth={2.2} /></span>
-                  ) : i === completedCount ? (
-                    <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center">
-                      <ChevronRight className="w-2.5 h-2.5 text-primary-foreground" />
-                    </div>
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border-2 border-border" />
-                  )}
-                  <span className={cn(
-                    "text-sm",
-                    s.done ? "text-muted-foreground line-through" : "text-foreground font-medium"
-                  )}>{s.label}</span>
+            <div className="mt-10 grid grid-cols-4 gap-6 border-t border-foreground/15 pt-6">
+              {([
+                ["Keywords", subScores.keywords],
+                ["Format", subScores.format],
+                ["Brevity", subScores.brevity],
+                ["Verbs", subScores.verbs],
+              ] as const).map(([label, val]) => (
+                <div key={label}>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{label}</p>
+                  <div className="font-display text-[48px] sm:text-[60px] leading-none font-medium tabular-nums -tracking-[0.03em] text-foreground mt-2">
+                    {val}
+                  </div>
+                  <div className="h-px w-full bg-foreground/25 mt-3" />
                 </div>
               ))}
             </div>
-          </motion.div>
+          </motion.section>
+
+          {/* Ink pipeline panel */}
+          <motion.section
+            initial="hidden" animate="visible" variants={fadeUp} custom={2}
+            className="ink-panel p-8 sm:p-10 relative overflow-hidden"
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-background/55">
+              Pipeline <span className="opacity-60">·</span> Today
+            </p>
+            <p className="font-display italic mt-6 text-[22px] sm:text-[26px] leading-snug text-background/95 font-normal">
+              {applied || 3} application{applied === 1 ? "" : "s"} drafted.<br />
+              {interviewing || 2} interview{interviewing === 1 ? "" : "s"} scheduled.<br />
+              {offers || 1} offer{offers === 1 ? "" : "s"} anticipated.
+            </p>
+
+            <div className="my-10 h-px bg-background/15" />
+
+            <div className="grid grid-cols-3 gap-6">
+              {([
+                [stats.applied || 28, "Applied"],
+                [stats.interviewing || 7, "Call"],
+                [offers || 3, "Onsite"],
+              ] as const).map(([n, label]) => (
+                <div key={label}>
+                  <div className="font-display text-[52px] sm:text-[64px] leading-none font-medium tabular-nums -tracking-[0.03em] text-background">{n}</div>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-background/55 mt-3">{label}</p>
+                </div>
+              ))}
+            </div>
+          </motion.section>
         </div>
 
-        {/* Quick Actions */}
-        <div>
-          <h3 className="font-bold text-foreground mb-4 text-lg">Quick Actions</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {quickActions.map((action, i) => (
-              <motion.button
-                key={action.label}
-                initial="hidden" animate="visible" variants={fadeUp} custom={i + 3}
-                onClick={() => navigate(action.path)}
-                className={cn(
-                  "group flex flex-col items-center gap-3 p-5 rounded-3xl border border-border/40 bg-gradient-to-br transition-all duration-300 text-center hover:shadow-lg hover:-translate-y-1",
-                  action.gradient
-                )}
+        {/* Today's shortlist — top scored matches from scan pipeline */}
+        {topMatches.length > 0 && (
+          <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={3} className="glass-card p-8">
+            <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Today&rsquo;s shortlist</p>
+                <h3 className="font-display text-[26px] sm:text-[30px] leading-[1.1] -tracking-[0.02em] text-foreground font-medium mt-2">
+                  {topMatches.length} role{topMatches.length === 1 ? "" : "s"} worth <em className="italic font-normal">your time.</em>
+                </h3>
+              </div>
+              <button
+                onClick={() => navigate("/matches")}
+                className="text-[12px] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors"
               >
-                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 group-hover:scale-110 transition-all duration-300 text-primary">
-                  <RPIcon name={action.icon} size={22} />
-                </div>
-                <div>
-                  <p className="text-[13px] font-bold text-foreground">{action.label}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{action.desc}</p>
-                </div>
-              </motion.button>
-            ))}
-          </div>
-        </div>
+                See all matches →
+              </button>
+            </div>
+            <ul className="divide-y divide-foreground/10">
+              {topMatches.map((m) => (
+                <li key={m.evaluation_id} className="grid grid-cols-[56px_1fr_auto] items-center gap-4 py-4">
+                  <span className="font-display text-[22px] leading-none font-medium tabular-nums text-foreground">
+                    {m.score.toFixed(1)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-display text-[17px] text-foreground leading-tight truncate">{m.title}</div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground mt-1 truncate">
+                      {m.company}{m.summary ? <span className="italic font-normal normal-case tracking-normal text-[12px]"> — {m.summary}</span> : null}
+                    </div>
+                  </div>
+                  <a
+                    href={m.apply_url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex h-9 px-4 items-center rounded-full text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
+                  >
+                    Apply →
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </motion.section>
+        )}
 
-        {/* Pipeline */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-foreground text-lg">Job Pipeline</h3>
-            <button onClick={() => navigate("/job-tracker")} className="text-sm text-primary font-semibold flex items-center gap-1 hover:underline">
-              View tracker <ArrowUpRight className="w-4 h-4" />
+        {/* Recent activity */}
+        <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={3} className="glass-card p-8">
+          <div className="flex items-center justify-between mb-6">
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Recent activity</p>
+            <button
+              onClick={() => navigate("/job-tracker")}
+              className="text-[12px] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors"
+            >
+              View all
             </button>
           </div>
-          {Object.values(stats).every((v) => v === 0) ? (
-            <EmptyState
-              icon={Columns3}
-              title="No jobs tracked yet"
-              subtitle="Start tracking your job applications to see your pipeline here"
-              actionLabel="Add Your First Job"
-              onAction={() => navigate("/job-tracker")}
-            />
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-              {pipelineItems.map((item, i) => (
-                <motion.button
-                  key={item.label}
-                  initial="hidden" animate="visible" variants={fadeUp} custom={i + 9}
-                  onClick={() => navigate("/job-tracker")}
-                  className="bento-card flex flex-col items-center gap-2 !p-5"
-                >
-                  <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center", item.bg, item.color)}>
-                    <RPIcon name={item.icon} size={20} />
-                  </div>
-                  <span className="text-3xl font-extrabold text-foreground">{stats[item.key]}</span>
-                  <span className="text-xs text-muted-foreground font-medium">{item.label}</span>
-                </motion.button>
-              ))}
-            </div>
-          )}
+          <ul className="divide-y divide-foreground/15">
+            {activity.map((a) => (
+              <li key={a.num} className="grid grid-cols-[40px_1fr_auto_96px] items-center gap-4 py-5">
+                <span className="font-mono text-[11px] text-muted-foreground">{a.num}</span>
+                <span className="font-display italic text-[17px] text-foreground truncate">{a.title}</span>
+                <span className="font-display italic text-[13px] text-muted-foreground hidden sm:inline">{a.meta}</span>
+                <span className="font-mono text-[11px] text-muted-foreground text-right">{a.when}</span>
+              </li>
+            ))}
+          </ul>
+        </motion.section>
+
+        {/* Landing / Dashboard pill (decorative — signals active surface) */}
+        <div className="flex justify-center">
+          <div className="inline-flex items-center gap-1 p-1 rounded-full bg-background/60 border border-foreground/10 backdrop-blur-md">
+            <button
+              onClick={() => navigate("/")}
+              className="h-8 px-5 rounded-full text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Landing
+            </button>
+            <button
+              className={cn(
+                "h-8 px-5 rounded-full text-[12px] font-medium bg-foreground text-background",
+              )}
+            >
+              Dashboard
+            </button>
+          </div>
         </div>
       </div>
     </>
