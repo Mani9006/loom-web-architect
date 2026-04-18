@@ -4,10 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import {
-  FileText, Search, Target, Mail,
-  CheckCircle2, ArrowRight, Zap, Clock, Heart, Shield,
-  Star, Lightbulb, Mic, Sparkles, Play, ArrowUpRight
+  CheckCircle2, ArrowRight, Clock, Heart, Shield,
+  Star, ArrowUpRight,
 } from "lucide-react";
+import { RPIcon, type RPIconName } from "@/components/shared/RPIcon";
 import Logo, { LogoIcon } from "@/components/shared/Logo";
 import heroBg from "@/assets/hero-bg.png";
 
@@ -16,13 +16,13 @@ const fadeUp = {
   visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] as const } }),
 };
 
-const features = [
-  { icon: FileText, tag: "Resume Builder", title: "Build resumes that actually land interviews", desc: "AI crafts ATS-optimized resumes from your experience. Every bullet point is engineered to pass automated screening.", color: "from-primary/10 to-accent/5" },
-  { icon: Target, tag: "ATS Checker", title: "Score your resume before recruiters do", desc: "Get detailed compatibility scores, missing keyword analysis, and formatting fixes — before you hit submit.", color: "from-accent/10 to-primary/5" },
-  { icon: Search, tag: "Smart Job Search", title: "Discover roles that match your DNA", desc: "AI analyzes your skills across LinkedIn, Indeed, and Google Jobs to surface roles you'd never find manually.", color: "from-primary/10 to-accent/5" },
-  { icon: Mail, tag: "Cover Letters", title: "One-click tailored cover letters", desc: "Generate personalized letters that align your achievements with each job's specific requirements in seconds.", color: "from-accent/10 to-primary/5" },
-  { icon: Mic, tag: "Interview Prep", title: "Practice interviews with voice AI", desc: "Voice-powered mock interviews with real-time scoring, behavioral question practice, and improvement coaching.", color: "from-primary/10 to-accent/5" },
-  { icon: Lightbulb, tag: "AI Toolbox", title: "6 AI tools for your entire career", desc: "LinkedIn optimizer, email writer, elevator pitch generator, brand statement, and more — all in one workspace.", color: "from-accent/10 to-primary/5" },
+const features: Array<{ icon: RPIconName; tag: string; title: string; desc: string; color: string }> = [
+  { icon: "resume", tag: "Resume Builder", title: "Build resumes that actually land interviews", desc: "AI crafts ATS-optimized resumes from your experience. Every bullet point is engineered to pass automated screening.", color: "from-primary/10 to-accent/5" },
+  { icon: "score", tag: "ATS Checker", title: "Score your resume before recruiters do", desc: "Get detailed compatibility scores, missing keyword analysis, and formatting fixes — before you hit submit.", color: "from-accent/10 to-primary/5" },
+  { icon: "search", tag: "Smart Job Search", title: "Discover roles that match your DNA", desc: "AI analyzes your skills across LinkedIn, Indeed, and Google Jobs to surface roles you'd never find manually.", color: "from-primary/10 to-accent/5" },
+  { icon: "letter", tag: "Cover Letters", title: "One-click tailored cover letters", desc: "Generate personalized letters that align your achievements with each job's specific requirements in seconds.", color: "from-accent/10 to-primary/5" },
+  { icon: "interview", tag: "Interview Prep", title: "Practice interviews with voice AI", desc: "Voice-powered mock interviews with real-time scoring, behavioral question practice, and improvement coaching.", color: "from-primary/10 to-accent/5" },
+  { icon: "tailor", tag: "AI Toolbox", title: "6 AI tools for your entire career", desc: "LinkedIn optimizer, email writer, elevator pitch generator, brand statement, and more — all in one workspace.", color: "from-accent/10 to-primary/5" },
 ];
 
 const stats = [
@@ -116,7 +116,7 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative z-10">
           <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0}>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card text-sm font-medium text-muted-foreground mb-8 shadow-sm">
-              <Sparkles className="w-4 h-4 text-primary" />
+              <span className="text-primary"><RPIcon name="spark" size={16} /></span>
               AI-Powered Career Platform
             </div>
           </motion.div>
@@ -141,7 +141,7 @@ export default function Landing() {
             </Button>
             <Button size="lg" variant="outline" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
               className="text-base px-10 font-medium rounded-2xl h-13 gap-2 text-lg glass-card border-border/50">
-              <Play className="w-4 h-4" /> Watch Demo
+              <RPIcon name="play" size={16} filled /> Watch Demo
             </Button>
           </motion.div>
 
@@ -185,8 +185,8 @@ export default function Landing() {
               <motion.div key={f.tag} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
                 className={`bento-card group bg-gradient-to-br ${f.color} border-border/40 ${i === 0 ? "md:col-span-2 lg:col-span-1" : ""}`}>
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors group-hover:scale-105 transition-transform duration-300">
-                    <f.icon className="w-6 h-6 text-primary" />
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors group-hover:scale-105 transition-transform duration-300 text-primary">
+                    <RPIcon name={f.icon} size={24} />
                   </div>
                   <span className="text-[11px] font-bold text-primary uppercase tracking-widest">{f.tag}</span>
                 </div>
@@ -214,13 +214,13 @@ export default function Landing() {
               className="rounded-3xl border border-destructive/10 bg-destructive/[0.02] p-8 space-y-6">
               <div className="flex items-center gap-2 text-destructive font-bold text-sm"><span className="text-2xl">😔</span> The old way</div>
               {[
-                { icon: FileText, title: "Silent Rejections", desc: "75% of resumes filtered by ATS bots" },
-                { icon: Clock, title: "Hours Per Application", desc: "2-3 hours manually tailoring each one" },
-                { icon: Shield, title: "Tool Overload", desc: "Juggling 5+ separate apps and tabs" },
+                { rp: "reject" as const, icon: null, title: "Silent Rejections", desc: "75% of resumes filtered by ATS bots" },
+                { rp: null, icon: Clock, title: "Hours Per Application", desc: "2-3 hours manually tailoring each one" },
+                { rp: null, icon: Shield, title: "Tool Overload", desc: "Juggling 5+ separate apps and tabs" },
               ].map((item) => (
                 <div key={item.title} className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-destructive/10 flex items-center justify-center shrink-0">
-                    <item.icon className="w-5 h-5 text-destructive" />
+                  <div className="w-10 h-10 rounded-2xl bg-destructive/10 flex items-center justify-center shrink-0 text-destructive">
+                    {item.rp ? <RPIcon name={item.rp} size={20} /> : item.icon ? <item.icon className="w-5 h-5" /> : null}
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">{item.title}</p>
@@ -234,13 +234,13 @@ export default function Landing() {
               className="rounded-3xl border border-primary/15 bg-gradient-to-br from-primary/[0.03] to-accent/[0.03] p-8 space-y-6">
               <div className="flex items-center gap-2 text-primary font-bold text-sm"><span className="text-2xl">🚀</span> With ResumePreps</div>
               {[
-                { icon: Heart, title: "ATS-Optimized", desc: "AI ensures every resume passes screening" },
-                { icon: Zap, title: "5 Minutes Flat", desc: "AI generates everything you need instantly" },
-                { icon: CheckCircle2, title: "All-in-One", desc: "Resume to offer letter, single workspace" },
+                { rp: null, icon: Heart, title: "ATS-Optimized", desc: "AI ensures every resume passes screening" },
+                { rp: "zap" as const, icon: null, title: "5 Minutes Flat", desc: "AI generates everything you need instantly" },
+                { rp: "applied" as const, icon: null, title: "All-in-One", desc: "Resume to offer letter, single workspace" },
               ].map((item) => (
                 <div key={item.title} className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <item.icon className="w-5 h-5 text-primary" />
+                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                    {item.rp ? <RPIcon name={item.rp} size={20} /> : item.icon ? <item.icon className="w-5 h-5" /> : null}
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">{item.title}</p>

@@ -3,11 +3,12 @@ import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/use-theme";
 import {
-  Home, Search, FileText, Columns3, Mic, MessageCircle,
+  Home,
   FolderOpen, ChevronDown, ChevronRight, LogOut,
-  Settings, User as UserIcon, Wand2, Users, Menu, X, PanelLeftClose, PanelLeft, TrendingUp, Target,
-  Sun, Moon, ShieldCheck, Map, Crown, Zap, ClipboardList, Bookmark,
+  Settings, User as UserIcon, Menu, X, PanelLeftClose, PanelLeft, TrendingUp,
+  Sun, Moon, ShieldCheck, Map, Crown,
 } from "lucide-react";
+import { RPIcon, type RPIconName } from "@/components/shared/RPIcon";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -22,6 +23,16 @@ import Logo from "@/components/shared/Logo";
 import { supabase } from "@/integrations/supabase/client";
 import { isOwnerEmail } from "@/lib/admin";
 
+// Wrapper that adapts RPIcon to the same signature as a lucide component
+// (so it can be used as `icon: React.ElementType` in nav items).
+const rp = (name: RPIconName): React.FC<{ className?: string; strokeWidth?: number }> => {
+  const C: React.FC<{ className?: string; strokeWidth?: number }> = ({ className, strokeWidth }) => (
+    <RPIcon name={name} className={className} strokeWidth={strokeWidth} />
+  );
+  C.displayName = `RP_${name}`;
+  return C;
+};
+
 interface NavItem {
   label: string;
   icon: React.ElementType;
@@ -31,25 +42,25 @@ interface NavItem {
 }
 
 const baseMainNav: NavItem[] = [
-  { label: "Home", icon: Home, path: "/home" },
-  { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
-  { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
-  { label: "ATS Checker", icon: Target, path: "/ats-checker" },
+  { label: "Home", icon: rp("home"), path: "/home" },
+  { label: "Job Search", icon: rp("search"), path: "/job-search", badge: "AI" },
+  { label: "Resume Builder", icon: rp("resume"), path: "/resume-builder" },
+  { label: "ATS Checker", icon: rp("score"), path: "/ats-checker" },
   {
     label: "Applications",
-    icon: ClipboardList,
+    icon: rp("pipeline"),
     path: "/job-tracker",
     children: [
       { label: "All Applications", path: "/job-tracker" },
       { label: "Saved Jobs", path: "/job-tracker?tab=saved" },
     ],
   },
-  { label: "Cover Letters", icon: FolderOpen, path: "/cover-letters" },
-  { label: "Interviews", icon: Mic, path: "/interview-prep" },
-  { label: "AI Chat", icon: MessageCircle, path: "/chat" },
+  { label: "Cover Letters", icon: rp("letter"), path: "/cover-letters" },
+  { label: "Interviews", icon: rp("interview"), path: "/interview-prep" },
+  { label: "AI Chat", icon: rp("chat"), path: "/chat" },
 ];
 
-const autoApplyNav: NavItem = { label: "Auto Apply", icon: Zap, path: "/auto-apply", badge: "PRO" };
+const autoApplyNav: NavItem = { label: "Auto Apply", icon: rp("zap"), path: "/auto-apply", badge: "PRO" };
 
 const secondaryNavBase: NavItem[] = [
   { label: "Analytics", icon: TrendingUp, path: "/analytics" },
@@ -66,7 +77,7 @@ const secondaryNavBase: NavItem[] = [
   },
   {
     label: "AI Toolbox",
-    icon: Wand2,
+    icon: rp("tailor"),
     path: "/ai-toolbox",
     badge: "6",
     children: [

@@ -6,12 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
-import {
-  CheckCircle2, ArrowRight, FileText, Search, Columns3,
-  Mic, Wand2, ChevronRight, Zap, Mail,
-  Rocket, Bookmark, Send, MessageCircle, Trophy, XCircle,
-  ArrowUpRight, Sparkles, Target
-} from "lucide-react";
+import { Columns3, ChevronRight, ArrowUpRight } from "lucide-react";
+import { RPIcon, type RPIconName } from "@/components/shared/RPIcon";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { OnboardingModal } from "@/components/OnboardingModal";
@@ -37,21 +33,21 @@ const fadeUp = {
   visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.5, ease: [0.16, 1, 0.3, 1] as const } }),
 };
 
-const quickActions = [
-  { label: "Resume Builder", icon: FileText, path: "/resume-builder", desc: "AI-optimized resumes", gradient: "from-primary/10 to-accent/5" },
-  { label: "Job Search", icon: Search, path: "/job-search", desc: "AI-matched roles", gradient: "from-accent/10 to-primary/5" },
-  { label: "Job Tracker", icon: Columns3, path: "/job-tracker", desc: "Kanban pipeline", gradient: "from-primary/10 to-accent/5" },
-  { label: "Mock Interview", icon: Mic, path: "/interview-prep", desc: "Voice practice", gradient: "from-accent/10 to-primary/5" },
-  { label: "Cover Letter", icon: Mail, path: "/cover-letters", desc: "Tailored letters", gradient: "from-primary/10 to-accent/5" },
-  { label: "AI Toolbox", icon: Wand2, path: "/ai-toolbox", desc: "6 career tools", gradient: "from-accent/10 to-primary/5" },
+const quickActions: Array<{ label: string; icon: RPIconName; path: string; desc: string; gradient: string }> = [
+  { label: "Resume Builder", icon: "resume", path: "/resume-builder", desc: "AI-optimized resumes", gradient: "from-primary/10 to-accent/5" },
+  { label: "Job Search", icon: "search", path: "/job-search", desc: "AI-matched roles", gradient: "from-accent/10 to-primary/5" },
+  { label: "Job Tracker", icon: "pipeline", path: "/job-tracker", desc: "Kanban pipeline", gradient: "from-primary/10 to-accent/5" },
+  { label: "Mock Interview", icon: "interview", path: "/interview-prep", desc: "Voice practice", gradient: "from-accent/10 to-primary/5" },
+  { label: "Cover Letter", icon: "letter", path: "/cover-letters", desc: "Tailored letters", gradient: "from-primary/10 to-accent/5" },
+  { label: "AI Toolbox", icon: "tailor", path: "/ai-toolbox", desc: "6 career tools", gradient: "from-accent/10 to-primary/5" },
 ];
 
-const pipelineItems = [
-  { label: "Saved", key: "saved" as const, icon: Bookmark, color: "text-muted-foreground", bg: "bg-muted" },
-  { label: "Applied", key: "applied" as const, icon: Send, color: "text-primary", bg: "bg-primary/10" },
-  { label: "Interviewing", key: "interviewing" as const, icon: MessageCircle, color: "text-accent", bg: "bg-accent/10" },
-  { label: "Offers", key: "offer" as const, icon: Trophy, color: "text-primary", bg: "bg-primary/10" },
-  { label: "Rejected", key: "rejected" as const, icon: XCircle, color: "text-destructive", bg: "bg-destructive/10" },
+const pipelineItems: Array<{ label: string; key: keyof Stats; icon: RPIconName; color: string; bg: string }> = [
+  { label: "Saved", key: "saved", icon: "bookmark", color: "text-muted-foreground", bg: "bg-muted" },
+  { label: "Applied", key: "applied", icon: "pitch", color: "text-primary", bg: "bg-primary/10" },
+  { label: "Interviewing", key: "interviewing", icon: "chat", color: "text-accent-foreground", bg: "bg-accent/40" },
+  { label: "Offers", key: "offer", icon: "trophy", color: "text-primary", bg: "bg-primary/10" },
+  { label: "Rejected", key: "rejected", icon: "reject", color: "text-destructive", bg: "bg-destructive/10" },
 ];
 
 export default function HomePage() {
@@ -161,7 +157,7 @@ export default function HomePage() {
             <div className="relative">
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold">
-                  <Sparkles className="w-3.5 h-3.5" /> AI Recommended
+                  <RPIcon name="spark" size={14} /> AI Recommended
                 </div>
               </div>
               <h2 className="text-2xl font-bold text-foreground mb-2">Launch your job search</h2>
@@ -170,10 +166,10 @@ export default function HomePage() {
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button onClick={() => navigate("/job-search")} className="gap-2 rounded-2xl shadow-lg shadow-primary/15 h-11">
-                  <Zap className="w-4 h-4" /> Find Jobs
+                  <RPIcon name="zap" size={16} /> Find Jobs
                 </Button>
                 <Button variant="outline" onClick={() => navigate("/resume-builder")} className="gap-2 rounded-2xl h-11 glass-card border-border/50">
-                  <FileText className="w-4 h-4" /> Build Resume
+                  <RPIcon name="resume" size={16} /> Build Resume
                 </Button>
               </div>
             </div>
@@ -183,8 +179,8 @@ export default function HomePage() {
           <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={2} className="bento-card">
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-bold text-foreground flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Target className="w-4 h-4 text-primary" />
+                <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                  <RPIcon name="score" size={16} />
                 </div>
                 Progress
               </h3>
@@ -211,7 +207,7 @@ export default function HomePage() {
               {progressSteps.map((s, i) => (
                 <div key={s.label} className="flex items-center gap-3">
                   {s.done ? (
-                    <CheckCircle2 className="w-4 h-4 text-primary" />
+                    <span className="text-primary"><RPIcon name="check" size={16} strokeWidth={2.2} /></span>
                   ) : i === completedCount ? (
                     <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center">
                       <ChevronRight className="w-2.5 h-2.5 text-primary-foreground" />
@@ -243,8 +239,8 @@ export default function HomePage() {
                   action.gradient
                 )}
               >
-                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 group-hover:scale-110 transition-all duration-300">
-                  <action.icon className="w-5 h-5 text-primary" />
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 group-hover:scale-110 transition-all duration-300 text-primary">
+                  <RPIcon name={action.icon} size={22} />
                 </div>
                 <div>
                   <p className="text-[13px] font-bold text-foreground">{action.label}</p>
@@ -273,23 +269,20 @@ export default function HomePage() {
             />
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-              {pipelineItems.map((item, i) => {
-                const Icon = item.icon;
-                return (
-                  <motion.button
-                    key={item.label}
-                    initial="hidden" animate="visible" variants={fadeUp} custom={i + 9}
-                    onClick={() => navigate("/job-tracker")}
-                    className="bento-card flex flex-col items-center gap-2 !p-5"
-                  >
-                    <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center", item.bg)}>
-                      <Icon className={cn("w-5 h-5", item.color)} />
-                    </div>
-                    <span className="text-3xl font-extrabold text-foreground">{stats[item.key]}</span>
-                    <span className="text-xs text-muted-foreground font-medium">{item.label}</span>
-                  </motion.button>
-                );
-              })}
+              {pipelineItems.map((item, i) => (
+                <motion.button
+                  key={item.label}
+                  initial="hidden" animate="visible" variants={fadeUp} custom={i + 9}
+                  onClick={() => navigate("/job-tracker")}
+                  className="bento-card flex flex-col items-center gap-2 !p-5"
+                >
+                  <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center", item.bg, item.color)}>
+                    <RPIcon name={item.icon} size={20} />
+                  </div>
+                  <span className="text-3xl font-extrabold text-foreground">{stats[item.key]}</span>
+                  <span className="text-xs text-muted-foreground font-medium">{item.label}</span>
+                </motion.button>
+              ))}
             </div>
           )}
         </div>
