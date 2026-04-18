@@ -15,6 +15,17 @@ interface Stats {
   rejected: number;
 }
 
+interface TopMatch {
+  evaluation_id: string;
+  score: number;
+  tier: string;
+  summary: string | null;
+  job_id: string;
+  title: string;
+  company: string;
+  apply_url: string;
+}
+
 interface ProgressData {
   hasResume: boolean;
   hasApplied: boolean;
@@ -37,6 +48,7 @@ export default function HomePage() {
   const [progress, setProgress] = useState<ProgressData>({ hasResume: false, hasApplied: false, hasCoverLetter: false, hasInterviewPrep: false });
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [topMatches, setTopMatches] = useState<TopMatch[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -69,6 +81,28 @@ export default function HomePage() {
         if (key in counts) counts[key]++;
       });
       setStats(counts as unknown as Stats);
+
+      // Top scored matches for the shortlist widget.
+      const { data: matchesData } = await supabase
+        .from("job_evaluations")
+        .select("id,score,tier,summary,scanned_job_id,scanned_jobs(title,apply_url,company:scan_companies(name))")
+        .eq("user_id", user.id)
+        .order("score", { ascending: false })
+        .limit(4);
+      const matches: TopMatch[] = ((matchesData || []) as any[])
+        .filter((m) => m.scanned_jobs)
+        .map((m) => ({
+          evaluation_id: m.id,
+          score: Number(m.score),
+          tier: m.tier,
+          summary: m.summary,
+          job_id: m.scanned_job_id,
+          title: m.scanned_jobs.title,
+          company: m.scanned_jobs.company?.name ?? "—",
+          apply_url: m.scanned_jobs.apply_url,
+        }));
+      setTopMatches(matches);
+
       setLoading(false);
     };
     load();
@@ -215,6 +249,49 @@ export default function HomePage() {
             </div>
           </motion.section>
         </div>
+
+        {/* Today's shortlist — top scored matches from scan pipeline */}
+        {topMatches.length > 0 && (
+          <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={3} className="glass-card p-8">
+            <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Today&rsquo;s shortlist</p>
+                <h3 className="font-display text-[26px] sm:text-[30px] leading-[1.1] -tracking-[0.02em] text-foreground font-medium mt-2">
+                  {topMatches.length} role{topMatches.length === 1 ? "" : "s"} worth <em className="italic font-normal">your time.</em>
+                </h3>
+              </div>
+              <button
+                onClick={() => navigate("/matches")}
+                className="text-[12px] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors"
+              >
+                See all matches →
+              </button>
+            </div>
+            <ul className="divide-y divide-foreground/10">
+              {topMatches.map((m) => (
+                <li key={m.evaluation_id} className="grid grid-cols-[56px_1fr_auto] items-center gap-4 py-4">
+                  <span className="font-display text-[22px] leading-none font-medium tabular-nums text-foreground">
+                    {m.score.toFixed(1)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-display text-[17px] text-foreground leading-tight truncate">{m.title}</div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground mt-1 truncate">
+                      {m.company}{m.summary ? <span className="italic font-normal normal-case tracking-normal text-[12px]"> — {m.summary}</span> : null}
+                    </div>
+                  </div>
+                  <a
+                    href={m.apply_url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex h-9 px-4 items-center rounded-full text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
+                  >
+                    Apply →
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </motion.section>
+        )}
 
         {/* Recent activity */}
         <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={3} className="glass-card p-8">

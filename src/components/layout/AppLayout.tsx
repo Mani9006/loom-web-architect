@@ -44,6 +44,7 @@ interface NavItem {
 const baseMainNav: NavItem[] = [
   { label: "Home", icon: rp("home"), path: "/home" },
   { label: "Job Search", icon: rp("search"), path: "/job-search", badge: "AI" },
+  { label: "Matches", icon: rp("spark"), path: "/matches", badge: "NEW" },
   { label: "Resume Builder", icon: rp("resume"), path: "/resume-builder" },
   { label: "ATS Checker", icon: rp("score"), path: "/ats-checker" },
   {

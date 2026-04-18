@@ -42,6 +42,7 @@ const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
 const AdminPortal = lazy(() => import("./pages/AdminPortal"));
 const AutoApplyPage = lazy(() => import("./pages/AutoApplyPage"));
+const MatchesPage = lazy(() => import("./pages/MatchesPage"));
 const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
 const PricingPage = lazy(() => import("./pages/PricingPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -82,6 +83,7 @@ const App = () => (
                     <Route path="/resume-builder/:resumeId" element={<ResumeBuilder />} />
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
                     <Route path="/job-tracker" element={<JobTracker />} />
+                    <Route path="/matches" element={<MatchesPage />} />
                     <Route path="/auto-apply" element={<AutoApplyPage />} />
                     <Route path="/profile-setup" element={<ProfileSetupPage />} />
                     <Route path="/pricing" element={<PricingPage />} />
