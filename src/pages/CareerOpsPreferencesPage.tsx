@@ -17,6 +17,8 @@ interface Prefs {
   auto_apply_min_score: number;
   daily_apply_cap: number;
   auto_apply_portals: string[];
+  agent_enabled: boolean;
+  agent_max_actions_per_day: number;
 }
 
 const DEFAULT: Prefs = {
@@ -30,7 +32,20 @@ const DEFAULT: Prefs = {
   auto_apply_min_score: 4.5,
   daily_apply_cap: 5,
   auto_apply_portals: ["greenhouse"],
+  agent_enabled: false,
+  agent_max_actions_per_day: 20,
 };
+
+interface AgentRun {
+  id: string;
+  agent: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  iterations: number;
+  summary: string | null;
+  actions: Array<{ tool: string; input: any; result: any; ts: string }>;
+}
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
@@ -92,16 +107,18 @@ export default function CareerOpsPreferencesPage() {
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [runs, setRuns] = useState<AgentRun[]>([]);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data } = await supabase
-        .from("user_job_prefs")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (data) setPrefs({ ...DEFAULT, ...(data as Prefs) });
+      const [prefsRes, runsRes] = await Promise.all([
+        supabase.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
+        supabase.from("agent_runs").select("*").eq("user_id", user.id)
+          .order("started_at", { ascending: false }).limit(8),
+      ]);
+      if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as Prefs) });
+      setRuns((runsRes.data || []) as AgentRun[]);
       setLoading(false);
     })();
   }, [user]);
@@ -286,6 +303,75 @@ export default function CareerOpsPreferencesPage() {
                 );
               })}
             </div>
+          </div>
+        )}
+      </motion.section>
+
+      {/* Auto-pilot agent */}
+      <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={3} className="glass-card p-8 space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[13px] font-semibold text-foreground">Auto-pilot</p>
+            <p className="text-[14px] font-semibold text-foreground mt-2">
+              Let the Job Hunter agent run for you.
+            </p>
+            <p className="text-[13px] text-muted-foreground mt-1 max-w-[60ch]">
+              Every hour, an autonomous agent scans new matches against your prefs, scores them, and prepares the high-scoring ones — so you walk in to a queue of ready-to-review applications instead of doing it manually. It never submits without your approval.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPrefs({ ...prefs, agent_enabled: !prefs.agent_enabled })}
+            className={cn(
+              "h-7 w-12 rounded-full transition-colors relative shrink-0",
+              prefs.agent_enabled ? "bg-foreground" : "bg-foreground/10",
+            )}
+            aria-label="Toggle auto-pilot"
+          >
+            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.agent_enabled ? "translate-x-5" : "translate-x-0.5")} />
+          </button>
+        </div>
+
+        <div className={cn("pt-4 border-t border-foreground/10", !prefs.agent_enabled && "opacity-50 pointer-events-none")}>
+          <p className="text-[13px] font-semibold text-foreground mb-1">Daily action budget</p>
+          <p className="text-[12px] text-muted-foreground mb-2">Hard cap on how many score + prepare actions the agent can take in 24 hours.</p>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={prefs.agent_max_actions_per_day}
+            onChange={(e) => setPrefs({ ...prefs, agent_max_actions_per_day: Number(e.target.value) })}
+            className="w-full max-w-[200px] h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+          />
+        </div>
+
+        {runs.length > 0 && (
+          <div className="pt-4 border-t border-foreground/10">
+            <p className="text-[13px] font-semibold text-foreground mb-3">Recent activity</p>
+            <ul className="divide-y divide-foreground/10">
+              {runs.map((r) => (
+                <li key={r.id} className="grid grid-cols-[80px_1fr_auto] gap-3 items-start py-3">
+                  <span className={cn(
+                    "text-[10.5px] font-mono font-medium uppercase tracking-wider px-2 py-0.5 rounded inline-block w-fit",
+                    r.status === "completed" ? "bg-emerald-100 text-emerald-700"
+                      : r.status === "failed" ? "bg-rose-100 text-rose-700"
+                      : r.status === "capped" ? "bg-amber-100 text-amber-700"
+                      : "bg-muted text-muted-foreground",
+                  )}>
+                    {r.status}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[13px] text-foreground leading-snug">{r.summary ?? "(no summary)"}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {r.actions.length} action{r.actions.length === 1 ? "" : "s"} · {r.iterations} iteration{r.iterations === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                    {new Date(r.started_at).toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </motion.section>
