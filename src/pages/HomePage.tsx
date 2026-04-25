@@ -46,6 +46,7 @@ export default function HomePage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [topMatches, setTopMatches] = useState<TopMatch[]>([]);
   const [recentResumes, setRecentResumes] = useState<Array<{ id: string; title: string; updated_at: string }>>([]);
+  const [agentSummary, setAgentSummary] = useState<{ runs24h: number; lastSummary: string | null; lastAt: string | null } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -89,6 +90,24 @@ export default function HomePage() {
         }));
       setTopMatches(matches);
 
+      // Agent activity in the last 24h
+      const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+      const { data: runs } = await supabase
+        .from("agent_runs")
+        .select("id, summary, started_at, status")
+        .eq("user_id", user.id)
+        .eq("status", "completed")
+        .gte("started_at", since)
+        .order("started_at", { ascending: false });
+      const list = (runs || []) as Array<{ id: string; summary: string | null; started_at: string }>;
+      if (list.length > 0) {
+        setAgentSummary({
+          runs24h: list.length,
+          lastSummary: list[0].summary,
+          lastAt: list[0].started_at,
+        });
+      }
+
       setLoading(false);
     })();
   }, [user]);
@@ -117,6 +136,32 @@ export default function HomePage() {
             {greeting}, {displayName}
           </h1>
         </div>
+
+        {/* Agent activity strip — only when auto-pilot has done something in last 24h */}
+        {agentSummary && (
+          <button
+            onClick={() => navigate("/career-ops/preferences")}
+            className="w-full mb-10 flex items-start gap-3 p-4 rounded-xl border border-border bg-gradient-to-r from-violet-50 to-indigo-50 hover:border-foreground/20 transition-colors text-left"
+          >
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4 text-white" strokeWidth={2} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2 mb-0.5">
+                <p className="text-[13px] font-semibold text-foreground">
+                  Auto-pilot ran for you{agentSummary.runs24h > 1 ? ` ${agentSummary.runs24h} times today` : ""}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {agentSummary.lastAt ? new Date(agentSummary.lastAt).toLocaleString() : ""}
+                </p>
+              </div>
+              {agentSummary.lastSummary && (
+                <p className="text-[12.5px] text-muted-foreground leading-snug line-clamp-2">{agentSummary.lastSummary}</p>
+              )}
+            </div>
+            <ArrowUpRight className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" strokeWidth={1.75} />
+          </button>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-14">
           {tiles.map((t) => {
