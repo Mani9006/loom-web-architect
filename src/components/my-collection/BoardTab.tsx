@@ -76,27 +76,59 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       });
       return;
     }
-    // Pull the session's master resume to feed into the tailor prompt.
+    // Pull a base resume to feed into the tailor prompt. Three-tier lookup:
+    //   1. session's master_resume_id (if explicitly set)
+    //   2. the user's most recently updated resume (fallback so users don't
+    //      have to pre-configure anything)
+    //   3. nothing — tell them to create one in Resume Builder
     const { data: sessRow } = await (supabase as any)
       .from("mc_sessions")
       .select("master_resume_id")
       .eq("id", sessionId)
       .maybeSingle();
+
     let masterMd = "";
+
+    // Tier 1: session's pinned master resume.
     if (sessRow?.master_resume_id) {
       const { data: res } = await supabase
         .from("resumes")
-        .select("content")
+        .select("content,title")
         .eq("id", sessRow.master_resume_id)
         .maybeSingle();
       const content = (res as any)?.content;
       if (typeof content === "string") masterMd = content;
       else if (content) masterMd = JSON.stringify(content);
     }
+
+    // Tier 2: latest resume from the user's account.
+    if (!masterMd) {
+      const { data: latest } = await supabase
+        .from("resumes")
+        .select("id,content,title,updated_at")
+        .order("updated_at", { ascending: false })
+        .limit(1);
+      const row = (latest ?? [])[0] as { content?: unknown; title?: string } | undefined;
+      if (row) {
+        const content = row.content;
+        if (typeof content === "string") masterMd = content;
+        else if (content) masterMd = JSON.stringify(content);
+        if (masterMd) {
+          toast({
+            title: "Using your most recent resume",
+            description:
+              "Set a specific master resume in Settings to control which one the AI uses.",
+          });
+        }
+      }
+    }
+
+    // Tier 3: no resume at all.
     if (!masterMd) {
       toast({
-        title: "Pick a master resume first",
-        description: "Set a master resume in this session's settings, then try again.",
+        title: "Create a resume first",
+        description:
+          "The AI tailor needs a base resume. Open Resume Builder (in the left nav), make one, then come back and click Tailor with AI again.",
         variant: "destructive",
       });
       return;
