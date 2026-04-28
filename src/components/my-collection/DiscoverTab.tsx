@@ -18,7 +18,11 @@ import {
   ChevronRight,
   Building2,
   MapPin,
+  Plus,
+  Settings,
 } from "lucide-react";
+import { Link } from "react-router-dom";
+import AddJobManuallyDialog from "./AddJobManuallyDialog";
 
 const PAGE_SIZE = 25;
 
@@ -70,6 +74,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [total, setTotal] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [scoringJobId, setScoringJobId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const tp = (session.target_profile ?? {}) as Record<string, unknown>;
   const targetRoles = (tp.target_roles as string[]) ?? [];
@@ -296,9 +301,24 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           ))}
         </div>
       ) : jobs.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-muted-foreground">
-          No jobs match this session's filters yet. Either widen your target roles, or wait for the hourly
-          scanner to fetch fresh jobs.
+        <Card className="p-8 text-center">
+          <p className="text-sm text-muted-foreground mb-1">
+            No jobs match this session's filters yet.
+          </p>
+          <p className="text-xs text-muted-foreground mb-5">
+            The job scanner runs hourly. While you wait, you can add a job by hand or widen your
+            target roles.
+          </p>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="w-4 h-4 mr-1" /> Add job manually
+            </Button>
+            <Button asChild variant="outline">
+              <Link to={`/my-collection/${sessionId}?tab=board`}>
+                Go to board
+              </Link>
+            </Button>
+          </div>
         </Card>
       ) : (
         <div className="space-y-2">
@@ -390,6 +410,13 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           </Button>
         </div>
       )}
+
+      <AddJobManuallyDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        sessionId={sessionId}
+        onCreated={() => setAddOpen(false)}
+      />
     </div>
   );
 }
