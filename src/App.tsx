@@ -50,6 +50,8 @@ const DocsPage = lazy(() => import("./pages/DocsPage"));
 const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
 const PricingPage = lazy(() => import("./pages/PricingPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const MyCollectionPage = lazy(() => import("@/pages/MyCollection/MyCollectionPage"));
+const SessionPage = lazy(() => import("@/pages/MyCollection/SessionPage"));
 
 const queryClient = new QueryClient();
 
@@ -81,6 +83,8 @@ const App = () => (
                 <Route element={<ProtectedRoute />}>
                   <Route element={<AppLayout />}>
                     <Route path="/home" element={<HomePage />} />
+                    <Route path="/my-collection" element={<MyCollectionPage />} />
+                    <Route path="/my-collection/:sessionId" element={<SessionPage />} />
                     <Route path="/job-search" element={<JobSearchPage />} />
                     <Route path="/applypass" element={<Navigate to="/auto-apply" replace />} />
                     <Route path="/resume-builder" element={<ResumeProjects />} />
