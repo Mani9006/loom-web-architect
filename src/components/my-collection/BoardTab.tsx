@@ -12,7 +12,8 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2 } from "lucide-react";
+import { runOnLocalClaude, type JobStatus } from "@/lib/mc-ai-jobs";
 
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "discovered", label: "Discovered", tone: "bg-slate-100 text-slate-700" },
@@ -59,6 +60,111 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<TrackedJob | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
+
+  async function tailorWithClaude(job: TrackedJob) {
+    if (!job.jd_md || !job.jd_md.trim()) {
+      toast({
+        title: "No job description saved",
+        description: "Add the JD to this card first, then try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    // Pull the session's master resume to feed into the tailor prompt.
+    const { data: sessRow } = await (supabase as any)
+      .from("mc_sessions")
+      .select("master_resume_id")
+      .eq("id", sessionId)
+      .maybeSingle();
+    let masterMd = "";
+    if (sessRow?.master_resume_id) {
+      const { data: res } = await supabase
+        .from("resumes")
+        .select("content")
+        .eq("id", sessRow.master_resume_id)
+        .maybeSingle();
+      const content = (res as any)?.content;
+      if (typeof content === "string") masterMd = content;
+      else if (content) masterMd = JSON.stringify(content);
+    }
+    if (!masterMd) {
+      toast({
+        title: "Pick a master resume first",
+        description: "Set a master resume in this session's settings, then try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const prompt = [
+      "You are an expert resume tailor. Rewrite the candidate's resume below to maximize fit for the target job, ATS-aligned.",
+      "STRICT RULES:",
+      "- Do NOT invent any companies, employers, dates, metrics, certifications, or skills the candidate doesn't have.",
+      "- Keep all original employment dates and titles unchanged.",
+      "- Pull keywords from the JD into the resume's bullet points only where the candidate's experience genuinely supports them.",
+      "- Output ONLY the tailored resume in markdown. No commentary before or after.",
+      "",
+      "──────── TARGET JOB ────────",
+      `Company: ${job.company}`,
+      `Title: ${job.job_title}`,
+      job.location ? `Location: ${job.location}` : "",
+      "",
+      "Job description:",
+      job.jd_md,
+      "",
+      "──────── CANDIDATE'S MASTER RESUME ────────",
+      masterMd,
+      "",
+      "Tailored resume in markdown:",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    setTailoring({ jobId: job.id, status: "queued" });
+    try {
+      const { result, jobId: aiJobId } = await runOnLocalClaude({
+        kind: "tailor",
+        sessionId,
+        prompt,
+        model: "sonnet-4-6",
+        input: { tracked_job_id: job.id, company: job.company, job_title: job.job_title },
+        timeoutMs: 6 * 60 * 1000,
+        onProgress: (s) => setTailoring({ jobId: job.id, status: s }),
+      });
+      void aiJobId;
+
+      const { data: userData } = await supabase.auth.getUser();
+      const { data: tailoredRow, error: insertErr } = await (supabase as any)
+        .from("mc_tailored_resumes")
+        .insert({
+          user_id: userData?.user?.id,
+          session_id: sessionId,
+          source_job_id: null,
+          name: `${job.company} — ${job.job_title}`,
+          cv_md: result,
+        })
+        .select("id")
+        .single();
+      if (insertErr || !tailoredRow) {
+        throw new Error(insertErr?.message || "Couldn't save tailored resume");
+      }
+      await (supabase as any)
+        .from("mc_tracked_jobs")
+        .update({ tailored_resume_id: tailoredRow.id })
+        .eq("id", job.id);
+      setJobs((arr) =>
+        arr.map((j) => (j.id === job.id ? { ...j, tailored_resume_id: tailoredRow.id } : j))
+      );
+      setSelected((cur) => (cur && cur.id === job.id ? { ...cur, tailored_resume_id: tailoredRow.id } : cur));
+      toast({ title: "Tailored resume ready", description: "Open it in the Resumes tab." });
+    } catch (e) {
+      const msg = (e as Error).message || String(e);
+      toast({ title: "Tailoring failed", description: msg, variant: "destructive" });
+    } finally {
+      setTailoring(null);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -202,13 +308,34 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                   ))}
                 </div>
 
-                {selected.apply_url && (
-                  <Button asChild variant="outline" size="sm">
-                    <a href={selected.apply_url} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open application
-                    </a>
+                <div className="flex flex-wrap gap-2">
+                  {selected.apply_url && (
+                    <Button asChild variant="outline" size="sm">
+                      <a href={selected.apply_url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open application
+                      </a>
+                    </Button>
+                  )}
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => tailorWithClaude(selected)}
+                    disabled={tailoring?.jobId === selected.id}
+                  >
+                    {tailoring?.jobId === selected.id ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        {tailoring.status === "queued" && "Queued on your Mac…"}
+                        {tailoring.status === "running" && "Claude is writing…"}
+                        {tailoring.status === "done" && "Saving…"}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 mr-1" /> Tailor with Claude
+                      </>
+                    )}
                   </Button>
-                )}
+                </div>
 
                 {selected.tailored_resume_id && (
                   <Button asChild variant="outline" size="sm">
