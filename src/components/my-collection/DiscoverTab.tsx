@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,61 @@ import {
   RefreshCw,
   Plus,
 } from "lucide-react";
-import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
+import {
+  runOnLocalWorker,
+  resumeRowToMarkdown,
+  waitForJob,
+  enqueueJob,
+  type JobStatus,
+  type AIJob,
+} from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
+
+// ── Persistence ─────────────────────────────────────────────────────────────
+// Discover state lives in sessionStorage so switching apps/tabs/refreshing the
+// page doesn't lose the user's search progress. We also persist the in-flight
+// mc_ai_jobs row id so we can re-attach to a search that started on the
+// previous mount and is still running on the user's Mac mini worker.
+
+interface PersistedDiscover {
+  foundJobs: FoundJob[];
+  clarification: { questions: string[]; answers: string[] } | null;
+  conversation: ClarificationTurn[];
+  savedKeys: string[];
+  /** mc_ai_jobs.id of the most recent search. Used to re-attach if user
+   *  switches away mid-search and comes back. */
+  activeJobId: string | null;
+  /** Snapshot of the conversation that the activeJobId was launched with —
+   *  needed because Claude's response interpretation depends on history. */
+  activeJobHistory: ClarificationTurn[];
+}
+
+const stateKey = (sid: string) => `mc:discover-state:${sid}:v1`;
+
+function readPersisted(sid: string): PersistedDiscover | null {
+  try {
+    const raw = sessionStorage.getItem(stateKey(sid));
+    return raw ? (JSON.parse(raw) as PersistedDiscover) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersisted(sid: string, p: PersistedDiscover) {
+  try {
+    sessionStorage.setItem(stateKey(sid), JSON.stringify(p));
+  } catch {
+    // sessionStorage can throw in private mode — non-fatal
+  }
+}
+
+function clearPersisted(sid: string) {
+  try {
+    sessionStorage.removeItem(stateKey(sid));
+  } catch {
+    // non-fatal
+  }
+}
 
 interface FoundJob {
   title: string;
@@ -49,15 +102,93 @@ interface Props {
  */
 export default function DiscoverTab({ sessionId, session }: Props) {
   const { toast } = useToast();
+  // Read persisted state once on mount. After this the React state is the
+  // source of truth and the persistence effect mirrors it back to storage.
+  const initial = useRef<PersistedDiscover | null>(readPersisted(sessionId));
+
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<JobStatus | null>(null);
-  const [foundJobs, setFoundJobs] = useState<FoundJob[]>([]);
-  const [clarification, setClarification] = useState<{ questions: string[]; answers: string[] } | null>(null);
-  const [conversation, setConversation] = useState<ClarificationTurn[]>([]);
-  const [savedTitles, setSavedTitles] = useState<Set<string>>(new Set());
+  const [foundJobs, setFoundJobs] = useState<FoundJob[]>(initial.current?.foundJobs ?? []);
+  const [clarification, setClarification] = useState<{ questions: string[]; answers: string[] } | null>(
+    initial.current?.clarification ?? null,
+  );
+  const [conversation, setConversation] = useState<ClarificationTurn[]>(
+    initial.current?.conversation ?? [],
+  );
+  const [savedTitles, setSavedTitles] = useState<Set<string>>(
+    new Set(initial.current?.savedKeys ?? []),
+  );
+  const [activeJobId, setActiveJobId] = useState<string | null>(
+    initial.current?.activeJobId ?? null,
+  );
+  const [activeJobHistory, setActiveJobHistory] = useState<ClarificationTurn[]>(
+    initial.current?.activeJobHistory ?? [],
+  );
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+
+  // Mirror state to sessionStorage on every change.
+  useEffect(() => {
+    writePersisted(sessionId, {
+      foundJobs,
+      clarification,
+      conversation,
+      savedKeys: Array.from(savedTitles),
+      activeJobId,
+      activeJobHistory,
+    });
+  }, [sessionId, foundJobs, clarification, conversation, savedTitles, activeJobId, activeJobHistory]);
+
+  // Auto-reattach to an in-flight search on mount. If the user clicked
+  // "Find jobs with AI" and switched apps/tabs/refreshed before the worker
+  // finished, this effect picks back up where they left off.
+  const reattachedRef = useRef(false);
+  useEffect(() => {
+    if (reattachedRef.current) return;
+    if (!activeJobId) return;
+    // If we already have results loaded for this jobId, no need to reattach.
+    if (foundJobs.length > 0 || clarification) {
+      reattachedRef.current = true;
+      return;
+    }
+    reattachedRef.current = true;
+
+    let cancelled = false;
+    (async () => {
+      setBusy(true);
+      setProgress("running");
+      try {
+        const job: AIJob = await waitForJob(activeJobId, {
+          timeoutMs: 5 * 60 * 1000,
+          onProgress: (s) => {
+            if (!cancelled) setProgress(s);
+          },
+        });
+        if (cancelled) return;
+        await handleSearchResult(job, activeJobHistory);
+      } catch (e) {
+        if (cancelled) return;
+        // Job is gone or timed out — clear so the user can re-trigger.
+        setActiveJobId(null);
+        setActiveJobHistory([]);
+        // Don't toast on transient mount-time failures; the user might not
+        // have triggered this run themselves (page was just rehydrated).
+        // eslint-disable-next-line no-console
+        console.warn("[Discover] couldn't reattach to previous search:", e);
+      } finally {
+        if (!cancelled) {
+          setBusy(false);
+          setProgress(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Run once per mount with the persisted activeJobId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const tp = (session.target_profile ?? {}) as Record<string, unknown>;
   const targetRoles = (tp.target_roles as string[]) ?? [];
@@ -114,9 +245,19 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           "\n────────────────────────────────\n";
 
     return [
-      "You are a job-search agent helping a candidate find currently-open job postings that fit their experience and targets.",
+      "You are the orchestrator agent for a job search. Your ENTIRE response must be a single JSON object inside a ```json fenced block. No prose, no preamble, no explanation outside the fence.",
       "",
-      "Use any web tools available to you (WebSearch, WebFetch, etc.) to find real, currently-posted jobs. DO NOT fabricate jobs or invent companies. If you cannot verify a posting is real and active, omit it.",
+      "── DELEGATE TO HAIKU SUB-AGENTS WHENEVER POSSIBLE ──",
+      "You are running on Sonnet 4.6, which is expensive. For every parallelizable sub-task, use the Task tool to spawn a `general-purpose` sub-agent with model haiku-4-5. Examples of tasks to delegate:",
+      "  • One sub-agent per job board (e.g. one for greenhouse.io, one for ashbyhq.com, one for lever.co) — each sub-agent searches that board and returns a list of postings.",
+      "  • One sub-agent per JD URL to fetch and summarize.",
+      "  • One sub-agent to score fit for each posting against the candidate.",
+      "Use the Task tool with `subagent_type: 'general-purpose'` and `model: 'haiku'` (or omit model so it inherits Haiku for sub-agents). You then aggregate the sub-agent outputs into the final JSON.",
+      "",
+      "── TOOLS ──",
+      "Use WebSearch and WebFetch to find real, currently-posted jobs. NEVER fabricate companies, URLs, or postings. If you can't verify a posting is real and active, omit it.",
+      "",
+      "If you do NOT have web access in this environment, return needs_clarification with a question asking the user to paste 5–10 specific job links they want analyzed.",
       "",
       "────── CANDIDATE RESUME ──────",
       resumeMd || "(no resume on file — use the targets only)",
@@ -124,27 +265,115 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       "────── TARGETS ──────",
       targetBlock || "(no targets specified)",
       historyBlock,
-      "────── YOUR TASK ──────",
-      "Decide whether you have enough information to do a good search.",
+      "────── OUTPUT FORMAT (choose ONE of these two shapes) ──────",
       "",
-      "If you need clarification before searching (max 3 questions), respond with EXACTLY this JSON shape and nothing else:",
+      "Shape A — if you need clarification (max 3 short questions):",
       "```json",
-      `{"needs_clarification": true, "questions": ["...", "..."]}`,
+      `{"needs_clarification": true, "questions": ["...", "...", "..."]}`,
       "```",
       "",
-      "Otherwise, search the web and return 8 to 20 currently-open jobs that genuinely fit. Respond with EXACTLY this JSON shape and nothing else:",
+      "Shape B — if you have enough info AND can do the search:",
       "```json",
-      "{",
-      `  "jobs": [`,
-      `    {"title":"...","company":"...","location":"...","apply_url":"https://...","summary":"...","fit_score":1-3,"fit_reason":"..."}`,
-      "  ]",
-      "}",
+      `{"jobs":[{"title":"...","company":"...","location":"...","apply_url":"https://...","summary":"...","fit_score":1,"fit_reason":"..."}]}`,
       "```",
       "",
-      "fit_score: 1=stretch, 2=good fit, 3=strong fit. Be honest — don't inflate. Verify URLs are real. Output JSON only.",
+      "Rules:",
+      "- fit_score: 1=stretch, 2=good fit, 3=strong fit. Be honest.",
+      "- Return 8–20 jobs in shape B. If you can only verify fewer, return what you have.",
+      "- ONE JSON OBJECT, ONE ```json FENCE. Nothing else.",
     ]
       .filter((line) => line !== undefined)
       .join("\n");
+  }
+
+  /**
+   * Common processing for an AIJob row that finished. Used by both runSearch
+   * (when we explicitly start a search) and the auto-reattach effect on
+   * mount (when we picked up an in-flight search the user started before).
+   */
+  async function handleSearchResult(job: AIJob, history: ClarificationTurn[]) {
+    const result = job.result ?? "";
+    const resultJson = job.result_json;
+
+    let parsed: Record<string, unknown> | null =
+      resultJson && typeof resultJson === "object" ? (resultJson as Record<string, unknown>) : null;
+
+    if (!parsed && result) {
+      const fence = result.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
+      if (fence) {
+        try { parsed = JSON.parse(fence[1].trim()); } catch {}
+      }
+    }
+    if (!parsed && result) {
+      const objMatch = result.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+      if (objMatch) {
+        try { parsed = JSON.parse(objMatch[0]); } catch {}
+      }
+    }
+
+    if (!parsed) {
+      const preview = result.slice(0, 280).trim();
+      toast({
+        title: "AI didn't return valid JSON",
+        description: preview
+          ? `Claude said: "${preview}${result.length > 280 ? "…" : ""}". Click Search again or rephrase your targets in Settings.`
+          : "Empty response. Click Search again.",
+        variant: "destructive",
+      });
+      // Job consumed — clear activeJobId
+      setActiveJobId(null);
+      setActiveJobHistory([]);
+      return;
+    }
+
+    if (parsed.needs_clarification && Array.isArray(parsed.questions)) {
+      const qs = (parsed.questions as unknown[]).map(String).slice(0, 5);
+      setClarification({ questions: qs, answers: qs.map(() => "") });
+      setActiveJobId(null);
+      setActiveJobHistory([]);
+      toast({
+        title: "AI needs a bit more info",
+        description: `${qs.length} quick question${qs.length === 1 ? "" : "s"} below.`,
+      });
+      return;
+    }
+
+    if (Array.isArray(parsed.jobs)) {
+      const jobs = (parsed.jobs as Record<string, unknown>[])
+        .map((j) => ({
+          title: String(j.title ?? "").trim(),
+          company: String(j.company ?? "").trim(),
+          location: j.location ? String(j.location) : undefined,
+          apply_url: j.apply_url ? String(j.apply_url) : undefined,
+          summary: j.summary ? String(j.summary) : undefined,
+          fit_score: typeof j.fit_score === "number" ? j.fit_score : undefined,
+          fit_reason: j.fit_reason ? String(j.fit_reason) : undefined,
+        }))
+        .filter((j) => j.title && j.company);
+
+      setFoundJobs(jobs);
+      setClarification(null);
+      setActiveJobId(null);
+      setActiveJobHistory([]);
+      toast({
+        title: jobs.length === 0 ? "No matches found" : `Found ${jobs.length} jobs`,
+        description:
+          jobs.length === 0
+            ? "Try widening your target roles in Settings, or ask for jobs more directly."
+            : "Click Tailor with AI on any to save + tailor.",
+      });
+      return;
+    }
+
+    setActiveJobId(null);
+    setActiveJobHistory([]);
+    toast({
+      title: "Unexpected AI response",
+      description: "The AI didn't return jobs or clarification questions. Try again.",
+      variant: "destructive",
+    });
+    // Suppress unused-history warning — kept in signature for future use.
+    void history;
   }
 
   async function runSearch(history: ClarificationTurn[]) {
@@ -167,66 +396,23 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
       const prompt = buildPrompt(resumeMd, history);
 
-      const { resultJson } = await runOnLocalWorker({
+      // Enqueue the job and persist its id immediately so a tab-switch
+      // before the worker finishes still lets us re-attach on next mount.
+      const enq = await enqueueJob({
         kind: "other",
         sessionId,
         prompt,
         model: "sonnet-4-6",
         input: { feature: "find_jobs", history },
+      });
+      setActiveJobId(enq.jobId);
+      setActiveJobHistory(history);
+
+      const finished = await waitForJob(enq.jobId, {
         timeoutMs: 6 * 60 * 1000,
         onProgress: (s) => setProgress(s),
       });
-
-      if (!resultJson || typeof resultJson !== "object") {
-        toast({
-          title: "AI didn't return valid JSON",
-          description: "Try clicking Search again. If it persists, the worker log on your Mac shows raw output.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const parsed = resultJson as Record<string, unknown>;
-
-      if (parsed.needs_clarification && Array.isArray(parsed.questions)) {
-        const qs = (parsed.questions as unknown[]).map(String).slice(0, 5);
-        setClarification({ questions: qs, answers: qs.map(() => "") });
-        toast({
-          title: "AI needs a bit more info",
-          description: `${qs.length} quick question${qs.length === 1 ? "" : "s"} below.`,
-        });
-        return;
-      }
-
-      if (Array.isArray(parsed.jobs)) {
-        const jobs = (parsed.jobs as Record<string, unknown>[])
-          .map((j) => ({
-            title: String(j.title ?? "").trim(),
-            company: String(j.company ?? "").trim(),
-            location: j.location ? String(j.location) : undefined,
-            apply_url: j.apply_url ? String(j.apply_url) : undefined,
-            summary: j.summary ? String(j.summary) : undefined,
-            fit_score: typeof j.fit_score === "number" ? j.fit_score : undefined,
-            fit_reason: j.fit_reason ? String(j.fit_reason) : undefined,
-          }))
-          .filter((j) => j.title && j.company);
-
-        setFoundJobs(jobs);
-        toast({
-          title: jobs.length === 0 ? "No matches found" : `Found ${jobs.length} jobs`,
-          description:
-            jobs.length === 0
-              ? "Try widening your target roles in Settings, or ask for jobs more directly."
-              : "Click Save on any to add to the board.",
-        });
-        return;
-      }
-
-      toast({
-        title: "Unexpected AI response",
-        description: "The AI didn't return jobs or clarification questions. Try again.",
-        variant: "destructive",
-      });
+      await handleSearchResult(finished, history);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Search failed", description: msg, variant: "destructive" });
@@ -430,6 +616,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     setClarification(null);
     setConversation([]);
     setSavedTitles(new Set());
+    setActiveJobId(null);
+    setActiveJobHistory([]);
+    clearPersisted(sessionId);
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
