@@ -5,7 +5,7 @@ import { isWorkerOnline } from "@/lib/mc-ai-jobs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
- * Small badge that shows whether the user's local Claude worker is online.
+ * Small badge that shows whether AI features are currently available.
  * The worker writes a heartbeat into mc_worker_heartbeats every 30s.
  * "Online" means we've seen one in the last 90s.
  */
@@ -41,10 +41,10 @@ export default function WorkerStatusBadge() {
   }
 
   const dotColor = state.online ? "bg-emerald-500" : "bg-zinc-400";
-  const label = state.online ? "Worker online" : "Worker offline";
+  const label = state.online ? "AI ready" : "AI offline";
   const description = state.online
-    ? `Your local Claude worker is processing jobs${state.hostname ? ` on ${state.hostname}` : ""}.`
-    : "Start the worker on your Mac to enable AI features. Without it, jobs will sit queued.";
+    ? "AI features are available. Tailoring jobs typically takes 5–15 seconds."
+    : "AI features are temporarily unavailable. Try again in a few minutes.";
 
   return (
     <TooltipProvider delayDuration={150}>

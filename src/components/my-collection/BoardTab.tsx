@@ -12,8 +12,9 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2 } from "lucide-react";
-import { runOnLocalClaude, type JobStatus } from "@/lib/mc-ai-jobs";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus } from "lucide-react";
+import { runOnLocalWorker, type JobStatus } from "@/lib/mc-ai-jobs";
+import AddJobManuallyDialog from "./AddJobManuallyDialog";
 
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "discovered", label: "Discovered", tone: "bg-slate-100 text-slate-700" },
@@ -61,8 +62,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [selected, setSelected] = useState<TrackedJob | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
-  async function tailorWithClaude(job: TrackedJob) {
+  async function tailorJob(job: TrackedJob) {
     if (!job.jd_md || !job.jd_md.trim()) {
       toast({
         title: "No job description saved",
@@ -123,7 +125,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
     setTailoring({ jobId: job.id, status: "queued" });
     try {
-      const { result, jobId: aiJobId } = await runOnLocalClaude({
+      const { result, jobId: aiJobId } = await runOnLocalWorker({
         kind: "tailor",
         sessionId,
         prompt,
@@ -221,16 +223,39 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   if (jobs.length === 0) {
     return (
-      <Card className="p-8 text-center border-dashed">
-        <p className="text-sm text-muted-foreground">
-          No jobs on the board yet. Save some from the <strong>Discover</strong> tab to get started.
-        </p>
-      </Card>
+      <>
+        <Card className="p-8 text-center border-dashed">
+          <p className="text-sm text-muted-foreground mb-4">
+            No jobs on the board yet. Save some from the <strong>Discover</strong> tab — or add
+            one manually if the scanner hasn't found matches yet.
+          </p>
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="w-4 h-4 mr-1" /> Add job manually
+          </Button>
+        </Card>
+        <AddJobManuallyDialog
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          sessionId={sessionId}
+          onCreated={async () => {
+            setAddOpen(false);
+            await load();
+          }}
+        />
+      </>
     );
   }
 
   return (
     <>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs text-muted-foreground">
+          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
+        </p>
+        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+          <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
+        </Button>
+      </div>
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
@@ -319,19 +344,19 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                   <Button
                     variant="default"
                     size="sm"
-                    onClick={() => tailorWithClaude(selected)}
+                    onClick={() => tailorJob(selected)}
                     disabled={tailoring?.jobId === selected.id}
                   >
                     {tailoring?.jobId === selected.id ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                        {tailoring.status === "queued" && "Queued on your Mac…"}
-                        {tailoring.status === "running" && "Claude is writing…"}
+                        {tailoring.status === "queued" && "Queued…"}
+                        {tailoring.status === "running" && "Tailoring…"}
                         {tailoring.status === "done" && "Saving…"}
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 mr-1" /> Tailor with Claude
+                        <Sparkles className="w-3.5 h-3.5 mr-1" /> Tailor with AI
                       </>
                     )}
                   </Button>
@@ -365,6 +390,16 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
           )}
         </SheetContent>
       </Sheet>
+
+      <AddJobManuallyDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        sessionId={sessionId}
+        onCreated={async () => {
+          setAddOpen(false);
+          await load();
+        }}
+      />
     </>
   );
 }

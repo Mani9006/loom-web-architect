@@ -148,7 +148,7 @@ export async function waitForJob(
     // Belt-and-suspenders polling in case realtime drops.
     pollHandle = setInterval(async () => {
       if (Date.now() - start > timeoutMs) {
-        finish(null, new Error("Timed out waiting for the worker. Is your Mac mini awake?"));
+        finish(null, new Error("Timed out waiting for AI to respond. Please try again in a moment."));
         return;
       }
       try {
@@ -177,7 +177,7 @@ async function fetchJob(jobId: string): Promise<AIJob | null> {
  * One-shot helper: enqueue a job and return the result string when done.
  * Throws on error/timeout.
  */
-export async function runOnLocalClaude(
+export async function runOnLocalWorker(
   args: EnqueueArgs & { timeoutMs?: number; onProgress?: (status: JobStatus) => void }
 ): Promise<{ result: string; resultJson: unknown; jobId: string }> {
   const { jobId } = await enqueueJob(args);
