@@ -12,7 +12,8 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
@@ -172,11 +173,13 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   async function load() {
     setLoading(true);
+    // Filter out soft-deleted cards (deleted_at IS NULL). The Trash dialog
+    // surfaces deleted_at IS NOT NULL rows separately.
     const { data, error } = await (supabase as any)
-      
-.from("mc_tracked_jobs")
+      .from("mc_tracked_jobs")
       .select("*")
       .eq("session_id", sessionId)
+      .is("deleted_at", null)
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Couldn't load board", description: error.message, variant: "destructive" });
@@ -184,6 +187,57 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       setJobs((data as TrackedJob[]) ?? []);
     }
     setLoading(false);
+  }
+
+  // Soft-delete with 5-second undo via toast action.
+  async function trashJob(job: TrackedJob, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    // Optimistic remove from local state
+    setJobs((arr) => arr.filter((j) => j.id !== job.id));
+    setSelected((cur) => (cur && cur.id === job.id ? null : cur));
+
+    const deletedAt = new Date().toISOString();
+    const { error } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .update({ deleted_at: deletedAt })
+      .eq("id", job.id);
+
+    if (error) {
+      // Roll back local state on failure
+      setJobs((arr) => [...arr, job]);
+      toast({ title: "Couldn't move to trash", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    toast({
+      title: "Moved to trash",
+      description: `${job.company} · ${job.job_title}`,
+      duration: 5000,
+      action: (
+        <ToastAction
+          altText="Undo"
+          onClick={async () => {
+            const { error: undoErr } = await (supabase as any)
+              .from("mc_tracked_jobs")
+              .update({ deleted_at: null })
+              .eq("id", job.id);
+            if (undoErr) {
+              toast({
+                title: "Undo failed",
+                description: undoErr.message,
+                variant: "destructive",
+              });
+              return;
+            }
+            // Re-add to local state
+            setJobs((arr) => [{ ...job, updated_at: new Date().toISOString() }, ...arr]);
+            toast({ title: "Restored" });
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
+    });
   }
 
   useEffect(() => {
@@ -283,9 +337,18 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       onDragStart={() => setDraggedId(job.id)}
                       onDragEnd={() => setDraggedId(null)}
                       onClick={() => setSelected(job)}
-                      className="bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
+                      className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
                     >
-                      <div className="font-medium leading-tight">{job.job_title}</div>
+                      <button
+                        type="button"
+                        aria-label="Move to trash"
+                        title="Move to trash"
+                        onClick={(e) => trashJob(job, e)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="font-medium leading-tight pr-6">{job.job_title}</div>
                       <div className="text-muted-foreground text-[11px] mt-1 flex items-center gap-1">
                         <Building2 className="w-3 h-3" />
                         {job.company}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import BoardTab from "@/components/my-collection/BoardTab";
 import StatsTab from "@/components/my-collection/StatsTab";
 import WorkerStatusBadge from "@/components/my-collection/WorkerStatusBadge";
 import SessionSettingsDialog from "@/components/my-collection/SessionSettingsDialog";
+import TrashDialog from "@/components/my-collection/TrashDialog";
 
 interface MCSession {
   id: string;
@@ -29,11 +30,34 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<string>("discover");
+  const [tab, setTab] = useState<string>(() => {
+    // Restore the active tab on remount (tab switches, browser back/forward)
+    // so a tab-app switch doesn't reset the user to "discover".
+    if (typeof window === "undefined") return "discover";
+    try {
+      const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
+      return stored || "discover";
+    } catch {
+      return "discover";
+    }
+  });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  // Bumped to force the Board to refresh after a Trash restore.
+  const [boardReloadKey, setBoardReloadKey] = useState(0);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(`mc:active-tab:${window.location.pathname}`, tab);
+    } catch {
+      // sessionStorage can throw in private mode — non-fatal
+    }
+  }, [tab]);
 
   useEffect(() => {
     if (!sessionId) return;
+    let cancelled = false;
+    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -41,20 +65,45 @@ export default function SessionPage() {
         .select("*")
         .eq("id", sessionId)
         .maybeSingle();
+      if (cancelled) return;
+
+      // Don't bounce the user back to /my-collection on transient failures
+      // (e.g. Supabase token refresh on tab focus, network blip). Only
+      // navigate away if we KNOW the session doesn't exist on the very
+      // first load — otherwise just keep showing what we already have.
       if (error) {
-        toast({ title: "Couldn't load session", description: error.message, variant: "destructive" });
-        navigate("/my-collection");
+        // eslint-disable-next-line no-console
+        console.error("[SessionPage] reload failed:", error.message);
+        if (!hadInitialLoad) {
+          toast({
+            title: "Couldn't load session",
+            description: error.message,
+            variant: "destructive",
+          });
+        }
+        setLoading(false);
         return;
       }
       if (!data) {
-        toast({ title: "Session not found" });
-        navigate("/my-collection");
+        if (!hadInitialLoad) {
+          toast({ title: "Session not found" });
+          navigate("/my-collection");
+        }
         return;
       }
+      hadInitialLoad = true;
       setSession(data);
       setLoading(false);
     })();
-  }, [sessionId, navigate, toast]);
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally only re-run when sessionId changes. navigate/toast are
+    // unstable references that, if included, would cause this effect to
+    // re-fire on every render — which on tab focus produces a flash and
+    // can navigate the user away on a transient RLS hiccup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   if (loading || !session) {
     return (
@@ -85,6 +134,9 @@ export default function SessionPage() {
         </div>
         <div className="flex items-center gap-2">
           <WorkerStatusBadge />
+          <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
+            <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
             <Settings className="w-3.5 h-3.5 mr-1" /> Settings
           </Button>
@@ -114,7 +166,7 @@ export default function SessionPage() {
           <ResumesTab sessionId={session.id} />
         </TabsContent>
         <TabsContent value="board" className="mt-6">
-          <BoardTab sessionId={session.id} />
+          <BoardTab sessionId={session.id} key={boardReloadKey} />
         </TabsContent>
         <TabsContent value="stats" className="mt-6">
           <StatsTab sessionId={session.id} />
@@ -133,6 +185,13 @@ export default function SessionPage() {
           setSettingsOpen(false);
           navigate("/my-collection");
         }}
+      />
+
+      <TrashDialog
+        open={trashOpen}
+        onClose={() => setTrashOpen(false)}
+        sessionId={session.id}
+        onRestored={() => setBoardReloadKey((k) => k + 1)}
       />
     </div>
   );
