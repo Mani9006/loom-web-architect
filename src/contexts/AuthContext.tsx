@@ -58,7 +58,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setRolesReady(true);
         }
         setAuthReady(true);
-        if (newSession?.user) {
+        // Only refetch roles on actual sign-in events.
+        // TOKEN_REFRESHED, USER_UPDATED, INITIAL_SESSION fire on every tab/window
+        // focus and don't change role membership — refetching there causes
+        // `loading` to briefly flip to true, which the ProtectedRoute uses to
+        // swap the entire app shell to a spinner, remounting children and
+        // making the Board/Discover tabs reload (the "animation" flicker
+        // users see when switching apps).
+        if (event === "SIGNED_IN" && newSession?.user) {
           setRolesReady(false);
           void fetchRoles(newSession.user.id);
         }
