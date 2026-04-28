@@ -125,8 +125,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
     const ids = (data ?? []).map((j: ScannedJob) => j.id);
     if (ids.length > 0) {
-      const { data: evals } = await supabase
-        .from("mc_evaluations")
+      const { data: evals } = await (supabase as any)
+        
+.from("mc_evaluations")
         .select("id,scanned_job_id,score,tier,summary")
         .eq("session_id", sessionId)
         .in("scanned_job_id", ids);
@@ -136,8 +137,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       });
       setEvaluations(evMap);
 
-      const { data: tracked } = await supabase
-        .from("mc_tracked_jobs")
+      const { data: tracked } = await (supabase as any)
+        
+.from("mc_tracked_jobs")
         .select("id,scanned_job_id,status")
         .eq("session_id", sessionId)
         .in("scanned_job_id", ids);
@@ -163,8 +165,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     const company = job.company_id ? companies[job.company_id]?.name ?? "Unknown" : "Unknown";
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data, error } = await supabase
-      .from("mc_tracked_jobs")
+    const { data, error } = await (supabase as any)
+      
+.from("mc_tracked_jobs")
       .insert({
         session_id: sessionId,
         user_id: user.id,
@@ -197,7 +200,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     }
     setScoringJobId(job.id);
     try {
-      const { data, error } = await supabase.functions.invoke("career-ops-evaluate", {
+      const { data, error } = await (supabase as any).functions.invoke("career-ops-evaluate", {
         body: {
           scanned_job_id: job.id,
           resume_id: session.master_resume_id,
@@ -224,8 +227,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   async function trackApplyClick(job: ScannedJob) {
     const tracked = trackedByJob[job.id];
     if (tracked) {
-      await supabase
-        .from("mc_tracked_jobs")
+      await (supabase as any)
+        
+.from("mc_tracked_jobs")
         .update({ status: "applied", clicked_at: new Date().toISOString(), applied_at: new Date().toISOString() })
         .eq("id", tracked.id);
     } else {
@@ -233,8 +237,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       const company = job.company_id ? companies[job.company_id]?.name ?? "Unknown" : "Unknown";
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        await supabase
-          .from("mc_tracked_jobs")
+        await (supabase as any)
+          
+.from("mc_tracked_jobs")
           .update({ status: "applied", clicked_at: new Date().toISOString(), applied_at: new Date().toISOString() })
           .eq("session_id", sessionId)
           .eq("scanned_job_id", job.id);

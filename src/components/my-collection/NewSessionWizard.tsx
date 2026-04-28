@@ -81,8 +81,9 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       comp_target: compTarget ? Number(compTarget) : null,
       visa_status: visa,
     };
-    const { data, error } = await supabase
-      .from("mc_sessions")
+    const { data, error } = await (supabase as any)
+      
+.from("mc_sessions")
       .insert({
         name: name.trim(),
         master_resume_id: resumeId || null,

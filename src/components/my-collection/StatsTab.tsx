@@ -14,10 +14,11 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     (async () => {
       const [tracked, evaluations, resumes] = await Promise.all([
-        supabase.from("mc_tracked_jobs").select("*", { count: "exact", head: true }).eq("session_id", sessionId),
-        supabase.from("mc_evaluations").select("*", { count: "exact", head: true }).eq("session_id", sessionId),
-        supabase
-          .from("mc_tailored_resumes")
+        (supabase as any).from("mc_tracked_jobs").select("*", { count: "exact", head: true }).eq("session_id", sessionId),
+        (supabase as any).from("mc_evaluations").select("*", { count: "exact", head: true }).eq("session_id", sessionId),
+        (supabase as any)
+          
+.from("mc_tailored_resumes")
           .select("*", { count: "exact", head: true })
           .eq("session_id", sessionId),
       ]);

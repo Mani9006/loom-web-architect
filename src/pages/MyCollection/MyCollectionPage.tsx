@@ -36,7 +36,7 @@ export default function MyCollectionPage() {
 
   async function loadSessions() {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
       .order("updated_at", { ascending: false });
@@ -57,7 +57,7 @@ export default function MyCollectionPage() {
   const atCap = activeSessions.length >= ACTIVE_LIMIT;
 
   async function archiveSession(id: string) {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("mc_sessions")
       .update({ status: "archived" })
       .eq("id", id);
@@ -77,7 +77,7 @@ export default function MyCollectionPage() {
       });
       return;
     }
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("mc_sessions")
       .update({ status: "active" })
       .eq("id", id);
@@ -90,7 +90,7 @@ export default function MyCollectionPage() {
 
   async function deleteSession(id: string) {
     if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
-    const { error } = await supabase.from("mc_sessions").delete().eq("id", id);
+    const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {
