@@ -75,6 +75,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [searchTerm, setSearchTerm] = useState("");
   const [scoringJobId, setScoringJobId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const tp = (session.target_profile ?? {}) as Record<string, unknown>;
   const targetRoles = (tp.target_roles as string[]) ?? [];
@@ -120,13 +121,25 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     query = query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
     const { data, error, count } = await query;
+    setHasLoadedOnce(true);
     if (error) {
       toast({ title: "Couldn't load jobs", description: error.message, variant: "destructive" });
       setLoading(false);
       return;
     }
-    setJobs((data as ScannedJob[]) ?? []);
+    const newJobs = (data as ScannedJob[]) ?? [];
+    setJobs(newJobs);
     setTotal(count ?? 0);
+    // If the user clicked Apply Filters and got 0 results, give them a clear
+    // toast so the click feels like it did something. (On first auto-load
+    // the empty-state card itself communicates this — no toast needed.)
+    if (hasLoadedOnce && newJobs.length === 0) {
+      toast({
+        title: "No matching jobs",
+        description:
+          "Try broadening your target roles in Settings, or add a job manually from the empty card below.",
+      });
+    }
 
     const ids = (data ?? []).map((j: ScannedJob) => j.id);
     if (ids.length > 0) {
@@ -270,7 +283,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           />
         </div>
         <Button variant="outline" size="sm" onClick={() => (setPage(0), loadJobs())} disabled={loading}>
-          <Filter className="w-3.5 h-3.5 mr-1" /> Apply filters
+          {loading ? (
+            <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+          ) : (
+            <Filter className="w-3.5 h-3.5 mr-1" />
+          )}
+          {loading ? "Searching…" : "Apply filters"}
         </Button>
         <div className="text-xs text-muted-foreground ml-auto">
           {total > 0 && `${total} matching jobs`}
@@ -293,8 +311,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         ))}
       </div>
 
-      {/* Job list */}
-      {loading ? (
+      {/* Job list. We only show the full-list skeleton on the very FIRST load.
+          On subsequent re-fetches (Apply Filters, page change) the button itself
+          shows a spinner — the list keeps showing the previous results so the
+          UI doesn't flicker between content and skeleton. */}
+      {loading && !hasLoadedOnce ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-20 w-full" />
