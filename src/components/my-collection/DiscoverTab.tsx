@@ -55,6 +55,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [clarification, setClarification] = useState<{ questions: string[]; answers: string[] } | null>(null);
   const [conversation, setConversation] = useState<ClarificationTurn[]>([]);
   const [savedTitles, setSavedTitles] = useState<Set<string>>(new Set());
+  const [tailoringKey, setTailoringKey] = useState<string | null>(null);
+  const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   const tp = (session.target_profile ?? {}) as Record<string, unknown>;
@@ -275,6 +277,154 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
+  /**
+   * One-click "Tailor with AI" straight from a Discover result.
+   * Saves the card to the Board (so the tailored resume can be linked to it)
+   * and then runs the same tailor pipeline BoardTab uses, but pulling the
+   * master resume directly from session settings.
+   */
+  async function tailorFromDiscover(job: FoundJob) {
+    const key = `${job.company}::${job.title}`;
+    if (!job.summary || !job.summary.trim()) {
+      toast({
+        title: "AI didn't return a job description",
+        description: "Open the application link, copy the JD, and use Add manually instead.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const masterMd = await loadResumeMd();
+    if (!masterMd) {
+      toast({
+        title: "Create a resume first",
+        description: "The AI tailor needs a base resume. Open Resume Builder, save one, then try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setTailoringKey(key);
+    setTailoringStatus("queued");
+
+    try {
+      // 1. Save the discovered job to mc_tracked_jobs so we can link the tailored resume.
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) {
+        toast({ title: "Not signed in", variant: "destructive" });
+        return;
+      }
+      let trackedJobId: string | null = null;
+      if (savedTitles.has(key)) {
+        // Already saved — find the existing row.
+        const { data: existing } = await (supabase as any)
+          .from("mc_tracked_jobs")
+          .select("id")
+          .eq("session_id", sessionId)
+          .eq("company", job.company)
+          .eq("job_title", job.title)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        trackedJobId = existing?.id ?? null;
+      }
+      if (!trackedJobId) {
+        const { data: tracked, error: trackErr } = await (supabase as any)
+          .from("mc_tracked_jobs")
+          .insert({
+            user_id: userData.user.id,
+            session_id: sessionId,
+            scanned_job_id: null,
+            job_title: job.title,
+            company: job.company,
+            location: job.location ?? null,
+            apply_url: job.apply_url ?? null,
+            jd_md: job.summary,
+            status: "saved",
+          })
+          .select("id")
+          .single();
+        if (trackErr || !tracked) {
+          throw new Error(trackErr?.message || "Couldn't save card before tailoring");
+        }
+        trackedJobId = tracked.id;
+        setSavedTitles((s) => new Set(s).add(key));
+      }
+
+      // 2. Build the tailor prompt — same anti-fabrication rules as BoardTab.
+      const prompt = [
+        "You are an expert resume tailor. Rewrite the candidate's resume below to maximize fit for the target job, ATS-aligned.",
+        "STRICT RULES:",
+        "- Do NOT invent any companies, employers, dates, metrics, certifications, or skills the candidate doesn't have.",
+        "- Keep all original employment dates and titles unchanged.",
+        "- Pull keywords from the JD into the resume's bullet points only where the candidate's experience genuinely supports them.",
+        "- Output ONLY the tailored resume in markdown. No commentary before or after.",
+        "",
+        "──────── TARGET JOB ────────",
+        `Company: ${job.company}`,
+        `Title: ${job.title}`,
+        job.location ? `Location: ${job.location}` : "",
+        "",
+        "Job description:",
+        job.summary,
+        "",
+        "──────── CANDIDATE'S MASTER RESUME ────────",
+        masterMd,
+        "",
+        "Tailored resume in markdown:",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const { result } = await runOnLocalWorker({
+        kind: "tailor",
+        sessionId,
+        prompt,
+        model: "sonnet-4-6",
+        input: { tracked_job_id: trackedJobId, company: job.company, job_title: job.title },
+        timeoutMs: 6 * 60 * 1000,
+        onProgress: (s) => setTailoringStatus(s),
+      });
+
+      // 3. Save tailored resume + link it to the tracked job.
+      const { data: tailored, error: insertErr } = await (supabase as any)
+        .from("mc_tailored_resumes")
+        .insert({
+          user_id: userData.user.id,
+          session_id: sessionId,
+          source_job_id: null,
+          name: `${job.company} — ${job.title}`,
+          cv_md: result,
+        })
+        .select("id")
+        .single();
+      if (insertErr || !tailored) {
+        throw new Error(insertErr?.message || "Couldn't save tailored resume");
+      }
+
+      const { error: linkErr } = await (supabase as any)
+        .from("mc_tracked_jobs")
+        .update({ tailored_resume_id: tailored.id })
+        .eq("id", trackedJobId);
+      if (linkErr) {
+        // eslint-disable-next-line no-console
+        console.error("Couldn't link tailored resume to card:", linkErr.message);
+      }
+
+      toast({
+        title: "Tailored resume ready",
+        description: `${job.company} · ${job.title} — see the Resumes tab.`,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast({ title: "Tailor failed", description: msg, variant: "destructive" });
+    } finally {
+      setTailoringKey(null);
+      setTailoringStatus(null);
+    }
+  }
+
   function reset() {
     setFoundJobs([]);
     setClarification(null);
@@ -438,16 +588,37 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     </p>
                   )}
                 </div>
-                <div className="flex flex-col gap-1.5 shrink-0">
+                <div className="flex flex-col gap-1.5 shrink-0 min-w-[8rem]">
                   <Button
                     size="sm"
-                    variant={isSaved ? "outline" : "default"}
+                    variant="default"
+                    onClick={() => tailorFromDiscover(job)}
+                    disabled={tailoringKey === key}
+                    className="h-7 text-[11px]"
+                  >
+                    {tailoringKey === key ? (
+                      <>
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        {tailoringStatus === "queued" && "Queued…"}
+                        {tailoringStatus === "running" && "Tailoring…"}
+                        {tailoringStatus === "done" && "Saving…"}
+                        {!tailoringStatus && "Working…"}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3 mr-1" /> Tailor with AI
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved}
+                    disabled={isSaved || tailoringKey === key}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
-                    {isSaved ? "Saved" : "Save"}
+                    {isSaved ? "Saved" : "Save only"}
                   </Button>
                   {job.apply_url && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
