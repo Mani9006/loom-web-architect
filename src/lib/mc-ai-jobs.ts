@@ -20,7 +20,31 @@ export type JobKind =
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "canceled";
 
-export type JobModel = "haiku-4-5" | "sonnet-4-6" | "opus-4-6";
+// We deliberately exclude opus from the supported set — Sonnet 4.6 is the
+// cap for cost reasons. Haiku 4.5 is the default for cheap operations.
+export type JobModel = "haiku-4-5" | "sonnet-4-6";
+
+/**
+ * Pick the right model for a task by default. Sonnet = orchestrator and
+ * heavy synthesis (full-document tailoring, multi-step job search).
+ * Haiku = everything else (single-line rewrites, classification, scoring,
+ * company research, simple summarization). This is wired so the
+ * frontend doesn't have to think about model choice — the queue helper
+ * applies a sensible default per JobKind.
+ */
+const DEFAULT_MODEL_FOR_KIND: Record<JobKind, JobModel> = {
+  tailor: "sonnet-4-6",          // outputs a full resume — complex
+  score_job: "haiku-4-5",        // single fit score — cheap
+  classify_email: "haiku-4-5",   // categorize one email — cheap
+  rewrite_line: "haiku-4-5",     // tighten one bullet — cheap
+  company_research: "haiku-4-5", // produce a brief — cheap
+  test: "haiku-4-5",
+  other: "sonnet-4-6",           // catchall: assume non-trivial
+};
+
+export function defaultModelFor(kind: JobKind): JobModel {
+  return DEFAULT_MODEL_FOR_KIND[kind] ?? "haiku-4-5";
+}
 
 export interface AIJob {
   id: string;
@@ -68,7 +92,9 @@ export async function enqueueJob(args: EnqueueArgs): Promise<EnqueueResult> {
     user_id: userData.user.id,
     session_id: args.sessionId ?? null,
     kind: args.kind,
-    model: args.model ?? "sonnet-4-6",
+    // Use the explicit model if caller asked for one; otherwise pick
+    // Haiku/Sonnet per the task-kind map (no Opus, ever).
+    model: args.model ?? defaultModelFor(args.kind),
     prompt: args.prompt,
     input: args.input ?? null,
     priority: args.priority ?? 5,
