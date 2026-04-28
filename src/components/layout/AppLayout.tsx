@@ -7,7 +7,7 @@ import {
   ShieldCheck, Crown, ChevronDown, ChevronRight, LogOut, Settings,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
   Bell, HelpCircle, MoreHorizontal,
-} from "lucide-react";
+, FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -32,6 +32,7 @@ const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
   { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
   { label: "Matches", icon: Sparkles, path: "/matches", badge: "NEW" },
+  { label: "My Collection", icon: FolderOpen, path: "/my-collection", badge: "NEW" },
   { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
   { label: "ATS Checker", icon: Target, path: "/ats-checker" },
   { label: "Applications", icon: Columns3, path: "/job-tracker" },
