@@ -10,6 +10,7 @@ import DiscoverTab from "@/components/my-collection/DiscoverTab";
 import ResumesTab from "@/components/my-collection/ResumesTab";
 import BoardTab from "@/components/my-collection/BoardTab";
 import StatsTab from "@/components/my-collection/StatsTab";
+import WorkerStatusBadge from "@/components/my-collection/WorkerStatusBadge";
 
 interface MCSession {
   id: string;
@@ -80,6 +81,7 @@ export default function SessionPage() {
             Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
           </p>
         </div>
+        <WorkerStatusBadge />
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
