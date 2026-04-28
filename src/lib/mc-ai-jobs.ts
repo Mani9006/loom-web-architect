@@ -193,6 +193,88 @@ export async function runOnLocalWorker(
 }
 
 /**
+ * Converts a row from the `resumes` table (Resume Builder schema) into a
+ * single markdown string the AI tailor can read.
+ *
+ * The `resumes` table doesn't have one big "content" column — it stores the
+ * resume as a set of JSON columns: personal_info, summary, experience,
+ * education, skills, projects, certifications, languages, section_order.
+ * This helper stitches them back into well-formed markdown.
+ */
+export function resumeRowToMarkdown(row: any): string {
+  if (!row) return "";
+  const parts: string[] = [];
+
+  const h = row.personal_info ?? {};
+  if (h.name) parts.push(`# ${h.name}`);
+  const contact = [h.email, h.phone, h.location, h.linkedin].filter(Boolean).join(" · ");
+  if (contact) parts.push(contact);
+
+  if (row.summary) {
+    parts.push("## Summary", String(row.summary).trim());
+  }
+
+  if (Array.isArray(row.experience) && row.experience.length) {
+    parts.push("## Experience");
+    for (const e of row.experience) {
+      const head = `**${e.role ?? ""}**${e.company_or_client ? ` — ${e.company_or_client}` : ""}`;
+      const datesParts = [e.start_date, e.end_date].filter(Boolean);
+      const meta = [datesParts.join(" – "), e.location].filter(Boolean).join(" · ");
+      parts.push(`${head}${meta ? `  \n${meta}` : ""}`);
+      if (Array.isArray(e.bullets)) {
+        for (const b of e.bullets) parts.push(`- ${b}`);
+      }
+    }
+  }
+
+  if (Array.isArray(row.education) && row.education.length) {
+    parts.push("## Education");
+    for (const ed of row.education) {
+      const head = `**${ed.degree ?? ""}${ed.field ? ` in ${ed.field}` : ""}**${ed.institution ? ` — ${ed.institution}` : ""}`;
+      const meta = [ed.graduation_date, ed.location, ed.gpa ? `GPA ${ed.gpa}` : ""].filter(Boolean).join(" · ");
+      parts.push(`${head}${meta ? `  \n${meta}` : ""}`);
+    }
+  }
+
+  if (row.skills && typeof row.skills === "object" && Object.keys(row.skills).length) {
+    parts.push("## Skills");
+    for (const [cat, vals] of Object.entries(row.skills)) {
+      const list = Array.isArray(vals) ? (vals as string[]).join(", ") : String(vals);
+      if (!list) continue;
+      const label = cat.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      parts.push(`**${label}:** ${list}`);
+    }
+  }
+
+  if (Array.isArray(row.projects) && row.projects.length) {
+    parts.push("## Projects");
+    for (const p of row.projects) {
+      const head = `**${p.title ?? ""}**${p.organization ? ` — ${p.organization}` : ""}${p.date ? ` (${p.date})` : ""}`;
+      parts.push(head);
+      if (Array.isArray(p.bullets)) for (const b of p.bullets) parts.push(`- ${b}`);
+    }
+  }
+
+  if (Array.isArray(row.certifications) && row.certifications.length) {
+    parts.push("## Certifications");
+    for (const c of row.certifications) {
+      parts.push(
+        `- ${c.name ?? ""}${c.issuer ? ` — ${c.issuer}` : ""}${c.date ? ` (${c.date})` : ""}`,
+      );
+    }
+  }
+
+  if (Array.isArray(row.languages) && row.languages.length) {
+    parts.push("## Languages");
+    for (const l of row.languages) {
+      parts.push(`- ${l.language ?? ""}${l.proficiency ? ` (${l.proficiency})` : ""}`);
+    }
+  }
+
+  return parts.join("\n\n").trim();
+}
+
+/**
  * Returns true if the user has a worker that has heartbeat'd in the last
  * 90 seconds. Used by the WorkerStatusBadge.
  */

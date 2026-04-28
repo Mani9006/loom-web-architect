@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/sheet";
 import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
-import { runOnLocalWorker, type JobStatus } from "@/lib/mc-ai-jobs";
+import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
 
@@ -90,29 +90,28 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     let masterMd = "";
 
     // Tier 1: session's pinned master resume.
+    // The Resume Builder stores resumes as separate JSON columns (personal_info,
+    // summary, experience, education, ...), not a single content field — so we
+    // SELECT * and stitch them with resumeRowToMarkdown.
     if (sessRow?.master_resume_id) {
-      const { data: res } = await supabase
+      const { data: res } = await (supabase as any)
         .from("resumes")
-        .select("content,title")
+        .select("*")
         .eq("id", sessRow.master_resume_id)
         .maybeSingle();
-      const content = (res as any)?.content;
-      if (typeof content === "string") masterMd = content;
-      else if (content) masterMd = JSON.stringify(content);
+      if (res) masterMd = resumeRowToMarkdown(res);
     }
 
     // Tier 2: latest resume from the user's account.
     if (!masterMd) {
-      const { data: latest } = await supabase
+      const { data: latest } = await (supabase as any)
         .from("resumes")
-        .select("id,content,title,updated_at")
+        .select("*")
         .order("updated_at", { ascending: false })
         .limit(1);
-      const row = (latest ?? [])[0] as { content?: unknown; title?: string } | undefined;
+      const row = (latest ?? [])[0];
       if (row) {
-        const content = row.content;
-        if (typeof content === "string") masterMd = content;
-        else if (content) masterMd = JSON.stringify(content);
+        masterMd = resumeRowToMarkdown(row);
         if (masterMd) {
           toast({
             title: "Using your most recent resume",
