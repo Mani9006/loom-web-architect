@@ -12,9 +12,10 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil } from "lucide-react";
 import { runOnLocalWorker, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
+import EditTrackedJobDialog from "./EditTrackedJobDialog";
 
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "discovered", label: "Discovered", tone: "bg-slate-100 text-slate-700" },
@@ -63,6 +64,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState<TrackedJob | null>(null);
 
   async function tailorJob(job: TrackedJob) {
     if (!job.jd_md || !job.jd_md.trim()) {
@@ -199,6 +201,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       return;
     }
     setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
+    // Also refresh the side-sheet's selected card so its status pills update.
+    setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...updates } as TrackedJob) : cur));
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       await (supabase as any).from("mc_status_history").insert({
@@ -341,6 +345,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       </a>
                     </Button>
                   )}
+                  <Button variant="outline" size="sm" onClick={() => setEditing(selected)}>
+                    <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                  </Button>
                   <Button
                     variant="default"
                     size="sm"
@@ -398,6 +405,24 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         onCreated={async () => {
           setAddOpen(false);
           await load();
+        }}
+      />
+
+      <EditTrackedJobDialog
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        job={editing}
+        onSaved={(updated) => {
+          setJobs((arr) =>
+            arr.map((j) => (j.id === updated.id ? ({ ...j, ...updated } as TrackedJob) : j))
+          );
+          setSelected((cur) => (cur && cur.id === updated.id ? ({ ...cur, ...updated } as TrackedJob) : cur));
+          setEditing(null);
+        }}
+        onDeleted={(jobId) => {
+          setJobs((arr) => arr.filter((j) => j.id !== jobId));
+          setSelected((cur) => (cur && cur.id === jobId ? null : cur));
+          setEditing(null);
         }}
       />
     </>
