@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -29,29 +29,77 @@ interface Props {
   onCreated: (id: string) => void;
 }
 
+const DRAFT_KEY = "mc:new-session-wizard-draft:v1";
+
+interface Draft {
+  step: number;
+  name: string;
+  resumeId: string;
+  targetRolesText: string;
+  locationsText: string;
+  remoteOnly: boolean;
+  compTarget: string;
+  visa: string;
+}
+
+const EMPTY_DRAFT: Draft = {
+  step: 1,
+  name: "",
+  resumeId: "",
+  targetRolesText: "",
+  locationsText: "",
+  remoteOnly: false,
+  compTarget: "",
+  visa: "us_citizen",
+};
+
+function readDraft(): Draft {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return EMPTY_DRAFT;
+    const parsed = JSON.parse(raw);
+    return { ...EMPTY_DRAFT, ...parsed };
+  } catch {
+    return EMPTY_DRAFT;
+  }
+}
+
+function writeDraft(d: Draft) {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+  } catch {
+    // sessionStorage can throw in private mode — non-fatal
+  }
+}
+
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // non-fatal
+  }
+}
+
 export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   const { toast } = useToast();
-  const [step, setStep] = useState(1);
-  const [name, setName] = useState("");
+  const initial = useRef<Draft>(readDraft());
+  const [step, setStep] = useState<number>(initial.current.step);
+  const [name, setName] = useState<string>(initial.current.name);
   const [resumes, setResumes] = useState<Resume[]>([]);
-  const [resumeId, setResumeId] = useState<string | "">("");
-  const [targetRolesText, setTargetRolesText] = useState("");
-  const [locationsText, setLocationsText] = useState("");
-  const [remoteOnly, setRemoteOnly] = useState(false);
-  const [compTarget, setCompTarget] = useState<string>("");
-  const [visa, setVisa] = useState<string>("us_citizen");
+  const [resumeId, setResumeId] = useState<string>(initial.current.resumeId);
+  const [targetRolesText, setTargetRolesText] = useState<string>(initial.current.targetRolesText);
+  const [locationsText, setLocationsText] = useState<string>(initial.current.locationsText);
+  const [remoteOnly, setRemoteOnly] = useState<boolean>(initial.current.remoteOnly);
+  const [compTarget, setCompTarget] = useState<string>(initial.current.compTarget);
+  const [visa, setVisa] = useState<string>(initial.current.visa);
   const [submitting, setSubmitting] = useState(false);
 
+  // Load resumes whenever the dialog opens. We do NOT reset form state here —
+  // the whole point of the persisted draft is that values survive tab-switches
+  // and dialog re-mounts. The draft is cleared explicitly on successful create
+  // or explicit cancel.
   useEffect(() => {
     if (!open) return;
-    setStep(1);
-    setName("");
-    setResumeId("");
-    setTargetRolesText("");
-    setLocationsText("");
-    setRemoteOnly(false);
-    setCompTarget("");
-    setVisa("us_citizen");
     (async () => {
       const { data } = await supabase
         .from("resumes")
@@ -62,12 +110,61 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     })();
   }, [open]);
 
+  // Persist draft on every change. sessionStorage is sync and the payload is
+  // tiny so this has no perceptible cost.
+  useEffect(() => {
+    writeDraft({
+      step,
+      name,
+      resumeId,
+      targetRolesText,
+      locationsText,
+      remoteOnly,
+      compTarget,
+      visa,
+    });
+  }, [step, name, resumeId, targetRolesText, locationsText, remoteOnly, compTarget, visa]);
+
+  function resetForm() {
+    setStep(1);
+    setName("");
+    setResumeId("");
+    setTargetRolesText("");
+    setLocationsText("");
+    setRemoteOnly(false);
+    setCompTarget("");
+    setVisa("us_citizen");
+    clearDraft();
+  }
+
+  function handleCancel() {
+    // User explicitly cancelling — clear so they get a fresh form next time.
+    resetForm();
+    onClose();
+  }
+
   async function createSession() {
     if (!name.trim()) {
       toast({ title: "Session needs a name" });
       return;
     }
     setSubmitting(true);
+
+    // Always include user_id explicitly. The RLS policy on mc_sessions is
+    //   WITH CHECK (auth.uid() = user_id)
+    // and the column has no DB-side default, so without this the insert
+    // is rejected with "new row violates row-level security policy".
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !userData?.user) {
+      setSubmitting(false);
+      toast({
+        title: "Couldn't create",
+        description: "You're not signed in. Refresh and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const targetProfile = {
       target_roles: targetRolesText
         .split(",")
@@ -81,10 +178,11 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       comp_target: compTarget ? Number(compTarget) : null,
       visa_status: visa,
     };
+
     const { data, error } = await (supabase as any)
-      
-.from("mc_sessions")
+      .from("mc_sessions")
       .insert({
+        user_id: userData.user.id,
         name: name.trim(),
         master_resume_id: resumeId || null,
         target_profile: targetProfile,
@@ -97,11 +195,12 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       return;
     }
     toast({ title: "Session created" });
+    resetForm();
     onCreated(data.id);
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={open} onOpenChange={(v) => !v && handleCancel()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>New Session</DialogTitle>
@@ -211,7 +310,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
             </Button>
           )}
           <div className="flex-1" />
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+          <Button variant="ghost" onClick={handleCancel} disabled={submitting}>
             Cancel
           </Button>
           {step === 1 ? (
