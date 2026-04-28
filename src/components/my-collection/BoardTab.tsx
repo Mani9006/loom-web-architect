@@ -62,8 +62,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("mc_tracked_jobs")
+    const { data, error } = await (supabase as any)
+      
+.from("mc_tracked_jobs")
       .select("*")
       .eq("session_id", sessionId)
       .order("updated_at", { ascending: false });
@@ -84,7 +85,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     if (!job || job.status === status) return;
     const updates: Record<string, unknown> = { status };
     if (status === "applied" && !job.applied_at) updates.applied_at = new Date().toISOString();
-    const { error } = await supabase.from("mc_tracked_jobs").update(updates).eq("id", jobId);
+    const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
       toast({ title: "Move failed", description: error.message, variant: "destructive" });
       return;
@@ -92,7 +93,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      await supabase.from("mc_status_history").insert({
+      await (supabase as any).from("mc_status_history").insert({
         tracked_job_id: jobId,
         user_id: user.id,
         status_from: job.status,

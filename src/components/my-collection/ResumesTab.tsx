@@ -44,8 +44,9 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("mc_tailored_resumes")
+    const { data, error } = await (supabase as any)
+      
+.from("mc_tailored_resumes")
       .select("*")
       .eq("session_id", sessionId)
       .order("updated_at", { ascending: false });
@@ -63,14 +64,14 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
-    const { error } = await supabase.from("mc_tailored_resumes").delete().eq("id", id);
+    const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
     if (error) toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     else load();
   }
 
   async function rename(id: string, newName: string) {
     if (!newName.trim()) return;
-    const { error } = await supabase.from("mc_tailored_resumes").update({ name: newName.trim() }).eq("id", id);
+    const { error } = await (supabase as any).from("mc_tailored_resumes").update({ name: newName.trim() }).eq("id", id);
     if (error) toast({ title: "Rename failed", description: error.message, variant: "destructive" });
     else load();
   }
@@ -167,7 +168,7 @@ function downloadAsMarkdown(r: TailoredResume) {
 }
 
 async function downloadAsPdf(r: TailoredResume) {
-  const { data, error } = await supabase.functions.invoke("mc-render-resume", {
+  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "pdf" },
   });
   if (error || !data?.url) {
@@ -178,7 +179,7 @@ async function downloadAsPdf(r: TailoredResume) {
 }
 
 async function downloadAsDocx(r: TailoredResume) {
-  const { data, error } = await supabase.functions.invoke("mc-render-resume", {
+  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "docx" },
   });
   if (error || !data?.url) {
@@ -209,8 +210,9 @@ function CanvasEditor({
 
   async function save() {
     setSaving(true);
-    const { error } = await supabase
-      .from("mc_tailored_resumes")
+    const { error } = await (supabase as any)
+      
+.from("mc_tailored_resumes")
       .update({ name: name.trim(), cv_md: cv })
       .eq("id", resume.id);
     setSaving(false);
@@ -227,7 +229,7 @@ function CanvasEditor({
     setAiBusy(true);
     setAiSuggestions([]);
     try {
-      const { data, error } = await supabase.functions.invoke("enhance-bullet", {
+      const { data, error } = await (supabase as any).functions.invoke("enhance-bullet", {
         body: { line: selectedLine, mode, context: { full_resume: cv } },
       });
       if (error) throw error;
