@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -22,27 +22,90 @@ interface Props {
   onCreated: (trackedJobId: string) => void;
 }
 
+interface Draft {
+  company: string;
+  jobTitle: string;
+  location: string;
+  applyUrl: string;
+  jdMd: string;
+}
+
+const EMPTY_DRAFT: Draft = {
+  company: "",
+  jobTitle: "",
+  location: "",
+  applyUrl: "",
+  jdMd: "",
+};
+
+const draftKey = (sessionId: string) => `mc:add-job-draft:${sessionId}:v1`;
+
+function readDraft(sessionId: string): Draft {
+  try {
+    const raw = sessionStorage.getItem(draftKey(sessionId));
+    if (!raw) return EMPTY_DRAFT;
+    return { ...EMPTY_DRAFT, ...JSON.parse(raw) };
+  } catch {
+    return EMPTY_DRAFT;
+  }
+}
+
+function writeDraft(sessionId: string, d: Draft) {
+  try {
+    sessionStorage.setItem(draftKey(sessionId), JSON.stringify(d));
+  } catch {
+    // sessionStorage can throw in private mode — non-fatal
+  }
+}
+
+function clearDraft(sessionId: string) {
+  try {
+    sessionStorage.removeItem(draftKey(sessionId));
+  } catch {
+    // non-fatal
+  }
+}
+
 /**
- * Lets the user paste a job they found anywhere (LinkedIn, a friend's email,
- * etc.) and drop it onto the Board with status='saved'. Useful when the
- * scanner hasn't found anything yet but the user wants to exercise the
- * Tailor-with-AI flow.
+ * Lets the user paste a job they found anywhere (LinkedIn, an email, etc.)
+ * onto the Board with status='saved'. Form values are persisted to
+ * sessionStorage so switching tabs to grab the JD doesn't wipe what was
+ * already typed.
  */
 export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreated }: Props) {
   const { toast } = useToast();
-  const [company, setCompany] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
-  const [location, setLocation] = useState("");
-  const [applyUrl, setApplyUrl] = useState("");
-  const [jdMd, setJdMd] = useState("");
+  const initial = useRef<Draft>(readDraft(sessionId));
+  const [company, setCompany] = useState<string>(initial.current.company);
+  const [jobTitle, setJobTitle] = useState<string>(initial.current.jobTitle);
+  const [location, setLocation] = useState<string>(initial.current.location);
+  const [applyUrl, setApplyUrl] = useState<string>(initial.current.applyUrl);
+  const [jdMd, setJdMd] = useState<string>(initial.current.jdMd);
   const [saving, setSaving] = useState(false);
 
-  function reset() {
+  // Persist draft on every change. sessionStorage is sync and tiny — no cost.
+  useEffect(() => {
+    writeDraft(sessionId, { company, jobTitle, location, applyUrl, jdMd });
+  }, [sessionId, company, jobTitle, location, applyUrl, jdMd]);
+
+  // If the dialog is opened for a different session, rehydrate from that
+  // session's saved draft (in case user has multiple sessions).
+  useEffect(() => {
+    if (!open) return;
+    const d = readDraft(sessionId);
+    setCompany(d.company);
+    setJobTitle(d.jobTitle);
+    setLocation(d.location);
+    setApplyUrl(d.applyUrl);
+    setJdMd(d.jdMd);
+  }, [open, sessionId]);
+
+  function resetForm() {
     setCompany("");
     setJobTitle("");
     setLocation("");
     setApplyUrl("");
     setJdMd("");
+    clearDraft(sessionId);
   }
 
   async function save() {
@@ -93,13 +156,20 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       title: "Saved to board",
       description: `${company.trim()} · ${jobTitle.trim()}`,
     });
-    reset();
+    resetForm();
     onCreated(data.id);
   }
 
   function handleClose() {
     if (saving) return;
-    reset();
+    // Don't auto-clear on close — user might be intentionally stepping out
+    // to grab the JD. They can hit Cancel explicitly to wipe.
+    onClose();
+  }
+
+  function handleCancel() {
+    if (saving) return;
+    resetForm();
     onClose();
   }
 
@@ -109,8 +179,8 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         <DialogHeader>
           <DialogTitle>Add job manually</DialogTitle>
           <DialogDescription>
-            Drop a job onto the board. Paste the job description and you can immediately tailor a
-            resume for it.
+            Drop a job onto the board. Your input is auto-saved while you're typing — switch to another
+            tab to grab the JD and your work will still be here when you come back.
           </DialogDescription>
         </DialogHeader>
 
@@ -174,9 +244,13 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={handleClose} disabled={saving}>
-            Cancel
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" onClick={handleCancel} disabled={saving}>
+            Cancel & clear
+          </Button>
+          <div className="flex-1" />
+          <Button variant="outline" onClick={handleClose} disabled={saving}>
+            Close (keep draft)
           </Button>
           <Button onClick={save} disabled={saving || !company.trim() || !jobTitle.trim()}>
             {saving ? "Saving…" : "Save to board"}
