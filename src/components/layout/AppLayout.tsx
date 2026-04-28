@@ -7,7 +7,7 @@ import {
   ShieldCheck, Crown, ChevronDown, ChevronRight, LogOut, Settings,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
   Bell, HelpCircle, MoreHorizontal,
-, FolderOpen } from "lucide-react";
+  FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
