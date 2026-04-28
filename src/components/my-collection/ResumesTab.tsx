@@ -296,7 +296,7 @@ function CanvasEditor({
             </div>
             {!selectedLine && (
               <p className="text-[11px] text-muted-foreground">
-                Click a line in the editor to get rewrite suggestions. Uses Haiku 4.5 (cheap).
+                Click a line in the editor to get AI rewrite suggestions.
               </p>
             )}
             {selectedLine && (

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import ResumesTab from "@/components/my-collection/ResumesTab";
 import BoardTab from "@/components/my-collection/BoardTab";
 import StatsTab from "@/components/my-collection/StatsTab";
 import WorkerStatusBadge from "@/components/my-collection/WorkerStatusBadge";
+import SessionSettingsDialog from "@/components/my-collection/SessionSettingsDialog";
 
 interface MCSession {
   id: string;
@@ -29,6 +30,7 @@ export default function SessionPage() {
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>("discover");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -81,7 +83,12 @@ export default function SessionPage() {
             Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
           </p>
         </div>
-        <WorkerStatusBadge />
+        <div className="flex items-center gap-2">
+          <WorkerStatusBadge />
+          <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+            <Settings className="w-3.5 h-3.5 mr-1" /> Settings
+          </Button>
+        </div>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -113,6 +120,20 @@ export default function SessionPage() {
           <StatsTab sessionId={session.id} />
         </TabsContent>
       </Tabs>
+
+      <SessionSettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        session={session}
+        onSaved={(updated) => {
+          setSession((cur) => (cur ? { ...cur, ...updated } : cur));
+          setSettingsOpen(false);
+        }}
+        onArchived={() => {
+          setSettingsOpen(false);
+          navigate("/my-collection");
+        }}
+      />
     </div>
   );
 }

@@ -122,8 +122,8 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
             <>
               <p className="text-xs text-muted-foreground">
                 Connect Gmail (read-only) so the agent can move job cards automatically when recruiters reply.
-                Auto-progresses to Interview / Take-home / Offer / Rejected based on email content classified
-                with Haiku 4.5.
+                Auto-progresses to Interview / Take-home / Offer / Rejected based on the AI's classification of
+                each email's content.
               </p>
               <Button size="sm" onClick={connect} disabled={busy} className="mt-3">
                 Connect Gmail
