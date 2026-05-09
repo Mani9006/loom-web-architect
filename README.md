@@ -16,6 +16,23 @@
 
 ---
 
+## Navigation
+
+- [Why this repo stands out](#why-this-repo-stands-out)
+- [Product preview](#product-preview)
+- [Experience map](#experience-map)
+- [Architecture](#architecture)
+- [Quality and validation](#quality-and-validation)
+- [Enterprise-readiness path](#enterprise-readiness-path)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [Documentation index](#documentation-index)
+- [Roadmap](#roadmap)
+- [Security posture](#security-posture)
+- [Portfolio README standard for sibling repos](#portfolio-readme-standard-for-sibling-repos)
+
+---
+
 ## Why this repo stands out
 
 ResumePreps is more than a resume builder. It is a full-stack AI career operating system with resume intelligence, guided job-search workflows, browser-assisted applications, governance automation, and enterprise-readiness foundations in one production-oriented codebase.
@@ -35,6 +52,8 @@ ResumePreps is more than a resume builder. It is a full-stack AI career operatin
 <div align="center">
   <img src="src/assets/hero-bg.png" alt="ResumePreps product hero background" width="100%" />
 </div>
+
+> **Live demo:** deployment is configured for Vercel, but no public demo URL is documented in this repository yet. Add the production URL here once it is ready to share.
 
 ### Resume templates
 
@@ -235,6 +254,17 @@ Supabase Edge Functions use Supabase project secrets through `Deno.env.get()` fo
 3. Update tests or documentation when behavior changes.
 4. Run the relevant quality gates before opening a pull request.
 5. Use the pull request template to document scope, validation, risks, and rollout notes.
+
+---
+
+## Roadmap
+
+| Stage | Focus | Evidence / next milestone |
+| --- | --- | --- |
+| **Now** | Premium resume intelligence and career workspace | Resume builder, ATS checks, AI chat, cover letters, job tracking, ApplyPass, and admin surfaces are represented in the app and docs |
+| **Next** | Public product proof | Add a documented production demo URL, current screenshots/GIFs, and latest build/test badges from CI |
+| **Enterprise expansion** | SSO, RBAC, tenant isolation, audit trails, admin workflows | Continue the phased plan in `docs/enterprise-readiness-blueprint.md` |
+| **Portfolio rollout** | Consistent premium README system across sibling repos | Reuse the standard below and customize visuals, proof points, and architecture per project |
 
 ---
 
