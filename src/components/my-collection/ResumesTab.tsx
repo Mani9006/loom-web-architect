@@ -20,7 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Wand2, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
 
 interface TailoredResume {
   id: string;
@@ -41,12 +41,13 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
+  const [renaming, setRenaming] = useState<TailoredResume | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   async function load() {
     setLoading(true);
     const { data, error } = await (supabase as any)
-      
-.from("mc_tailored_resumes")
+      .from("mc_tailored_resumes")
       .select("*")
       .eq("session_id", sessionId)
       .order("updated_at", { ascending: false });
@@ -69,11 +70,22 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
     else load();
   }
 
-  async function rename(id: string, newName: string) {
-    if (!newName.trim()) return;
-    const { error } = await (supabase as any).from("mc_tailored_resumes").update({ name: newName.trim() }).eq("id", id);
-    if (error) toast({ title: "Rename failed", description: error.message, variant: "destructive" });
-    else load();
+  async function commitRename() {
+    if (!renaming || !renameValue.trim()) return;
+    const { error } = await (supabase as any)
+      .from("mc_tailored_resumes")
+      .update({ name: renameValue.trim() })
+      .eq("id", renaming.id);
+    if (error) {
+      toast({ title: "Rename failed", description: error.message, variant: "destructive" });
+    } else {
+      setResumes((arr) =>
+        arr.map((r) => (r.id === renaming.id ? { ...r, name: renameValue.trim() } : r))
+      );
+      toast({ title: "Renamed" });
+    }
+    setRenaming(null);
+    setRenameValue("");
   }
 
   if (loading) {
@@ -91,7 +103,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Score a job in Discover, then click "Tailor for this role" to generate one
+          No tailored resumes yet. Save a job in Discover, then click "Tailor with AI" to generate one
           here.
         </p>
       </Card>
@@ -125,15 +137,21 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onClick={() => {
-                    const newName = prompt("New filename", r.name);
-                    if (newName) rename(r.id, newName);
+                    setRenameValue(r.name);
+                    setRenaming(r);
                   }}
                 >
                   Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>Download .md</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r)}>Download .pdf</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r)}>Download .docx</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
+                  <Download className="w-3.5 h-3.5 mr-2" /> Download .md
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
+                  <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
+                  <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
                   Delete
                 </DropdownMenuItem>
@@ -143,13 +161,32 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
         ))}
       </div>
 
+      {/* Rename dialog */}
+      <Dialog open={!!renaming} onOpenChange={(v) => { if (!v) { setRenaming(null); setRenameValue(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename resume</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") commitRename(); }}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setRenaming(null); setRenameValue(""); }}>Cancel</Button>
+            <Button onClick={commitRename} disabled={!renameValue.trim()}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {editing && (
         <CanvasEditor
           resume={editing}
           onClose={() => setEditing(null)}
-          onSaved={() => {
+          onSaved={(updated) => {
             setEditing(null);
-            load();
+            setResumes((arr) => arr.map((r) => (r.id === updated.id ? updated : r)));
           }}
         />
       )}
@@ -167,23 +204,31 @@ function downloadAsMarkdown(r: TailoredResume) {
   URL.revokeObjectURL(url);
 }
 
-async function downloadAsPdf(r: TailoredResume) {
+async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
   const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "pdf" },
   });
   if (error || !data?.url) {
-    alert("PDF rendering failed: " + (error?.message ?? "no url"));
+    toast({
+      title: "PDF export failed",
+      description: error?.message ?? "The server didn't return a download URL.",
+      variant: "destructive",
+    });
     return;
   }
   window.open(data.url, "_blank");
 }
 
-async function downloadAsDocx(r: TailoredResume) {
+async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
   const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "docx" },
   });
   if (error || !data?.url) {
-    alert("DOCX rendering failed: " + (error?.message ?? "no url"));
+    toast({
+      title: "DOCX export failed",
+      description: error?.message ?? "The server didn't return a download URL.",
+      variant: "destructive",
+    });
     return;
   }
   window.open(data.url, "_blank");
@@ -198,7 +243,7 @@ function CanvasEditor({
 }: {
   resume: TailoredResume;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (updated: TailoredResume) => void;
 }) {
   const { toast } = useToast();
   const [name, setName] = useState(resume.name);
@@ -207,12 +252,12 @@ function CanvasEditor({
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
 
   async function save() {
     setSaving(true);
     const { error } = await (supabase as any)
-      
-.from("mc_tailored_resumes")
+      .from("mc_tailored_resumes")
       .update({ name: name.trim(), cv_md: cv })
       .eq("id", resume.id);
     setSaving(false);
@@ -221,7 +266,7 @@ function CanvasEditor({
       return;
     }
     toast({ title: "Saved" });
-    onSaved();
+    onSaved({ ...resume, name: name.trim(), cv_md: cv, updated_at: new Date().toISOString() });
   }
 
   async function rewriteSelected(mode: "tighten" | "keywords" | "voice") {
@@ -252,6 +297,16 @@ function CanvasEditor({
     setAiSuggestions([]);
   }
 
+  async function copyMarkdown() {
+    try {
+      await navigator.clipboard.writeText(cv);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({ title: "Couldn't copy — try selecting and copying manually" });
+    }
+  }
+
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
@@ -265,8 +320,13 @@ function CanvasEditor({
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-3 flex-1 overflow-hidden">
           {/* Editor */}
           <div className="flex flex-col min-h-0">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
-              Markdown — click any line to enable AI suggestions
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Markdown — click any line to enable AI suggestions
+              </span>
+              <Button size="sm" variant="ghost" onClick={copyMarkdown} className="h-6 text-[10px]">
+                {copied ? "Copied!" : "Copy .md"}
+              </Button>
             </div>
             <Textarea
               value={cv}

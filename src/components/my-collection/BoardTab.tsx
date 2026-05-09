@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -280,20 +281,27 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     if (!job || job.status === status) return;
     const updates: Record<string, unknown> = { status };
     if (status === "applied" && !job.applied_at) updates.applied_at = new Date().toISOString();
+
+    // Optimistic update: reflect the move immediately in the UI.
+    const previousStatus = job.status;
+    setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
+    setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...updates } as TrackedJob) : cur));
+
     const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
+      // Roll back the optimistic update on failure.
+      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
+      setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, status: previousStatus } as TrackedJob) : cur));
       toast({ title: "Move failed", description: error.message, variant: "destructive" });
       return;
     }
-    setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
-    // Also refresh the side-sheet's selected card so its status pills update.
-    setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...updates } as TrackedJob) : cur));
+
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       await (supabase as any).from("mc_status_history").insert({
         tracked_job_id: jobId,
         user_id: user.id,
-        status_from: job.status,
+        status_from: previousStatus,
         status_to: status,
         source: "manual",
       });
@@ -302,10 +310,12 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-3 lg:grid-cols-5 gap-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-64" />
-        ))}
+      <div className="overflow-x-auto pb-4">
+        <div className="flex gap-3 min-w-fit">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-64 w-[260px] shrink-0" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -465,9 +475,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
                 {selected.tailored_resume_id && (
                   <Button asChild variant="outline" size="sm">
-                    <a href={`/my-collection/${sessionId}?tab=resumes&resume=${selected.tailored_resume_id}`}>
+                    <Link to={`/my-collection/${sessionId}?tab=resumes&resume=${selected.tailored_resume_id}`}>
                       <FileText className="w-3.5 h-3.5 mr-1" /> View tailored resume
-                    </a>
+                    </Link>
                   </Button>
                 )}
 

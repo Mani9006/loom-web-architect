@@ -24,10 +24,17 @@ interface MCSession {
   updated_at: string;
 }
 
+interface SessionStats {
+  discovered: number;
+  applied: number;
+  interviews: number;
+}
+
 const ACTIVE_LIMIT = 5;
 
 export default function MyCollectionPage() {
   const [sessions, setSessions] = useState<MCSession[]>([]);
+  const [statsMap, setStatsMap] = useState<Record<string, SessionStats>>({});
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -43,9 +50,38 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
     } else {
-      setSessions(data ?? []);
+      const rows: MCSession[] = data ?? [];
+      setSessions(rows);
+      // Load per-session job counts in parallel, non-blocking.
+      void loadStats(rows.map((s) => s.id));
     }
     setLoading(false);
+  }
+
+  async function loadStats(sessionIds: string[]) {
+    if (sessionIds.length === 0) return;
+    try {
+      const { data } = await (supabase as any)
+        .from("mc_tracked_jobs")
+        .select("session_id,status")
+        .in("session_id", sessionIds)
+        .is("deleted_at", null);
+      const rows: { session_id: string; status: string }[] = data ?? [];
+      const map: Record<string, SessionStats> = {};
+      for (const sid of sessionIds) {
+        const jobRows = rows.filter((r) => r.session_id === sid);
+        map[sid] = {
+          discovered: jobRows.length,
+          applied: jobRows.filter((r) => r.status === "applied").length,
+          interviews:
+            jobRows.filter((r) => r.status === "interview").length +
+            jobRows.filter((r) => r.status === "take_home").length,
+        };
+      }
+      setStatsMap(map);
+    } catch {
+      // Non-critical — cards just show "—" if this fails.
+    }
   }
 
   useEffect(() => {
@@ -150,6 +186,7 @@ export default function MyCollectionPage() {
               <SessionCard
                 key={s.id}
                 session={s}
+                stats={statsMap[s.id]}
                 onOpen={() => navigate(`/my-collection/${s.id}`)}
                 onArchive={() => archiveSession(s.id)}
                 onDelete={() => deleteSession(s.id)}
@@ -167,6 +204,7 @@ export default function MyCollectionPage() {
                   <SessionCard
                     key={s.id}
                     session={s}
+                    stats={statsMap[s.id]}
                     archived
                     onOpen={() => navigate(`/my-collection/${s.id}`)}
                     onReactivate={() => reactivateSession(s.id)}
@@ -193,6 +231,7 @@ export default function MyCollectionPage() {
 
 function SessionCard({
   session,
+  stats,
   archived = false,
   onOpen,
   onArchive,
@@ -200,6 +239,7 @@ function SessionCard({
   onDelete,
 }: {
   session: MCSession;
+  stats?: SessionStats;
   archived?: boolean;
   onOpen: () => void;
   onArchive?: () => void;
@@ -256,9 +296,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="Discovered" value="—" />
-        <SessionStat label="Applied" value="—" />
-        <SessionStat label="Interviews" value="—" />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
