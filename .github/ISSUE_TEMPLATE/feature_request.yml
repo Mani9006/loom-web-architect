@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose a product, platform, or workflow improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What user need, business goal, or operational gap does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe the desired end state without prescribing implementation details.
+    validations:
+      required: true
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Primary audience
+      options:
+        - Job seeker
+        - Admin / owner
+        - Customer success
+        - Engineering / operations
+        - Enterprise buyer
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What must be true for this to be considered complete?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, mockups, screenshots, examples, constraints, or related issues.

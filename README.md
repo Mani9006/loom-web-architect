@@ -1,172 +1,143 @@
-# Welcome to your Lovable project
+# ResumePrep
 
-## Project info
+ResumePrep is an AI-powered career platform for building ATS-ready resumes, creating tailored cover letters, practicing interviews, tracking job applications, and managing career workflows from one workspace.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## What this project includes
 
-## How can I edit this code?
+- **Resume Builder**: Structured resume editing, templates, previews, exports, and ATS quality checks.
+- **AI Career Workspace**: Chat-driven support for resumes, cover letters, interviews, and job search workflows.
+- **Job Search & Tracking**: Saved jobs, application tracking, matching, analytics, and collection workflows.
+- **Auto Apply / ApplyPass**: Assisted application flows and browser-worker automation support.
+- **Admin & Control Center**: Owner-only operational views, executive brief generation, governance checks, and release monitoring.
+- **Supabase Backend**: Auth, PostgreSQL, RLS-backed data access, migrations, and Deno edge functions.
 
-There are several ways of editing your application.
+## Tech stack
 
-**Use Lovable**
+| Area | Tools |
+| --- | --- |
+| Frontend | React 18, TypeScript, Vite, React Router |
+| UI | shadcn/ui, Radix UI, Tailwind CSS, Lucide icons |
+| State & data | TanStack Query, Supabase client |
+| Backend | Supabase Auth, PostgreSQL, Edge Functions |
+| Testing | Vitest, Testing Library, Playwright |
+| Deployment | Vercel, GitHub Actions |
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Repository structure
 
-Changes made via Lovable will be committed automatically to this repo.
+```text
+src/                    React application source
+  components/           Shared UI, product surfaces, layouts
+  pages/                Route-level pages
+  hooks/                Reusable React hooks
+  lib/                  Utilities, analytics, scoring, domain logic
+  integrations/         Supabase client and generated types
+supabase/
+  functions/            Supabase Edge Functions
+  migrations/           Database migrations and policies
+scripts/                Operations, governance, metrics, and automation scripts
+docs/                   Product, operations, and readiness documentation
+qa/                     QA execution reports and validation artifacts
+.github/workflows/      CI, remote-agent, and release automation
+```
 
-**Use your preferred IDE**
+## Getting started
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Prerequisites
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- Node.js 20+ recommended
+- npm
+- Supabase project credentials for full local integration testing
 
-Follow these steps:
+### Install
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+npm ci
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### Run locally
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The Vite dev server prints the local URL after startup.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Environment configuration
 
-**Use GitHub Codespaces**
+Create a local `.env` file for secrets and environment-specific values. Do not commit local environment files.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+Common frontend values:
 
-## What technologies are used for this project?
+```sh
+VITE_SUPABASE_URL="https://your-project.supabase.co"
+VITE_SUPABASE_ANON_KEY="your-anon-key"
+```
 
-This project is built with:
+Supabase edge functions use Supabase project secrets via `Deno.env.get()` for service credentials, AI providers, Jira, Slack, and operational integrations. See the relevant runbooks in `docs/` and `supabase/functions/` before deploying backend changes.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Quality gates
 
-## How can I deploy this project?
+Run the same checks used for release confidence:
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+```sh
+npm run type-check
+npm run test
+npm run build
+npm run lint
+```
 
-## Can I connect a custom domain to my Lovable project?
+Or run the consolidated release gate:
 
-Yes, you can!
+```sh
+npm run hq:gate
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+Additional useful commands:
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+```sh
+npm run security:audit       # Secret-leak and security-oriented repository scan
+npm run build:metrics        # Production build with bundle metrics
+npm run qa:e2e               # Playwright end-to-end tests
+npm run hq:brief             # Generate an executive operations brief
+```
 
-## Remote Agent Architecture (Claude Code)
+## Development workflow
 
-All agent orchestration now runs **remotely via GitHub Actions** instead of locally on Mac Mini. This replaces the previous OpenClaw AI local agent system.
+1. Create a focused branch for the change.
+2. Keep commits small and descriptive.
+3. Update tests or documentation when behavior changes.
+4. Run the relevant quality gates before opening a pull request.
+5. Use the pull request template to document scope, validation, risks, and rollout notes.
 
-### GitHub Actions Workflows
+## Remote agent operations
 
-| Workflow | Schedule | Purpose |
-|----------|----------|---------|
-| `hq-control-loop.yml` | Every 6 hours | Governance checks, quality gate, security audit, Slack notifications |
-| `claude-code-agent.yml` | On issue/dispatch | Claude Code agent for ticket execution |
-| `jira-sync.yml` | Every 4 hours | Sync Jira review tickets and send Slack alerts |
+Remote agent orchestration runs through GitHub Actions rather than local agent processes.
 
-### How to trigger agent work
+| Workflow | Purpose |
+| --- | --- |
+| `hq-control-loop.yml` | Scheduled governance checks, quality gates, security audit, and notifications |
+| `claude-code-agent.yml` | Remote coding-agent execution from issues or manual dispatch |
+| `jira-sync.yml` | Jira review-ticket sync and operational alerts |
 
-1. **Create a GitHub issue** with the `agent-task` label
-2. **Manual dispatch**: `gh workflow run claude-code-agent.yml -f task="your task here"`
-3. **Scheduled**: Workflows run automatically on schedule
+Agent work can be triggered by creating a GitHub issue with the `agent-task` label or by manually dispatching the Claude Code workflow with a task description.
 
-### In-app control surfaces
+## Security notes
 
-- In-app command surface at `/control-center`
-- Owner Admin Portal at `/admin` (owner-only)
-- Edge function: `supabase/functions/executive-brief`
-- Edge function: `supabase/functions/admin-portal`
+- Never commit secrets, API keys, local `.env` files, or Supabase service-role keys.
+- Keep service-role credentials server-side only.
+- Use RLS policies and authenticated Supabase access for user-owned data.
+- Review `SECURITY.md` before reporting or handling vulnerabilities.
 
-### What it tracks
+## Documentation index
 
-- Deployment state from GitHub/Vercel status
-- Jira execution load (open, in-progress, review)
-- Platform growth volume (users, resumes, tracked jobs, conversations, cover letters)
-- Quality gates (type-check, tests, build)
-- Security audit for secret leaks
+- `QUICK_START.md` — fast setup notes
+- `SETUP_GUIDE.md` — deeper setup guidance
+- `docs/CAREER_OPS_RUNBOOK.md` — career operations workflows
+- `docs/applypass-browser-worker.md` — ApplyPass worker operations
+- `docs/enterprise-readiness-blueprint.md` — enterprise readiness plan
+- `docs/growth-experiment-fabric.md` — growth experimentation system
+- `DEPLOYMENT_RELIABILITY_CHECKLIST.md` — release and deployment checklist
 
-### Local commands (for manual one-off use only)
+## License
 
-- `npm run hq:gate` - Full release gate: type-check + test + build
-- `npm run hq:governor:dry` - Safe Jira governance dry-run
-- `npm run hq:brief` - Generate executive brief
-- `npm run security:audit` - Check for leaked secrets
-- `npm run hq:loop:dry` - Dry run of the deprecated local loop
-
-### Required GitHub repository secrets
-
-Set these in GitHub Settings > Secrets > Actions:
-
-- `JIRA_URL`, `JIRA_USER`, `JIRA_TOKEN` (for Jira integration)
-
-### Required GitHub repository variables
-
-Set these in GitHub Settings > Variables > Actions:
-
-- `SLACK_WEBHOOK_URL` (Slack incoming webhook for notifications)
-- `JIRA_PROJECT_KEY` (default `KAN`)
-- `ENABLE_HQ_LOOP` (default `1`, set `0` to disable scheduled runs)
-
-### Required edge function secrets
-
-Set these in Supabase project secrets before deploying `executive-brief`:
-
-- `JIRA_BASE_URL`
-- `JIRA_USER`
-- `JIRA_API_TOKEN`
-- Optional: `EXECUTIVE_GITHUB_REPO` (defaults to `Mani9006/loom-web-architect`)
-- Optional: `EXECUTIVE_JIRA_PROJECT` (defaults to `KAN`)
-
-Set these in Supabase project secrets for `admin-portal`:
-
-- `ADMIN_OWNER_EMAILS` (comma-separated, defaults to `myfamily9006@gmail.com`)
-- Optional cost model inputs:
-  `ADMIN_OPENAI_SHARE`,
-  `ADMIN_OPENAI_INPUT_USD_PER_1K`,
-  `ADMIN_OPENAI_OUTPUT_USD_PER_1K`,
-  `ADMIN_ANTHROPIC_INPUT_USD_PER_1K`,
-  `ADMIN_ANTHROPIC_OUTPUT_USD_PER_1K`,
-  `ADMIN_VERCEL_MONTHLY_USD`,
-  `ADMIN_SUPABASE_MONTHLY_USD`,
-  `ADMIN_MEM0_MONTHLY_USD`,
-  `ADMIN_PERPLEXITY_MONTHLY_USD`,
-  `ADMIN_OTHER_INFRA_MONTHLY_USD`
-
-Set these in Supabase project secrets for token controls and usage alerts:
-
-- `USAGE_GUARD_MONTHLY_TOKEN_BUDGET` (default `1500000`)
-- `USAGE_GUARD_DAILY_TOKEN_BUDGET` (default monthly/30)
-- `USAGE_GUARD_WARN_AT` (default `0.8`)
-- `USAGE_GUARD_CRITICAL_AT` (default `0.95`)
-- `CHAT_MAX_CONTEXT_MESSAGES` (default `12`)
-- `CHAT_MAX_TOKENS_DEFAULT` (default `1200`)
-- `CHAT_MAX_TOKENS_ATS` (default `2500`)
-- `CHAT_MAX_TOKENS_RESUME_PARSE` (default `6000`)
-- `CHAT_MEM0_RESULT_LIMIT` (default `8`)
-- `RESUME_CHAT_MAX_TOKENS_INITIAL` (default `3500`)
-- `RESUME_CHAT_MAX_TOKENS_FOLLOWUP` (default `1800`)
-- `RESUME_CHAT_MAX_TOKENS_CAP` (default `6000`)
-- `RESUME_CHAT_INITIAL_CONTEXT_MAX_CHARS` (default `18000`)
-- `RESUME_CHAT_CURRENT_RESUME_MAX_CHARS` (default `12000`)
-- `ORCHESTRATOR_MAX_TOKENS_DEFAULT` (default `1200`)
-- `ORCHESTRATOR_MAX_TOKENS_COMPLEX` (default `1800`)
+No license file is currently included. Treat this repository as proprietary unless a license is added by the owner.
