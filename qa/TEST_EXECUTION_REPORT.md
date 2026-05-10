@@ -50,7 +50,8 @@ QA pipeline for Phase 1 deliverables is now operational. All test categories (un
 - **Flow 5: Cover Letter** — Generation, editing, export
 - **Flow 6: Voice Interview** — Question rendering
 - **Flow 7: Job Search** — Search, results, job details
-- **Status:** 18/18 test cases scaffolded ✅
+- **Enterprise screenshots:** Landing, auth, and protected route-guard screenshot attachments in `/src/test/e2e/enterprise-screenshots.spec.ts`
+- **Status:** 20/20 test cases scaffolded ✅
 
 ### 4A. Enterprise-Scale ATS Tests
 **File:** `/src/test/enterprise-ats-scale.test.ts`
