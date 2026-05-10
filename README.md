@@ -124,6 +124,7 @@ Based on `docs/ats-validation-report.md`:
 | Metric | Result | Target | Status |
 | --- | ---: | ---: | --- |
 | ATS validation tests | 27 passed | 20+ | PASS |
+| Enterprise scale ATS tests | 30-project portfolio + 1M synthetic market signals | High-scale deterministic coverage | PASS |
 | Average ATS score | 97.5/100 | >85 | PASS |
 | Score variance | 1.15% | <5% | PASS |
 | Keyword match rate | 62–72% | >50% | PASS |
@@ -139,6 +140,7 @@ Based on `qa/TEST_EXECUTION_REPORT.md`:
 | Integration | PDF, DOCX, JSON export workflows and multi-format consistency |
 | E2E | Signup/login, resume creation, ATS check, AI chat, cover letter, voice interview, job search |
 | Regression | Authentication, routes, AI flows, critical flows, build and deployment checks |
+| Enterprise scale | 30-project executive portfolio, million-signal synthetic job market data, malformed parser-risk content |
 
 ### Release gates
 
