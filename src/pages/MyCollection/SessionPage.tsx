@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -24,15 +24,20 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = ["discover", "resumes", "board", "stats"] as const;
+type TabId = typeof VALID_TABS[number];
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // Priority: ?tab= URL param > sessionStorage > "discover"
+    const urlTab = searchParams.get("tab");
+    if (urlTab && (VALID_TABS as readonly string[]).includes(urlTab)) return urlTab;
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -45,6 +50,9 @@ export default function SessionPage() {
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+  // Track whether we've ever successfully loaded the session so transient
+  // network errors after the first load don't redirect the user away.
+  const everLoaded = useRef(false);
 
   useEffect(() => {
     try {
@@ -57,7 +65,6 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -69,12 +76,12 @@ export default function SessionPage() {
 
       // Don't bounce the user back to /my-collection on transient failures
       // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
+      // navigate away if we KNOW the session doesn't exist and we've never
+      // successfully loaded it before.
       if (error) {
         // eslint-disable-next-line no-console
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!everLoaded.current) {
           toast({
             title: "Couldn't load session",
             description: error.message,
@@ -85,13 +92,13 @@ export default function SessionPage() {
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
+        if (!everLoaded.current) {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
         return;
       }
-      hadInitialLoad = true;
+      everLoaded.current = true;
       setSession(data);
       setLoading(false);
     })();

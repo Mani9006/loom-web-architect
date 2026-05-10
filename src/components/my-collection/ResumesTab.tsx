@@ -205,33 +205,63 @@ function downloadAsMarkdown(r: TailoredResume) {
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
-    toast({
-      title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
-      variant: "destructive",
+  try {
+    const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
+      body: { resume_id: r.id, format: "pdf" },
     });
+    if (error) throw new Error(error.message);
+    if (data?.url) {
+      // The function returns a data:text/html URL that auto-triggers print.
+      // Open in a new tab; user saves as PDF from the print dialog.
+      window.open(data.url, "_blank");
+      return;
+    }
+  } catch {
+    // fall through to client-side fallback
+  }
+  // Client-side fallback: open a print window directly from the markdown.
+  printResumeToPdf(r);
+}
+
+function printResumeToPdf(r: TailoredResume) {
+  const lines = r.cv_md.split("\n");
+  const bodyHtml = lines
+    .map((line) => {
+      if (/^# (.+)/.test(line)) return `<h1>${line.slice(2).trim()}</h1>`;
+      if (/^## (.+)/.test(line)) return `<h2>${line.slice(3).trim()}</h2>`;
+      if (/^### (.+)/.test(line)) return `<h3>${line.slice(4).trim()}</h3>`;
+      if (/^[-*] (.+)/.test(line)) return `<li>${line.slice(2).trim()}</li>`;
+      if (!line.trim()) return "<br>";
+      return `<p>${line.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>")}</p>`;
+    })
+    .join("\n");
+  const html = `<!DOCTYPE html><html><head><title>${r.name}</title>
+<style>
+  body { font-family: Georgia, serif; font-size: 11pt; max-width: 780px; margin: 0 auto; padding: 32px 40px; }
+  h1 { font-size: 18pt; margin-bottom: 4px; }
+  h2 { font-size: 12pt; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #aaa; margin-top: 16px; padding-bottom: 2px; }
+  h3 { font-size: 11pt; margin-top: 8px; }
+  li { margin-bottom: 2px; } ul { margin-left: 18px; }
+  @media print { @page { margin: .75in; } }
+</style></head><body>${bodyHtml}
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`;
+  const win = window.open("", "_blank");
+  if (!win) {
     return;
   }
-  window.open(data.url, "_blank");
+  win.document.write(html);
+  win.document.close();
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
+  // DOCX server-side generation is not yet available.
+  // Fall back to downloading the markdown source, which opens in Word perfectly.
+  toast({
+    title: "DOCX coming soon",
+    description: "Downloading markdown instead — open it in Word or Google Docs for full formatting.",
   });
-  if (error || !data?.url) {
-    toast({
-      title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
-      variant: "destructive",
-    });
-    return;
-  }
-  window.open(data.url, "_blank");
+  downloadAsMarkdown(r);
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────
@@ -275,10 +305,16 @@ function CanvasEditor({
     setAiSuggestions([]);
     try {
       const { data, error } = await (supabase as any).functions.invoke("enhance-bullet", {
-        body: { line: selectedLine, mode, context: { full_resume: cv } },
+        body: {
+          line: selectedLine,
+          mode,
+          context: { full_resume: cv.slice(0, 3000) },
+        },
       });
-      if (error) throw error;
-      setAiSuggestions(data?.suggestions ?? []);
+      if (error) throw new Error(typeof error === "string" ? error : error.message ?? "Unknown error");
+      const suggestions: string[] = data?.suggestions ?? [];
+      if (suggestions.length === 0) throw new Error("AI returned no suggestions");
+      setAiSuggestions(suggestions);
     } catch (e) {
       toast({
         title: "AI rewrite failed",
