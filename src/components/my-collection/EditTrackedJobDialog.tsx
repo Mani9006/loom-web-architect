@@ -48,16 +48,20 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Sync local form state with whichever job was opened.
+  // Sync local form state only when the dialog opens or a different job is loaded.
+  // Using job?.id (not the full job object) prevents overwriting in-progress
+  // edits if a parent re-render passes a refreshed job reference while the
+  // user is mid-edit.
   useEffect(() => {
-    if (!job) return;
+    if (!open || !job) return;
     setCompany(job.company ?? "");
     setJobTitle(job.job_title ?? "");
     setLocation(job.location ?? "");
     setApplyUrl(job.apply_url ?? "");
     setJdMd(job.jd_md ?? "");
     setNotes(job.notes ?? "");
-  }, [job]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, job?.id]);
 
   async function save() {
     if (!job) return;

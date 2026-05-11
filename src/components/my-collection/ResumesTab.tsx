@@ -43,6 +43,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -146,11 +147,35 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
+                <DropdownMenuItem
+                  disabled={downloadingId === r.id + ":pdf"}
+                  onClick={async () => {
+                    setDownloadingId(r.id + ":pdf");
+                    await downloadAsPdf(r, toast);
+                    setDownloadingId(null);
+                  }}
+                >
+                  {downloadingId === r.id + ":pdf" ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                  )}
+                  Download .pdf
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
+                <DropdownMenuItem
+                  disabled={downloadingId === r.id + ":docx"}
+                  onClick={async () => {
+                    setDownloadingId(r.id + ":docx");
+                    await downloadAsDocx(r, toast);
+                    setDownloadingId(null);
+                  }}
+                >
+                  {downloadingId === r.id + ":docx" ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                  )}
+                  Download .docx
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
                   Delete

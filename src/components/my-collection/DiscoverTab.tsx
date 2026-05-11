@@ -486,7 +486,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}::${job.apply_url ?? ""}`));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -497,7 +497,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * master resume directly from session settings.
    */
   async function tailorFromDiscover(job: FoundJob) {
-    const key = `${job.company}::${job.title}`;
+    const key = `${job.company}::${job.title}::${job.apply_url ?? ""}`;
     if (!job.summary || !job.summary.trim()) {
       toast({
         title: "AI didn't return a job description",
@@ -775,7 +775,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     foundJobs.length === 0 ? null : (
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
-          const key = `${job.company}::${job.title}`;
+          const key = `${job.company}::${job.title}::${job.apply_url ?? ""}`;
           const isSaved = savedTitles.has(key);
           return (
             <Card key={`${key}::${idx}`} className="p-4">

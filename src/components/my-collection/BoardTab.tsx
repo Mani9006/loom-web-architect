@@ -13,7 +13,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, AlertCircle } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-zinc-50 text-zinc-600" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-gray-50 text-gray-500" },
 ];
 
 type TrackedStatus =
@@ -404,6 +405,11 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                         <div className="text-muted-foreground text-[10px] mt-1.5 flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {new Date(job.applied_at).toLocaleDateString()}
+                        </div>
+                      )}
+                      {!job.jd_md && (
+                        <div className="text-muted-foreground/50 text-[10px] mt-1 flex items-center gap-0.5">
+                          <AlertCircle className="w-3 h-3" /> No JD
                         </div>
                       )}
                     </div>

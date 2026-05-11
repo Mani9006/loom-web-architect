@@ -36,6 +36,7 @@ export default function MyCollectionPage() {
   const [sessions, setSessions] = useState<MCSession[]>([]);
   const [statsMap, setStatsMap] = useState<Record<string, SessionStats>>({});
   const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const navigate = useNavigate();
@@ -49,17 +50,20 @@ export default function MyCollectionPage() {
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
-    } else {
-      const rows: MCSession[] = data ?? [];
-      setSessions(rows);
-      // Load per-session job counts in parallel, non-blocking.
-      void loadStats(rows.map((s) => s.id));
+      setLoading(false);
+      return;
     }
+    const rows: MCSession[] = data ?? [];
+    setSessions(rows);
     setLoading(false);
+    // Load per-session job counts separately so session cards appear
+    // immediately while stats fill in asynchronously.
+    void loadStats(rows.map((s) => s.id));
   }
 
   async function loadStats(sessionIds: string[]) {
     if (sessionIds.length === 0) return;
+    setStatsLoading(true);
     try {
       const { data } = await (supabase as any)
         .from("mc_tracked_jobs")
@@ -81,6 +85,8 @@ export default function MyCollectionPage() {
       setStatsMap(map);
     } catch {
       // Non-critical — cards just show "—" if this fails.
+    } finally {
+      setStatsLoading(false);
     }
   }
 
@@ -187,6 +193,7 @@ export default function MyCollectionPage() {
                 key={s.id}
                 session={s}
                 stats={statsMap[s.id]}
+                statsLoading={statsLoading && !statsMap[s.id]}
                 onOpen={() => navigate(`/my-collection/${s.id}`)}
                 onArchive={() => archiveSession(s.id)}
                 onDelete={() => deleteSession(s.id)}
@@ -205,6 +212,7 @@ export default function MyCollectionPage() {
                     key={s.id}
                     session={s}
                     stats={statsMap[s.id]}
+                    statsLoading={statsLoading && !statsMap[s.id]}
                     archived
                     onOpen={() => navigate(`/my-collection/${s.id}`)}
                     onReactivate={() => reactivateSession(s.id)}
@@ -232,6 +240,7 @@ export default function MyCollectionPage() {
 function SessionCard({
   session,
   stats,
+  statsLoading = false,
   archived = false,
   onOpen,
   onArchive,
@@ -240,6 +249,7 @@ function SessionCard({
 }: {
   session: MCSession;
   stats?: SessionStats;
+  statsLoading?: boolean;
   archived?: boolean;
   onOpen: () => void;
   onArchive?: () => void;
@@ -296,9 +306,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
-        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
+        <SessionStat label="On board" value={statsLoading ? "…" : (stats?.discovered ?? "—")} />
+        <SessionStat label="Applied" value={statsLoading ? "…" : (stats?.applied ?? "—")} />
+        <SessionStat label="Interviews" value={statsLoading ? "…" : (stats?.interviews ?? "—")} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
