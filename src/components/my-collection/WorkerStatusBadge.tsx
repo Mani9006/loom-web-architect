@@ -36,31 +36,32 @@ export default function WorkerStatusBadge() {
     };
   }, []);
 
-  if (!state) {
-    return null;
-  }
-
-  const dotColor = state.online ? "bg-emerald-500" : "bg-zinc-400";
-  const label = state.online ? "AI ready" : "AI offline";
-  const description = state.online
-    ? "AI features are available. Tailoring jobs typically takes 5–15 seconds."
-    : "AI features are temporarily unavailable. Try again in a few minutes.";
+  const dotColor = state ? (state.online ? "bg-emerald-500" : "bg-zinc-400") : "bg-zinc-300";
+  const label = state ? (state.online ? "AI ready" : "AI offline") : "Checking AI…";
+  const description = !state
+    ? "Checking whether your local AI worker is running…"
+    : state.online
+      ? "AI features are available. Tailoring jobs typically takes 5–15 seconds."
+      : "AI features are temporarily unavailable. Make sure your local worker is running and try again.";
 
   return (
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
           <Badge variant="outline" className="gap-1.5 text-[10px] font-normal cursor-help">
-            <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotColor}`} />
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotColor} ${!state ? "animate-pulse" : ""}`} />
             {label}
           </Badge>
         </TooltipTrigger>
         <TooltipContent className="max-w-[260px] text-[11px]">
           {description}
-          {state.lastSeen && (
+          {state?.lastSeen && (
             <div className="mt-1 opacity-60">
               Last heartbeat: {new Date(state.lastSeen).toLocaleTimeString()}
             </div>
+          )}
+          {state?.hostname && (
+            <div className="mt-0.5 opacity-60">Worker: {state.hostname}</div>
           )}
         </TooltipContent>
       </Tooltip>

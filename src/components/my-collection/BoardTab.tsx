@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +60,7 @@ interface TrackedJob {
 
 export default function BoardTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<TrackedJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<TrackedJob | null>(null);
@@ -464,10 +466,22 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 </div>
 
                 {selected.tailored_resume_id && (
-                  <Button asChild variant="outline" size="sm">
-                    <a href={`/my-collection/${sessionId}?tab=resumes&resume=${selected.tailored_resume_id}`}>
-                      <FileText className="w-3.5 h-3.5 mr-1" /> View tailored resume
-                    </a>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      // Switch to the resumes tab by writing to sessionStorage (matches
+                      // SessionPage's tab restoration logic) then navigating with ?tab=resumes.
+                      try {
+                        sessionStorage.setItem(
+                          `mc:active-tab:/my-collection/${sessionId}`,
+                          "resumes"
+                        );
+                      } catch {}
+                      navigate(`/my-collection/${sessionId}?tab=resumes`);
+                    }}
+                  >
+                    <FileText className="w-3.5 h-3.5 mr-1" /> View tailored resume
                   </Button>
                 )}
 

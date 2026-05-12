@@ -45,8 +45,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   async function load() {
     setLoading(true);
     const { data, error } = await (supabase as any)
-      
-.from("mc_tailored_resumes")
+      .from("mc_tailored_resumes")
       .select("*")
       .eq("session_id", sessionId)
       .order("updated_at", { ascending: false });
@@ -91,8 +90,8 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Score a job in Discover, then click "Tailor for this role" to generate one
-          here.
+          No tailored resumes yet. Find a job in <strong>Discover</strong> or add one in <strong>Board</strong>,
+          then click <strong>Tailor with AI</strong> to generate one here.
         </p>
       </Card>
     );
@@ -211,8 +210,7 @@ function CanvasEditor({
   async function save() {
     setSaving(true);
     const { error } = await (supabase as any)
-      
-.from("mc_tailored_resumes")
+      .from("mc_tailored_resumes")
       .update({ name: name.trim(), cv_md: cv })
       .eq("id", resume.id);
     setSaving(false);
