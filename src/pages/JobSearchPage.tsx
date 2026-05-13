@@ -769,12 +769,7 @@ export default function JobSearchPage() {
                 <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setRemoteFilter("all")} />
               </Badge>
             )}
-            {!showAdvanced && searchSource !== "direct" && (
-              <Badge variant="secondary" className="text-[10px] gap-0.5 h-6">
-                All Sources
-                <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setSearchSource("direct")} />
-              </Badge>
-            )}
+            {/* All-Sources chip removed — we always target company-direct pages. */}
           </div>
 
           {/* Advanced filters */}
@@ -816,6 +811,8 @@ export default function JobSearchPage() {
                 <Select value={datePosted} onValueChange={setDatePosted}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="24h">Past 24 Hours</SelectItem>
+                    <SelectItem value="48h">Past 48 Hours</SelectItem>
                     <SelectItem value="today">Today</SelectItem>
                     <SelectItem value="3days">Past 3 Days</SelectItem>
                     <SelectItem value="week">Past Week</SelectItem>
@@ -850,16 +847,9 @@ export default function JobSearchPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-medium">Search Source</Label>
-                <Select value={searchSource} onValueChange={setSearchSource}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="direct">Company Careers</SelectItem>
-                    <SelectItem value="all">All Sources</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Search Source dropdown removed — we always target direct
+                  company career pages (Greenhouse, Ashby, Lever, Workday,
+                  etc.). No more LinkedIn/Indeed/Dice aggregators. */}
             </div>
           )}
 

@@ -1,0 +1,59 @@
+name: Deploy edge functions
+
+# Deploys all supabase/functions/* to the corresponding environment when code
+# lands on main (→ staging) or production (→ prod). Vercel handles the
+# frontend deploy automatically; this is only for the Deno edge functions.
+
+on:
+  push:
+    branches: [main, production]
+    paths:
+      - "supabase/functions/**"
+      - ".github/workflows/deploy-edge-functions.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Force deploy to a specific environment"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, production]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/production' && 'production' || 'staging') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy edge functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -e
+          if [ "${{ github.ref }}" = "refs/heads/production" ] || [ "${{ github.event.inputs.environment }}" = "production" ]; then
+            REF="${{ secrets.SUPABASE_PROJECT_REF_PROD }}"
+            ENV_NAME="production"
+          else
+            REF="${{ secrets.SUPABASE_PROJECT_REF_STAGING }}"
+            ENV_NAME="staging"
+          fi
+          if [ -z "$REF" ]; then
+            echo "::error::Missing Supabase project ref for $ENV_NAME — set SUPABASE_PROJECT_REF_${ENV_NAME^^} in GitHub secrets."
+            exit 1
+          fi
+          echo "Deploying to $ENV_NAME ($REF)"
+          for fn in supabase/functions/*/; do
+            name=$(basename "$fn")
+            # Skip the shared utilities directory — it isn't a function.
+            if [ "$name" = "_shared" ]; then continue; fi
+            echo "::group::Deploying $name"
+            supabase functions deploy "$name" --project-ref "$REF" --no-verify-jwt || \
+              supabase functions deploy "$name" --project-ref "$REF"
+            echo "::endgroup::"
+          done

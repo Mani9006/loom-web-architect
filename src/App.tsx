@@ -14,6 +14,8 @@ import RouteAnalyticsTracker from "@/components/RouteAnalyticsTracker";
 import GlobalAuthRedirect from "@/components/GlobalAuthRedirect";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 import RPIconSprite from "@/components/shared/RPIconSprite";
+import { EnvBanner } from "@/components/EnvBanner";
+import { useFlag } from "@/lib/feature-flags";
 
 // Eager-loaded routes (critical path)
 import Landing from "./pages/Landing";
@@ -28,6 +30,7 @@ const JobTracker = lazy(() => import("./pages/JobTracker"));
 const Documents = lazy(() => import("./pages/Documents"));
 const ResumeProjects = lazy(() => import("./pages/ResumeProjects"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
+const ResumeBuilderV2 = lazy(() => import("./pages/ResumeBuilderV2"));
 const JobSearchPage = lazy(() => import("./pages/JobSearchPage"));
 // ApplyPass removed — redirects to /auto-apply
 const CoverLettersPage = lazy(() => import("./pages/CoverLettersPage"));
@@ -52,6 +55,7 @@ const PricingPage = lazy(() => import("./pages/PricingPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const MyCollectionPage = lazy(() => import("@/pages/MyCollection/MyCollectionPage"));
 const SessionPage = lazy(() => import("@/pages/MyCollection/SessionPage"));
+const FeatureFlagsAdmin = lazy(() => import("./pages/FeatureFlagsAdmin"));
 
 const queryClient = new QueryClient();
 
@@ -59,7 +63,9 @@ const SuspenseFallback = () => (
   <LoadingSpinner fullScreen message="Loading..." />
 );
 
-const App = () => (
+const App = () => {
+  const v2BuilderOn = useFlag("RESUME_BUILDER_V2");
+  return (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
@@ -71,6 +77,7 @@ const App = () => (
           <BrowserRouter>
             <RouteAnalyticsTracker />
             <GlobalAuthRedirect />
+            <EnvBanner />
             <Suspense fallback={<SuspenseFallback />}>
               <Routes>
                 {/* Public routes */}
@@ -88,6 +95,12 @@ const App = () => (
                     <Route path="/job-search" element={<JobSearchPage />} />
                     <Route path="/applypass" element={<Navigate to="/auto-apply" replace />} />
                     <Route path="/resume-builder" element={<ResumeProjects />} />
+                    {v2BuilderOn && (
+                      <>
+                        <Route path="/resume-builder/v2" element={<ResumeBuilderV2 />} />
+                        <Route path="/resume-builder/v2/:resumeId" element={<ResumeBuilderV2 />} />
+                      </>
+                    )}
                     <Route path="/resume-builder/:resumeId" element={<ResumeBuilder />} />
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
                     <Route path="/job-tracker" element={<JobTracker />} />
@@ -114,6 +127,14 @@ const App = () => (
                         </OwnerProtectedRoute>
                       }
                     />
+                    <Route
+                      path="/admin/flags"
+                      element={
+                        <OwnerProtectedRoute>
+                          <FeatureFlagsAdmin />
+                        </OwnerProtectedRoute>
+                      }
+                    />
                     <Route path="/profile" element={<Profile />} />
                     <Route path="/documents" element={<Documents />} />
                     <Route path="/ai-toolbox" element={<AIToolbox />} />
@@ -131,6 +152,7 @@ const App = () => (
       </AuthProvider>
     </QueryClientProvider>
   </ErrorBoundary>
-);
+  );
+};
 
 export default App;

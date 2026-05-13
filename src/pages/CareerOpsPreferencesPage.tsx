@@ -112,13 +112,14 @@ export default function CareerOpsPreferencesPage() {
   useEffect(() => {
     if (!user) return;
     (async () => {
+      const sb = supabase as unknown as { from: (t: string) => any };
       const [prefsRes, runsRes] = await Promise.all([
-        supabase.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
-        supabase.from("agent_runs").select("*").eq("user_id", user.id)
+        sb.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
+        sb.from("agent_runs").select("*").eq("user_id", user.id)
           .order("started_at", { ascending: false }).limit(8),
       ]);
-      if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as Prefs) });
-      setRuns((runsRes.data || []) as AgentRun[]);
+      if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as unknown as Prefs) });
+      setRuns(((runsRes.data || []) as unknown) as AgentRun[]);
       setLoading(false);
     })();
   }, [user]);
@@ -128,7 +129,7 @@ export default function CareerOpsPreferencesPage() {
     setSaving(true);
     const { error } = await supabase
       .from("user_job_prefs")
-      .upsert({ user_id: user.id, ...prefs }, { onConflict: "user_id" });
+      .upsert({ user_id: user.id, ...prefs } as never, { onConflict: "user_id" });
     setSaving(false);
     if (error) toast.error(`Save failed: ${error.message}`);
     else toast.success("Preferences saved");

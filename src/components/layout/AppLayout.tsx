@@ -4,9 +4,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   Home, FileText, Search, Target, Mic, Mail, Wand2,
   MessageCircle, Folder, Zap, Columns3, Sparkles, TrendingUp, Map,
-  ShieldCheck, Crown, ChevronDown, ChevronRight, LogOut, Settings,
+  ShieldCheck, Crown, ChevronDown, LogOut, Settings,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
-  Bell, HelpCircle, MoreHorizontal,
+  Bell, HelpCircle,
   FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -28,11 +28,14 @@ interface NavItem {
   badge?: string;
 }
 
+// Nav organized by user intent. Two groups visible to everyone, one
+// owner-only. Badges removed where they were noise ("AI" everywhere, "NEW"
+// that goes stale, "6" for tool count).
 const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
-  { label: "Job Search", icon: Search, path: "/job-search", badge: "AI" },
-  { label: "Matches", icon: Sparkles, path: "/matches", badge: "NEW" },
-  { label: "My Collection", icon: FolderOpen, path: "/my-collection", badge: "NEW" },
+  { label: "Job Search", icon: Search, path: "/job-search" },
+  { label: "Matches", icon: Sparkles, path: "/matches" },
+  { label: "My Collection", icon: FolderOpen, path: "/my-collection" },
   { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
   { label: "ATS Checker", icon: Target, path: "/ats-checker" },
   { label: "Applications", icon: Columns3, path: "/job-tracker" },
@@ -42,18 +45,19 @@ const mainNav: NavItem[] = [
 ];
 
 const pinnedNav: NavItem[] = [
-  { label: "AI Toolbox", icon: Wand2, path: "/ai-toolbox", badge: "6" },
+  { label: "AI Toolbox", icon: Wand2, path: "/ai-toolbox" },
   { label: "Documents", icon: Folder, path: "/documents" },
   { label: "Auto Apply", icon: Zap, path: "/auto-apply", badge: "PRO" },
   { label: "Analytics", icon: TrendingUp, path: "/analytics" },
 ];
 
-const toolsNav: NavItem[] = [
+// Internal / founder dashboards. Only visible to owner accounts.
+const ownerOnlyTools: NavItem[] = [
   { label: "Market Map", icon: Map, path: "/market-domination-map" },
   { label: "Control Center", icon: ShieldCheck, path: "/control-center" },
+  { label: "Admin Portal", icon: Crown, path: "/admin" },
+  { label: "Feature Flags", icon: Settings, path: "/admin/flags" },
 ];
-
-const ownerExtra: NavItem = { label: "Admin Portal", icon: Crown, path: "/admin" };
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -63,7 +67,6 @@ export default function AppLayout() {
   const [displayName, setDisplayName] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
   const [anuOpen, setAnuOpen] = useState(false);
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
@@ -91,9 +94,11 @@ export default function AppLayout() {
   if (!user) return null;
   const showText = isMobile || sidebarOpen;
   const hasAdminAccess = isOwnerEmail(user.email) || isAdmin;
-  const allTools = hasAdminAccess ? [...toolsNav, ownerExtra] : toolsNav;
+  // Owner-only tools are visible only to admin accounts; regular users
+  // never see Market Map / Control Center / Admin Portal.
+  const visibleOwnerTools = hasAdminAccess ? ownerOnlyTools : [];
 
-  const allNav = [...mainNav, ...pinnedNav, ...allTools];
+  const allNav = [...mainNav, ...pinnedNav, ...visibleOwnerTools];
   const current = allNav.find((n) => isActive(n.path));
   const crumb = current?.label ?? "";
 
@@ -152,45 +157,25 @@ export default function AppLayout() {
 
         {showText && (
           <div className="flex items-center justify-between px-3 mt-5 mb-1.5">
-            <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">Pinned</span>
+            <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">More</span>
           </div>
         )}
         <div className="space-y-0.5">
           {pinnedNav.map((i) => <NavButton key={i.path} item={i} />)}
-          <button
-            onClick={() => setMoreToolsOpen((v) => !v)}
-            title={!showText ? "More tools" : undefined}
-            className="w-full flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
-          >
-            <MoreHorizontal className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
-            {showText && (
-              <>
-                <span className="flex-1 text-left font-medium">More tools</span>
-                <ChevronRight className={cn("w-3.5 h-3.5 opacity-50 transition-transform", moreToolsOpen && "rotate-90")} />
-              </>
-            )}
-          </button>
-          {moreToolsOpen && showText && (
-            <div className="pl-8 pr-2 pt-1 pb-2 space-y-0.5">
-              {allTools.map((t) => (
-                <a
-                  key={t.path}
-                  href={t.path}
-                  onClick={(e) => handleLinkClick(e, t.path)}
-                  className={cn(
-                    "flex items-center gap-2.5 h-8 px-2 rounded-md text-[12.5px] transition-colors no-underline",
-                    isActive(t.path)
-                      ? "text-foreground font-medium"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <t.icon className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
-                  <span className="truncate">{t.label}</span>
-                </a>
-              ))}
-            </div>
-          )}
         </div>
+
+        {visibleOwnerTools.length > 0 && (
+          <>
+            {showText && (
+              <div className="flex items-center justify-between px-3 mt-5 mb-1.5">
+                <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">Admin</span>
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {visibleOwnerTools.map((i) => <NavButton key={i.path} item={i} />)}
+            </div>
+          </>
+        )}
       </nav>
 
       {/* Upgrade card — only for non-Pro, non-owner users */}

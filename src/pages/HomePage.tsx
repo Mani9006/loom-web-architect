@@ -92,14 +92,17 @@ export default function HomePage() {
 
       // Agent activity in the last 24h
       const since = new Date(Date.now() - 24 * 3600_000).toISOString();
-      const { data: runs } = await supabase
+      // Cast supabase client for this chain — the long .from().select().eq()
+      // chain exceeds TS instantiation depth on the generated types.
+      const sb = supabase as unknown as { from: (t: string) => any };
+      const { data: runs } = await sb
         .from("agent_runs")
         .select("id, summary, started_at, status")
         .eq("user_id", user.id)
         .eq("status", "completed")
         .gte("started_at", since)
         .order("started_at", { ascending: false });
-      const list = (runs || []) as Array<{ id: string; summary: string | null; started_at: string }>;
+      const list = ((runs || []) as unknown) as Array<{ id: string; summary: string | null; started_at: string }>;
       if (list.length > 0) {
         setAgentSummary({
           runs24h: list.length,
