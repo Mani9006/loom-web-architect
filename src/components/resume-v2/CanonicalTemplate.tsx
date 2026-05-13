@@ -1,13 +1,26 @@
 /**
- * The single canonical resume template (v2).
+ * The canonical resume template (v2 redesign).
  *
- * Replaces the 4-variant template system with ONE clean, ATS-optimized layout.
- * Uses pt units for print fidelity. No template-id branching. No CSS hacks.
+ * Typography choices target LaTeX-quality output:
+ *   - Body:    "Source Serif 4" (Google Fonts) — modern descendant of
+ *              Source Serif Pro, designed for long-form reading. Renders
+ *              close to Computer Modern / Latin Modern but with better
+ *              hinting in browsers.
+ *   - Display: "EB Garamond" for the name + section headings — gives the
+ *              page a printed-CV feel without screaming "Word document".
+ *   - Mono:    "JetBrains Mono" reserved for date stamps and metrics so
+ *              numbers align cleanly.
  *
- * Renders directly from ResumeJSON. Subscribes to the resume store for live
- * preview. Read-only — editing is done via the canvas wrapper.
+ * Geometry follows LaTeX's `\documentclass{article}` defaults:
+ *   - 8.5 × 11 inch (US Letter)
+ *   - 0.75 inch margins
+ *   - 10.5pt body, 1.35 line height
+ *   - Section title 11.5pt small-caps with a hairline rule under it
+ *
+ * The template is purely a function of ResumeJSON. No template-id
+ * branching. No CSS hacks. Editing happens elsewhere; this just renders.
  */
-import { forwardRef } from "react";
+import { forwardRef, Fragment } from "react";
 import type { ResumeJSON, ResumeSectionId } from "@/types/resume";
 import { DEFAULT_SECTION_ORDER, getSkillCategoryLabel } from "@/types/resume";
 
@@ -17,8 +30,26 @@ interface Props {
   className?: string;
 }
 
-const fmtDate = (start: string, end: string) =>
-  [start, end].filter(Boolean).join(" – ") || end || start;
+const PAGE_STYLES: React.CSSProperties = {
+  fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, "Times New Roman", serif',
+  fontSize: "10.5pt",
+  lineHeight: 1.35,
+  color: "#0b0e14",
+  width: "8.5in",
+  minHeight: "11in",
+  padding: "0.75in",
+  background: "white",
+  fontFeatureSettings: '"liga" 1, "kern" 1, "onum" 1',
+  WebkitFontSmoothing: "antialiased",
+  boxSizing: "border-box",
+};
+
+const fmtRange = (start: string, end: string) => {
+  const s = (start ?? "").trim();
+  const e = (end ?? "").trim();
+  if (s && e) return `${s} – ${e}`;
+  return e || s;
+};
 
 export const CanonicalTemplate = forwardRef<HTMLDivElement, Props>(function CanonicalTemplate(
   { data, hiddenSections, className = "" },
@@ -28,32 +59,26 @@ export const CanonicalTemplate = forwardRef<HTMLDivElement, Props>(function Cano
   const skip = (id: ResumeSectionId) => hiddenSections?.has(id) ?? false;
 
   return (
-    <div
-      ref={ref}
-      className={`canonical-resume bg-white text-black ${className}`}
-      style={{
-        fontFamily: '"Times New Roman", Times, serif',
-        fontSize: "10.5pt",
-        lineHeight: 1.35,
-        padding: "0.5in",
-        width: "8.5in",
-        minHeight: "11in",
-        color: "#000",
-      }}
-    >
+    <div ref={ref} className={`canonical-resume ${className}`} style={PAGE_STYLES}>
       <Header data={data.header} />
 
       {order.map((sectionId) => {
         if (skip(sectionId)) return null;
         switch (sectionId) {
           case "summary":
-            return data.summary ? <Summary key="s" text={data.summary} /> : null;
+            return data.summary?.trim() ? <Summary key="s" text={data.summary} /> : null;
           case "experience":
-            return data.experience.length ? <Experience key="x" items={data.experience} /> : null;
+            return data.experience.some((e) => e.role || e.company_or_client)
+              ? <Experience key="x" items={data.experience} />
+              : null;
           case "education":
-            return data.education.length ? <Education key="e" items={data.education} /> : null;
+            return data.education.some((e) => e.institution || e.degree)
+              ? <Education key="e" items={data.education} />
+              : null;
           case "skills":
-            return Object.keys(data.skills).length ? <Skills key="k" skills={data.skills} /> : null;
+            return Object.values(data.skills).some((s) => s.length)
+              ? <Skills key="k" skills={data.skills} />
+              : null;
           case "projects":
             return data.projects.length ? <Projects key="p" items={data.projects} /> : null;
           case "certifications":
@@ -74,18 +99,86 @@ export const CanonicalTemplate = forwardRef<HTMLDivElement, Props>(function Cano
   );
 });
 
+// ─── Header ────────────────────────────────────────────────────────────────
+
+function Header({ data }: { data: ResumeJSON["header"] }) {
+  const contactParts = [data.location, data.email, data.phone, data.linkedin].filter(Boolean);
+  const isEmpty = !data.name && !data.title && contactParts.length === 0;
+
+  return (
+    <header style={{ textAlign: "center", marginBottom: "10pt", paddingBottom: "10pt", borderBottom: "0.4pt solid #1a1f2c" }}>
+      <div
+        style={{
+          fontFamily: '"EB Garamond", Georgia, serif',
+          fontSize: "26pt",
+          fontWeight: 600,
+          letterSpacing: "0.015em",
+          lineHeight: 1.05,
+          color: "#0b0e14",
+        }}
+      >
+        {data.name || <Placeholder>Your name</Placeholder>}
+      </div>
+      {data.title && (
+        <div
+          style={{
+            fontSize: "11.5pt",
+            fontStyle: "italic",
+            color: "#39424f",
+            marginTop: "3pt",
+            letterSpacing: "0.01em",
+          }}
+        >
+          {data.title}
+        </div>
+      )}
+      {contactParts.length > 0 && (
+        <div
+          style={{
+            fontSize: "9.5pt",
+            marginTop: "6pt",
+            color: "#2c333d",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0 14pt",
+            justifyContent: "center",
+          }}
+        >
+          {contactParts.map((p, i) => (
+            <span key={i} style={i > 0 ? { borderLeft: "0.4pt solid #9099a3", paddingLeft: "14pt" } : undefined}>
+              {p}
+            </span>
+          ))}
+        </div>
+      )}
+      {isEmpty && (
+        <div style={{ fontSize: "9.5pt", color: "#9099a3", marginTop: "6pt", fontStyle: "italic" }}>
+          Fill in the Header section on the left to begin.
+        </div>
+      )}
+    </header>
+  );
+}
+
+function Placeholder({ children }: { children: React.ReactNode }) {
+  return <span style={{ color: "#c1c7d0", fontStyle: "italic" }}>{children}</span>;
+}
+
+// ─── Section heading (shared) ──────────────────────────────────────────────
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <h2
       style={{
-        fontSize: "11pt",
-        fontWeight: 700,
+        fontFamily: '"EB Garamond", Georgia, serif',
+        fontSize: "11.5pt",
+        fontWeight: 600,
         textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        borderBottom: "1px solid #000",
-        paddingBottom: "1pt",
-        marginTop: "12pt",
-        marginBottom: "5pt",
+        letterSpacing: "0.18em",
+        color: "#0b0e14",
+        margin: "14pt 0 4pt 0",
+        paddingBottom: "2pt",
+        borderBottom: "0.4pt solid #1a1f2c",
       }}
     >
       {children}
@@ -93,44 +186,59 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Header({ data }: { data: ResumeJSON["header"] }) {
-  const contact = [data.location, data.email, data.phone, data.linkedin].filter(Boolean).join("  ·  ");
-  return (
-    <header style={{ textAlign: "center", marginBottom: "4pt" }}>
-      <div style={{ fontSize: "20pt", fontWeight: 700, letterSpacing: "0.02em" }}>{data.name || "Your Name"}</div>
-      {data.title && <div style={{ fontSize: "11pt", marginTop: "2pt" }}>{data.title}</div>}
-      {contact && <div style={{ fontSize: "9.5pt", marginTop: "3pt", color: "#222" }}>{contact}</div>}
-    </header>
-  );
-}
+// ─── Summary ───────────────────────────────────────────────────────────────
 
 function Summary({ text }: { text: string }) {
   return (
     <section>
       <SectionTitle>Summary</SectionTitle>
-      <p style={{ marginTop: 0, marginBottom: "6pt" }}>{text}</p>
+      <p style={{ margin: "4pt 0 0 0", textAlign: "justify", hyphens: "auto" }}>{text}</p>
     </section>
   );
 }
+
+// ─── Experience ────────────────────────────────────────────────────────────
+
+const dateStyle: React.CSSProperties = {
+  fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: "9pt",
+  color: "#39424f",
+  whiteSpace: "nowrap",
+  letterSpacing: "-0.01em",
+};
 
 function Experience({ items }: { items: ResumeJSON["experience"] }) {
   return (
     <section>
       <SectionTitle>Experience</SectionTitle>
       {items.map((e) => (
-        <div key={e.id} style={{ marginBottom: "8pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt" }}>
-            <div style={{ fontWeight: 700 }}>{e.role}</div>
-            <div style={{ fontStyle: "italic" }}>{fmtDate(e.start_date, e.end_date)}</div>
+        <div key={e.id} style={{ marginTop: "7pt", marginBottom: "9pt" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+            <div style={{ fontSize: "11pt", fontWeight: 600 }}>
+              {e.role || <Placeholder>Role</Placeholder>}
+              {e.company_or_client && (
+                <span style={{ fontWeight: 400, color: "#39424f" }}> · {e.company_or_client}</span>
+              )}
+            </div>
+            <div style={dateStyle}>{fmtRange(e.start_date, e.end_date)}</div>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt" }}>
-            <div>{e.company_or_client}</div>
-            <div style={{ color: "#333" }}>{e.location}</div>
-          </div>
+          {e.location && (
+            <div style={{ fontSize: "9.5pt", color: "#39424f", fontStyle: "italic", marginTop: "1pt" }}>
+              {e.location}
+            </div>
+          )}
           {e.bullets.length > 0 && (
-            <ul style={{ margin: "3pt 0 0 16pt", padding: 0 }}>
-              {e.bullets.map((b, i) => (
-                <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>
+            <ul
+              style={{
+                margin: "3pt 0 0 0",
+                paddingLeft: "14pt",
+                listStyleType: "'\\2014  '",
+              }}
+            >
+              {e.bullets.filter((b) => b.trim()).map((b, i) => (
+                <li key={i} style={{ marginBottom: "1.5pt", textAlign: "justify", hyphens: "auto" }}>
+                  {b}
+                </li>
               ))}
             </ul>
           )}
@@ -140,29 +248,33 @@ function Experience({ items }: { items: ResumeJSON["experience"] }) {
   );
 }
 
+// ─── Education ─────────────────────────────────────────────────────────────
+
 function Education({ items }: { items: ResumeJSON["education"] }) {
   return (
     <section>
       <SectionTitle>Education</SectionTitle>
       {items.map((e) => (
-        <div key={e.id} style={{ marginBottom: "4pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt" }}>
-            <div style={{ fontWeight: 700 }}>{e.institution}</div>
-            <div style={{ fontStyle: "italic" }}>{e.graduation_date}</div>
+        <div key={e.id} style={{ marginTop: "5pt" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+            <div style={{ fontSize: "11pt", fontWeight: 600 }}>{e.institution || <Placeholder>Institution</Placeholder>}</div>
+            <div style={dateStyle}>{e.graduation_date}</div>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt" }}>
-            <div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginTop: "1pt" }}>
+            <div style={{ fontStyle: "italic" }}>
               {e.degree}
               {e.field ? `, ${e.field}` : ""}
               {e.gpa ? ` · GPA ${e.gpa}` : ""}
             </div>
-            <div style={{ color: "#333" }}>{e.location}</div>
+            <div style={{ color: "#39424f", fontSize: "9.5pt" }}>{e.location}</div>
           </div>
         </div>
       ))}
     </section>
   );
 }
+
+// ─── Skills ────────────────────────────────────────────────────────────────
 
 function Skills({ skills }: { skills: ResumeJSON["skills"] }) {
   const entries = Object.entries(skills).filter(([, v]) => v.length > 0);
@@ -170,33 +282,37 @@ function Skills({ skills }: { skills: ResumeJSON["skills"] }) {
   return (
     <section>
       <SectionTitle>Skills</SectionTitle>
-      {entries.map(([cat, list]) => (
-        <div key={cat} style={{ marginBottom: "2pt" }}>
-          <span style={{ fontWeight: 700 }}>{getSkillCategoryLabel(cat)}: </span>
-          <span>{list.join(", ")}</span>
-        </div>
-      ))}
+      <div style={{ marginTop: "4pt", display: "grid", gridTemplateColumns: "auto 1fr", columnGap: "10pt", rowGap: "2pt" }}>
+        {entries.map(([cat, list]) => (
+          <Fragment key={cat}>
+            <div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{getSkillCategoryLabel(cat)}</div>
+            <div>{list.join(" · ")}</div>
+          </Fragment>
+        ))}
+      </div>
     </section>
   );
 }
 
+// ─── Projects ──────────────────────────────────────────────────────────────
+
 function Projects({ items }: { items: ResumeJSON["projects"] }) {
   return (
     <section>
-      <SectionTitle>Projects</SectionTitle>
+      <SectionTitle>Selected Projects</SectionTitle>
       {items.map((p) => (
-        <div key={p.id} style={{ marginBottom: "6pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt" }}>
-            <div style={{ fontWeight: 700 }}>
-              {p.title}
-              {p.organization && <span style={{ fontWeight: 400 }}> · {p.organization}</span>}
+        <div key={p.id} style={{ marginTop: "6pt" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+            <div style={{ fontSize: "11pt", fontWeight: 600 }}>
+              {p.title || <Placeholder>Project</Placeholder>}
+              {p.organization && <span style={{ fontWeight: 400, color: "#39424f" }}> · {p.organization}</span>}
             </div>
-            <div style={{ fontStyle: "italic" }}>{p.date}</div>
+            <div style={dateStyle}>{p.date}</div>
           </div>
           {p.bullets.length > 0 && (
-            <ul style={{ margin: "2pt 0 0 16pt", padding: 0 }}>
-              {p.bullets.map((b, i) => (
-                <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>
+            <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
+              {p.bullets.filter((b) => b.trim()).map((b, i) => (
+                <li key={i} style={{ marginBottom: "1.5pt", textAlign: "justify", hyphens: "auto" }}>{b}</li>
               ))}
             </ul>
           )}
@@ -206,45 +322,63 @@ function Projects({ items }: { items: ResumeJSON["projects"] }) {
   );
 }
 
+// ─── Certifications ────────────────────────────────────────────────────────
+
 function Certifications({ items }: { items: ResumeJSON["certifications"] }) {
   return (
     <section>
       <SectionTitle>Certifications</SectionTitle>
-      {items.map((c) => (
-        <div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginBottom: "2pt" }}>
-          <div>
-            <span style={{ fontWeight: 700 }}>{c.name}</span>
-            {c.issuer && <span> · {c.issuer}</span>}
+      <div style={{ marginTop: "3pt" }}>
+        {items.map((c) => (
+          <div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginBottom: "2pt" }}>
+            <div>
+              <span style={{ fontWeight: 600 }}>{c.name}</span>
+              {c.issuer && <span style={{ color: "#39424f" }}> · {c.issuer}</span>}
+            </div>
+            <div style={dateStyle}>{c.date}</div>
           </div>
-          <div style={{ fontStyle: "italic" }}>{c.date}</div>
-        </div>
-      ))}
+        ))}
+      </div>
     </section>
   );
 }
+
+// ─── Languages ─────────────────────────────────────────────────────────────
 
 function Languages({ items }: { items: NonNullable<ResumeJSON["languages"]> }) {
   return (
     <section>
       <SectionTitle>Languages</SectionTitle>
-      <div>{items.map((l) => `${l.language} (${l.proficiency})`).join("  ·  ")}</div>
+      <div style={{ marginTop: "3pt" }}>
+        {items.map((l, i) => (
+          <span key={l.id}>
+            {i > 0 && <span style={{ color: "#9099a3", margin: "0 6pt" }}>·</span>}
+            <span style={{ fontWeight: 600 }}>{l.language}</span>
+            <span style={{ color: "#39424f" }}> ({l.proficiency})</span>
+          </span>
+        ))}
+      </div>
     </section>
   );
 }
+
+// ─── Volunteer ─────────────────────────────────────────────────────────────
 
 function Volunteer({ items }: { items: NonNullable<ResumeJSON["volunteer"]> }) {
   return (
     <section>
       <SectionTitle>Volunteer</SectionTitle>
       {items.map((v) => (
-        <div key={v.id} style={{ marginBottom: "6pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt" }}>
-            <div style={{ fontWeight: 700 }}>{v.role} · {v.organization}</div>
-            <div style={{ fontStyle: "italic" }}>{v.date}</div>
+        <div key={v.id} style={{ marginTop: "5pt" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+            <div style={{ fontSize: "11pt", fontWeight: 600 }}>
+              {v.role} <span style={{ fontWeight: 400, color: "#39424f" }}>· {v.organization}</span>
+            </div>
+            <div style={dateStyle}>{v.date}</div>
           </div>
           {v.bullets.length > 0 && (
-            <ul style={{ margin: "2pt 0 0 16pt", padding: 0 }}>
-              {v.bullets.map((b, i) => <li key={i}>{b}</li>)}
+            <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
+              {v.bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>)}
             </ul>
           )}
         </div>
@@ -253,39 +387,45 @@ function Volunteer({ items }: { items: NonNullable<ResumeJSON["volunteer"]> }) {
   );
 }
 
+// ─── Awards ────────────────────────────────────────────────────────────────
+
 function Awards({ items }: { items: NonNullable<ResumeJSON["awards"]> }) {
   return (
     <section>
       <SectionTitle>Awards & Publications</SectionTitle>
-      {items.map((a) => (
-        <div key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginBottom: "2pt" }}>
-          <div>
-            <span style={{ fontWeight: 700 }}>{a.title}</span>
-            {a.issuer && <span> · {a.issuer}</span>}
+      <div style={{ marginTop: "3pt" }}>
+        {items.map((a) => (
+          <div key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginBottom: "2pt" }}>
+            <div>
+              <span style={{ fontWeight: 600 }}>{a.title}</span>
+              {a.issuer && <span style={{ color: "#39424f" }}> · {a.issuer}</span>}
+            </div>
+            <div style={dateStyle}>{a.date}</div>
           </div>
-          <div style={{ fontStyle: "italic" }}>{a.date}</div>
-        </div>
-      ))}
+        ))}
+      </div>
     </section>
   );
 }
+
+// ─── Custom Section ────────────────────────────────────────────────────────
 
 function CustomBlock({ section }: { section: NonNullable<ResumeJSON["customSections"]>[number] }) {
   return (
     <section>
       <SectionTitle>{section.name}</SectionTitle>
       {section.entries.map((e) => (
-        <div key={e.id} style={{ marginBottom: "6pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt" }}>
-            <div style={{ fontWeight: 700 }}>
+        <div key={e.id} style={{ marginTop: "5pt" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+            <div style={{ fontSize: "11pt", fontWeight: 600 }}>
               {e.title}
-              {e.subtitle && <span style={{ fontWeight: 400 }}> · {e.subtitle}</span>}
+              {e.subtitle && <span style={{ fontWeight: 400, color: "#39424f" }}> · {e.subtitle}</span>}
             </div>
-            <div style={{ fontStyle: "italic" }}>{e.date}</div>
+            <div style={dateStyle}>{e.date}</div>
           </div>
           {e.bullets.length > 0 && (
-            <ul style={{ margin: "2pt 0 0 16pt", padding: 0 }}>
-              {e.bullets.map((b, i) => <li key={i}>{b}</li>)}
+            <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
+              {e.bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>)}
             </ul>
           )}
         </div>
@@ -293,3 +433,4 @@ function CustomBlock({ section }: { section: NonNullable<ResumeJSON["customSecti
     </section>
   );
 }
+

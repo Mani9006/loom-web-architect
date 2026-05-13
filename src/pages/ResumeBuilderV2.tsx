@@ -1,28 +1,45 @@
 /**
- * Resume Builder v2 — clean rebuild.
+ * Resume Builder v2 — full redesign.
  *
- * Layout:
- *   [ header bar: name, save status, export ]
- *   [ left: section editor (tabs) | right: live preview | far right: AI tailor ]
+ * Visual model:
+ *   - Top bar:    minimal (title input + save status + export + AI toggle).
+ *   - Editor:     left column, vertically stacked section accordions. No
+ *                 tabs to flip through — everything's there, scroll to find
+ *                 what you want. Click a section header to collapse/expand.
+ *   - Preview:    right column, the resume rendered on a "paper" card
+ *                 floating on an off-white desk. Visible by default.
+ *   - AI panel:   collapsible right rail with JD input + tailor button +
+ *                 live ATS score breakdown.
  *
- * Single source of truth = Zustand store (src/lib/resume-store.ts).
- * Renders only via CanonicalTemplate. No template-id branching.
- *
- * Read/write to `resumes` Supabase table (same schema as v1).
- * Reachable at /resume-builder/v2 (new) or /resume-builder/v2/:resumeId (existing).
+ * The preview updates on every keystroke via the Zustand store (single source
+ * of truth). Editor and preview share no parent state — just the store.
  */
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
-import { ArrowLeft, Check, Loader2, Save, FileDown, PanelRightClose, PanelRightOpen } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Loader2,
+  Save,
+  Printer,
+  Sparkles,
+  Eye,
+  EyeOff,
+  Code2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -41,15 +58,19 @@ import { AiTailorPanel } from "@/components/resume-v2/AiTailorPanel";
 import { createEmptyResumeJSON } from "@/types/resume";
 import type { ResumeJSON } from "@/types/resume";
 
-const TABS = [
-  { id: "header", label: "Header", Cmp: HeaderEditor },
-  { id: "summary", label: "Summary", Cmp: SummaryEditor },
-  { id: "experience", label: "Experience", Cmp: ExperienceEditor },
-  { id: "education", label: "Education", Cmp: EducationEditor },
-  { id: "skills", label: "Skills", Cmp: SkillsEditor },
-  { id: "projects", label: "Projects", Cmp: ProjectsEditor },
-  { id: "certifications", label: "Certifications", Cmp: CertificationsEditor },
+// ─── Section registry ──────────────────────────────────────────────────────
+
+const SECTIONS = [
+  { id: "header", label: "Header", description: "Name, role, contact", Cmp: HeaderEditor },
+  { id: "summary", label: "Summary", description: "2–3 sentence pitch", Cmp: SummaryEditor },
+  { id: "experience", label: "Experience", description: "Roles + impact bullets", Cmp: ExperienceEditor },
+  { id: "education", label: "Education", description: "Degrees, schools, dates", Cmp: EducationEditor },
+  { id: "skills", label: "Skills", description: "Grouped by category", Cmp: SkillsEditor },
+  { id: "projects", label: "Projects", description: "Highlight work outside roles", Cmp: ProjectsEditor },
+  { id: "certifications", label: "Certifications", description: "Credentials + dates", Cmp: CertificationsEditor },
 ] as const;
+
+// ─── Page ──────────────────────────────────────────────────────────────────
 
 export default function ResumeBuilderV2() {
   const { resumeId } = useParams<{ resumeId?: string }>();
@@ -69,8 +90,9 @@ export default function ResumeBuilderV2() {
   );
 
   const [resumeName, setResumeName] = useState("Untitled resume");
-  const [activeTab, setActiveTab] = useState<string>("header");
-  const [showAiPanel, setShowAiPanel] = useState(true);
+  const [openSections, setOpenSections] = useState<string[]>(["header", "summary", "experience"]);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"preview" | "json">("preview");
   const initialLoadDone = useRef(false);
 
   // ─── load ───────────────────────────────────────────────────────────────
@@ -107,14 +129,11 @@ export default function ResumeBuilderV2() {
     })();
   }, [resumeId, user, setResume, setStatus, setResumeId, reset]);
 
-  // ─── save ───────────────────────────────────────────────────────────────
+  // ─── save (debounced autosave) ─────────────────────────────────────────
   const save = useCallback(async () => {
     if (!user) return;
     setStatus("saving");
     const payload = resumeJSONToRow(resume, resumeName, user.id);
-    // Cast: existing codebase pattern — the resumes table's JSONB columns are
-    // typed as `Json` but our payload uses concrete entry types that are valid
-    // Json subsets. TS can't see the structural equivalence.
     const table = supabase.from("resumes") as ReturnType<typeof supabase.from>;
     if (resumeId) {
       const { error } = await table.update(payload as never).eq("id", resumeId).eq("user_id", user.id);
@@ -137,120 +156,301 @@ export default function ResumeBuilderV2() {
     }
   }, [resume, resumeName, resumeId, user, setStatus, setResumeId, navigate]);
 
-  // debounced autosave on any change after initial load
   useEffect(() => {
-    if (!initialLoadDone.current) return;
-    if (!user) return;
-    const t = setTimeout(() => {
-      void save();
-    }, 1500);
+    if (!initialLoadDone.current || !user) return;
+    const t = setTimeout(() => void save(), 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume, resumeName]);
 
-  const handleExport = () => {
-    // Defer real PDF export to next iteration; print is the cleanest stopgap.
-    window.print();
-  };
-
+  // ─── render ────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
-      {/* top bar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b bg-background/95 backdrop-blur">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/resume-builder")}>
-          <ArrowLeft className="size-4 mr-1" /> Back
-        </Button>
-        <Input
-          value={resumeName}
-          onChange={(e) => setResumeName(e.target.value)}
-          className="max-w-xs h-8"
-        />
-        <SaveStatusPill status={status} />
-        <div className="flex-1" />
-        <Button variant="ghost" size="sm" onClick={() => setShowAiPanel((v) => !v)} title="Toggle AI panel">
-          {showAiPanel ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => void save()}>
-          <Save className="size-4 mr-1" /> Save
-        </Button>
-        <Button size="sm" onClick={handleExport}>
-          <FileDown className="size-4 mr-1" /> Export
-        </Button>
+    <div className="flex flex-col h-[calc(100vh-4rem)] bg-[#f6f5f1] dark:bg-zinc-900 overflow-hidden">
+      <TopBar
+        resumeName={resumeName}
+        onRename={setResumeName}
+        status={status}
+        onBack={() => navigate("/resume-builder")}
+        onSave={() => void save()}
+        onPrint={() => window.print()}
+        previewMode={previewMode}
+        onPreviewModeChange={setPreviewMode}
+        aiOpen={aiOpen}
+        onToggleAi={() => setAiOpen((v) => !v)}
+      />
+
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] overflow-hidden">
+        {/* EDITOR */}
+        <div className="overflow-y-auto border-r border-zinc-200/70 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+          <div className="max-w-2xl mx-auto px-6 py-8">
+            <Eyebrow>Edit your resume</Eyebrow>
+            <h2 className="text-2xl font-semibold tracking-tight mt-1 mb-1 text-zinc-900 dark:text-zinc-50" style={{ fontFamily: '"EB Garamond", Georgia, serif' }}>
+              Everything updates live on the right
+            </h2>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
+              Click any section to expand. Changes are saved automatically.
+            </p>
+
+            <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-2">
+              {SECTIONS.map((s) => (
+                <AccordionItem
+                  key={s.id}
+                  value={s.id}
+                  className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-950 px-4 data-[state=open]:shadow-sm"
+                >
+                  <AccordionTrigger className="py-3 hover:no-underline">
+                    <div className="flex items-baseline justify-between w-full pr-3">
+                      <div className="text-left">
+                        <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{s.label}</div>
+                        <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{s.description}</div>
+                      </div>
+                      <SectionStatusDot id={s.id} resume={resume} />
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pt-1 pb-4">
+                    <s.Cmp />
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+
+            <FirstStepHint resume={resume} />
+          </div>
+        </div>
+
+        {/* PREVIEW */}
+        <div className="overflow-y-auto bg-[#f6f5f1] dark:bg-zinc-900 relative">
+          <div className="px-6 py-10 flex justify-center">
+            {previewMode === "preview" ? (
+              <PaperFrame>
+                <CanonicalTemplate data={resume} hiddenSections={hiddenSections} />
+              </PaperFrame>
+            ) : (
+              <JsonView resume={resume} />
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* panes */}
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* editor */}
-        <ResizablePanel defaultSize={42} minSize={30}>
-          <div className="h-full flex flex-col">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-              <TabsList className="mx-3 mt-3 justify-start overflow-x-auto whitespace-nowrap">
-                {TABS.map((t) => (
-                  <TabsTrigger key={t.id} value={t.id} className="text-xs">
-                    {t.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              <ScrollArea className="flex-1">
-                <div className="p-4">
-                  {TABS.map((t) => (
-                    <TabsContent key={t.id} value={t.id} className="mt-0">
-                      <t.Cmp />
-                    </TabsContent>
-                  ))}
-                </div>
-              </ScrollArea>
-            </Tabs>
+      {/* AI side sheet */}
+      <Sheet open={aiOpen} onOpenChange={setAiOpen}>
+        <SheetContent side="right" className="w-[400px] sm:max-w-none p-0">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="size-4 text-amber-500" />
+              AI tailor + score
+            </SheetTitle>
+            <SheetDescription className="sr-only">
+              Paste a job description to tailor your resume, and view your ATS score.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="h-[calc(100vh-3.5rem)] overflow-y-auto">
+            <AiTailorPanel />
           </div>
-        </ResizablePanel>
-
-        <ResizableHandle withHandle />
-
-        {/* preview */}
-        <ResizablePanel defaultSize={showAiPanel ? 36 : 58} minSize={30}>
-          <ScrollArea className="h-full bg-muted/30">
-            <div className="p-6 flex justify-center">
-              <div className="shadow-lg" style={{ transform: "scale(0.85)", transformOrigin: "top center" }}>
-                <CanonicalTemplate data={resume} hiddenSections={hiddenSections} />
-              </div>
-            </div>
-          </ScrollArea>
-        </ResizablePanel>
-
-        {showAiPanel && (
-          <>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={22} minSize={18}>
-              <AiTailorPanel />
-            </ResizablePanel>
-          </>
-        )}
-      </ResizablePanelGroup>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
-// ─── helpers ───────────────────────────────────────────────────────────────
+// ─── Top bar ───────────────────────────────────────────────────────────────
+
+function TopBar({
+  resumeName,
+  onRename,
+  status,
+  onBack,
+  onSave,
+  onPrint,
+  previewMode,
+  onPreviewModeChange,
+  aiOpen,
+  onToggleAi,
+}: {
+  resumeName: string;
+  onRename: (v: string) => void;
+  status: ReturnType<typeof useResumeStore.getState>["status"];
+  onBack: () => void;
+  onSave: () => void;
+  onPrint: () => void;
+  previewMode: "preview" | "json";
+  onPreviewModeChange: (v: "preview" | "json") => void;
+  aiOpen: boolean;
+  onToggleAi: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 border-b bg-white dark:bg-zinc-950 backdrop-blur">
+      <Button variant="ghost" size="sm" onClick={onBack} className="text-zinc-600 dark:text-zinc-400">
+        <ArrowLeft className="size-4 mr-1" /> All resumes
+      </Button>
+      <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
+      <Input
+        value={resumeName}
+        onChange={(e) => onRename(e.target.value)}
+        className="max-w-xs h-8 border-0 shadow-none px-2 focus-visible:ring-1 focus-visible:ring-zinc-300 text-sm font-medium"
+        placeholder="Untitled resume"
+      />
+      <SaveStatusPill status={status} />
+      <div className="flex-1" />
+      <ViewToggle value={previewMode} onChange={onPreviewModeChange} />
+      <Button
+        variant={aiOpen ? "default" : "outline"}
+        size="sm"
+        onClick={onToggleAi}
+        className="ml-2"
+      >
+        <Sparkles className="size-4 mr-1.5" /> AI tailor
+      </Button>
+      <Button variant="outline" size="sm" onClick={onSave}>
+        <Save className="size-4 mr-1" /> Save
+      </Button>
+      <Button size="sm" onClick={onPrint}>
+        <Printer className="size-4 mr-1" /> Export PDF
+      </Button>
+    </div>
+  );
+}
+
+function ViewToggle({
+  value,
+  onChange,
+}: {
+  value: "preview" | "json";
+  onChange: (v: "preview" | "json") => void;
+}) {
+  return (
+    <div className="inline-flex items-center rounded-md bg-zinc-100 dark:bg-zinc-900 p-0.5 text-xs">
+      <button
+        onClick={() => onChange("preview")}
+        className={`px-2.5 py-1 rounded-[5px] flex items-center gap-1 transition-colors ${
+          value === "preview"
+            ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100"
+            : "text-zinc-500 dark:text-zinc-400"
+        }`}
+      >
+        <Eye className="size-3" /> Preview
+      </button>
+      <button
+        onClick={() => onChange("json")}
+        className={`px-2.5 py-1 rounded-[5px] flex items-center gap-1 transition-colors ${
+          value === "json"
+            ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100"
+            : "text-zinc-500 dark:text-zinc-400"
+        }`}
+      >
+        <Code2 className="size-3" /> JSON
+      </button>
+    </div>
+  );
+}
 
 function SaveStatusPill({ status }: { status: ReturnType<typeof useResumeStore.getState>["status"] }) {
-  if (status === "loading") return <Pill icon={<Loader2 className="size-3 animate-spin" />}>Loading…</Pill>;
-  if (status === "saving") return <Pill icon={<Loader2 className="size-3 animate-spin" />}>Saving…</Pill>;
-  if (status === "saved") return <Pill icon={<Check className="size-3 text-emerald-500" />}>Saved</Pill>;
-  if (status === "error") return <Pill icon={<span className="size-2 rounded-full bg-rose-500" />}>Error</Pill>;
+  if (status === "loading") {
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400"><Loader2 className="size-3 animate-spin" /> Loading…</span>;
+  }
+  if (status === "saving") {
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400"><Loader2 className="size-3 animate-spin" /> Saving…</span>;
+  }
+  if (status === "saved") {
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-[11px] text-emerald-700 dark:text-emerald-400"><Check className="size-3" /> Saved</span>;
+  }
+  if (status === "error") {
+    return <Badge variant="destructive" className="text-[10px]">Save error</Badge>;
+  }
   return null;
 }
-function Pill({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+
+// ─── Eyebrow / accents ─────────────────────────────────────────────────────
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-[11px] text-muted-foreground">
-      {icon}
+    <div className="text-[11px] uppercase tracking-[0.18em] font-medium text-zinc-500 dark:text-zinc-500">
       {children}
-    </span>
+    </div>
+  );
+}
+
+// ─── Paper frame around the resume preview ────────────────────────────────
+
+function PaperFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative origin-top">
+      {/* Subtle paper shadow + edge */}
+      <div
+        className="bg-white shadow-[0_2px_12px_rgba(0,0,0,0.08),0_24px_48px_-12px_rgba(0,0,0,0.18)] ring-1 ring-zinc-200/60 rounded-sm"
+        style={{ transform: "scale(0.9)", transformOrigin: "top center" }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── JSON view ─────────────────────────────────────────────────────────────
+
+function JsonView({ resume }: { resume: ResumeJSON }) {
+  return (
+    <pre
+      className="bg-zinc-950 text-zinc-100 rounded-lg p-5 text-[12px] leading-relaxed overflow-x-auto max-w-3xl w-full ring-1 ring-zinc-200/60"
+      style={{ fontFamily: '"JetBrains Mono", ui-monospace, Menlo, monospace' }}
+    >
+      {JSON.stringify(resume, null, 2)}
+    </pre>
+  );
+}
+
+// ─── Section status dot ────────────────────────────────────────────────────
+
+function SectionStatusDot({ id, resume }: { id: string; resume: ResumeJSON }) {
+  const filled = isSectionFilled(id, resume);
+  return (
+    <span
+      className={`inline-block size-2 rounded-full shrink-0 ml-3 ${
+        filled ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"
+      }`}
+      title={filled ? "Has content" : "Empty"}
+    />
+  );
+}
+
+function isSectionFilled(id: string, r: ResumeJSON): boolean {
+  switch (id) {
+    case "header":         return Boolean(r.header.name?.trim() || r.header.email?.trim());
+    case "summary":        return Boolean(r.summary?.trim());
+    case "experience":     return r.experience.some((e) => e.role?.trim() || e.company_or_client?.trim());
+    case "education":      return r.education.some((e) => e.institution?.trim() || e.degree?.trim());
+    case "skills":         return Object.values(r.skills).some((v) => v.length > 0);
+    case "projects":       return r.projects.length > 0;
+    case "certifications": return r.certifications.length > 0;
+    default:               return false;
+  }
+}
+
+// ─── Empty state hint ──────────────────────────────────────────────────────
+
+function FirstStepHint({ resume }: { resume: ResumeJSON }) {
+  const empty = !resume.header.name?.trim() && !resume.summary?.trim() &&
+    !resume.experience.some((e) => e.role || e.company_or_client) &&
+    !resume.education.some((e) => e.institution || e.degree);
+  if (!empty) return null;
+  return (
+    <div className="mt-6 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg bg-zinc-50/50 dark:bg-zinc-900/40 px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">
+      <div className="flex items-start gap-2">
+        <EyeOff className="size-4 mt-0.5 shrink-0" />
+        <div>
+          <span className="font-medium text-zinc-800 dark:text-zinc-200">Fresh start — fill in Header first.</span>{" "}
+          <span>Click the <strong>Header</strong> section above and add your name + email. The preview on the right updates as you type.</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
 // ─── DB row mapping ────────────────────────────────────────────────────────
-// The `resumes` table stores per-section JSONB columns rather than a single
-// blob. Map between that shape and ResumeJSON here.
+// The `resumes` table stores per-section JSONB columns. Map between that
+// shape and ResumeJSON. The migration 20260512230000 adds proper volunteer/
+// awards/custom_sections columns; until applied, those fields are stashed
+// inside `personal_info._v2_extras`.
 
 type ResumeRow = Record<string, unknown> & { id?: string };
 
@@ -283,9 +483,6 @@ function rowToResumeJSON(row: ResumeRow): ResumeJSON {
 }
 
 function resumeJSONToRow(r: ResumeJSON, title: string, userId: string) {
-  // The resumes table doesn't (yet) have columns for volunteer/awards/custom
-  // sections — stash them inside personal_info under `_v2_extras` so they
-  // survive a round-trip without a schema change.
   const v2extras = {
     volunteer: r.volunteer ?? null,
     awards: r.awards ?? null,
@@ -317,6 +514,3 @@ function resumeJSONToRow(r: ResumeJSON, title: string, userId: string) {
 function arr<T>(v: unknown): T[] | null {
   return Array.isArray(v) ? (v as T[]) : null;
 }
-
-// Separator export kept to satisfy potential future tab dividers without touching imports.
-export const _Separator = Separator;

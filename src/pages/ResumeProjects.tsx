@@ -35,7 +35,6 @@ import {
   CheckCircle, Upload, FolderOpen,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
-import { useFlag } from "@/lib/feature-flags";
 
 type ResumeSource = "scratch" | "upload" | "existing";
 
@@ -74,7 +73,6 @@ function mapRowToResumeJSON(r: ResumeRow): ResumeJSON {
 export default function ResumeProjects() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const v2BuilderOn = useFlag("RESUME_BUILDER_V2");
   const [resumes, setResumes] = useState<ResumeRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -352,17 +350,15 @@ export default function ResumeProjects() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {v2BuilderOn && (
-            <Button
-              variant="outline"
-              onClick={() => navigate("/resume-builder/v2")}
-              className="gap-2"
-              title="Try the rebuilt v2 editor with canvas + AI tailor + unified ATS scoring"
-            >
-              <Sparkles className="h-4 w-4 text-primary" />
-              Try v2 Builder
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            onClick={() => navigate("/resume-builder/v2")}
+            className="gap-2"
+            title="Open the rebuilt editor — LaTeX-quality typography, live preview, AI tailor"
+          >
+            <Sparkles className="h-4 w-4 text-primary" />
+            New editor
+          </Button>
           <Button onClick={() => setCreateOpen(true)} className="gap-2">
             <Plus className="h-4 w-4" />
             Create New Resume
