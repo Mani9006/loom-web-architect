@@ -123,20 +123,23 @@ async function upsertUser(u) {
       .then(({ error }) => { if (error) console.warn(`    user_roles upsert: ${error.message}`); });
   }
 
-  // user_access_controls
-  await sb
-    .from("user_access_controls")
-    .upsert(
-      {
-        user_id: userId,
-        account_status: u.state,
-        subscription_plan: u.plan,
-        purchase_state: u.plan === "free" ? "free" : "manual",
-        ai_features_enabled: true,
-      },
-      { onConflict: "user_id" },
-    )
-    .then(({ error }) => { if (error) console.warn(`    user_access_controls upsert: ${error.message}`); });
+  // user_access_controls — only insert for paid plans. The free default is
+  // "no row = free + active" (see enforceAccountActive in functions/_shared/guards.ts).
+  if (u.plan !== "free") {
+    await sb
+      .from("user_access_controls")
+      .upsert(
+        {
+          user_id: userId,
+          account_status: u.state,
+          subscription_plan: u.plan,
+          purchase_state: "manual",
+          ai_features_enabled: true,
+        },
+        { onConflict: "user_id" },
+      )
+      .then(({ error }) => { if (error) console.warn(`    user_access_controls upsert: ${error.message}`); });
+  }
 }
 
 (async () => {
