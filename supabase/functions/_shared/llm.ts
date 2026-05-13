@@ -206,8 +206,13 @@ export async function callLlmWithFallback<T = string>(opts: LlmCallOptions): Pro
     return await callLlm<T>({ ...opts, provider: primary });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // Fall back on: transient infra failures, AND on "no credit" billing
+    // errors (4xx with billing-related messages) — Anthropic returns 400 with
+    // "credit balance is too low" when out of quota, which we want to route
+    // through to the other provider rather than fail the user request.
     const isTransient = /\b(5\d\d|429|timeout|overloaded|rate.?limit)\b/i.test(msg);
-    if (!isTransient) throw e;
+    const isBillingDry = /(credit\s+balance|insufficient_quota|billing|out_of_credits|payment_required|402)/i.test(msg);
+    if (!isTransient && !isBillingDry) throw e;
     return await callLlm<T>({ ...opts, provider: secondary });
   }
 }

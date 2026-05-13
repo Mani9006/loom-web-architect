@@ -409,20 +409,16 @@ export default function JobSearchPage() {
       // Calculate the next page number for the API
       const nextPage = Math.ceil(jobs.length / JOBS_PER_PAGE) + 1;
 
-      // If DB still has more results, request next page from DB
-      // Otherwise, force a web search via Perplexity
-      const shouldForceWebSearch = !hasMoreDb;
-
       const payload: Record<string, any> = {
         query,
         page: nextPage,
       };
 
-      // Only force web search when DB is fully exhausted
-      if (shouldForceWebSearch) {
-        payload.force_web_search = true;
-        payload.skip_cache = true;
-      }
+      // Never force web search from the auto-prefetch path. force_web_search +
+      // skip_cache together kicks a >30s Perplexity call that timed out and
+      // made the UI flash "Search took too long" / "No jobs found" even when
+      // the DB had jobs. Let the backend decide whether to widen on its own
+      // signals.
 
       if (userId) payload.user_id = userId;
       if (location.trim()) payload.location = location.trim();
@@ -469,13 +465,17 @@ export default function JobSearchPage() {
     }
   }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText, jobs, hasMoreDb]);
 
-  // Auto pre-fetch: as soon as page 1 loads, start fetching page 2 data silently
-  // When user navigates to page N, immediately start fetching page N+1
+  // Auto pre-fetch: only run after the user actively pages forward beyond
+  // page 1. The previous logic fired this effect on every mount whenever
+  // hasSearched was persisted from a prior session — which kicked an
+  // expensive web-search call on every page load and frequently timed out.
+  // Tracking a ref instead of an unconditional effect prevents the
+  // "mount-time runaway prefetch" footgun.
   useEffect(() => {
     if (!hasSearched || loading || jobs.length === 0) return;
+    if (currentPage < 2) return; // never prefetch from page 1 — too risky
     const totalLoaded = jobs.length;
     const jobsNeededForNextPage = (currentPage + 1) * JOBS_PER_PAGE;
-    // If we don't have enough jobs for the NEXT page, prefetch now
     if (totalLoaded < jobsNeededForNextPage && !prefetchRef.current && !nextPageFetched) {
       fetchMoreJobs();
     }
@@ -906,7 +906,7 @@ export default function JobSearchPage() {
                 </div>
                 <Progress value={searchProgress} className="h-2" />
                 <p className="text-xs text-muted-foreground text-center">
-                  Searching across LinkedIn, Indeed, Glassdoor & more
+                  Searching company career pages — Greenhouse, Ashby, Lever, Workday & more
                 </p>
               </CardContent>
             </Card>
@@ -929,7 +929,7 @@ export default function JobSearchPage() {
               <Globe className="w-16 h-16 mx-auto text-primary/20 mb-4" />
               <h3 className="text-lg font-medium">Find your next opportunity</h3>
               <p className="text-muted-foreground mt-1">
-                Search across LinkedIn, Indeed, Glassdoor, and company career pages
+                Real openings straight from company career pages — no aggregator spam
               </p>
             </div>
             <div className="mt-4">
