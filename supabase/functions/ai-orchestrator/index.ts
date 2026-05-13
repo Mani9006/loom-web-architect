@@ -162,15 +162,80 @@ What to avoid`,
   resume_parse: {
     name: "Resume Parser",
     description: "Extracts structured resume data accurately",
-    systemPrompt: `You are a resume parsing specialist. Your goal is to extract structured information accurately and completely.
+    systemPrompt: `You are a resume parsing engine. Extract EVERY piece of information from the candidate's resume into the exact JSON schema below.
 
-Focus areas:
-- Identify roles, companies, dates, and locations correctly
-- Preserve bullet-point details without hallucination
-- Normalize section structure for downstream processing
-- Flag ambiguities clearly when source text is unclear
+ABSOLUTE RULES:
+1. Return ONE JSON object. No prose, no markdown fences, no explanation.
+2. Extract EVERY bullet point under every job — never skip, never summarize. If a role has 12 bullets in the source, return 12 bullets.
+3. Extract EVERY experience entry, education entry, certification, project, skill.
+4. Use empty string "" for missing scalar fields. Use empty array [] for missing list fields.
+5. Never invent companies, dates, schools, certifications, or metrics that aren't in the source. If you can't read a date, use "".
+6. Preserve the original wording of bullets verbatim. Do NOT rewrite, shorten, or rephrase.
 
-Keep output deterministic, precise, and schema-friendly.`,
+SCHEMA (every key required, in this order):
+
+{
+  "header": {
+    "name": "string",
+    "title": "string (current/desired role)",
+    "location": "string (City, ST)",
+    "email": "string",
+    "phone": "string",
+    "linkedin": "string (URL or handle)"
+  },
+  "summary": "string (the candidate's summary/objective/about section, verbatim — empty string if none)",
+  "experience": [
+    {
+      "role": "string (job title)",
+      "company_or_client": "string (employer or client)",
+      "start_date": "string (e.g. 'Jan 2023' or '2023')",
+      "end_date": "string (e.g. 'Present' or 'Aug 2024')",
+      "location": "string (City, ST or 'Remote')",
+      "bullets": ["string", "string", ...]
+    }
+  ],
+  "education": [
+    {
+      "degree": "string (e.g. 'B.S.', 'M.S.', 'PhD')",
+      "field": "string (e.g. 'Computer Science')",
+      "institution": "string (school name)",
+      "gpa": "string (or '')",
+      "graduation_date": "string (e.g. 'May 2024')",
+      "location": "string"
+    }
+  ],
+  "certifications": [
+    {
+      "name": "string (certification name)",
+      "issuer": "string (issuing organization)",
+      "date": "string"
+    }
+  ],
+  "skills": {
+    "<category_key>": ["skill", "skill", ...]
+  },
+  "projects": [
+    {
+      "title": "string",
+      "organization": "string (or '')",
+      "date": "string",
+      "bullets": ["string", ...]
+    }
+  ]
+}
+
+SKILL CATEGORIES — use ONLY these keys (lowercase, snake_case). Merge variants into the canonical key. Do NOT create new categories:
+  "generative_ai", "nlp", "machine_learning", "deep_learning",
+  "programming_languages", "data_engineering_etl", "visualization",
+  "cloud_mlops", "devops", "databases", "frameworks",
+  "collaboration_tools", "big_data", "soft_skills", "tools",
+  "testing", "web_development", "mobile_development", "data_science",
+  "statistical_modeling", "project_management", "operating_systems",
+  "networking", "cybersecurity"
+
+If a skill doesn't fit any category, put it in "tools".
+
+OUTPUT: Just the JSON object. Nothing else.`,
   },
   resume_enhance: {
     name: "Resume Enhancement Coach",
@@ -371,11 +436,15 @@ function getMaxTokensForAgent(agentType: string): number {
   const defaultMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_DEFAULT", 1200);
   const complexMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_COMPLEX", 1800);
   // Resume parse needs to emit the full structured JSON (header + experience +
-  // education + skills + projects + certifications). That blob alone is
-  // routinely 2.5–4k tokens. The old 1200 cap truncated responses mid-JSON
-  // which surfaced to users as "Could not extract structured data from the
-  // AI response."
-  const parseMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_PARSE", 4000);
+  // education + skills + projects + certifications). For a 10-year senior
+  // resume with detailed bullets, that's routinely 5-8k tokens. 4000 was
+  // truncating long resumes mid-experience-array (the "not parsing all the
+  // content" symptom). gpt-4o supports up to 16k output — 8000 is a safe
+  // headroom default with a hard ceiling of 16k.
+  const parseMax = Math.min(
+    parseIntEnv("ORCHESTRATOR_MAX_TOKENS_PARSE", 8000),
+    16_000,
+  );
   switch (agentType) {
     case "resume_parse":
       return parseMax;
@@ -419,6 +488,9 @@ Keep responses clear, well-structured, and actionable. Use markdown formatting f
 
   // Force JSON mode for parse-style tasks so the model can't return prose.
   // (response_format works alongside streaming on gpt-4o.)
+  // Lower temperature on parse to 0 — extraction is a deterministic task,
+  // any creativity at temperature 1.0 (OpenAI default) leads to invented
+  // bullets/skipped entries.
   const requestBody: Record<string, unknown> = {
     model: optimalModel,
     max_tokens: maxTokens,
@@ -430,6 +502,7 @@ Keep responses clear, well-structured, and actionable. Use markdown formatting f
   };
   if (normalizedAgentType === "resume_parse") {
     requestBody.response_format = { type: "json_object" };
+    requestBody.temperature = 0;
   }
 
   const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
