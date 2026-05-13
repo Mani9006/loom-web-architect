@@ -639,8 +639,9 @@ export interface KeywordMatch {
   context?: string; // Where it was found
 }
 
-export function matchJobDescriptionKeywords(data: ResumeJSON, jobDescription: string): KeywordMatch[] {
-  if (!jobDescription.trim()) return [];
+export function matchJobDescriptionKeywords(input: ResumeJSON, jobDescription: string): KeywordMatch[] {
+  if (!jobDescription || !jobDescription.trim()) return [];
+  const data = sanitizeResume(input);
 
   // Extract meaningful keywords from job description
   const stopWords = new Set([
@@ -712,7 +713,70 @@ export function matchJobDescriptionKeywords(data: ResumeJSON, jobDescription: st
 
 // ─── Main Scorer ────────────────────────────────────────────────────────────
 
-export function calculateATSScore(data: ResumeJSON, jobDescription?: string): ATSScore {
+// ─── Input sanitizer ────────────────────────────────────────────────────────
+// Resumes stored before the v2 schema may have undefined string fields.
+// Every scorer below assumes the schema is well-formed and calls .trim()
+// directly. Sanitize once at the entrypoint instead of guarding every call.
+function sanitizeResume(d: ResumeJSON): ResumeJSON {
+  const s = (v: unknown) => (typeof v === "string" ? v : "");
+  const sArr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.map((x) => s(x)) : [];
+  return {
+    header: {
+      name: s(d?.header?.name),
+      title: s(d?.header?.title),
+      location: s(d?.header?.location),
+      email: s(d?.header?.email),
+      phone: s(d?.header?.phone),
+      linkedin: s(d?.header?.linkedin),
+    },
+    summary: s(d?.summary),
+    experience: (d?.experience ?? []).map((e) => ({
+      id: s(e?.id),
+      role: s(e?.role),
+      company_or_client: s(e?.company_or_client),
+      start_date: s(e?.start_date),
+      end_date: s(e?.end_date),
+      location: s(e?.location),
+      bullets: sArr(e?.bullets),
+    })),
+    education: (d?.education ?? []).map((e) => ({
+      id: s(e?.id),
+      degree: s(e?.degree),
+      field: s(e?.field),
+      institution: s(e?.institution),
+      gpa: s(e?.gpa),
+      graduation_date: s(e?.graduation_date),
+      location: s(e?.location),
+    })),
+    certifications: (d?.certifications ?? []).map((c) => ({
+      id: s(c?.id),
+      name: s(c?.name),
+      issuer: s(c?.issuer),
+      date: s(c?.date),
+      url: c?.url,
+    })),
+    skills: Object.fromEntries(
+      Object.entries(d?.skills ?? {}).map(([k, v]) => [k, sArr(v)]),
+    ),
+    projects: (d?.projects ?? []).map((p) => ({
+      id: s(p?.id),
+      title: s(p?.title),
+      organization: s(p?.organization),
+      date: s(p?.date),
+      bullets: sArr(p?.bullets),
+      url: p?.url,
+    })),
+    languages: d?.languages,
+    volunteer: d?.volunteer,
+    awards: d?.awards,
+    customSections: d?.customSections,
+    section_order: d?.section_order,
+  };
+}
+
+export function calculateATSScore(input: ResumeJSON, jobDescription?: string): ATSScore {
+  const data = sanitizeResume(input);
   const sections = [
     scoreHeader(data),          // 10
     scoreSummary(data),         // 10
