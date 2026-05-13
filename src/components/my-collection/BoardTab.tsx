@@ -177,7 +177,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         .insert({
           user_id: userData?.user?.id,
           session_id: sessionId,
-          source_job_id: null,
+          source_job_id: job.id,
           name: `${job.company} — ${job.job_title}`,
           cv_md: result,
         })

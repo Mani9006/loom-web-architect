@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import DiscoverTab from "@/components/my-collection/DiscoverTab";
@@ -28,11 +29,14 @@ export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // URL ?tab= takes priority over sessionStorage so that deep-links from
+    // BoardTab ("View tailored resume") land on the correct tab.
+    const urlTab = searchParams.get("tab");
+    if (urlTab) return urlTab;
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -41,10 +45,22 @@ export default function SessionPage() {
       return "discover";
     }
   });
+  // Resume to scroll-to / highlight in ResumesTab when coming from BoardTab.
+  const [highlightResumeId] = useState<string | null>(() => searchParams.get("resume"));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+
+  // Clean URL query params after reading them into local state so that the
+  // browser history entry doesn't retain ?tab=&resume= noise.
+  useEffect(() => {
+    if (searchParams.get("tab") || searchParams.get("resume")) {
+      navigate(window.location.pathname, { replace: true });
+    }
+  // Only on first mount — we already read the params in useState initialisers.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     try {
@@ -57,7 +73,6 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -67,31 +82,25 @@ export default function SessionPage() {
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
       if (error) {
+        // Show a toast on transient failures (network blip, token refresh)
+        // but don't navigate away — the session may still exist.
         // eslint-disable-next-line no-console
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          toast({
-            title: "Couldn't load session",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
+        console.error("[SessionPage] load failed:", error.message);
+        toast({
+          title: "Couldn't load session",
+          description: error.message,
+          variant: "destructive",
+        });
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        // Session genuinely does not exist — bounce back to the list.
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
         return;
       }
-      hadInitialLoad = true;
       setSession(data);
       setLoading(false);
     })();
@@ -100,8 +109,7 @@ export default function SessionPage() {
     };
     // Intentionally only re-run when sessionId changes. navigate/toast are
     // unstable references that, if included, would cause this effect to
-    // re-fire on every render — which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // re-fire on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
@@ -127,7 +135,14 @@ export default function SessionPage() {
       </div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+            {session.status === "archived" && (
+              <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
+                Archived
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-1">
             Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
           </p>
@@ -163,7 +178,7 @@ export default function SessionPage() {
           <DiscoverTab sessionId={session.id} session={session} />
         </TabsContent>
         <TabsContent value="resumes" className="mt-6">
-          <ResumesTab sessionId={session.id} />
+          <ResumesTab sessionId={session.id} highlightResumeId={highlightResumeId} />
         </TabsContent>
         <TabsContent value="board" className="mt-6">
           <BoardTab sessionId={session.id} key={boardReloadKey} />

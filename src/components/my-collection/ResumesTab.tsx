@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,13 +36,27 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+interface SourceJob {
+  id: string;
+  job_title: string;
+  company: string;
+}
+
+export default function ResumesTab({
+  sessionId,
+  highlightResumeId,
+}: {
+  sessionId: string;
+  highlightResumeId?: string | null;
+}) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
+  const [sourceJobs, setSourceJobs] = useState<Record<string, SourceJob>>({});
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const highlightRef = useRef<HTMLDivElement | null>(null);
 
   async function load() {
     setLoading(true);
@@ -53,15 +67,37 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Couldn't load resumes", description: error.message, variant: "destructive" });
-    } else {
-      setResumes((data as TailoredResume[]) ?? []);
+      setLoading(false);
+      return;
     }
+    const rows: TailoredResume[] = (data as TailoredResume[]) ?? [];
+    setResumes(rows);
     setLoading(false);
+
+    // Load source-job labels so each card shows "Tailored for: Title @ Company".
+    const sourceIds = [...new Set(rows.map((r) => r.source_job_id).filter(Boolean))] as string[];
+    if (sourceIds.length > 0) {
+      const { data: jobs } = await (supabase as any)
+        .from("mc_tracked_jobs")
+        .select("id,job_title,company")
+        .in("id", sourceIds);
+      const map: Record<string, SourceJob> = {};
+      for (const j of jobs ?? []) map[j.id] = j;
+      setSourceJobs(map);
+    }
   }
 
   useEffect(() => {
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  // Scroll highlighted card into view after data loads.
+  useEffect(() => {
+    if (loading || !highlightResumeId) return;
+    const el = highlightRef.current;
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [loading, highlightResumeId]);
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
@@ -113,8 +149,15 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   return (
     <>
       <div className="space-y-2">
-        {resumes.map((r) => (
-          <Card key={r.id} className="p-3 flex items-center gap-3">
+        {resumes.map((r) => {
+          const isHighlighted = r.id === highlightResumeId;
+          const srcJob = r.source_job_id ? sourceJobs[r.source_job_id] : null;
+          return (
+          <Card
+            key={r.id}
+            ref={isHighlighted ? (el) => { highlightRef.current = el; } : undefined}
+            className={`p-3 flex items-center gap-3 transition-shadow ${isHighlighted ? "ring-2 ring-primary shadow-md" : ""}`}
+          >
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{r.name}</div>
@@ -124,6 +167,11 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                   <span className="ml-2">· ATS {Math.round(r.ats_score)}/100</span>
                 )}
               </div>
+              {srcJob && (
+                <div className="text-[10px] text-muted-foreground/70 mt-0.5 truncate">
+                  Tailored for: {srcJob.job_title} @ {srcJob.company}
+                </div>
+              )}
             </div>
             <Button size="sm" variant="outline" onClick={() => setEditing(r)}>
               <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
@@ -158,7 +206,8 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
               </DropdownMenuContent>
             </DropdownMenu>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       {/* Rename dialog */}
