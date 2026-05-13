@@ -30,8 +30,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [rolesReady, setRolesReady] = useState(false);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const initializedRef = useRef(false);
+  const fetchedRolesForUserRef = useRef<string | null>(null);
 
   const fetchRoles = useCallback(async (userId: string) => {
+    fetchedRolesForUserRef.current = userId;
     try {
       const { data } = await supabase
         .from("user_roles")
@@ -75,16 +77,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setRoles([]);
           setRolesReady(true);
+          fetchedRolesForUserRef.current = null;
         }
         setAuthReady(true);
-        // Only refetch roles on actual sign-in events.
-        // TOKEN_REFRESHED, USER_UPDATED, INITIAL_SESSION fire on every tab/window
-        // focus and don't change role membership — refetching there causes
-        // `loading` to briefly flip to true, which the ProtectedRoute uses to
-        // swap the entire app shell to a spinner, remounting children and
-        // making the Board/Discover tabs reload (the "animation" flicker
-        // users see when switching apps).
-        if (event === "SIGNED_IN" && newSession?.user) {
+        // Only refetch roles when this is genuinely a *new* user signing in.
+        // Supabase v2 sometimes re-fires SIGNED_IN on session re-validation
+        // (tab visibility change, focus, manual getSession call) with the
+        // SAME user — refetching there flips `rolesReady` to false, which
+        // flips `loading` to true, which makes ProtectedRoute swap to a
+        // spinner. That spinner unmounts every page below it, blowing away
+        // dialog state, scroll position, in-progress forms, etc. — the
+        // "pages disappear when I switch apps" symptom.
+        if (event === "SIGNED_IN" && newSession?.user &&
+            fetchedRolesForUserRef.current !== newSession.user.id) {
           setRolesReady(false);
           void fetchRoles(newSession.user.id);
         }
@@ -98,7 +103,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
         setAuthReady(true);
-        if (initialSession?.user) {
+        if (initialSession?.user &&
+            fetchedRolesForUserRef.current !== initialSession.user.id) {
           void fetchRoles(initialSession.user.id);
         } else {
           setRolesReady(true);

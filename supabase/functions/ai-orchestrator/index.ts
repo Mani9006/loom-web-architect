@@ -370,7 +370,15 @@ function getOptimalModelForAgent(agentType: string): string {
 function getMaxTokensForAgent(agentType: string): number {
   const defaultMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_DEFAULT", 1200);
   const complexMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_COMPLEX", 1800);
+  // Resume parse needs to emit the full structured JSON (header + experience +
+  // education + skills + projects + certifications). That blob alone is
+  // routinely 2.5–4k tokens. The old 1200 cap truncated responses mid-JSON
+  // which surfaced to users as "Could not extract structured data from the
+  // AI response."
+  const parseMax = parseIntEnv("ORCHESTRATOR_MAX_TOKENS_PARSE", 4000);
   switch (agentType) {
+    case "resume_parse":
+      return parseMax;
     case "resume":
     case "cover_letter":
     case "ats":
@@ -409,21 +417,28 @@ ${memoryContext ? `## User Context (from previous interactions)\n${memoryContext
 
 Keep responses clear, well-structured, and actionable. Use markdown formatting for readability.`;
 
+  // Force JSON mode for parse-style tasks so the model can't return prose.
+  // (response_format works alongside streaming on gpt-4o.)
+  const requestBody: Record<string, unknown> = {
+    model: optimalModel,
+    max_tokens: maxTokens,
+    messages: [
+      { role: "system", content: systemPrompt },
+      ...messages,
+    ],
+    stream: true,
+  };
+  if (normalizedAgentType === "resume_parse") {
+    requestBody.response_format = { type: "json_object" };
+  }
+
   const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: optimalModel,
-      max_tokens: maxTokens,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messages,
-      ],
-      stream: true,
-    }),
+    body: JSON.stringify(requestBody),
   }, timeoutMs);
 
   return response;
