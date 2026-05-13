@@ -106,11 +106,13 @@ const App = () => {
                     <Route path="/job-search" element={<JobSearchPage />} />
                     <Route path="/applypass" element={<Navigate to="/auto-apply" replace />} />
                     <Route path="/resume-builder" element={<ResumeProjects />} />
-                    {/* v2 routes are always available — flag was hiding them in prod.
-                        User can compare v1 (current `:resumeId`) with the redesign. */}
+                    {/* v2 is now the default editor everywhere. v1 still
+                        accessible at /resume-builder/legacy/:id as a fallback
+                        in case anything's missing during the cutover. */}
                     <Route path="/resume-builder/v2" element={<ResumeBuilderV2 />} />
                     <Route path="/resume-builder/v2/:resumeId" element={<ResumeBuilderV2 />} />
-                    <Route path="/resume-builder/:resumeId" element={<ResumeBuilder />} />
+                    <Route path="/resume-builder/legacy/:resumeId" element={<ResumeBuilder />} />
+                    <Route path="/resume-builder/:resumeId" element={<ResumeBuilderV2 />} />
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
                     <Route path="/job-tracker" element={<JobTracker />} />
                     <Route path="/matches" element={<MatchesPage />} />
