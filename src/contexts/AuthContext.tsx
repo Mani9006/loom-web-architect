@@ -49,8 +49,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Set up auth listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
+        // Deduplicate state updates. supabase fires TOKEN_REFRESHED on every
+        // tab visibility change with a freshly-allocated session object —
+        // if we naively setSession()/setUser() each time, downstream consumers
+        // that depend on session/user identity (useEffect deps, react-query
+        // keys) see "changes" and re-run, which is exactly what was causing
+        // pages to "reload to wherever they stopped" on tab switch. Only
+        // commit a state change when something actually differs.
+        setSession((prev) => {
+          if (prev?.access_token === newSession?.access_token &&
+              prev?.user?.id === newSession?.user?.id) {
+            return prev;
+          }
+          return newSession;
+        });
+        setUser((prev) => {
+          const next = newSession?.user ?? null;
+          if (prev?.id === next?.id && prev?.email === next?.email) {
+            return prev;
+          }
+          return next;
+        });
         if (event === "SIGNED_OUT") {
           setSession(null);
           setUser(null);

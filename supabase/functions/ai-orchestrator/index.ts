@@ -392,9 +392,17 @@ async function executeAgent(
   const normalizedAgentType = normalizeIntent(agentType);
   const agent = AGENTS[normalizedAgentType as keyof typeof AGENTS] || AGENTS.general;
   const optimalModel = getOptimalModelForAgent(normalizedAgentType);
-  
-  console.log(`[Agent] Executing ${normalizedAgentType} with OpenAI model: ${optimalModel}`);
-  
+
+  // Long-running tasks (resume parsing, complex writing) frequently take 40-70s
+  // with GPT-4o. The old 35s budget killed valid requests mid-flight and
+  // surfaced as "Import failed" toasts in the resume upload flow.
+  const TIMEOUT_LONG = 90_000;
+  const TIMEOUT_SHORT = 45_000;
+  const timeoutMs = ["resume_parse", "resume", "cover_letter", "ats", "resume_enhance"]
+    .includes(normalizedAgentType) ? TIMEOUT_LONG : TIMEOUT_SHORT;
+
+  console.log(`[Agent] Executing ${normalizedAgentType} with OpenAI model: ${optimalModel} (timeout=${timeoutMs}ms)`);
+
   const systemPrompt = `${agent.systemPrompt}
 
 ${memoryContext ? `## User Context (from previous interactions)\n${memoryContext}\n\nUse this context to provide personalized responses.` : ""}
@@ -416,7 +424,7 @@ Keep responses clear, well-structured, and actionable. Use markdown formatting f
       ],
       stream: true,
     }),
-  }, 35000);
+  }, timeoutMs);
 
   return response;
 }

@@ -57,7 +57,19 @@ const MyCollectionPage = lazy(() => import("@/pages/MyCollection/MyCollectionPag
 const SessionPage = lazy(() => import("@/pages/MyCollection/SessionPage"));
 const FeatureFlagsAdmin = lazy(() => import("./pages/FeatureFlagsAdmin"));
 
-const queryClient = new QueryClient();
+// Disable refetch-on-window-focus globally. Users were seeing pages flicker
+// to loading states every time they switched away and came back; the data
+// hadn't gone stale, the cache was just being invalidated by the default
+// behavior. Pages that genuinely need fresh-on-focus can opt in per-query.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 60_000,
+    },
+  },
+});
 
 const SuspenseFallback = () => (
   <LoadingSpinner fullScreen message="Loading..." />
