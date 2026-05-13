@@ -115,14 +115,29 @@ function ExperienceCard({
   onChange: (e: ExperienceEntry) => void;
   onRemove: () => void;
 }) {
-  const upd = (patch: Partial<ExperienceEntry>) => onChange({ ...entry, ...patch });
+  // Existing DB rows may have malformed entries (e.g. bullets: null,
+  // or string fields as null). Coerce defensively before any operation.
+  const safe = (v: unknown) => (typeof v === "string" ? v : "");
+  const bulletsSafe = Array.isArray(entry.bullets)
+    ? entry.bullets.map((b) => safe(b))
+    : [];
+  const e = {
+    ...entry,
+    role: safe(entry.role),
+    company_or_client: safe(entry.company_or_client),
+    start_date: safe(entry.start_date),
+    end_date: safe(entry.end_date),
+    location: safe(entry.location),
+    bullets: bulletsSafe,
+  };
+  const upd = (patch: Partial<ExperienceEntry>) => onChange({ ...e, ...patch });
   const updBullet = (i: number, v: string) => {
-    const bullets = entry.bullets.slice();
+    const bullets = e.bullets.slice();
     bullets[i] = v;
     upd({ bullets });
   };
-  const addBullet = () => upd({ bullets: [...entry.bullets, ""] });
-  const rmBullet = (i: number) => upd({ bullets: entry.bullets.filter((_, j) => j !== i) });
+  const addBullet = () => upd({ bullets: [...e.bullets, ""] });
+  const rmBullet = (i: number) => upd({ bullets: e.bullets.filter((_, j) => j !== i) });
 
   return (
     <div className="border rounded-md p-3 space-y-3">
@@ -130,19 +145,19 @@ function ExperienceCard({
         <GripVertical className="size-4 text-muted-foreground mt-2 shrink-0" />
         <div className="flex-1 grid grid-cols-2 gap-3">
           <Field label="Role">
-            <Input value={entry.role} onChange={(e) => upd({ role: e.target.value })} />
+            <Input value={e.role} onChange={(ev) => upd({ role: ev.target.value })} />
           </Field>
           <Field label="Company">
-            <Input value={entry.company_or_client} onChange={(e) => upd({ company_or_client: e.target.value })} />
+            <Input value={e.company_or_client} onChange={(ev) => upd({ company_or_client: ev.target.value })} />
           </Field>
           <Field label="Start">
-            <Input value={entry.start_date} onChange={(e) => upd({ start_date: e.target.value })} placeholder="Jan 2023" />
+            <Input value={e.start_date} onChange={(ev) => upd({ start_date: ev.target.value })} placeholder="Jan 2023" />
           </Field>
           <Field label="End">
-            <Input value={entry.end_date} onChange={(e) => upd({ end_date: e.target.value })} placeholder="Present" />
+            <Input value={e.end_date} onChange={(ev) => upd({ end_date: ev.target.value })} placeholder="Present" />
           </Field>
           <Field label="Location" className="col-span-2">
-            <Input value={entry.location} onChange={(e) => upd({ location: e.target.value })} />
+            <Input value={e.location} onChange={(ev) => upd({ location: ev.target.value })} />
           </Field>
         </div>
         <Button variant="ghost" size="icon" onClick={onRemove}>
@@ -152,7 +167,7 @@ function ExperienceCard({
 
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">Bullets (one impact per line)</Label>
-        {entry.bullets.map((b, i) => (
+        {e.bullets.map((b, i) => (
           <div key={i} className="flex gap-2">
             <Textarea
               rows={2}

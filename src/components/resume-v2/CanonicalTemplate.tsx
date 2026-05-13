@@ -44,9 +44,13 @@ const PAGE_STYLES: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-const fmtRange = (start: string, end: string) => {
-  const s = (start ?? "").trim();
-  const e = (end ?? "").trim();
+const safeStr = (v: unknown): string => (typeof v === "string" ? v : "");
+const safeStrArr = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+const fmtRange = (start: unknown, end: unknown) => {
+  const s = safeStr(start).trim();
+  const e = safeStr(end).trim();
   if (s && e) return `${s} – ${e}`;
   return e || s;
 };
@@ -66,31 +70,31 @@ export const CanonicalTemplate = forwardRef<HTMLDivElement, Props>(function Cano
         if (skip(sectionId)) return null;
         switch (sectionId) {
           case "summary":
-            return data.summary?.trim() ? <Summary key="s" text={data.summary} /> : null;
+            return safeStr(data.summary).trim() ? <Summary key="s" text={safeStr(data.summary)} /> : null;
           case "experience":
-            return data.experience.some((e) => e.role || e.company_or_client)
-              ? <Experience key="x" items={data.experience} />
+            return (data.experience ?? []).some((e) => safeStr(e?.role) || safeStr(e?.company_or_client))
+              ? <Experience key="x" items={data.experience ?? []} />
               : null;
           case "education":
-            return data.education.some((e) => e.institution || e.degree)
-              ? <Education key="e" items={data.education} />
+            return (data.education ?? []).some((e) => safeStr(e?.institution) || safeStr(e?.degree))
+              ? <Education key="e" items={data.education ?? []} />
               : null;
           case "skills":
-            return Object.values(data.skills).some((s) => s.length)
-              ? <Skills key="k" skills={data.skills} />
+            return Object.values(data.skills ?? {}).some((s) => Array.isArray(s) && s.length > 0)
+              ? <Skills key="k" skills={data.skills ?? {}} />
               : null;
           case "projects":
-            return data.projects.length ? <Projects key="p" items={data.projects} /> : null;
+            return (data.projects ?? []).length ? <Projects key="p" items={data.projects ?? []} /> : null;
           case "certifications":
-            return data.certifications.length ? <Certifications key="c" items={data.certifications} /> : null;
+            return (data.certifications ?? []).length ? <Certifications key="c" items={data.certifications ?? []} /> : null;
           case "languages":
-            return data.languages?.length ? <Languages key="l" items={data.languages} /> : null;
+            return (data.languages ?? []).length ? <Languages key="l" items={data.languages ?? []} /> : null;
           case "volunteer":
-            return data.volunteer?.length ? <Volunteer key="v" items={data.volunteer} /> : null;
+            return (data.volunteer ?? []).length ? <Volunteer key="v" items={data.volunteer ?? []} /> : null;
           case "awards":
-            return data.awards?.length ? <Awards key="a" items={data.awards} /> : null;
+            return (data.awards ?? []).length ? <Awards key="a" items={data.awards ?? []} /> : null;
           default: {
-            const custom = data.customSections?.find((s) => s.id === sectionId);
+            const custom = data.customSections?.find((s) => s?.id === sectionId);
             return custom ? <CustomBlock key={sectionId} section={custom} /> : null;
           }
         }
@@ -102,8 +106,11 @@ export const CanonicalTemplate = forwardRef<HTMLDivElement, Props>(function Cano
 // ─── Header ────────────────────────────────────────────────────────────────
 
 function Header({ data }: { data: ResumeJSON["header"] }) {
-  const contactParts = [data.location, data.email, data.phone, data.linkedin].filter(Boolean);
-  const isEmpty = !data.name && !data.title && contactParts.length === 0;
+  const d = data ?? ({} as ResumeJSON["header"]);
+  const name = safeStr(d.name);
+  const title = safeStr(d.title);
+  const contactParts = [safeStr(d.location), safeStr(d.email), safeStr(d.phone), safeStr(d.linkedin)].filter((s) => s.trim());
+  const isEmpty = !name && !title && contactParts.length === 0;
 
   return (
     <header style={{ textAlign: "center", marginBottom: "10pt", paddingBottom: "10pt", borderBottom: "0.4pt solid #1a1f2c" }}>
@@ -117,9 +124,9 @@ function Header({ data }: { data: ResumeJSON["header"] }) {
           color: "#0b0e14",
         }}
       >
-        {data.name || <Placeholder>Your name</Placeholder>}
+        {name || <Placeholder>Your name</Placeholder>}
       </div>
-      {data.title && (
+      {title && (
         <div
           style={{
             fontSize: "11.5pt",
@@ -129,7 +136,7 @@ function Header({ data }: { data: ResumeJSON["header"] }) {
             letterSpacing: "0.01em",
           }}
         >
-          {data.title}
+          {title}
         </div>
       )}
       {contactParts.length > 0 && (
@@ -211,39 +218,45 @@ function Experience({ items }: { items: ResumeJSON["experience"] }) {
   return (
     <section>
       <SectionTitle>Experience</SectionTitle>
-      {items.map((e) => (
-        <div key={e.id} style={{ marginTop: "7pt", marginBottom: "9pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
-            <div style={{ fontSize: "11pt", fontWeight: 600 }}>
-              {e.role || <Placeholder>Role</Placeholder>}
-              {e.company_or_client && (
-                <span style={{ fontWeight: 400, color: "#39424f" }}> · {e.company_or_client}</span>
-              )}
+      {items.map((e, idx) => {
+        const role = safeStr(e?.role);
+        const company = safeStr(e?.company_or_client);
+        const location = safeStr(e?.location);
+        const bullets = safeStrArr(e?.bullets).filter((b) => b.trim());
+        return (
+          <div key={e?.id ?? idx} style={{ marginTop: "7pt", marginBottom: "9pt" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+              <div style={{ fontSize: "11pt", fontWeight: 600 }}>
+                {role || <Placeholder>Role</Placeholder>}
+                {company && (
+                  <span style={{ fontWeight: 400, color: "#39424f" }}> · {company}</span>
+                )}
+              </div>
+              <div style={dateStyle}>{fmtRange(e?.start_date, e?.end_date)}</div>
             </div>
-            <div style={dateStyle}>{fmtRange(e.start_date, e.end_date)}</div>
+            {location && (
+              <div style={{ fontSize: "9.5pt", color: "#39424f", fontStyle: "italic", marginTop: "1pt" }}>
+                {location}
+              </div>
+            )}
+            {bullets.length > 0 && (
+              <ul
+                style={{
+                  margin: "3pt 0 0 0",
+                  paddingLeft: "14pt",
+                  listStyleType: "'\\2014  '",
+                }}
+              >
+                {bullets.map((b, i) => (
+                  <li key={i} style={{ marginBottom: "1.5pt", textAlign: "justify", hyphens: "auto" }}>
+                    {b}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {e.location && (
-            <div style={{ fontSize: "9.5pt", color: "#39424f", fontStyle: "italic", marginTop: "1pt" }}>
-              {e.location}
-            </div>
-          )}
-          {e.bullets.length > 0 && (
-            <ul
-              style={{
-                margin: "3pt 0 0 0",
-                paddingLeft: "14pt",
-                listStyleType: "'\\2014  '",
-              }}
-            >
-              {e.bullets.filter((b) => b.trim()).map((b, i) => (
-                <li key={i} style={{ marginBottom: "1.5pt", textAlign: "justify", hyphens: "auto" }}>
-                  {b}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }
@@ -254,22 +267,30 @@ function Education({ items }: { items: ResumeJSON["education"] }) {
   return (
     <section>
       <SectionTitle>Education</SectionTitle>
-      {items.map((e) => (
-        <div key={e.id} style={{ marginTop: "5pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
-            <div style={{ fontSize: "11pt", fontWeight: 600 }}>{e.institution || <Placeholder>Institution</Placeholder>}</div>
-            <div style={dateStyle}>{e.graduation_date}</div>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginTop: "1pt" }}>
-            <div style={{ fontStyle: "italic" }}>
-              {e.degree}
-              {e.field ? `, ${e.field}` : ""}
-              {e.gpa ? ` · GPA ${e.gpa}` : ""}
+      {items.map((e, idx) => {
+        const inst = safeStr(e?.institution);
+        const grad = safeStr(e?.graduation_date);
+        const degree = safeStr(e?.degree);
+        const field = safeStr(e?.field);
+        const gpa = safeStr(e?.gpa);
+        const loc = safeStr(e?.location);
+        return (
+          <div key={e?.id ?? idx} style={{ marginTop: "5pt" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+              <div style={{ fontSize: "11pt", fontWeight: 600 }}>{inst || <Placeholder>Institution</Placeholder>}</div>
+              <div style={dateStyle}>{grad}</div>
             </div>
-            <div style={{ color: "#39424f", fontSize: "9.5pt" }}>{e.location}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginTop: "1pt" }}>
+              <div style={{ fontStyle: "italic" }}>
+                {degree}
+                {field ? `, ${field}` : ""}
+                {gpa ? ` · GPA ${gpa}` : ""}
+              </div>
+              <div style={{ color: "#39424f", fontSize: "9.5pt" }}>{loc}</div>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }
@@ -277,7 +298,10 @@ function Education({ items }: { items: ResumeJSON["education"] }) {
 // ─── Skills ────────────────────────────────────────────────────────────────
 
 function Skills({ skills }: { skills: ResumeJSON["skills"] }) {
-  const entries = Object.entries(skills).filter(([, v]) => v.length > 0);
+  const entries = Object.entries(skills ?? {}).flatMap(([cat, v]) => {
+    const list = safeStrArr(v).filter((s) => s.trim());
+    return list.length ? [[cat, list] as const] : [];
+  });
   if (!entries.length) return null;
   return (
     <section>
@@ -300,24 +324,30 @@ function Projects({ items }: { items: ResumeJSON["projects"] }) {
   return (
     <section>
       <SectionTitle>Selected Projects</SectionTitle>
-      {items.map((p) => (
-        <div key={p.id} style={{ marginTop: "6pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
-            <div style={{ fontSize: "11pt", fontWeight: 600 }}>
-              {p.title || <Placeholder>Project</Placeholder>}
-              {p.organization && <span style={{ fontWeight: 400, color: "#39424f" }}> · {p.organization}</span>}
+      {items.map((p, idx) => {
+        const title = safeStr(p?.title);
+        const org = safeStr(p?.organization);
+        const date = safeStr(p?.date);
+        const bullets = safeStrArr(p?.bullets).filter((b) => b.trim());
+        return (
+          <div key={p?.id ?? idx} style={{ marginTop: "6pt" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+              <div style={{ fontSize: "11pt", fontWeight: 600 }}>
+                {title || <Placeholder>Project</Placeholder>}
+                {org && <span style={{ fontWeight: 400, color: "#39424f" }}> · {org}</span>}
+              </div>
+              <div style={dateStyle}>{date}</div>
             </div>
-            <div style={dateStyle}>{p.date}</div>
+            {bullets.length > 0 && (
+              <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
+                {bullets.map((b, i) => (
+                  <li key={i} style={{ marginBottom: "1.5pt", textAlign: "justify", hyphens: "auto" }}>{b}</li>
+                ))}
+              </ul>
+            )}
           </div>
-          {p.bullets.length > 0 && (
-            <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
-              {p.bullets.filter((b) => b.trim()).map((b, i) => (
-                <li key={i} style={{ marginBottom: "1.5pt", textAlign: "justify", hyphens: "auto" }}>{b}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }
@@ -329,13 +359,13 @@ function Certifications({ items }: { items: ResumeJSON["certifications"] }) {
     <section>
       <SectionTitle>Certifications</SectionTitle>
       <div style={{ marginTop: "3pt" }}>
-        {items.map((c) => (
-          <div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginBottom: "2pt" }}>
+        {items.map((c, idx) => (
+          <div key={c?.id ?? idx} style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginBottom: "2pt" }}>
             <div>
-              <span style={{ fontWeight: 600 }}>{c.name}</span>
-              {c.issuer && <span style={{ color: "#39424f" }}> · {c.issuer}</span>}
+              <span style={{ fontWeight: 600 }}>{safeStr(c?.name)}</span>
+              {safeStr(c?.issuer) && <span style={{ color: "#39424f" }}> · {safeStr(c?.issuer)}</span>}
             </div>
-            <div style={dateStyle}>{c.date}</div>
+            <div style={dateStyle}>{safeStr(c?.date)}</div>
           </div>
         ))}
       </div>
@@ -351,10 +381,10 @@ function Languages({ items }: { items: NonNullable<ResumeJSON["languages"]> }) {
       <SectionTitle>Languages</SectionTitle>
       <div style={{ marginTop: "3pt" }}>
         {items.map((l, i) => (
-          <span key={l.id}>
+          <span key={l?.id ?? i}>
             {i > 0 && <span style={{ color: "#9099a3", margin: "0 6pt" }}>·</span>}
-            <span style={{ fontWeight: 600 }}>{l.language}</span>
-            <span style={{ color: "#39424f" }}> ({l.proficiency})</span>
+            <span style={{ fontWeight: 600 }}>{safeStr(l?.language)}</span>
+            <span style={{ color: "#39424f" }}> ({safeStr(l?.proficiency)})</span>
           </span>
         ))}
       </div>
@@ -368,21 +398,24 @@ function Volunteer({ items }: { items: NonNullable<ResumeJSON["volunteer"]> }) {
   return (
     <section>
       <SectionTitle>Volunteer</SectionTitle>
-      {items.map((v) => (
-        <div key={v.id} style={{ marginTop: "5pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
-            <div style={{ fontSize: "11pt", fontWeight: 600 }}>
-              {v.role} <span style={{ fontWeight: 400, color: "#39424f" }}>· {v.organization}</span>
+      {items.map((v, idx) => {
+        const bullets = safeStrArr(v?.bullets);
+        return (
+          <div key={v?.id ?? idx} style={{ marginTop: "5pt" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+              <div style={{ fontSize: "11pt", fontWeight: 600 }}>
+                {safeStr(v?.role)} <span style={{ fontWeight: 400, color: "#39424f" }}>· {safeStr(v?.organization)}</span>
+              </div>
+              <div style={dateStyle}>{safeStr(v?.date)}</div>
             </div>
-            <div style={dateStyle}>{v.date}</div>
+            {bullets.length > 0 && (
+              <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
+                {bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>)}
+              </ul>
+            )}
           </div>
-          {v.bullets.length > 0 && (
-            <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
-              {v.bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>)}
-            </ul>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }
@@ -394,13 +427,13 @@ function Awards({ items }: { items: NonNullable<ResumeJSON["awards"]> }) {
     <section>
       <SectionTitle>Awards & Publications</SectionTitle>
       <div style={{ marginTop: "3pt" }}>
-        {items.map((a) => (
-          <div key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginBottom: "2pt" }}>
+        {items.map((a, idx) => (
+          <div key={a?.id ?? idx} style={{ display: "flex", justifyContent: "space-between", gap: "12pt", marginBottom: "2pt" }}>
             <div>
-              <span style={{ fontWeight: 600 }}>{a.title}</span>
-              {a.issuer && <span style={{ color: "#39424f" }}> · {a.issuer}</span>}
+              <span style={{ fontWeight: 600 }}>{safeStr(a?.title)}</span>
+              {safeStr(a?.issuer) && <span style={{ color: "#39424f" }}> · {safeStr(a?.issuer)}</span>}
             </div>
-            <div style={dateStyle}>{a.date}</div>
+            <div style={dateStyle}>{safeStr(a?.date)}</div>
           </div>
         ))}
       </div>
@@ -413,23 +446,26 @@ function Awards({ items }: { items: NonNullable<ResumeJSON["awards"]> }) {
 function CustomBlock({ section }: { section: NonNullable<ResumeJSON["customSections"]>[number] }) {
   return (
     <section>
-      <SectionTitle>{section.name}</SectionTitle>
-      {section.entries.map((e) => (
-        <div key={e.id} style={{ marginTop: "5pt" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
-            <div style={{ fontSize: "11pt", fontWeight: 600 }}>
-              {e.title}
-              {e.subtitle && <span style={{ fontWeight: 400, color: "#39424f" }}> · {e.subtitle}</span>}
+      <SectionTitle>{safeStr(section?.name)}</SectionTitle>
+      {(section?.entries ?? []).map((e, idx) => {
+        const bullets = safeStrArr(e?.bullets);
+        return (
+          <div key={e?.id ?? idx} style={{ marginTop: "5pt" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
+              <div style={{ fontSize: "11pt", fontWeight: 600 }}>
+                {safeStr(e?.title)}
+                {safeStr(e?.subtitle) && <span style={{ fontWeight: 400, color: "#39424f" }}> · {safeStr(e?.subtitle)}</span>}
+              </div>
+              <div style={dateStyle}>{safeStr(e?.date)}</div>
             </div>
-            <div style={dateStyle}>{e.date}</div>
+            {bullets.length > 0 && (
+              <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
+                {bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>)}
+              </ul>
+            )}
           </div>
-          {e.bullets.length > 0 && (
-            <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
-              {e.bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>)}
-            </ul>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }
