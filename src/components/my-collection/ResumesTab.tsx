@@ -292,7 +292,14 @@ function CanvasEditor({
 
   function applySuggestion(text: string) {
     if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    // Use indexOf + slice to replace only the first match — String.replace
+    // with a string argument already does this, but being explicit avoids
+    // surprises if selectedLine contains regex special characters.
+    setCv((c) => {
+      const idx = c.indexOf(selectedLine);
+      if (idx === -1) return c;
+      return c.slice(0, idx) + text + c.slice(idx + selectedLine.length);
+    });
     setSelectedLine(text);
     setAiSuggestions([]);
   }

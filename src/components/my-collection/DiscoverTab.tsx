@@ -669,9 +669,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       </div>
       <div className="flex items-center gap-2">
         {(foundJobs.length > 0 || conversation.length > 0) && (
-          <Button variant="ghost" size="sm" onClick={reset} disabled={busy}>
-            <RefreshCw className="w-3.5 h-3.5 mr-1" /> Start over
-          </Button>
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setAddOpen(true)} disabled={busy}>
+              <Plus className="w-3.5 h-3.5 mr-1" /> Add manually
+            </Button>
+            <Button variant="ghost" size="sm" onClick={reset} disabled={busy}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1" /> Start over
+            </Button>
+          </>
         )}
         <Button size="sm" onClick={() => runSearch(conversation)} disabled={busy}>
           {busy ? (

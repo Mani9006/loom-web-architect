@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-zinc-50 text-zinc-600" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-100 text-zinc-500" },
 ];
 
 type TrackedStatus =
@@ -279,7 +280,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   async function moveTo(jobId: string, status: TrackedStatus) {
     const job = jobs.find((j) => j.id === jobId);
     if (!job || job.status === status) return;
-    const updates: Record<string, unknown> = { status };
+    const updates: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
     if (status === "applied" && !job.applied_at) updates.applied_at = new Date().toISOString();
 
     // Optimistic update: reflect the move immediately in the UI.
@@ -296,11 +297,11 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData?.user) {
       await (supabase as any).from("mc_status_history").insert({
         tracked_job_id: jobId,
-        user_id: user.id,
+        user_id: authData.user.id,
         status_from: previousStatus,
         status_to: status,
         source: "manual",
