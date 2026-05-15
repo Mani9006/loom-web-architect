@@ -29,6 +29,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { OnboardingModal } from "@/components/OnboardingModal";
+import { TerminalText, TerminalCursor } from "@/components/Terminal";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -253,7 +254,7 @@ export default function HomePage() {
             </span>
           </div>
 
-          {/* ── Greeting ────────────────────────────────────────────── */}
+          {/* ── Greeting (types out, red cursor) ──────────────────────── */}
           <div className="mt-10 mb-4">
             <h1
               className="text-rp-ink"
@@ -265,8 +266,17 @@ export default function HomePage() {
                 fontWeight: 700,
               }}
             >
-              {greeting}, {displayName}.
+              <TerminalText text={`${greeting}, ${displayName}.`} speed={32} startDelay={120} />
             </h1>
+            <div
+              className="mt-3 text-rp-ink-3"
+              style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
+            >
+              <span className="text-rp-accent">resumepreps</span>{" "}
+              <span className="opacity-60">~</span>{" "}
+              <span>session_ready</span>
+              <TerminalCursor />
+            </div>
           </div>
 
           <p

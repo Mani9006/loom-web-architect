@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useResumeStore } from "@/lib/resume-store";
 import { calculateATSScore } from "@/lib/ats-scorer";
+import { TerminalLoader } from "@/components/Terminal";
 import type { ResumeJSON } from "@/types/resume";
 
 export function AiTailorPanel() {
@@ -85,6 +86,18 @@ export function AiTailorPanel() {
           {busy ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Sparkles className="size-4 mr-1.5" />}
           {busy ? "Tailoring..." : "Tailor resume to this JD"}
         </Button>
+        {busy && (
+          <TerminalLoader
+            title="AI tailor"
+            lines={[
+              "extracting required skills from the JD...",
+              "scoring your bullets against the role...",
+              "rewriting summary + bullets for impact...",
+              "preserving every fact, no fabrication...",
+              "rendering tailored output...",
+            ]}
+          />
+        )}
       </div>
 
       <div className="border-t flex-1 overflow-auto">

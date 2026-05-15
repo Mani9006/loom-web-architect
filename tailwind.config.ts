@@ -106,8 +106,10 @@ export default {
 				'rp-ink-3':  '#737373',      // tertiary text — neutral-500
 				'rp-rule':   '#262626',      // hairline borders — neutral-800
 				'rp-rule-2': '#404040',      // stronger borders — neutral-700
-				'rp-accent': '#F59E0B',      // amber-500 — pops on dark
-				'rp-accent-2':'#FBBF24'      // amber-400 — hover
+				// Nothing-style red — used for the terminal cursor, focus rings,
+				// and one-per-screen accent moments. Bright but not neon.
+				'rp-accent':  '#FF3B30',     // signal red
+				'rp-accent-2':'#FF6259'      // lighter for hover
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

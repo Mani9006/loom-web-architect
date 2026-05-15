@@ -35,6 +35,7 @@ import {
   CheckCircle, Upload, FolderOpen,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
+import { TerminalLoader } from "@/components/Terminal";
 
 type ResumeSource = "scratch" | "upload" | "existing";
 
@@ -480,7 +481,7 @@ export default function ResumeProjects() {
 
             {/* Upload section */}
             {resumeSource === "upload" && (
-              <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
+              <div className="space-y-2 p-3 bg-rp-paper rounded-md border border-rp-rule">
                 <DocumentUpload
                   onTextExtracted={(text, fileName) => {
                     setUploadedResumeText(text);
@@ -493,9 +494,12 @@ export default function ResumeProjects() {
                   label="Drop your resume here"
                 />
                 {uploadedResumeText && (
-                  <div className="flex items-center gap-2 text-sm text-green-600 mt-2">
-                    <CheckCircle className="h-4 w-4" />
-                    Resume extracted: {uploadedResumeFileName}
+                  <div
+                    className="flex items-center gap-2 mt-2 text-rp-accent"
+                    style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11.5px" }}
+                  >
+                    <span className="size-1.5 rounded-full bg-rp-accent" />
+                    OK · extracted {uploadedResumeFileName} ({uploadedResumeText.length.toLocaleString()} chars)
                   </div>
                 )}
               </div>
@@ -525,6 +529,29 @@ export default function ResumeProjects() {
               </div>
             )}
           </div>
+          {/* Terminal-style loader while parsing — visible right above
+              the footer when the AI parse is running. */}
+          {(isCreating || isParsingImport) && (
+            <div className="px-4 pb-2">
+              <TerminalLoader
+                title={isParsingImport ? "Parsing résumé" : "Creating"}
+                lines={
+                  isParsingImport
+                    ? [
+                        "reading uploaded document...",
+                        "extracting structured fields (header, summary, experience, skills)...",
+                        "normalizing skill categories...",
+                        "saving to your library...",
+                      ]
+                    : [
+                        "creating blank résumé scaffold...",
+                        "linking to your account...",
+                        "redirecting to editor...",
+                      ]
+                }
+              />
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
@@ -541,7 +568,7 @@ export default function ResumeProjects() {
               {isCreating || isParsingImport ? (
                 <><Loader2 className="h-4 w-4 animate-spin" /> {isParsingImport ? "Importing..." : "Creating..."}</>
               ) : (
-                "Create Resume"
+                "Create résumé"
               )}
             </Button>
           </DialogFooter>
