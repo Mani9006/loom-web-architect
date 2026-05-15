@@ -93,7 +93,18 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
-				}
+				},
+				// Editorial palette — warm paper + ink + amber accent. Used by
+				// the AppLayout redesign and the marketing-style surfaces.
+				'rp-canvas': '#FBF8F1',      // main content background, warm cream
+				'rp-paper':  '#F2EDDF',      // sidebar / cards, slightly deeper
+				'rp-paper-2':'#E9E2CF',      // inset panels, deeper cream
+				'rp-ink':    '#1B1A17',      // primary text, near-black with warm cast
+				'rp-ink-2':  '#3D3A33',      // secondary text
+				'rp-rule':   '#D8D0BC',      // hairline rules / borders
+				'rp-rule-2': '#BFB6A0',      // stronger rule
+				'rp-accent': '#B45309',      // warm amber — single accent color
+				'rp-accent-2':'#92400E'      // amber pressed
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
