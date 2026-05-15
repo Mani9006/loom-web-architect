@@ -1,6 +1,16 @@
-/* ElevenLabs-style stack — Inter throughout (display + body).
- * No serif. JetBrains Mono for monospace / numerics. */
+/* ResumePreps — dark canvas, white-on-black UI.
+ * Only the rendered CV (CanonicalTemplate.tsx) keeps a white paper inside.
+ * Everything else — including upload zones, drag-drops, modals, dialogs —
+ * inherits this dark surface.
+ *
+ * Background isn't flat: a subtle SVG grain layered over a soft amber
+ * radial glow from top-right, with a faint dot grid underneath. Reads like
+ * a dimly-lit workshop, not a void.
+ */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
@@ -9,93 +19,68 @@
 
 @layer base {
   :root {
-    /* Clean SaaS surface — pure white canvas, warm-grey sidebar, ink text */
-    --background: 0 0% 100%;
-    --foreground: 0 0% 4%;
+    /* Dark canvas — near-black with a hint of warmth */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 96%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 4%;
+    --card: 0 0% 9%;
+    --card-foreground: 0 0% 96%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 4%;
+    --popover: 0 0% 9%;
+    --popover-foreground: 0 0% 96%;
 
-    --primary: 0 0% 4%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 0 0% 96%;
+    --primary-foreground: 0 0% 4%;
 
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 12%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 96%;
 
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 42%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 64%;
 
-    --accent: 0 0% 94%;
-    --accent-foreground: 0 0% 4%;
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 96%;
 
     --destructive: 0 72% 52%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 96%;
 
-    --border: 0 0% 92%;
-    --input: 0 0% 92%;
-    --ring: 0 0% 4%;
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 38 92% 50%;        /* amber-500 focus ring */
 
-    --radius: 0.875rem;
+    --radius: 0.5rem;          /* tighter, more "tool" */
 
-    /* Sidebar — a single shade warmer than the canvas */
-    --sidebar-background: 30 8% 97%;
-    --sidebar-foreground: 0 0% 30%;
-    --sidebar-primary: 0 0% 4%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 30 8% 94%;
-    --sidebar-accent-foreground: 0 0% 4%;
-    --sidebar-border: 0 0% 90%;
-    --sidebar-ring: 0 0% 4%;
+    /* Sidebar — slightly elevated from the canvas */
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 80%;
+    --sidebar-primary: 0 0% 96%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 0 0% 14%;
+    --sidebar-ring: 38 92% 50%;
 
-    /* Feature-tile accent palette (ElevenLabs-style — soft) */
-    --tile-indigo: 240 90% 60%;
-    --tile-violet: 270 85% 60%;
-    --tile-rose:   350 80% 60%;
-    --tile-emerald: 160 60% 42%;
-    --tile-amber:  28 90% 55%;
-    --tile-orange: 22 92% 58%;
-    --tile-sky:    210 85% 55%;
+    /* Shadows that work on dark — almost imperceptible */
+    --shadow-glow: 0 0 80px -20px hsl(38 92% 50% / 0.18);
+    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
+    --shadow-card: 0 0 0 1px hsl(0 0% 100% / 0.04), 0 8px 24px -12px hsl(0 0% 0% / 0.5);
+    --shadow-card-hover: 0 0 0 1px hsl(0 0% 100% / 0.08), 0 12px 32px -8px hsl(0 0% 0% / 0.6);
+    --shadow-elevated: 0 24px 64px -16px hsl(0 0% 0% / 0.7);
 
-    /* Gradients reduced to utilities — no full-page color washes */
-    --gradient-hero: linear-gradient(135deg, hsl(0 0% 4%) 0%, hsl(0 0% 18%) 100%);
-    --gradient-primary: linear-gradient(135deg, hsl(0 0% 4%), hsl(0 0% 18%));
-    --gradient-shimmer: linear-gradient(90deg, hsl(0 0% 96%), hsl(0 0% 100%), hsl(0 0% 96%));
-    --gradient-glass: linear-gradient(135deg, hsl(0 0% 100% / 0.9), hsl(0 0% 100% / 0.6));
-    --gradient-mesh: none;
+    --chart-1: 38 92% 50%;     /* amber-500 */
+    --chart-2: 0 0% 80%;
+    --chart-3: 0 0% 64%;
+    --chart-4: 0 0% 48%;
+    --chart-5: 0 0% 32%;
 
-    /* Shadows — tight, cool, low-alpha. Matches the ElevenLabs cards. */
-    --shadow-glow: 0 0 60px -20px hsl(0 0% 4% / 0.18);
-    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 4% / 0.04);
-    --shadow-card: 0 1px 2px 0 hsl(0 0% 4% / 0.04), 0 0 0 1px hsl(0 0% 0% / 0.05);
-    --shadow-card-hover: 0 8px 24px -8px hsl(0 0% 4% / 0.08), 0 2px 4px -2px hsl(0 0% 4% / 0.04);
-    --shadow-elevated: 0 20px 48px -12px hsl(0 0% 4% / 0.12);
-
-    --chart-1: 0 0% 4%;
-    --chart-2: 240 90% 60%;
-    --chart-3: 0 0% 42%;
-    --chart-4: 160 60% 42%;
-    --chart-5: 22 92% 58%;
-    --sidebar: 30 8% 97%;
     --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-serif: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-display: 'Manrope', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-serif: 'EB Garamond', 'Source Serif 4', Georgia, serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --shadow-2xs: 0 1px 2px 0 hsl(190 30% 8% / 0.02);
-    --shadow-xs: 0 1px 2px 0 hsl(190 30% 8% / 0.04);
-    --shadow-sm: 0 2px 4px 0 hsl(190 30% 8% / 0.04), 0 1px 2px -1px hsl(190 30% 8% / 0.03);
-    --shadow: 0 2px 6px 0 hsl(190 30% 8% / 0.05), 0 1px 3px -1px hsl(190 30% 8% / 0.04);
-    --shadow-md: 0 6px 12px -2px hsl(190 30% 8% / 0.05), 0 3px 6px -3px hsl(190 30% 8% / 0.03);
-    --shadow-lg: 0 12px 24px -4px hsl(190 30% 8% / 0.06), 0 4px 8px -4px hsl(190 30% 8% / 0.02);
-    --shadow-xl: 0 20px 40px -8px hsl(190 30% 8% / 0.08), 0 8px 16px -6px hsl(190 30% 8% / 0.03);
-    --shadow-2xl: 0 32px 64px -16px hsl(190 30% 8% / 0.12);
-    --tracking-normal: 0em;
-    --spacing: 0.25rem;
   }
 
-  /* Dark mode intentionally removed — single editorial light mode only. */
+  /* Force-dark — single theme. We do NOT support light mode. */
+  html { color-scheme: dark; }
 }
 
 @layer base {
@@ -109,186 +94,226 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply text-foreground antialiased;
+    background-color: hsl(var(--background));
+    background-image:
+      /* Top-right amber halo */
+      radial-gradient(800px 600px at 92% -10%, hsl(38 92% 50% / 0.10), transparent 60%),
+      /* Mid-left cool wash */
+      radial-gradient(700px 500px at -5% 40%, hsl(0 0% 100% / 0.025), transparent 55%),
+      /* Bottom magenta-ink accent — very subtle */
+      radial-gradient(600px 400px at 50% 110%, hsl(330 80% 50% / 0.05), transparent 50%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    position: relative;
   }
 
-  /* Display utility — now just Inter with tight tracking, no italic serif */
-  .font-display, .font-serif {
+  /* Fine grain noise overlay — gives the canvas a film-photograph feel.
+   * SVG turbulence filter rendered to a data URI, 5% opacity, mix-blend
+   * overlay so it picks up on darker areas without washing the highlights. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Faint dot grid — 1px dots on a 24px grid at 4% opacity. Sits behind
+   * everything but ahead of the body solid color. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image: radial-gradient(circle, hsl(0 0% 100% / 0.045) 1px, transparent 1.5px);
+    background-size: 28px 28px;
+    background-position: 0 0;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 90%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 90%);
+  }
+
+  /* Make sure app shell content sits above the grain/grid pseudo-layers. */
+  #root { position: relative; z-index: 1; }
+
+  /* Display utility — Manrope, tight tracking. */
+  .font-display {
     font-family: var(--font-display) !important;
     letter-spacing: -0.02em;
+  }
+  .font-serif {
+    font-family: var(--font-serif) !important;
   }
 }
 
 @layer utilities {
-  .gradient-text {
-    background: var(--gradient-hero);
-    background-size: 200% 200%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: gradient-flow 4s ease infinite;
+  /* "Print" surface — pure white card used for the CanonicalTemplate
+   * resume preview. The only thing in the app that should not be dark. */
+  .surface-paper {
+    background: #ffffff;
+    color: #0b0e14;
   }
 
-  /* ── Flat-white card (ElevenLabs quality) ─────────────────
-   * Pure white, hairline 1px border, soft 8px-blur shadow.
-   * Hover adds a slightly deeper shadow and raises 1px.
-   */
-  .glass-card {
-    position: relative;
-    background: hsl(var(--card));
-    border: 1px solid hsl(0 0% 92%);
+  /* Amber accent text */
+  .text-accent-amber { color: hsl(38 92% 50%); }
+
+  /* Dark card — used by glass-card replacement */
+  .surface-card {
+    background: hsl(0 0% 7%);
+    border: 1px solid hsl(0 0% 16%);
     border-radius: var(--radius);
-    box-shadow: 0 1px 2px 0 hsl(0 0% 4% / 0.04);
-    transition: box-shadow 200ms ease, transform 200ms ease;
+    box-shadow: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
+    transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
+  }
+  .surface-card:hover {
+    border-color: hsl(0 0% 28%);
+    box-shadow: 0 8px 24px -12px hsl(0 0% 0% / 0.5);
+  }
+
+  /* Glass-card alias for legacy call sites */
+  .glass-card {
+    background: hsl(var(--card));
+    border: 1px solid hsl(0 0% 16%);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
+    transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
   }
   .glass-card:hover {
-    box-shadow: 0 6px 20px -8px hsl(0 0% 4% / 0.1), 0 2px 4px -2px hsl(0 0% 4% / 0.04);
+    border-color: hsl(0 0% 28%);
+    box-shadow: 0 12px 32px -8px hsl(0 0% 0% / 0.5);
   }
 
-  /* Nav chrome — flat white with a hairline bottom border. */
+  /* Nav chrome — translucent dark with backdrop blur */
   .liquid-nav {
-    background: hsl(0 0% 100% / 0.85);
-    backdrop-filter: blur(12px) saturate(1.1);
-    -webkit-backdrop-filter: blur(12px) saturate(1.1);
-    border-bottom: 1px solid hsl(0 0% 92%);
+    background: hsl(0 0% 4% / 0.7);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    border-bottom: 1px solid hsl(0 0% 16%);
   }
 
-  /* Ink panel — kept for any ink-on-white card moment */
+  /* Ink panel — accent button surface */
   .ink-panel {
-    background: hsl(0 0% 6%);
-    color: hsl(0 0% 98%);
+    background: hsl(38 92% 50%);
+    color: hsl(0 0% 4%);
     border-radius: var(--radius);
-    box-shadow: 0 8px 24px -12px hsl(0 0% 4% / 0.2);
+    box-shadow: 0 8px 24px -12px hsl(38 92% 50% / 0.4);
   }
 
-  /* Iconized feature tile — ElevenLabs home-page style.
-   * Soft grey fill, centered icon stack with small accent chip. */
+  /* Feature tile — dark with hover lift */
   .feature-tile {
     position: relative;
-    background: hsl(0 0% 97%);
-    border: 1px solid hsl(0 0% 94%);
-    border-radius: calc(var(--radius) + 4px);
-    transition: background 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+    background: hsl(0 0% 7%);
+    border: 1px solid hsl(0 0% 14%);
+    border-radius: calc(var(--radius) + 2px);
+    transition: background 200ms ease, transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
   }
   .feature-tile:hover {
-    background: hsl(0 0% 99%);
-    box-shadow: 0 8px 20px -10px hsl(0 0% 4% / 0.08);
+    background: hsl(0 0% 10%);
+    border-color: hsl(0 0% 24%);
+    box-shadow: 0 8px 20px -10px hsl(0 0% 0% / 0.5);
   }
 
   .glass-surface {
-    @apply bg-card/80 backdrop-blur-xl border border-border/50;
-  }
-
-  .mesh-bg {
-    background-image: var(--gradient-mesh);
-  }
-
-  /* Aurora — neutralised. Kept as a no-op so existing pages that still
-   * reference it don't break, but visually absent on the clean canvas. */
-  .aurora { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
-  /* Chroma orb — quiet color blob for ambient depth. */
-  .orb { position: absolute; opacity: 0; pointer-events: none; }
-
-  .chat-input-glow {
-    box-shadow: var(--shadow-glow);
+    @apply bg-card/70 backdrop-blur-xl border border-border;
   }
 
   .bento-card {
-    @apply rounded-3xl border border-border bg-card p-6 transition-all duration-300;
+    @apply rounded-lg border border-border bg-card p-6 transition-all duration-300;
     box-shadow: var(--shadow-card);
   }
-
   .bento-card:hover {
     box-shadow: var(--shadow-card-hover);
     transform: translateY(-2px);
   }
 
+  /* Drag-drop zone — dashed border, amber on hover, dark fill */
+  .dropzone-dark {
+    background: hsl(0 0% 6%);
+    border: 1.5px dashed hsl(0 0% 24%);
+    border-radius: var(--radius);
+    transition: border-color 200ms ease, background 200ms ease;
+  }
+  .dropzone-dark:hover,
+  .dropzone-dark.dragging {
+    border-color: hsl(38 92% 50%);
+    background: hsl(38 92% 50% / 0.04);
+  }
+
+  /* Subtle scanline shimmer used by loaders / progress bars */
+  @keyframes scanline-shimmer {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  .chat-input-glow {
+    box-shadow: var(--shadow-glow);
+  }
+
+  /* Aurora / orb kept as no-ops so legacy pages don't break. */
+  .aurora { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+  .orb { position: absolute; opacity: 0; pointer-events: none; }
+  .mesh-bg { background-image: none; }
+
   @keyframes gradient-flow {
     0%, 100% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
   }
-
   @keyframes aurora-drift {
-    0%,100% { background-position: 0% 0%, 100% 0%, 50% 100%, 0% 100%; transform: translate3d(0,0,0) scale(1); }
-    33%     { background-position: 30% 20%, 70% 10%, 40% 80%, 20% 90%; transform: translate3d(-2%, 1%, 0) scale(1.04); }
-    66%     { background-position: 60% 40%, 40% 30%, 60% 60%, 10% 70%; transform: translate3d(1%, -1%, 0) scale(0.98); }
+    0%, 100% { background-position: 0% 0%, 100% 0%, 50% 100%, 0% 100%; transform: translate3d(0,0,0) scale(1); }
+    33% { background-position: 30% 20%, 70% 10%, 40% 80%, 20% 90%; transform: translate3d(-2%, 1%, 0) scale(1.04); }
+    66% { background-position: 60% 40%, 40% 30%, 60% 60%, 10% 70%; transform: translate3d(1%, -1%, 0) scale(0.98); }
   }
-
-  @keyframes orb-float {
-    0%,100% { transform: translate3d(0,0,0) scale(1); }
-    33%     { transform: translate3d(30px,-40px,0) scale(1.08); }
-    66%     { transform: translate3d(-20px,30px,0) scale(0.94); }
-  }
-
   @keyframes shimmer {
     0%, 100% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
   }
-
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
   }
-
   .animate-fade-in {
     animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
-
   @keyframes pulse-dot {
     0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
     40% { transform: scale(1); opacity: 1; }
   }
-
-  .thinking-dot {
-    animation: pulse-dot 1.4s ease-in-out infinite;
-  }
+  .thinking-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
   .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
   .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
-
   @keyframes scroll-logos {
     0% { transform: translateX(0); }
     100% { transform: translateX(-50%); }
   }
-
-  .animate-scroll-logos {
-    animation: scroll-logos 30s linear infinite;
-  }
-
+  .animate-scroll-logos { animation: scroll-logos 30s linear infinite; }
   @keyframes float {
     0%, 100% { transform: translateY(0px); }
     50% { transform: translateY(-10px); }
   }
-
-  .animate-float {
-    animation: float 6s ease-in-out infinite;
-  }
-
+  .animate-float { animation: float 6s ease-in-out infinite; }
   @keyframes slide-up {
     from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
   }
-
   .animate-slide-up {
     animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
-
   @keyframes count-up {
     from { opacity: 0; transform: scale(0.5); }
     to { opacity: 1; transform: scale(1); }
   }
-
   .animate-count-up {
     animation: count-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
-
   @keyframes blob {
     0%, 100% { transform: translate(0, 0) scale(1); }
     25% { transform: translate(20px, -30px) scale(1.1); }
     50% { transform: translate(-10px, 20px) scale(0.95); }
     75% { transform: translate(15px, 10px) scale(1.05); }
   }
-
-  .animate-blob {
-    animation: blob 8s ease-in-out infinite;
-  }
+  .animate-blob { animation: blob 8s ease-in-out infinite; }
 }
