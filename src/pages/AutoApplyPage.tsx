@@ -534,18 +534,18 @@ export default function AutoApplyPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="bg-white rounded-lg p-4 space-y-3">
-                <p className="font-semibold text-sm text-gray-700">What you get:</p>
+              <div className="bg-rp-paper rounded-lg p-4 space-y-3">
+                <p className="font-semibold text-sm text-rp-ink">What you get:</p>
                 <ul className="space-y-2">
-                  <li className="flex items-center gap-2 text-sm text-gray-700">
+                  <li className="flex items-center gap-2 text-sm text-rp-ink">
                     <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
                     AI-optimized applications
                   </li>
-                  <li className="flex items-center gap-2 text-sm text-gray-700">
+                  <li className="flex items-center gap-2 text-sm text-rp-ink">
                     <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
                     Apply to 50+ jobs per day
                   </li>
-                  <li className="flex items-center gap-2 text-sm text-gray-700">
+                  <li className="flex items-center gap-2 text-sm text-rp-ink">
                     <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
                     Smart targeting based on your profile
                   </li>
@@ -561,7 +561,7 @@ export default function AutoApplyPage() {
                 </Link>
               </div>
 
-              <p className="text-sm text-gray-600 text-center">
+              <p className="text-sm text-rp-ink-2 text-center">
                 Currently on Free plan · Manual apply is always available
               </p>
             </CardContent>

@@ -602,7 +602,7 @@ function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
       onClick={onClick}
     >
       {/* Thumbnail — zoomed to show top portion of resume, centered */}
-      <div className="relative h-52 overflow-hidden bg-white border-b border-border flex items-start justify-center">
+      <div className="relative h-52 overflow-hidden bg-rp-paper border-b border-border flex items-start justify-center">
         <div
           className="pointer-events-none select-none shrink-0"
           style={{
@@ -620,12 +620,12 @@ function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
           {atsScore.overall}%
         </div>
 
-        {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center">
+        {/* Hover overlay — dark pill against the white resume thumbnail */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <div className="bg-white/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow-lg flex items-center gap-2 text-sm font-medium">
-              <Pencil className="h-4 w-4" />
-              Edit Resume
+            <div className="bg-rp-ink/95 text-rp-canvas backdrop-blur-sm rounded-md px-3 py-1.5 flex items-center gap-2 text-xs font-medium">
+              <Pencil className="h-3.5 w-3.5" />
+              Edit résumé
             </div>
           </div>
         </div>

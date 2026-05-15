@@ -1296,7 +1296,7 @@ export default function JobSearchPage() {
                               >
                                 <span className={cn(
                                   "text-xs font-bold",
-                                  job.match_score >= 80 ? "text-green-700" : job.match_score >= 60 ? "text-yellow-700" : "text-slate-600"
+                                  job.match_score >= 80 ? "text-green-700" : job.match_score >= 60 ? "text-yellow-700" : "text-rp-ink-2"
                                 )}>
                                   {job.match_score}%
                                 </span>
@@ -1365,25 +1365,25 @@ export default function JobSearchPage() {
                     </div>
                     <ScrollArea className="flex-1">
                       <div className="max-w-3xl p-6 space-y-5">
-                        {/* Match score banner */}
+                        {/* Match score banner — single accent palette */}
                         {"match_score" in selectedJob && (
                           <div className={cn(
-                            "rounded-lg p-3 flex items-center gap-3",
-                            (selectedJob as MatchedJob).match_score >= 80 ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900" :
-                            (selectedJob as MatchedJob).match_score >= 60 ? "bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-900" :
-                            "bg-slate-50 dark:bg-slate-950/30 border border-slate-200 dark:border-slate-900"
+                            "rounded-lg p-3 flex items-center gap-3 border",
+                            (selectedJob as MatchedJob).match_score >= 80 ? "bg-rp-accent/10 border-rp-accent/30" :
+                            (selectedJob as MatchedJob).match_score >= 60 ? "bg-rp-paper border-rp-rule-2" :
+                            "bg-rp-paper border-rp-rule"
                           )}>
                             <div className={cn(
-                              "w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg",
-                              (selectedJob as MatchedJob).match_score >= 80 ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" :
-                              (selectedJob as MatchedJob).match_score >= 60 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" :
-                              "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                              "w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg tabular-nums",
+                              (selectedJob as MatchedJob).match_score >= 80 ? "bg-rp-accent/20 text-rp-accent" :
+                              (selectedJob as MatchedJob).match_score >= 60 ? "bg-rp-paper-2 text-rp-ink" :
+                              "bg-rp-paper-2 text-rp-ink-2"
                             )}>
                               {(selectedJob as MatchedJob).match_score}%
                             </div>
                             <div>
-                              <p className="text-sm font-medium">Match Score</p>
-                              <p className="text-xs text-muted-foreground">Based on your profile, skills, and preferences</p>
+                              <p className="text-sm font-medium text-rp-ink">Match Score</p>
+                              <p className="text-xs text-rp-ink-2">Based on your profile, skills, and preferences</p>
                             </div>
                           </div>
                         )}
