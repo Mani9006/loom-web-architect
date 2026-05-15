@@ -75,18 +75,8 @@ const quickActions: Array<{ label: string; desc: string; icon: React.ElementType
 
 // ─── Date helpers (masthead) ───────────────────────────────────────────
 
-function dayOfYear(d: Date): number {
-  const start = new Date(d.getFullYear(), 0, 0);
-  const diff = d.getTime() - start.getTime();
-  return Math.floor(diff / (1000 * 60 * 60 * 24));
-}
-
-function ordinalNo(n: number): string {
-  return n.toString().padStart(3, "0");
-}
-
-function fullDate(d: Date): string {
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+function pad2(n: number): string {
+  return n.toString().padStart(2, "0");
 }
 
 function relativeDays(iso: string): string {
@@ -247,32 +237,45 @@ export default function HomePage() {
 
       <div className="min-h-full bg-rp-canvas">
         <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-24">
-          {/* ── Masthead ────────────────────────────────────────────── */}
-          <Masthead now={now} pipelineActive={stats.applied + stats.interviewing} resumeCount={recentResumes.length} matchCount={topMatches.length} />
+          {/* ── Date + status row ──────────────────────────────────── */}
+          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pb-4 border-b border-rp-rule">
+            <span
+              className="text-rp-ink-2"
+              style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
+            >
+              {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            </span>
+            <span
+              className="text-rp-ink-3"
+              style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
+            >
+              {recentResumes.length} résumé{recentResumes.length === 1 ? "" : "s"} · {stats.applied + stats.interviewing} active · {topMatches.length} match{topMatches.length === 1 ? "" : "es"}
+            </span>
+          </div>
 
           {/* ── Greeting ────────────────────────────────────────────── */}
-          <div className="mt-8 mb-3">
+          <div className="mt-10 mb-4">
             <h1
               className="text-rp-ink"
               style={{
                 fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-                fontSize: "clamp(38px, 6vw, 56px)",
+                fontSize: "clamp(38px, 6vw, 60px)",
                 lineHeight: 1.04,
-                letterSpacing: "-0.012em",
-                fontWeight: 500,
+                letterSpacing: "-0.02em",
+                fontWeight: 700,
               }}
             >
-              {greeting}, <span className="italic">{displayName}.</span>
+              {greeting}, {displayName}.
             </h1>
           </div>
 
           <p
             className="text-rp-ink-2 max-w-2xl"
-            style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "17px", lineHeight: 1.55 }}
+            style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "16px", lineHeight: 1.6 }}
           >
-            One file open · {recentResumes.length} resume{recentResumes.length === 1 ? "" : "s"} on your shelf ·{" "}
-            {stats.applied + stats.interviewing} in flight ·{" "}
-            {topMatches.length > 0 ? `${topMatches.length} match${topMatches.length === 1 ? "" : "es"} waiting.` : "0 matches waiting."}
+            {recentResumes.length === 0
+              ? "Start with your first résumé. You can upload a PDF and the AI will parse every section, or build from scratch."
+              : `You have ${stats.applied + stats.interviewing} application${stats.applied + stats.interviewing === 1 ? "" : "s"} in flight${topMatches.length > 0 ? ` and ${topMatches.length} fresh match${topMatches.length === 1 ? "" : "es"} waiting` : ""}.`}
           </p>
 
           {/* ── Today's brief ───────────────────────────────────────── */}
@@ -290,7 +293,7 @@ export default function HomePage() {
           <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-x-12 gap-y-10 mt-16">
             {/* Recent work */}
             <section>
-              <SectionHead n="i" title="Recent Work" />
+              <SectionHead n={1} title="Recent work" />
               {recentResumes.length === 0 ? (
                 <EmptyResumes onCreate={() => navigate("/resume-builder")} />
               ) : (
@@ -305,7 +308,7 @@ export default function HomePage() {
                           className="text-rp-ink-2/70 w-7 shrink-0 text-right"
                           style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.02em" }}
                         >
-                          {ordinalNo(i + 1).replace(/^0+/, "") || "0"}
+                          {pad2(i + 1)}
                         </span>
                         <span
                           className="flex-1 min-w-0 text-rp-ink group-hover:text-rp-accent transition-colors truncate"
@@ -342,7 +345,7 @@ export default function HomePage() {
 
             {/* Quick actions — restrained list, not gradient tiles */}
             <aside>
-              <SectionHead n="ii" title="Workspace" />
+              <SectionHead n={2} title="Workspace" />
               <ul className="mt-3 grid grid-cols-1 gap-px bg-rp-rule border border-rp-rule">
                 {quickActions.map((a) => {
                   const Icon = a.icon;
@@ -376,7 +379,7 @@ export default function HomePage() {
           {/* ── Agent activity block (quote treatment) ───────────────── */}
           {agentSummary && (
             <section className="mt-16">
-              <SectionHead n="iii" title="From your auto-pilot" />
+              <SectionHead n={3} title="Auto-pilot" />
               <blockquote className="mt-4 border-l-2 border-rp-accent pl-5 max-w-3xl">
                 <Quote className="w-4 h-4 text-rp-accent mb-2" strokeWidth={1.6} />
                 <p
@@ -407,7 +410,7 @@ export default function HomePage() {
           {/* ── Top matches as numbered clippings ────────────────────── */}
           {topMatches.length > 0 && (
             <section className="mt-16">
-              <SectionHead n="iv" title="Today's Top Matches" />
+              <SectionHead n={4} title="Top matches" />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-rp-rule border border-rp-rule mt-3">
                 {topMatches.map((m, i) => (
                   <a
@@ -419,10 +422,10 @@ export default function HomePage() {
                   >
                     <div className="flex items-baseline justify-between">
                       <span
-                        className="text-rp-ink-2/60"
-                        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.1em", textTransform: "uppercase" }}
+                        className="text-rp-ink-3"
+                        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
                       >
-                        № {String(i + 1).padStart(2, "0")} · {m.tier || "—"}
+                        {m.tier ? `Tier ${m.tier}` : "—"}
                       </span>
                       <span
                         className="text-rp-accent tabular-nums"
@@ -465,7 +468,7 @@ export default function HomePage() {
 
           {/* ── Pipeline summary footer ───────────────────────────────── */}
           <section className="mt-20 pt-8 border-t border-rp-rule">
-            <SectionHead n="v" title="Pipeline Today" />
+            <SectionHead n={5} title="Pipeline" />
             <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-rp-rule border border-rp-rule mt-3">
               {[
                 { label: "Saved", n: stats.saved },
@@ -501,75 +504,27 @@ export default function HomePage() {
   );
 }
 
-// ─── Masthead ──────────────────────────────────────────────────────────
-
-function Masthead({
-  now,
-  pipelineActive,
-  resumeCount,
-  matchCount,
-}: {
-  now: Date;
-  pipelineActive: number;
-  resumeCount: number;
-  matchCount: number;
-}) {
-  return (
-    <div className="border-b border-rp-rule pb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1">
-      <span
-        className="text-rp-ink"
-        style={{
-          fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-          fontSize: "14px",
-          letterSpacing: "0.16em",
-          textTransform: "uppercase",
-          fontWeight: 600,
-        }}
-      >
-        RP · The Daily
-      </span>
-      <span
-        className="text-rp-ink-2/65"
-        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.12em", textTransform: "uppercase" }}
-      >
-        Vol. {now.getFullYear()} · No. {ordinalNo(dayOfYear(now))}
-      </span>
-      <span
-        className="text-rp-ink-2/65"
-        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
-      >
-        {fullDate(now)}
-      </span>
-      <span className="flex-1" />
-      <span
-        className="text-rp-ink-2/55"
-        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
-      >
-        {resumeCount} résumé{resumeCount === 1 ? "" : "s"} · {pipelineActive} active · {matchCount} match{matchCount === 1 ? "" : "es"}
-      </span>
-    </div>
-  );
-}
-
 // ─── Section head ──────────────────────────────────────────────────────
+// Simple two-digit number + title + hairline rule. No roman numerals,
+// no chapter marks, no newspaper labels.
 
-function SectionHead({ n, title }: { n: string; title: string }) {
+function SectionHead({ n, title }: { n: number; title: string }) {
   return (
     <div className="flex items-baseline gap-3">
       <span
         className="text-rp-accent"
-        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.15em", textTransform: "uppercase" }}
+        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em", fontWeight: 600 }}
       >
-        §{n}
+        {String(n).padStart(2, "0")}
       </span>
       <h2
         className="text-rp-ink"
         style={{
           fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-          fontSize: "22px",
-          lineHeight: 1.1,
-          letterSpacing: "-0.005em",
-          fontWeight: 500,
+          fontSize: "20px",
+          lineHeight: 1.2,
+          letterSpacing: "-0.01em",
+          fontWeight: 600,
         }}
       >
         {title}
