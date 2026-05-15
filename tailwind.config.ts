@@ -94,16 +94,20 @@ export default {
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
 				},
-				// Editorial palette — warm paper + ink + amber accent. Used by
-				// the AppLayout redesign and the marketing-style surfaces.
-				'rp-canvas': '#FBF8F1',      // main content background, warm cream
-				'rp-paper':  '#F2EDDF',      // sidebar / cards, slightly deeper
-				'rp-paper-2':'#E9E2CF',      // inset panels, deeper cream
-				'rp-ink':    '#1B1A17',      // primary text, near-black with warm cast
-				'rp-ink-2':  '#3D3A33',      // secondary text
-				'rp-rule':   '#D8D0BC',      // hairline rules / borders
-				'rp-rule-2': '#BFB6A0',      // stronger rule
-				'rp-accent': '#B45309',      // warm amber — single accent color
+				// Utility palette — pure white, near-black, neutral grays.
+				// Aesthetic reference: unifyed.ai — "built like a tool",
+				// generous whitespace, single accent. The serif/cream
+				// editorial palette was rolled into this; the CanonicalTemplate
+				// (the actual resume render) still uses its own serif paper.
+				'rp-canvas': '#FFFFFF',      // page background
+				'rp-paper':  '#FAFAFA',      // subtle inset (cards, hover)
+				'rp-paper-2':'#F4F4F4',      // pressed / nested panels
+				'rp-ink':    '#0A0A0A',      // primary text — true near-black
+				'rp-ink-2':  '#525252',      // secondary text — neutral-600
+				'rp-ink-3':  '#737373',      // tertiary text — neutral-500
+				'rp-rule':   '#E5E5E5',      // hairline borders — neutral-200
+				'rp-rule-2': '#D4D4D4',      // stronger borders — neutral-300
+				'rp-accent': '#B45309',      // warm amber accent (kept)
 				'rp-accent-2':'#92400E'      // amber pressed
 			},
 			borderRadius: {

@@ -199,7 +199,7 @@ export default function AppLayout() {
           <span
             aria-hidden
             className="inline-flex items-center justify-center w-[26px] h-[26px] bg-rp-ink text-rp-paper rounded-[3px] font-semibold leading-none"
-            style={{ fontFamily: '"EB Garamond", Georgia, serif', fontSize: "16px", paddingTop: "1px" }}
+            style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "16px", paddingTop: "1px" }}
           >
             R
           </span>
@@ -207,7 +207,7 @@ export default function AppLayout() {
             <span
               className="text-rp-ink leading-none"
               style={{
-                fontFamily: '"EB Garamond", Georgia, serif',
+                fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
                 fontSize: "20px",
                 letterSpacing: "-0.005em",
                 fontStyle: "italic",
@@ -263,7 +263,7 @@ export default function AppLayout() {
             <div
               className="text-rp-ink leading-tight"
               style={{
-                fontFamily: '"EB Garamond", Georgia, serif',
+                fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
                 fontSize: "16px",
                 fontWeight: 500,
                 letterSpacing: "-0.01em",
@@ -422,7 +422,7 @@ export default function AppLayout() {
               <DropdownMenuTrigger asChild>
                 <button
                   className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-rp-ink/15 text-rp-ink hover:border-rp-ink/45 transition-colors leading-none"
-                  style={{ fontFamily: '"EB Garamond", Georgia, serif', fontSize: "12px", paddingTop: "1px" }}
+                  style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "12px", paddingTop: "1px" }}
                 >
                   {initials}
                 </button>

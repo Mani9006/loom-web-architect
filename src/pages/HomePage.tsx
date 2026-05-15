@@ -255,7 +255,7 @@ export default function HomePage() {
             <h1
               className="text-rp-ink"
               style={{
-                fontFamily: '"EB Garamond", Georgia, serif',
+                fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
                 fontSize: "clamp(38px, 6vw, 56px)",
                 lineHeight: 1.04,
                 letterSpacing: "-0.012em",
@@ -310,7 +310,7 @@ export default function HomePage() {
                         <span
                           className="flex-1 min-w-0 text-rp-ink group-hover:text-rp-accent transition-colors truncate"
                           style={{
-                            fontFamily: '"EB Garamond", Georgia, serif',
+                            fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
                             fontSize: "20px",
                             letterSpacing: "-0.005em",
                             fontWeight: 500,
@@ -382,7 +382,7 @@ export default function HomePage() {
                 <p
                   className="text-rp-ink"
                   style={{
-                    fontFamily: '"EB Garamond", Georgia, serif',
+                    fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
                     fontSize: "22px",
                     lineHeight: 1.45,
                     letterSpacing: "-0.005em",
@@ -434,7 +434,7 @@ export default function HomePage() {
                     <h3
                       className="mt-2 text-rp-ink group-hover:text-rp-accent transition-colors"
                       style={{
-                        fontFamily: '"EB Garamond", Georgia, serif',
+                        fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
                         fontSize: "20px",
                         lineHeight: 1.18,
                         fontWeight: 500,
@@ -481,7 +481,7 @@ export default function HomePage() {
                 >
                   <div
                     className="text-rp-ink tabular-nums"
-                    style={{ fontFamily: '"EB Garamond", Georgia, serif', fontSize: "34px", lineHeight: 1, fontWeight: 500 }}
+                    style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "34px", lineHeight: 1, fontWeight: 500 }}
                   >
                     {c.n}
                   </div>
@@ -519,7 +519,7 @@ function Masthead({
       <span
         className="text-rp-ink"
         style={{
-          fontFamily: '"EB Garamond", Georgia, serif',
+          fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
           fontSize: "14px",
           letterSpacing: "0.16em",
           textTransform: "uppercase",
@@ -565,7 +565,7 @@ function SectionHead({ n, title }: { n: string; title: string }) {
       <h2
         className="text-rp-ink"
         style={{
-          fontFamily: '"EB Garamond", Georgia, serif',
+          fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
           fontSize: "22px",
           lineHeight: 1.1,
           letterSpacing: "-0.005em",
@@ -626,7 +626,7 @@ function Brief({
         <h2
           className="mt-2 text-rp-ink max-w-3xl"
           style={{
-            fontFamily: '"EB Garamond", Georgia, serif',
+            fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
             fontSize: "clamp(28px, 4vw, 42px)",
             lineHeight: 1.1,
             letterSpacing: "-0.012em",
@@ -660,7 +660,7 @@ function EmptyResumes({ onCreate }: { onCreate: () => void }) {
     <div className="mt-4 border border-rp-rule p-8 bg-rp-paper/40">
       <p
         className="text-rp-ink"
-        style={{ fontFamily: '"EB Garamond", Georgia, serif', fontSize: "20px", letterSpacing: "-0.005em", fontWeight: 500 }}
+        style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "20px", letterSpacing: "-0.005em", fontWeight: 500 }}
       >
         No résumés on your shelf yet.
       </p>
