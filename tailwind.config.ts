@@ -94,21 +94,20 @@ export default {
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
 				},
-				// Utility palette — pure white, near-black, neutral grays.
-				// Aesthetic reference: unifyed.ai — "built like a tool",
-				// generous whitespace, single accent. The serif/cream
-				// editorial palette was rolled into this; the CanonicalTemplate
-				// (the actual resume render) still uses its own serif paper.
-				'rp-canvas': '#FFFFFF',      // page background
-				'rp-paper':  '#FAFAFA',      // subtle inset (cards, hover)
-				'rp-paper-2':'#F4F4F4',      // pressed / nested panels
-				'rp-ink':    '#0A0A0A',      // primary text — true near-black
-				'rp-ink-2':  '#525252',      // secondary text — neutral-600
+				// Utility palette — INVERTED. Pure black canvas, white text.
+				// The CanonicalTemplate (resume preview) keeps its own white
+				// paper internally so the printed CV looks correct against
+				// the dark page.
+				'rp-canvas': '#0A0A0A',      // page background — near-black
+				'rp-paper':  '#171717',      // subtle inset (cards, hover) — neutral-900
+				'rp-paper-2':'#262626',      // pressed / nested panels — neutral-800
+				'rp-ink':    '#FAFAFA',      // primary text — soft white
+				'rp-ink-2':  '#A3A3A3',      // secondary text — neutral-400
 				'rp-ink-3':  '#737373',      // tertiary text — neutral-500
-				'rp-rule':   '#E5E5E5',      // hairline borders — neutral-200
-				'rp-rule-2': '#D4D4D4',      // stronger borders — neutral-300
-				'rp-accent': '#B45309',      // warm amber accent (kept)
-				'rp-accent-2':'#92400E'      // amber pressed
+				'rp-rule':   '#262626',      // hairline borders — neutral-800
+				'rp-rule-2': '#404040',      // stronger borders — neutral-700
+				'rp-accent': '#F59E0B',      // amber-500 — pops on dark
+				'rp-accent-2':'#FBBF24'      // amber-400 — hover
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
