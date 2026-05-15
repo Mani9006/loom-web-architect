@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -131,13 +132,12 @@ export default function AIToolbox() {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-6xl mx-auto">
-      <div>
-        <h1 className="text-xl font-bold flex items-center gap-2">
-          <Wand2 className="w-5 h-5 text-accent" /> AI Toolbox
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">6 AI-powered tools to supercharge your career brand</p>
-      </div>
+    <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-6">
+      <PageHeader
+        title="AI toolbox."
+        status="6 generators"
+        description="Personal brand statement, professional email, elevator pitch, LinkedIn headline and About section, LinkedIn post. One prompt, ready to ship."
+      />
 
       {/* Tool Selector */}
       <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">

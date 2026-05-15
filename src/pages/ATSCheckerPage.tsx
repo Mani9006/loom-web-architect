@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { usePersistedState } from "@/hooks/use-persisted-state";
@@ -387,17 +388,13 @@ export default function ATSCheckerPage() {
   return (
     <div className="bg-muted/30 min-h-full">
       <ScrollArea className="h-[calc(100vh-68px)]">
-        <div className="max-w-2xl mx-auto p-6 space-y-6">
-          {/* Header */}
-          <div className="text-center mb-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <Target className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">ATS Score Checker</h1>
-            <p className="text-muted-foreground">
-              Deep analysis across 6 scoring dimensions with actionable recommendations
-            </p>
-          </div>
+        <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-6">
+          <PageHeader
+            title="Score it."
+            status="ats · 6 dimensions"
+            description="Deep analysis across formatting, keywords, experience relevance, skills coverage, education, and content quality. Paste your résumé and a job description; we'll tell you exactly what to fix."
+          />
+
 
           {/* Resume Input */}
           <Card>

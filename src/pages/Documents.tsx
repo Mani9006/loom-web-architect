@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,23 +104,20 @@ export default function Documents() {
   const filtered = documents.filter((d) => d.title.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <FolderOpen className="w-5 h-5 text-primary" /> Documents
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">All your resumes, cover letters, and materials</p>
+    <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-6">
+      <PageHeader
+        title="Documents."
+        status="library"
+        description="Every résumé, cover letter, and uploaded artifact in one place. Searchable, exportable, version-aware."
+      />
+      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <div className="relative flex-1 sm:flex-none">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rp-ink-3" />
+          <Input placeholder="Search documents..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-full sm:w-52" />
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:flex-none">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search documents..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-full sm:w-52" />
-          </div>
-          <Button size="sm" className="gap-2 shrink-0" onClick={() => setUploadOpen(true)}>
-            <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add document</span><span className="sm:hidden">Add</span>
-          </Button>
-        </div>
+        <Button size="sm" className="gap-2 shrink-0" onClick={() => setUploadOpen(true)}>
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add document</span><span className="sm:hidden">Add</span>
+        </Button>
       </div>
 
       <div className="border rounded-xl overflow-hidden overflow-x-auto">

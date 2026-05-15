@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { PageHeader } from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -210,16 +211,12 @@ export default function MatchesPage() {
   }
 
   return (
-    <div className="px-6 lg:px-12 py-10 lg:py-12 max-w-[1280px] mx-auto space-y-10">
-      <motion.header initial="hidden" animate="visible" variants={fadeUp} custom={0} className="mb-8">
-        <p className="text-[12px] font-medium text-muted-foreground mb-1.5">Matches</p>
-        <h1 className="text-[28px] sm:text-[32px] font-bold text-foreground tracking-tight leading-tight">
-          The shortlist, scored
-        </h1>
-        <p className="mt-2 max-w-[64ch] text-[14px] text-muted-foreground leading-relaxed">
-          Every hour we pull fresh postings from Greenhouse, Ashby, and Lever across tracked companies. Evaluate any role against your resume to see how you stack up.
-        </p>
-      </motion.header>
+    <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-10">
+      <PageHeader
+        title="The shortlist, scored."
+        status="matches · hourly scan"
+        description="Every hour we pull fresh postings from Greenhouse, Ashby, and Lever across tracked companies. Evaluate any role against your résumé to see how you stack up."
+      />
 
       {/* Stat strip */}
       <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-5 sm:p-6 flex flex-wrap gap-8">

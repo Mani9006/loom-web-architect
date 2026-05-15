@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { PageHeader } from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Button } from "@/components/ui/button";
@@ -434,23 +435,21 @@ export default function JobTracker() {
 
   // ===== DEFAULT: KANBAN VIEW =====
   return (
-    <div className="p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Target className="w-5 h-5 text-accent" /> Job Tracker
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Drag and drop to update status</p>
+    <div className="max-w-[1400px] mx-auto px-6 lg:px-10 pt-10 pb-10 h-full flex flex-col">
+      <PageHeader
+        title="Applications."
+        status="kanban · pipeline"
+        description="Drag and drop between Saved · Applied · Interviewing · Offer · Rejected. Status changes are logged for analytics."
+      />
+      <div className="flex items-center justify-end gap-2 mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rp-ink-3" />
+          <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
-          </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-2"><Plus className="w-4 h-4" /> Add Job</Button>
-            </DialogTrigger>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="gap-2"><Plus className="w-4 h-4" /> Add Job</Button>
+          </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Add New Job</DialogTitle></DialogHeader>
               <div className="space-y-4">
@@ -460,7 +459,6 @@ export default function JobTracker() {
               </div>
             </DialogContent>
           </Dialog>
-        </div>
       </div>
 
       {/* Stats header */}

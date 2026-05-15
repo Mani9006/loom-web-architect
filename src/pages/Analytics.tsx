@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { PageHeader } from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -133,13 +134,12 @@ export default function Analytics() {
   ];
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-xl font-bold flex items-center gap-2">
-          <BarChart3 className="w-5 h-5 text-accent" /> Career Analytics
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Track your progress and identify areas for growth</p>
-      </div>
+    <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-6">
+      <PageHeader
+        title="Career analytics."
+        status="track · refine"
+        description="What you've applied to, what got interviews, what your résumé optimizes for. Numbers, not vibes."
+      />
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

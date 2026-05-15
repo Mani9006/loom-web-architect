@@ -378,16 +378,16 @@ export default function ResumeProjects() {
           Every draft, tailored variant, and saved version. Click one to edit, or start a new one and the AI tailor turns any job description into a matching application.
         </p>
 
-        {/* Action row */}
+        {/* Action row — primary uses default (white-on-black) like the rest of the app */}
         <div className="mt-7 flex items-center gap-2">
-          <Button onClick={() => setCreateOpen(true)} className="gap-2 bg-rp-accent text-rp-canvas hover:bg-rp-accent-2">
+          <Button onClick={() => setCreateOpen(true)} className="gap-2">
             <Plus className="h-4 w-4" />
             New résumé
           </Button>
           <Button
             variant="outline"
             onClick={() => navigate("/resume-builder/v2")}
-            className="gap-2 border-rp-rule-2 text-rp-ink hover:bg-rp-paper"
+            className="gap-2"
           >
             <Sparkles className="h-4 w-4" />
             Open editor
