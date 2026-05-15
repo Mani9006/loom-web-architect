@@ -35,7 +35,7 @@ import {
   CheckCircle, Upload, FolderOpen,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
-import { TerminalLoader } from "@/components/Terminal";
+import { TerminalLoader, TerminalText } from "@/components/Terminal";
 
 type ResumeSource = "scratch" | "upload" | "existing";
 
@@ -338,47 +338,84 @@ export default function ResumeProjects() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileText className="h-6 w-6 text-primary" />
-            My Resumes
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {resumes.length} resume{resumes.length !== 1 ? "s" : ""}
-          </p>
+    <div className="min-h-full bg-rp-canvas">
+      <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-24">
+        {/* Date + status row */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pb-4 border-b border-rp-rule">
+          <span
+            className="text-rp-ink-2"
+            style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
+          >
+            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+          </span>
+          <span
+            className="text-rp-ink-3"
+            style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
+          >
+            library · {resumes.length} on the shelf
+          </span>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Typed title with red cursor */}
+        <div className="mt-10 mb-4">
+          <h1
+            className="text-rp-ink"
+            style={{
+              fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
+              fontSize: "clamp(38px, 6vw, 60px)",
+              lineHeight: 1.04,
+              letterSpacing: "-0.02em",
+              fontWeight: 700,
+            }}
+          >
+            <TerminalText text="Your résumés." speed={80} startDelay={150} />
+          </h1>
+        </div>
+        <p
+          className="text-rp-ink-2 max-w-2xl"
+          style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "16px", lineHeight: 1.6 }}
+        >
+          Every draft, tailored variant, and saved version. Click one to edit, or start a new one and the AI tailor turns any job description into a matching application.
+        </p>
+
+        {/* Action row */}
+        <div className="mt-7 flex items-center gap-2">
+          <Button onClick={() => setCreateOpen(true)} className="gap-2 bg-rp-accent text-rp-canvas hover:bg-rp-accent-2">
+            <Plus className="h-4 w-4" />
+            New résumé
+          </Button>
           <Button
             variant="outline"
             onClick={() => navigate("/resume-builder/v2")}
-            className="gap-2"
-            title="Open the rebuilt editor — LaTeX-quality typography, live preview, AI tailor"
+            className="gap-2 border-rp-rule-2 text-rp-ink hover:bg-rp-paper"
           >
-            <Sparkles className="h-4 w-4 text-primary" />
-            New editor
-          </Button>
-          <Button onClick={() => setCreateOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Create New Resume
+            <Sparkles className="h-4 w-4" />
+            Open editor
           </Button>
         </div>
-      </div>
 
-      {/* Search */}
-      {resumes.length > 0 && (
-        <div className="relative max-w-sm mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search resumes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-      )}
+        {/* Search */}
+        {resumes.length > 0 && (
+          <div className="mt-10 flex items-center gap-3 border-b border-rp-rule pb-3 max-w-md">
+            <Search className="w-3.5 h-3.5 text-rp-ink-3 shrink-0" strokeWidth={1.6} />
+            <input
+              placeholder="Search by name or role…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-transparent outline-none placeholder:text-rp-ink-3 text-rp-ink"
+              style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "13.5px" }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="text-rp-ink-3 hover:text-rp-ink"
+                style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em", textTransform: "uppercase" }}
+              >
+                clear
+              </button>
+            )}
+          </div>
+        )}
 
       {/* Empty state */}
       {resumes.length === 0 && (
@@ -595,6 +632,7 @@ export default function ResumeProjects() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </div>
     </div>
   );
 }

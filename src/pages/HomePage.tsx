@@ -266,7 +266,7 @@ export default function HomePage() {
                 fontWeight: 700,
               }}
             >
-              <TerminalText text={`${greeting}, ${displayName}.`} speed={32} startDelay={120} />
+              <TerminalText text={`${greeting}, ${displayName}.`} speed={80} startDelay={150} />
             </h1>
             <div
               className="mt-3 text-rp-ink-3"

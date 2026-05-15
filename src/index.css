@@ -242,18 +242,17 @@
   }
 
   /* ── Terminal cursor — Nothing-style red block ─────────────────────
-   * A solid red rectangle that blinks on/off. Used in TerminalText to
-   * indicate the typing position and as a standalone "input ready"
-   * affordance. */
+   * A solid red rectangle that blinks on/off. Sized to cap-height (≈0.76em)
+   * and aligned just below the baseline so it sits at the same visible
+   * height as capital letters in display Manrope / JetBrains Mono. */
   .terminal-cursor {
     display: inline-block;
-    width: 0.55em;
-    height: 1em;
-    margin-left: 2px;
+    width: 0.5em;
+    height: 0.76em;
+    margin-left: 0.18em;
     background: hsl(4 100% 59%);
-    vertical-align: text-bottom;
-    transform: translateY(2px);
-    animation: cursor-blink 1.05s steps(1) infinite;
+    vertical-align: -0.02em;
+    animation: cursor-blink 1.3s steps(1) infinite;
   }
 
   @keyframes cursor-blink {
