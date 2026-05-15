@@ -650,6 +650,22 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  const noTargetsBanner = targetRoles.length === 0 && foundJobs.length === 0 && !busy ? (
+    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
+      <span className="mt-0.5 shrink-0">⚠</span>
+      <span>
+        No target roles set. The AI can still search based on your resume, but results will be more
+        accurate once you add roles in{" "}
+        <button
+          className="underline underline-offset-2 font-medium"
+          onClick={() => {/* Settings is opened from the SessionPage header */}}
+        >
+          Settings
+        </button>.
+      </span>
+    </div>
+  ) : null;
+
   // Chat-style state header (shows the conversation so far)
   const headerSection = (
     <div className="flex items-center justify-between flex-wrap gap-2">
@@ -854,6 +870,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   return (
     <div className="space-y-4">
       {headerSection}
+      {noTargetsBanner}
       {historySection}
       {clarificationCard}
       {emptyState}

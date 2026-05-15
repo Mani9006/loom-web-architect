@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -131,12 +131,58 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && counts.total > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-medium">Application pipeline</h3>
+          </div>
+          <div className="space-y-3">
+            {[
+              { label: "On board", value: counts.total, color: "bg-slate-400", base: counts.total },
+              { label: "Applied", value: counts.applied, color: "bg-indigo-500", base: counts.total },
+              { label: "Interviews", value: counts.interview, color: "bg-amber-500", base: counts.total },
+              { label: "Offers", value: counts.offer, color: "bg-emerald-500", base: counts.total },
+            ].map((stage) => (
+              <div key={stage.label}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-muted-foreground">{stage.label}</span>
+                  <span className="font-medium tabular-nums">
+                    {stage.value}
+                    {stage.base > 0 && stage.label !== "On board" && (
+                      <span className="text-muted-foreground font-normal ml-1">
+                        ({Math.round((stage.value / stage.base) * 100)}%)
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${stage.color}`}
+                    style={{ width: stage.base > 0 ? `${Math.max((stage.value / stage.base) * 100, stage.value > 0 ? 2 : 0)}%` : "0%" }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {counts.rejected > 0 && (
+            <p className="text-[11px] text-muted-foreground mt-4">
+              {counts.rejected} rejected · {counts.total - counts.applied - counts.rejected - counts.offer > 0
+                ? `${counts.total - counts.applied - counts.rejected - counts.offer} in progress`
+                : ""}
+            </p>
+          )}
+        </Card>
+      )}
+
+      {!loading && counts.total === 0 && (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Stats will appear here once you start saving and applying to jobs.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }
