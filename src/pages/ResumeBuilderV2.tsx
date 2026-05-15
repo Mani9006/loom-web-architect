@@ -165,7 +165,7 @@ export default function ResumeBuilderV2() {
 
   // ─── render ────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] bg-[#f6f5f1] dark:bg-zinc-900 overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-4rem)] bg-rp-canvas overflow-hidden">
       <TopBar
         resumeName={resumeName}
         onRename={setResumeName}
@@ -181,13 +181,13 @@ export default function ResumeBuilderV2() {
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] overflow-hidden">
         {/* EDITOR */}
-        <div className="overflow-y-auto border-r border-zinc-200/70 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+        <div className="overflow-y-auto border-r border-rp-rule bg-rp-canvas">
           <div className="max-w-2xl mx-auto px-6 py-8">
             <Eyebrow>Edit your resume</Eyebrow>
-            <h2 className="text-2xl font-semibold tracking-tight mt-1 mb-1 text-zinc-900 dark:text-zinc-50" style={{ fontFamily: '"EB Garamond", Georgia, serif' }}>
+            <h2 className="text-2xl font-semibold tracking-tight mt-1 mb-1 text-rp-ink" style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif' }}>
               Everything updates live on the right
             </h2>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
+            <p className="text-sm text-rp-ink-2 mb-6">
               Click any section to expand. Changes are saved automatically.
             </p>
 
@@ -196,13 +196,13 @@ export default function ResumeBuilderV2() {
                 <AccordionItem
                   key={s.id}
                   value={s.id}
-                  className="border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-950 px-4 data-[state=open]:shadow-sm"
+                  className="border border-rp-rule rounded-lg bg-rp-paper px-4"
                 >
                   <AccordionTrigger className="py-3 hover:no-underline">
                     <div className="flex items-baseline justify-between w-full pr-3">
                       <div className="text-left">
-                        <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{s.label}</div>
-                        <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{s.description}</div>
+                        <div className="text-sm font-semibold text-rp-ink">{s.label}</div>
+                        <div className="text-[11px] text-rp-ink-2 mt-0.5">{s.description}</div>
                       </div>
                       <SectionStatusDot id={s.id} resume={resume} />
                     </div>
@@ -219,7 +219,7 @@ export default function ResumeBuilderV2() {
         </div>
 
         {/* PREVIEW */}
-        <div className="overflow-y-auto bg-[#f6f5f1] dark:bg-zinc-900 relative">
+        <div className="overflow-y-auto bg-rp-canvas relative">
           <div className="px-6 py-10 flex justify-center">
             {previewMode === "preview" ? (
               <PaperFrame>
@@ -279,11 +279,11 @@ function TopBar({
   onToggleAi: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-b bg-white dark:bg-zinc-950 backdrop-blur">
-      <Button variant="ghost" size="sm" onClick={onBack} className="text-zinc-600 dark:text-zinc-400">
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-rp-rule bg-rp-canvas">
+      <Button variant="ghost" size="sm" onClick={onBack} className="text-rp-ink-2">
         <ArrowLeft className="size-4 mr-1" /> All resumes
       </Button>
-      <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
+      <div className="h-5 w-px bg-rp-rule mx-1" />
       <Input
         value={resumeName}
         onChange={(e) => onRename(e.target.value)}
@@ -319,13 +319,13 @@ function ViewToggle({
   onChange: (v: "preview" | "json") => void;
 }) {
   return (
-    <div className="inline-flex items-center rounded-md bg-zinc-100 dark:bg-zinc-900 p-0.5 text-xs">
+    <div className="inline-flex items-center rounded-md bg-rp-paper p-0.5 text-xs">
       <button
         onClick={() => onChange("preview")}
         className={`px-2.5 py-1 rounded-[5px] flex items-center gap-1 transition-colors ${
           value === "preview"
-            ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100"
-            : "text-zinc-500 dark:text-zinc-400"
+            ? "bg-rp-paper-2 shadow-sm text-rp-ink"
+            : "text-rp-ink-2"
         }`}
       >
         <Eye className="size-3" /> Preview
@@ -334,8 +334,8 @@ function ViewToggle({
         onClick={() => onChange("json")}
         className={`px-2.5 py-1 rounded-[5px] flex items-center gap-1 transition-colors ${
           value === "json"
-            ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100"
-            : "text-zinc-500 dark:text-zinc-400"
+            ? "bg-rp-paper-2 shadow-sm text-rp-ink"
+            : "text-rp-ink-2"
         }`}
       >
         <Code2 className="size-3" /> JSON
@@ -346,13 +346,13 @@ function ViewToggle({
 
 function SaveStatusPill({ status }: { status: ReturnType<typeof useResumeStore.getState>["status"] }) {
   if (status === "loading") {
-    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400"><Loader2 className="size-3 animate-spin" /> Loading…</span>;
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rp-paper text-[11px] text-rp-ink-2"><Loader2 className="size-3 animate-spin" /> Loading…</span>;
   }
   if (status === "saving") {
-    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400"><Loader2 className="size-3 animate-spin" /> Saving…</span>;
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rp-paper text-[11px] text-rp-ink-2"><Loader2 className="size-3 animate-spin" /> Saving…</span>;
   }
   if (status === "saved") {
-    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-[11px] text-emerald-700 dark:text-emerald-400"><Check className="size-3" /> Saved</span>;
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rp-accent/10 text-[11px] text-rp-accent"><Check className="size-3" /> Saved</span>;
   }
   if (status === "error") {
     return <Badge variant="destructive" className="text-[10px]">Save error</Badge>;
@@ -364,7 +364,7 @@ function SaveStatusPill({ status }: { status: ReturnType<typeof useResumeStore.g
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[11px] uppercase tracking-[0.18em] font-medium text-zinc-500 dark:text-zinc-500">
+    <div className="text-[11px] uppercase tracking-[0.18em] font-medium text-rp-ink-3">
       {children}
     </div>
   );
@@ -406,7 +406,7 @@ function SectionStatusDot({ id, resume }: { id: string; resume: ResumeJSON }) {
   return (
     <span
       className={`inline-block size-2 rounded-full shrink-0 ml-3 ${
-        filled ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"
+        filled ? "bg-rp-accent" : "bg-rp-rule-2"
       }`}
       title={filled ? "Has content" : "Empty"}
     />
@@ -434,11 +434,11 @@ function FirstStepHint({ resume }: { resume: ResumeJSON }) {
     !resume.education.some((e) => e.institution || e.degree);
   if (!empty) return null;
   return (
-    <div className="mt-6 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg bg-zinc-50/50 dark:bg-zinc-900/40 px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">
+    <div className="mt-6 border border-dashed border-rp-rule-2 rounded-lg bg-rp-paper px-4 py-3 text-sm text-rp-ink-2">
       <div className="flex items-start gap-2">
         <EyeOff className="size-4 mt-0.5 shrink-0" />
         <div>
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">Fresh start — fill in Header first.</span>{" "}
+          <span className="font-medium text-rp-ink">Fresh start — fill in Header first.</span>{" "}
           <span>Click the <strong>Header</strong> section above and add your name + email. The preview on the right updates as you type.</span>
         </div>
       </div>
