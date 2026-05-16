@@ -43,8 +43,8 @@ export default function WorkerStatusBadge() {
   const dotColor = state.online ? "bg-emerald-500" : "bg-zinc-400";
   const label = state.online ? "AI ready" : "AI offline";
   const description = state.online
-    ? "AI features are available. Tailoring jobs typically takes 5–15 seconds."
-    : "AI features are temporarily unavailable. Try again in a few minutes.";
+    ? `AI features are available. Tailoring a resume takes 15–60 seconds.${state.hostname ? ` Running on ${state.hostname}.` : ""}`
+    : "AI features require the local worker to be running on your Mac. Open a terminal and run the worker script to enable Discover and Tailor.";
 
   return (
     <TooltipProvider delayDuration={150}>

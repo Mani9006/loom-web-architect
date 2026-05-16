@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,12 +27,17 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // URL param ?tab= takes priority (used by deep links like "View tailored resume").
+    const urlTab = typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("tab")
+      : null;
+    if (urlTab && ["discover", "resumes", "board", "stats"].includes(urlTab)) return urlTab;
+    // Otherwise restore from sessionStorage so tab-app switches don't reset the user.
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -52,7 +57,11 @@ export default function SessionPage() {
     } catch {
       // sessionStorage can throw in private mode — non-fatal
     }
-  }, [tab]);
+    // Remove ?tab from the URL once it's been consumed so the address bar stays clean.
+    if (searchParams.get("tab")) {
+      setSearchParams((p) => { p.delete("tab"); return p; }, { replace: true });
+    }
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!sessionId) return;

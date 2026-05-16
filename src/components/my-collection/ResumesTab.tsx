@@ -146,8 +146,8 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
+                <DropdownMenuItem onClick={() => downloadAsPdf(r)}>
+                  <Download className="w-3.5 h-3.5 mr-2" /> Print / Save as PDF
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
@@ -204,34 +204,61 @@ function downloadAsMarkdown(r: TailoredResume) {
   URL.revokeObjectURL(url);
 }
 
-async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
-    toast({
-      title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
-      variant: "destructive",
-    });
-    return;
-  }
-  window.open(data.url, "_blank");
+function downloadAsPdf(r: TailoredResume) {
+  // Open a print-ready window so the user can save as PDF via browser print dialog.
+  const html = `<!DOCTYPE html><html><head>
+<meta charset="utf-8">
+<title>${r.name}</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 750px; margin: 40px auto; font-size: 13px; line-height: 1.5; color: #111; }
+  pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; margin: 0; }
+  @media print { body { margin: 0; } }
+</style>
+</head><body><pre>${r.cv_md.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+<script>window.onload = function() { window.print(); }</script>
+</body></html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    const { Document, Packer, Paragraph, TextRun, AlignmentType } = await import("docx");
+    const { saveAs } = await import("file-saver");
+
+    const paragraphs: InstanceType<typeof Paragraph>[] = r.cv_md
+      .split("\n")
+      .map((line) => {
+        const heading = line.match(/^(#{1,3})\s+(.*)/);
+        if (heading) {
+          return new Paragraph({
+            children: [new TextRun({ text: heading[2], bold: true, size: heading[1].length === 1 ? 28 : 24, font: "Calibri" })],
+            spacing: { before: 200, after: 80 },
+          });
+        }
+        const isBullet = /^[-*]\s+/.test(line);
+        const text = isBullet ? line.replace(/^[-*]\s+/, "") : line;
+        return new Paragraph({
+          bullet: isBullet ? { level: 0 } : undefined,
+          spacing: { before: isBullet ? 30 : 60 },
+          children: [new TextRun({ text: text || " ", size: 20, font: "Calibri" })],
+        });
+      });
+
+    const doc = new Document({
+      sections: [{ properties: { page: { margin: { top: 720, bottom: 720, left: 864, right: 864 } } }, children: paragraphs }],
+    });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, `${r.name}.docx`);
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : "Could not generate document. Try downloading .md instead.",
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────

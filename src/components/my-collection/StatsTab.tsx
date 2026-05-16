@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -29,55 +30,55 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
   const [counts, setCounts] = useState<StatusCounts>(EMPTY_COUNTS);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchStats = useCallback(async () => {
     let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const [jobsResult, resumesResult] = await Promise.all([
-          (supabase as any)
-            .from("mc_tracked_jobs")
-            .select("status")
-            .eq("session_id", sessionId)
-            .is("deleted_at", null),
-          (supabase as any)
-            .from("mc_tailored_resumes")
-            .select("*", { count: "exact", head: true })
-            .eq("session_id", sessionId),
-        ]);
+    setLoading(true);
+    try {
+      const [jobsResult, resumesResult] = await Promise.all([
+        (supabase as any)
+          .from("mc_tracked_jobs")
+          .select("status")
+          .eq("session_id", sessionId)
+          .is("deleted_at", null),
+        (supabase as any)
+          .from("mc_tailored_resumes")
+          .select("*", { count: "exact", head: true })
+          .eq("session_id", sessionId),
+      ]);
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        if (jobsResult.error) throw new Error(jobsResult.error.message);
-        if (resumesResult.error) throw new Error(resumesResult.error.message);
+      if (jobsResult.error) throw new Error(jobsResult.error.message);
+      if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
-        const tally = (s: string) => rows.filter((r) => r.status === s).length;
+      const rows: { status: string }[] = jobsResult.data ?? [];
+      const tally = (s: string) => rows.filter((r) => r.status === s).length;
 
-        setCounts({
-          total: rows.length,
-          saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
-          offer: tally("offer"),
-          rejected: tally("rejected"),
-          resumes: resumesResult.count ?? 0,
-        });
-      } catch (e) {
-        if (cancelled) return;
-        toast({
-          title: "Couldn't load stats",
-          description: e instanceof Error ? e.message : String(e),
-          variant: "destructive",
-        });
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId]);
+      setCounts({
+        total: rows.length,
+        saved: tally("saved"),
+        applied: tally("applied"),
+        interview: tally("interview") + tally("take_home"),
+        offer: tally("offer"),
+        rejected: tally("rejected"),
+        resumes: resumesResult.count ?? 0,
+      });
+    } catch (e) {
+      if (cancelled) return;
+      toast({
+        title: "Couldn't load stats",
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      });
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+    return () => { cancelled = true; };
+  }, [sessionId, toast]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   const responseRate =
     counts.applied > 0
@@ -86,49 +87,59 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="On the board"
-          value={loading ? "…" : counts.total}
-          icon={<Briefcase className="w-4 h-4" />}
-        />
-        <StatCard
-          label="Applied"
-          value={loading ? "…" : counts.applied}
-          icon={<Star className="w-4 h-4" />}
-        />
-        <StatCard
-          label="Interviews"
-          value={loading ? "…" : counts.interview}
-          icon={<BarChart3 className="w-4 h-4" />}
-        />
-        <StatCard
-          label="Tailored resumes"
-          value={loading ? "…" : counts.resumes}
-          icon={<FileText className="w-4 h-4" />}
-        />
-      </div>
-
-      {!loading && counts.applied > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <StatCard
-            label="Offers"
-            value={counts.offer}
-            icon={<Star className="w-4 h-4 text-emerald-600" />}
-          />
-          <StatCard
-            label="Rejected"
-            value={counts.rejected}
-            icon={<BarChart3 className="w-4 h-4 text-red-500" />}
-          />
-          {responseRate !== null && (
-            <StatCard
-              label="Response rate"
-              value={`${responseRate}%`}
-              icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
-            />
-          )}
+      {loading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-[82px] rounded-lg" />
+          ))}
         </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard
+              label="On the board"
+              value={counts.total}
+              icon={<Briefcase className="w-4 h-4" />}
+            />
+            <StatCard
+              label="Applied"
+              value={counts.applied}
+              icon={<Star className="w-4 h-4" />}
+            />
+            <StatCard
+              label="Interviews"
+              value={counts.interview}
+              icon={<BarChart3 className="w-4 h-4" />}
+            />
+            <StatCard
+              label="Tailored resumes"
+              value={counts.resumes}
+              icon={<FileText className="w-4 h-4" />}
+            />
+          </div>
+
+          {counts.applied > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <StatCard
+                label="Offers"
+                value={counts.offer}
+                icon={<Star className="w-4 h-4 text-emerald-600" />}
+              />
+              <StatCard
+                label="Rejected"
+                value={counts.rejected}
+                icon={<BarChart3 className="w-4 h-4 text-red-500" />}
+              />
+              {responseRate !== null && (
+                <StatCard
+                  label="Response rate"
+                  value={`${responseRate}%`}
+                  icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+                />
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <Card className="p-6 text-center border-dashed">
