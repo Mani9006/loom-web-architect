@@ -36,7 +36,13 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+export default function ResumesTab({
+  sessionId,
+  highlightResumeId,
+}: {
+  sessionId: string;
+  highlightResumeId?: string | null;
+}) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +68,14 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     load();
   }, [sessionId]);
+
+  // When coming from the Board's "View tailored resume" link, auto-open the
+  // specific resume in the canvas editor so the user lands directly on it.
+  useEffect(() => {
+    if (!highlightResumeId || loading || resumes.length === 0) return;
+    const target = resumes.find((r) => r.id === highlightResumeId);
+    if (target) setEditing(target);
+  }, [highlightResumeId, loading, resumes]);
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
@@ -114,7 +128,12 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
     <>
       <div className="space-y-2">
         {resumes.map((r) => (
-          <Card key={r.id} className="p-3 flex items-center gap-3">
+          <Card
+            key={r.id}
+            className={`p-3 flex items-center gap-3 transition-colors ${
+              r.id === highlightResumeId ? "border-primary ring-1 ring-primary/30" : ""
+            }`}
+          >
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{r.name}</div>

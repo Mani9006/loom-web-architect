@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,6 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
@@ -147,19 +153,38 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <TooltipProvider delayDuration={150}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={atCap ? 0 : undefined} className="shrink-0">
+                <Button onClick={() => setWizardOpen(true)} disabled={atCap}>
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {atCap && (
+              <TooltipContent className="max-w-[220px] text-[11px]">
+                You have {ACTIVE_LIMIT} active sessions. Archive one to create a new one.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
-      <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground flex-wrap">
         <Badge variant="outline" className="font-normal">
           {activeSessions.length}/{ACTIVE_LIMIT} active
         </Badge>
+        {atCap && (
+          <span className="flex items-center gap-1 text-amber-600">
+            <AlertCircle className="w-3 h-3" />
+            Limit reached — archive a session to add another.
+          </span>
+        )}
         {archivedSessions.length > 0 && (
           <button
             onClick={() => setShowArchived((s) => !s)}
-            className="hover:text-foreground transition-colors"
+            className="hover:text-foreground transition-colors ml-auto"
           >
             {showArchived ? "Hide" : "Show"} {archivedSessions.length} archived
           </button>

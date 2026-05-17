@@ -451,13 +451,15 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   async function submitAnswers() {
     if (!clarification) return;
-    if (clarification.answers.some((a) => !a.trim())) {
-      toast({ title: "Please answer all the questions before continuing" });
+    // Require at least one non-empty answer so the AI gets something to work
+    // with, but don't block on every single answer since some may be optional.
+    if (clarification.answers.every((a) => !a.trim())) {
+      toast({ title: "Please answer at least one question before continuing" });
       return;
     }
     const turn: ClarificationTurn = {
       questions: clarification.questions,
-      answers: clarification.answers.map((a) => a.trim()),
+      answers: clarification.answers.map((a) => a.trim() || "(no answer)"),
     };
     const newHistory = [...conversation, turn];
     setConversation(newHistory);

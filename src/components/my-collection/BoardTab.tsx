@@ -296,11 +296,11 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData?.user) {
       await (supabase as any).from("mc_status_history").insert({
         tracked_job_id: jobId,
-        user_id: user.id,
+        user_id: authData.user.id,
         status_from: previousStatus,
         status_to: status,
         source: "manual",
