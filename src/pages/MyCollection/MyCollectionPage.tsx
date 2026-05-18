@@ -152,14 +152,19 @@ export default function MyCollectionPage() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground flex-wrap">
         <Badge variant="outline" className="font-normal">
           {activeSessions.length}/{ACTIVE_LIMIT} active
         </Badge>
+        {atCap && (
+          <span className="text-amber-600">
+            Active session limit reached — archive one to create a new session.
+          </span>
+        )}
         {archivedSessions.length > 0 && (
           <button
             onClick={() => setShowArchived((s) => !s)}
-            className="hover:text-foreground transition-colors"
+            className="hover:text-foreground transition-colors ml-auto"
           >
             {showArchived ? "Hide" : "Show"} {archivedSessions.length} archived
           </button>

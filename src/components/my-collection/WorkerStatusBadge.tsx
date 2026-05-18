@@ -43,8 +43,8 @@ export default function WorkerStatusBadge() {
   const dotColor = state.online ? "bg-emerald-500" : "bg-zinc-400";
   const label = state.online ? "AI ready" : "AI offline";
   const description = state.online
-    ? "AI features are available. Tailoring jobs typically takes 5–15 seconds."
-    : "AI features are temporarily unavailable. Try again in a few minutes.";
+    ? `AI features are available${state.hostname ? ` (worker: ${state.hostname})` : ""}. Tailoring and job search typically take 15–60 seconds.`
+    : "The AI worker isn't running. Start the Claude worker on your machine to enable AI features (job search, tailoring, line rewrites).";
 
   return (
     <TooltipProvider delayDuration={150}>

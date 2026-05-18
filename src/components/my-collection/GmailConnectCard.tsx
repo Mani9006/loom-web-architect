@@ -22,8 +22,7 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
 
   async function load() {
     const { data } = await (supabase as any)
-      
-.from("mc_gmail_connections")
+      .from("mc_gmail_connections")
       .select("id,gmail_email,enabled,last_polled_at,token_expires_at")
       .eq("session_id", sessionId)
       .maybeSingle();
@@ -63,9 +62,11 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
   async function pollNow() {
     setBusy(true);
     try {
-      const { data, error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+      const { data, error } = await (supabase as any).functions.invoke("mc-gmail-poll", {
+        body: { session_id: sessionId },
+      });
       if (error) throw error;
-      toast({ title: "Inbox checked", description: `${data?.results?.length ?? 0} sessions polled` });
+      toast({ title: "Inbox checked", description: `${data?.classified ?? 0} emails processed` });
       await load();
     } catch (e) {
       toast({

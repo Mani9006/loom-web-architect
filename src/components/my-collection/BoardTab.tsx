@@ -349,7 +349,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     <>
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
+          {jobs.filter((j) => j.status !== "withdrawn").length}{" "}
+          {jobs.filter((j) => j.status !== "withdrawn").length === 1 ? "card" : "cards"} on the board
         </p>
         <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually

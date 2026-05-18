@@ -677,7 +677,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           {busy ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              {progress === "queued" ? "Queued on your Mac…" : progress === "running" ? "AI is searching…" : "Working…"}
+              {progress === "queued" ? "In the queue…" : progress === "running" ? "AI is searching…" : "Working…"}
             </>
           ) : (
             <>

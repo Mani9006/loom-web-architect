@@ -43,6 +43,7 @@ export default function SessionPage() {
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
 
@@ -57,9 +58,9 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
+      setLoadError(false);
       const { data, error } = await (supabase as any)
         .from("mc_sessions")
         .select("*")
@@ -67,43 +68,45 @@ export default function SessionPage() {
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
       if (error) {
         // eslint-disable-next-line no-console
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          toast({
-            title: "Couldn't load session",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
+        console.error("[SessionPage] load failed:", error.message);
+        toast({
+          title: "Couldn't load session",
+          description: error.message,
+          variant: "destructive",
+        });
+        setLoadError(true);
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
+        setLoading(false);
         return;
       }
-      hadInitialLoad = true;
       setSession(data);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render — which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  if (loadError) {
+    return (
+      <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8 text-center">
+        <p className="text-sm text-muted-foreground mb-4">Failed to load session. Check your connection and try again.</p>
+        <Button asChild variant="outline">
+          <Link to="/my-collection">
+            <ArrowLeft className="w-4 h-4 mr-1" /> Back to My Collection
+          </Link>
+        </Button>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
@@ -128,9 +131,9 @@ export default function SessionPage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
-          </p>
+          {session.status === "archived" && (
+            <p className="text-xs text-muted-foreground mt-1">Archived</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <WorkerStatusBadge />
