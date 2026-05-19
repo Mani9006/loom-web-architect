@@ -13,7 +13,13 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -29,6 +35,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-50 text-zinc-500" },
 ];
 
 type TrackedStatus =
@@ -64,6 +71,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<TrackedJob | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<TrackedStatus | null>(null);
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
@@ -362,9 +370,10 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
             return (
               <div
                 key={col.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => draggedId && moveTo(draggedId, col.id)}
-                className="w-[260px] shrink-0"
+                onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.id); }}
+                onDragLeave={() => setDragOverCol(null)}
+                onDrop={() => { if (draggedId) moveTo(draggedId, col.id); setDragOverCol(null); }}
+                className={`w-[260px] shrink-0 rounded-lg transition-colors ${draggedId && dragOverCol === col.id ? "bg-primary/5 ring-1 ring-primary/20" : ""}`}
               >
                 <div className={`px-3 py-1.5 rounded-md text-[11px] font-medium ${col.tone} flex items-center justify-between`}>
                   <span>{col.label}</span>
@@ -380,16 +389,38 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       onClick={() => setSelected(job)}
                       className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
                     >
-                      <button
-                        type="button"
-                        aria-label="Move to trash"
-                        title="Move to trash"
-                        onClick={(e) => trashJob(job, e)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                      <div className="font-medium leading-tight pr-6">{job.job_title}</div>
+                      <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label="Move to column"
+                              title="Move to column"
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-1 rounded text-muted-foreground/60 hover:text-foreground hover:bg-muted transition"
+                            >
+                              <ChevronDown className="w-3 h-3" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            {COLUMNS.filter((c) => c.id !== job.status).map((c) => (
+                              <DropdownMenuItem key={c.id} onClick={() => moveTo(job.id, c.id)}>
+                                Move to {c.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <button
+                          type="button"
+                          aria-label="Move to trash"
+                          title="Move to trash"
+                          onClick={(e) => trashJob(job, e)}
+                          className="p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="font-medium leading-tight pr-12">{job.job_title}</div>
                       <div className="text-muted-foreground text-[11px] mt-1 flex items-center gap-1">
                         <Building2 className="w-3 h-3" />
                         {job.company}
@@ -404,6 +435,12 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                         <div className="text-muted-foreground text-[10px] mt-1.5 flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {new Date(job.applied_at).toLocaleDateString()}
+                        </div>
+                      )}
+                      {job.tailored_resume_id && (
+                        <div className="text-muted-foreground text-[10px] mt-1.5 flex items-center gap-1">
+                          <FileText className="w-3 h-3 text-primary/60" />
+                          <span className="text-primary/70">Tailored</span>
                         </div>
                       )}
                     </div>

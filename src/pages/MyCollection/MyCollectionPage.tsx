@@ -181,18 +181,29 @@ export default function MyCollectionPage() {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {activeSessions.map((s) => (
-              <SessionCard
-                key={s.id}
-                session={s}
-                stats={statsMap[s.id]}
-                onOpen={() => navigate(`/my-collection/${s.id}`)}
-                onArchive={() => archiveSession(s.id)}
-                onDelete={() => deleteSession(s.id)}
-              />
-            ))}
-          </div>
+          {activeSessions.length === 0 ? (
+            <Card className="p-8 text-center border-dashed mb-4">
+              <p className="text-sm text-muted-foreground mb-3">
+                No active sessions. Reactivate an archived one below, or create a new one.
+              </p>
+              <Button onClick={() => setWizardOpen(true)}>
+                <Plus className="w-4 h-4 mr-1" /> New session
+              </Button>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeSessions.map((s) => (
+                <SessionCard
+                  key={s.id}
+                  session={s}
+                  stats={statsMap[s.id]}
+                  onOpen={() => navigate(`/my-collection/${s.id}`)}
+                  onArchive={() => archiveSession(s.id)}
+                  onDelete={() => deleteSession(s.id)}
+                />
+              ))}
+            </div>
+          )}
 
           {showArchived && archivedSessions.length > 0 && (
             <>

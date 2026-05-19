@@ -318,7 +318,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * (when we explicitly start a search) and the auto-reattach effect on
    * mount (when we picked up an in-flight search the user started before).
    */
-  async function handleSearchResult(job: AIJob, history: ClarificationTurn[]) {
+  async function handleSearchResult(job: AIJob, _history: ClarificationTurn[]) {
     const result = job.result ?? "";
     const resultJson = job.result_json;
 
@@ -399,8 +399,6 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       description: "The AI didn't return jobs or clarification questions. Try again.",
       variant: "destructive",
     });
-    // Suppress unused-history warning — kept in signature for future use.
-    void history;
   }
 
   async function runSearch(history: ClarificationTurn[]) {
@@ -648,6 +646,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     clearPersisted(sessionId);
   }
 
+  const hasTargets = targetRoles.length > 0 || targetLocations.length > 0;
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   // Chat-style state header (shows the conversation so far)
@@ -666,6 +666,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             {l}
           </Badge>
         ))}
+        {!hasTargets && (
+          <span className="text-xs text-muted-foreground italic">No targets set — open Settings to configure roles.</span>
+        )}
       </div>
       <div className="flex items-center gap-2">
         {(foundJobs.length > 0 || conversation.length > 0) && (
@@ -673,7 +676,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             <RefreshCw className="w-3.5 h-3.5 mr-1" /> Start over
           </Button>
         )}
-        <Button size="sm" onClick={() => runSearch(conversation)} disabled={busy}>
+        <Button size="sm" onClick={() => runSearch(conversation)} disabled={busy || !hasTargets}>
           {busy ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
@@ -755,12 +758,16 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         <Sparkles className="w-6 h-6 mx-auto text-primary mb-2 opacity-70" />
         <p className="text-sm font-medium mb-1">Let the AI find jobs for you</p>
         <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
-          The AI reads your master resume and your targets, then searches the web for openings that
-          fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask you a quick
-          question or two first.
+          The AI reads your master resume and targets, then searches the web for matching openings.
+          Takes 30–90 seconds. If anything's unclear it'll ask a quick question first.
         </p>
+        {!hasTargets && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4 max-w-sm mx-auto">
+            Add target roles in <strong>Settings</strong> before searching — the AI needs to know what to look for.
+          </p>
+        )}
         <div className="flex items-center justify-center gap-2 flex-wrap">
-          <Button onClick={() => runSearch([])} disabled={busy}>
+          <Button onClick={() => runSearch([])} disabled={busy || !hasTargets}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI
           </Button>
           <Button variant="outline" onClick={() => setAddOpen(true)}>

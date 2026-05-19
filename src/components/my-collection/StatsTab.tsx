@@ -9,8 +9,10 @@ interface StatusCounts {
   saved: number;
   applied: number;
   interview: number;
+  take_home: number;
   offer: number;
   rejected: number;
+  withdrawn: number;
   resumes: number;
 }
 
@@ -19,8 +21,10 @@ const EMPTY_COUNTS: StatusCounts = {
   saved: 0,
   applied: 0,
   interview: 0,
+  take_home: 0,
   offer: 0,
   rejected: 0,
+  withdrawn: 0,
   resumes: 0,
 };
 
@@ -58,9 +62,11 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
           total: rows.length,
           saved: tally("saved"),
           applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
+          interview: tally("interview"),
+          take_home: tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
+          withdrawn: tally("withdrawn"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -81,7 +87,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
   const responseRate =
     counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
+      ? Math.round(((counts.interview + counts.take_home + counts.offer) / counts.applied) * 100)
       : null;
 
   return (
@@ -110,7 +116,12 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
       </div>
 
       {!loading && counts.applied > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatCard
+            label="Take-home"
+            value={counts.take_home}
+            icon={<BarChart3 className="w-4 h-4 text-orange-500" />}
+          />
           <StatCard
             label="Offers"
             value={counts.offer}
@@ -129,6 +140,11 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
             />
           )}
         </div>
+      )}
+      {!loading && counts.withdrawn > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          {counts.withdrawn} withdrawn · visible on the board under the Withdrawn column.
+        </p>
       )}
 
       <Card className="p-6 text-center border-dashed">
