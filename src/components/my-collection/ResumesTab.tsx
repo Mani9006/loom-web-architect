@@ -20,7 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
 
 interface TailoredResume {
   id: string;
@@ -43,6 +43,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -130,8 +131,11 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-7 w-7">
-                  <MoreVertical className="w-4 h-4" />
+                <Button size="icon" variant="ghost" className="h-7 w-7" disabled={downloading === r.id}>
+                  {downloading === r.id
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <MoreVertical className="w-4 h-4" />
+                  }
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -143,13 +147,23 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 >
                   Rename
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(r.cv_md);
+                    toast({ title: "Copied to clipboard" });
+                  } catch {
+                    toast({ title: "Copy failed — try opening the editor and copying manually", variant: "destructive" });
+                  }
+                }}>
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-2" /> Copy markdown
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
+                <DropdownMenuItem onClick={async () => { setDownloading(r.id); await downloadAsPdf(r, toast); setDownloading(null); }}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
+                <DropdownMenuItem onClick={async () => { setDownloading(r.id); await downloadAsDocx(r, toast); setDownloading(null); }}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">

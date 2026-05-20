@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Archive } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import DiscoverTab from "@/components/my-collection/DiscoverTab";
@@ -27,12 +28,18 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // URL query param ?tab= takes priority (e.g. from "View tailored resume" links),
+    // then sessionStorage for restoring state on back/forward navigation.
+    const VALID_TABS = ["discover", "resumes", "board", "stats"];
+    const paramTab = typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("tab")
+      : null;
+    if (paramTab && VALID_TABS.includes(paramTab)) return paramTab;
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -51,6 +58,10 @@ export default function SessionPage() {
       sessionStorage.setItem(`mc:active-tab:${window.location.pathname}`, tab);
     } catch {
       // sessionStorage can throw in private mode — non-fatal
+    }
+    // Remove the ?tab= query param after it's been consumed so the URL stays clean.
+    if (searchParams.get("tab")) {
+      setSearchParams((p) => { p.delete("tab"); p.delete("resume"); return p; }, { replace: true });
     }
   }, [tab]);
 
@@ -127,9 +138,16 @@ export default function SessionPage() {
       </div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+            {session.status === "archived" && (
+              <Badge variant="outline" className="text-[10px] font-normal gap-1">
+                <Archive className="w-3 h-3" /> Archived
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
+            Updated {new Date(session.updated_at).toLocaleDateString()}
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -99,7 +99,10 @@ export default function AppLayout() {
   };
   const isActive = (path: string) => {
     const [pathname] = path.split("?");
-    return location.pathname === pathname;
+    if (location.pathname === pathname) return true;
+    // Highlight parent nav item for sub-routes (e.g. My Collection for /my-collection/:id)
+    if (pathname !== "/" && location.pathname.startsWith(pathname + "/")) return true;
+    return false;
   };
   const initials = displayName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "U";
 
