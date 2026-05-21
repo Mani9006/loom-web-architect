@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,13 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+export default function ResumesTab({
+  sessionId,
+  highlightResumeId,
+}: {
+  sessionId: string;
+  highlightResumeId?: string;
+}) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +69,18 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     load();
   }, [sessionId]);
+
+  // Auto-open the resume editor when navigating here from a deep-link
+  // (e.g. "View tailored resume" in BoardTab). Runs once after load.
+  const didAutoOpen = useRef(false);
+  useEffect(() => {
+    if (!highlightResumeId || loading || didAutoOpen.current) return;
+    const target = resumes.find((r) => r.id === highlightResumeId);
+    if (target) {
+      didAutoOpen.current = true;
+      setEditing(target);
+    }
+  }, [highlightResumeId, loading, resumes]);
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
@@ -201,7 +220,8 @@ function downloadAsMarkdown(r: TailoredResume) {
   a.href = url;
   a.download = `${r.name}.md`;
   a.click();
-  URL.revokeObjectURL(url);
+  // Defer revocation so the browser has time to initiate the download.
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {

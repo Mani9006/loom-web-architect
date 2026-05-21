@@ -27,22 +27,19 @@ export default function LocationAutocomplete({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const filterLocations = useCallback((input: string) => {
-    if (!input.trim()) {
-      setFiltered([]);
-      setOpen(false);
-      return;
-    }
+  const computeFiltered = useCallback((input: string): string[] => {
+    if (!input.trim()) return [];
     const lower = input.toLowerCase();
-    const matches = US_LOCATIONS.filter((loc) => loc.toLowerCase().includes(lower)).slice(0, 20);
-    setFiltered(matches);
-    setOpen(matches.length > 0);
-    setHighlightIndex(-1);
+    return US_LOCATIONS.filter((loc) => loc.toLowerCase().includes(lower)).slice(0, 20);
   }, []);
 
   useEffect(() => {
-    filterLocations(value);
-  }, [value, filterLocations]);
+    const matches = computeFiltered(value);
+    setFiltered(matches);
+    setOpen(matches.length > 0);
+    setHighlightIndex(-1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   // Close on click outside
   useEffect(() => {
@@ -103,7 +100,7 @@ export default function LocationAutocomplete({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        onFocus={() => { if (value.trim()) filterLocations(value); }}
+        onFocus={() => { if (value.trim()) { const m = computeFiltered(value); setFiltered(m); setOpen(m.length > 0); } }}
         autoComplete="off"
       />
       {open && filtered.length > 0 && (

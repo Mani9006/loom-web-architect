@@ -328,13 +328,13 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     if (!parsed && result) {
       const fence = result.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
       if (fence) {
-        try { parsed = JSON.parse(fence[1].trim()); } catch {}
+        try { parsed = JSON.parse(fence[1].trim()); } catch { /* intentional silent parse failure */ }
       }
     }
     if (!parsed && result) {
       const objMatch = result.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
       if (objMatch) {
-        try { parsed = JSON.parse(objMatch[0]); } catch {}
+        try { parsed = JSON.parse(objMatch[0]); } catch { /* intentional silent parse failure */ }
       }
     }
 

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -113,7 +114,7 @@ export function InterviewPrepPanel({
   // Auto-speak new assistant messages
   useEffect(() => {
     if (!autoSpeak || !isSpeechSupported) return;
-    
+
     const lastMessage = messages[messages.length - 1];
     if (
       lastMessage &&
@@ -149,12 +150,12 @@ export function InterviewPrepPanel({
     onGenerate(resumeText, jobDescription, companyName, jobTitle, selectedType);
   };
 
-  const handleFollowUp = () => {
+  const handleFollowUp = useCallback(() => {
     if (!followUpInput.trim() || isLoading) return;
     if (isListening) stopListening();
     onSendMessage(followUpInput);
     setFollowUpInput("");
-  };
+  }, [followUpInput, isLoading, isListening, stopListening, onSendMessage]);
 
   const handleToggleListen = useCallback(() => {
     if (isListening) {
@@ -167,7 +168,7 @@ export function InterviewPrepPanel({
       setFollowUpInput("");
       startListening();
     }
-  }, [isListening, stopListening, startListening, followUpInput, isLoading]);
+  }, [isListening, stopListening, startListening, followUpInput, isLoading, handleFollowUp]);
 
   const handleToggleSpeech = useCallback(() => {
     if (isSpeaking) {

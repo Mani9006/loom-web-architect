@@ -71,6 +71,20 @@ const ownerOnlyTools: NavItem[] = [
   { label: "Feature Flags", icon: Settings, path: "/admin/flags" },
 ];
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 px-4 mt-6 mb-1.5">
+      <span
+        className="text-[9.5px] font-medium uppercase tracking-[0.18em] text-rp-ink/45"
+        style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
+      >
+        {children}
+      </span>
+      <span className="flex-1 h-px bg-rp-ink/[0.08]" />
+    </div>
+  );
+}
+
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -81,7 +95,9 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anuOpen, setAnuOpen] = useState(false);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (isMobile) setSidebarOpen(true); }, [isMobile]);
 
   useEffect(() => {
@@ -113,6 +129,9 @@ export default function AppLayout() {
   const crumb = current?.label ?? "";
 
   // ── Nav item ───────────────────────────────────────────────────────────
+  // NavButton uses closure vars (isActive, handleLinkClick, showText) so it
+  // must live inside the component.
+  // eslint-disable-next-line react-hooks/static-components
   const NavButton = ({ item }: { item: NavItem }) => {
     const Icon = item.icon;
     const active = isActive(item.path);
@@ -167,19 +186,6 @@ export default function AppLayout() {
       </a>
     );
   };
-
-  // ── Section label ─────────────────────────────────────────────────────
-  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-    <div className="flex items-center gap-2 px-4 mt-6 mb-1.5">
-      <span
-        className="text-[9.5px] font-medium uppercase tracking-[0.18em] text-rp-ink/45"
-        style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
-      >
-        {children}
-      </span>
-      <span className="flex-1 h-px bg-rp-ink/[0.08]" />
-    </div>
-  );
 
   const sidebarContent = (
     <aside

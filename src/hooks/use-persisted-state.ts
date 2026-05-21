@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 type StorageType = "localStorage" | "sessionStorage";
 
@@ -18,14 +18,10 @@ export function usePersistedState<T>(
   const storageObj =
     storage === "localStorage" ? window.localStorage : window.sessionStorage;
 
-  // Track whether we've initialized from storage
-  const initialized = useRef(false);
-
   const [value, setValue] = useState<T>(() => {
     try {
       const stored = storageObj.getItem(key);
       if (stored !== null) {
-        initialized.current = true;
         return JSON.parse(stored) as T;
       }
     } catch {

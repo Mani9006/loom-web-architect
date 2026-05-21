@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { calculateATSScore, matchJobDescriptionKeywords } from "@/lib/ats-scorer";
@@ -388,7 +389,7 @@ const EXPECTED_BASELINES: Record<string, BaselineMetrics> = {
 // ─── Test Suite ─────────────────────────────────────────────────────────────
 
 describe("ATS Quality Validation (KAN-21)", () => {
-  let testResults: Array<{
+  const testResults: Array<{
     industry: string;
     resume: string;
     score: number;

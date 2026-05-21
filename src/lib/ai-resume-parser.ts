@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 /**
  * Shared AI resume parsing utilities.
  * Extracted from ResumeBuilder.tsx to be reusable across the app.
@@ -24,7 +25,7 @@ const AI_RETRY_BASE_DELAY_MS = 2_000;
 export function parseAIResponse(content: string): Record<string, any> | null {
   if (!content || content.trim().length === 0) return null;
 
-  let cleaned = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  const cleaned = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
 
   // Strategy 1: Find matching braces with string/escape awareness
   const result = extractJsonByBraceMatching(cleaned);
@@ -56,13 +57,13 @@ function extractJsonByBraceMatching(cleaned: string): Record<string, any> | null
   }
   if (startIdx === -1 || endIdx === -1) return null;
   const jsonString = cleaned.substring(startIdx, endIdx);
-  try { return JSON.parse(jsonString); } catch {}
+  try { return JSON.parse(jsonString); } catch { /* ignore malformed JSON */ }
   // Clean control chars and trailing commas, then retry
   try {
     return JSON.parse(
       jsonString.replace(/[\x00-\x1F\x7F]/g, " ").replace(/,(\s*[}\]])/g, "$1"),
     );
-  } catch {}
+  } catch { /* ignore malformed JSON */ }
   return null;
 }
 
@@ -114,7 +115,7 @@ function tryRepairTruncatedJson(cleaned: string): Record<string, any> | null {
   // Remove trailing commas before closing brackets
   json = json.replace(/,(\s*[}\]])/g, "$1");
 
-  try { return JSON.parse(json); } catch {}
+  try { return JSON.parse(json); } catch { /* ignore malformed JSON */ }
   return null;
 }
 
@@ -143,7 +144,7 @@ export function formatBullets(responsibilities: string | string[]): string[] {
 export function prepareResumeTextForParsing(text: string): string {
   if (!text) return "";
 
-  let prepared = text.trim();
+  const prepared = text.trim();
 
   // If text is within limits, return as-is
   if (prepared.length <= MAX_RESUME_TEXT_CHARS) return prepared;
@@ -277,7 +278,7 @@ async function streamAITextOnce(
               p.content ||
               p.text;
             if (c) full += c;
-          } catch {}
+          } catch { /* ignore malformed SSE chunk */ }
         }
       }
     }

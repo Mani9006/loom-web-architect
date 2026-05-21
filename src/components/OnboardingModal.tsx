@@ -60,13 +60,13 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     if (!user) return;
     setSaving(true);
     try {
-      await supabase
+      await (supabase as any)
         .from("profiles")
         .update({
           onboarding_completed: true,
           target_role: targetRole,
-          job_preferences: preferences as any,
-        } as any)
+          job_preferences: preferences,
+        })
         .eq("user_id", user.id);
       onComplete();
       // Redirect to comprehensive profile setup

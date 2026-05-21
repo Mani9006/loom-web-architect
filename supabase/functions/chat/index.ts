@@ -413,7 +413,7 @@ function convertAnthropicStream(anthropicBody: ReadableStream<Uint8Array>): Read
               if (data.type === "message_stop") {
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));
               }
-            } catch {}
+            } catch { /* ignore malformed SSE chunk */ }
           }
         }
       } catch (e) {

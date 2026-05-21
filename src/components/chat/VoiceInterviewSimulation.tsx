@@ -193,8 +193,8 @@ Return ONLY the 5 questions, one per line, numbered 1-5. No other text or explan
       // Parse questions
       const questionLines = fullContent
         .split("\n")
-        .filter((line) => /^\d+[\.\)]\s/.test(line.trim()))
-        .map((line) => line.replace(/^\d+[\.\)]\s*/, "").trim())
+        .filter((line) => /^\d+[.)]\s/.test(line.trim()))
+        .map((line) => line.replace(/^\d+[.)]\s*/, "").trim())
         .filter((q) => q.length > 10);
 
       if (questionLines.length >= 3) {

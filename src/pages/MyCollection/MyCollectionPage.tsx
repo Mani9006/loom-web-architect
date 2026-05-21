@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
 interface MCSession {
@@ -84,6 +85,7 @@ export default function MyCollectionPage() {
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadSessions();
   }, []);
@@ -147,9 +149,23 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="shrink-0">
+                <Button onClick={() => setWizardOpen(true)} disabled={atCap}>
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {atCap && (
+              <TooltipContent className="max-w-[240px] text-[11px]">
+                <Info className="inline w-3 h-3 mr-1" />
+                You've reached the {ACTIVE_LIMIT}-session limit. Archive an active session to make room.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">

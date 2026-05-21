@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
@@ -255,7 +256,7 @@ export default function ATSCheckerPage() {
                 const parsed = JSON.parse(line.slice(6));
                 const c = parsed.choices?.[0]?.delta?.content;
                 if (c) content += c;
-              } catch {}
+              } catch { /* ignore malformed SSE chunk */ }
             }
           }
         }

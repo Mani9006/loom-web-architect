@@ -289,10 +289,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
     const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
-      // Roll back the optimistic update on failure.
+      // Roll back the optimistic update on failure and inform the user.
       setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
       setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, status: previousStatus } as TrackedJob) : cur));
-      toast({ title: "Move failed", description: error.message, variant: "destructive" });
+      toast({
+        title: "Move failed — card restored",
+        description: error.message,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -451,6 +455,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                   )}
                   <Button variant="outline" size="sm" onClick={() => setEditing(selected)}>
                     <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10"
+                    onClick={() => { setSelected(null); trashJob(selected); }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1" /> Move to trash
                   </Button>
                   <Button
                     variant="default"

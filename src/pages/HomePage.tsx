@@ -562,57 +562,58 @@ function Brief({
   external: boolean;
   onNavigate: (p: string) => void;
 }) {
-  const Wrapper = (props: { children: React.ReactNode }) =>
-    external ? (
-      <a href={href} target="_blank" rel="noreferrer noopener" className="block">
-        {props.children}
-      </a>
-    ) : (
-      <button onClick={() => onNavigate(href)} className="block text-left w-full">
-        {props.children}
-      </button>
-    );
+  const innerContent = (
+    <>
+      <div
+        className="text-rp-accent"
+        style={{
+          fontFamily: '"JetBrains Mono", monospace',
+          fontSize: "10.5px",
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+        }}
+      >
+        {eyebrow}
+      </div>
+      <h2
+        className="mt-2 text-rp-ink max-w-3xl"
+        style={{
+          fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
+          fontSize: "clamp(28px, 4vw, 42px)",
+          lineHeight: 1.1,
+          letterSpacing: "-0.012em",
+          fontWeight: 500,
+        }}
+      >
+        {headline}
+      </h2>
+      <p
+        className="mt-3 text-rp-ink-2 max-w-2xl"
+        style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "16px", lineHeight: 1.55 }}
+      >
+        {body}
+      </p>
+      <span
+        className="mt-4 inline-flex items-center gap-1.5 text-rp-ink hover:text-rp-accent transition-colors"
+        style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "13px", fontWeight: 500 }}
+      >
+        {cta}
+        <ArrowUpRight className="w-4 h-4" strokeWidth={1.75} />
+      </span>
+    </>
+  );
 
   return (
     <div className="mt-10 border-y-2 border-rp-ink py-7">
-      <Wrapper>
-        <div
-          className="text-rp-accent"
-          style={{
-            fontFamily: '"JetBrains Mono", monospace',
-            fontSize: "10.5px",
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-          }}
-        >
-          {eyebrow}
-        </div>
-        <h2
-          className="mt-2 text-rp-ink max-w-3xl"
-          style={{
-            fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-            fontSize: "clamp(28px, 4vw, 42px)",
-            lineHeight: 1.1,
-            letterSpacing: "-0.012em",
-            fontWeight: 500,
-          }}
-        >
-          {headline}
-        </h2>
-        <p
-          className="mt-3 text-rp-ink-2 max-w-2xl"
-          style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "16px", lineHeight: 1.55 }}
-        >
-          {body}
-        </p>
-        <span
-          className="mt-4 inline-flex items-center gap-1.5 text-rp-ink hover:text-rp-accent transition-colors"
-          style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "13px", fontWeight: 500 }}
-        >
-          {cta}
-          <ArrowUpRight className="w-4 h-4" strokeWidth={1.75} />
-        </span>
-      </Wrapper>
+      {external ? (
+        <a href={href} target="_blank" rel="noreferrer noopener" className="block">
+          {innerContent}
+        </a>
+      ) : (
+        <button onClick={() => onNavigate(href)} className="block text-left w-full">
+          {innerContent}
+        </button>
+      )}
     </div>
   );
 }

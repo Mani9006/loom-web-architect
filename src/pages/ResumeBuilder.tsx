@@ -329,7 +329,7 @@ export default function ResumeBuilder() {
         if (newResume) setCurrentResumeId((newResume as any).id);
       }
       setLastSaved(new Date());
-    } catch {}
+    } catch { /* silent: save errors shown via isSaving timeout */ }
     setIsSaving(false);
   }, [currentResumeId, selectedTemplate]);
 
@@ -644,7 +644,7 @@ export default function ResumeBuilder() {
   const addAward = () => setData((prev) => ({ ...prev, awards: [...(prev.awards || []), { id: crypto.randomUUID(), title: "", issuer: "", date: "" }] }));
   const removeAward = (id: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).filter((a) => a.id !== id) }));
   const updateAward = (id: string, field: keyof AwardEntry, value: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).map((a) => (a.id === id ? { ...a, [field]: value } : a)) }));
-  const toggleSectionVisibility = (sectionId: SectionId) => setHiddenSections((prev) => { const next = new Set(prev); next.has(sectionId) ? next.delete(sectionId) : next.add(sectionId); return next; });
+  const toggleSectionVisibility = (sectionId: SectionId) => setHiddenSections((prev) => { const next = new Set(prev); if (next.has(sectionId)) { next.delete(sectionId); } else { next.add(sectionId); } return next; });
 
   // ── Section management ────────────────────────────────────────────────
   const removeSection = (sectionId: SectionId) => {

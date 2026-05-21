@@ -37,7 +37,12 @@ export default function WorkerStatusBadge() {
   }, []);
 
   if (!state) {
-    return null;
+    return (
+      <Badge variant="outline" className="gap-1.5 text-[10px] font-normal opacity-50">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-zinc-300" />
+        AI checking…
+      </Badge>
+    );
   }
 
   const dotColor = state.online ? "bg-emerald-500" : "bg-zinc-400";

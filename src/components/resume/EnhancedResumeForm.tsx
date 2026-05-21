@@ -21,7 +21,7 @@ function formatResponsibilitiesAsBullets(responsibilities: string | string[]): s
   if (Array.isArray(responsibilities)) {
     return responsibilities
       .filter(r => r && r.trim())
-      .map(r => r.trim().replace(/^[•\-\*]\s*/, ''));
+      .map(r => r.trim().replace(/^[•\-*]\s*/, ''));
   }
   
   const text = String(responsibilities);
@@ -31,16 +31,16 @@ function formatResponsibilitiesAsBullets(responsibilities: string | string[]): s
     .split(/\n|(?=•)|(?=-)/)
     .map(line => line.trim())
     .filter(line => line.length > 0)
-    .map(line => line.replace(/^[•\-\*]\s*/, ''));
+    .map(line => line.replace(/^[•\-*]\s*/, ''));
 
 }
 
 // Robust JSON parser that handles common AI response issues
 function parseAIResponse(content: string): Record<string, any> | null {
   // Remove markdown code blocks if present
-  let cleaned = content
-    .replace(/```json\s*/gi, '')
-    .replace(/```\s*/g, '')
+  const cleaned = content
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/g, "")
     .trim();
   
   // Try to extract JSON object - find the outermost balanced braces
@@ -87,7 +87,7 @@ function parseAIResponse(content: string): Record<string, any> | null {
     return null;
   }
   
-  let jsonString = cleaned.substring(startIdx, endIdx);
+  const jsonString = cleaned.substring(startIdx, endIdx);
   
   // Attempt 1: Direct parse
   try {
@@ -100,8 +100,8 @@ function parseAIResponse(content: string): Record<string, any> | null {
   
   // Attempt 2: Fix common JSON issues
   try {
-    let fixed = jsonString
-      .replace(/[\x00-\x1F\x7F]/g, ' ')
+    const fixed = jsonString
+      .replace(/[\x00-\x1F\x7F]/g, ' ') // eslint-disable-line no-control-regex
       .replace(/,(\s*[}\]])/g, '$1')
       .replace(/:\s*true\s*([,}])/gi, ': true$1')
       .replace(/:\s*false\s*([,}])/gi, ': false$1');
@@ -116,7 +116,7 @@ function parseAIResponse(content: string): Record<string, any> | null {
   // Attempt 3: More aggressive cleanup
   try {
     let aggressive = jsonString
-      .replace(/[\x00-\x1F\x7F]/g, ' ')
+      .replace(/[\x00-\x1F\x7F]/g, ' ') // eslint-disable-line no-control-regex
       .replace(/,(\s*[}\]])/g, '$1');
     
     aggressive = aggressive.replace(/([^\\])\\([^"\\nrtbfu])/g, '$1\\\\$2');

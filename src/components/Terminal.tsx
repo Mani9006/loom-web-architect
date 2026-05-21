@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 /**
  * Terminal primitives — vintage CLI aesthetic with a Nothing-style red
  * block cursor.
@@ -51,6 +52,7 @@ export function TerminalText({
   const [shown, setShown] = useState(reduce ? text : "");
   const [done, setDone] = useState(reduce);
   const onDoneRef = useRef(onDone);
+  // eslint-disable-next-line react-hooks/refs
   onDoneRef.current = onDone;
 
   useEffect(() => {

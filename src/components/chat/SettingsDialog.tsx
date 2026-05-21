@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -13,8 +13,42 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
   User, Moon, Sun, MessageSquare, ExternalLink,
-  History, LayoutDashboard, Trash2, Sparkles,
+  History, LayoutDashboard, Trash2, Sparkles, type LucideIcon,
 } from "lucide-react";
+
+// Section and NavButton are module-level so they're stable function references
+// (defining them inside a component would cause "Cannot create components during render").
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-2">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function NavButton({
+  icon: Icon,
+  label,
+  onClick,
+  destructive,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      className={`w-full justify-start gap-3 h-11 font-medium ${destructive ? "text-destructive hover:text-destructive hover:bg-destructive/10" : ""}`}
+      onClick={onClick}
+    >
+      <Icon className="w-4 h-4" />
+      <span>{label}</span>
+    </Button>
+  );
+}
 
 interface SettingsDialogProps {
   open: boolean;
@@ -46,24 +80,6 @@ export function SettingsDialog({
 
   const handleNavigation = (path: string) => { onOpenChange(false); navigate(path); };
   const handleClearAll = () => { setClearConfirmOpen(false); onOpenChange(false); onClearAllConversations?.(); };
-
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="space-y-1">
-      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-2">{title}</h3>
-      {children}
-    </div>
-  );
-
-  const NavButton = ({ icon: Icon, label, onClick, destructive }: { icon: any; label: string; onClick: () => void; destructive?: boolean }) => (
-    <Button
-      variant="ghost"
-      className={`w-full justify-start gap-3 h-11 font-medium ${destructive ? "text-destructive hover:text-destructive hover:bg-destructive/10" : ""}`}
-      onClick={onClick}
-    >
-      <Icon className="w-4 h-4" />
-      <span>{label}</span>
-    </Button>
-  );
 
   return (
     <>
