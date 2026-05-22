@@ -23,6 +23,7 @@ import {
   resumeRowToMarkdown,
   waitForJob,
   enqueueJob,
+  isWorkerOnline,
   type JobStatus,
   type AIJob,
 } from "@/lib/mc-ai-jobs";
@@ -410,6 +411,20 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     setClarification(null);
 
     try {
+      // Warn if the local worker appears offline so users know what to expect.
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user) {
+        const workerStatus = await isWorkerOnline(userData.user.id);
+        if (!workerStatus.online) {
+          toast({
+            title: "AI worker appears offline",
+            description:
+              "Your local worker isn't running. The search will queue and run as soon as it comes back online — or start your worker now and click Search again.",
+            variant: "destructive",
+          });
+        }
+      }
+
       const resumeMd = await loadResumeMd();
       if (!resumeMd) {
         toast({

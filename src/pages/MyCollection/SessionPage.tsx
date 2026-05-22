@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { useParams, useNavigate, Link, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Archive } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
@@ -35,10 +36,23 @@ export default function SessionPage() {
     // so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
+      // URL param takes precedence (e.g. from BoardTab "View tailored resume" link)
+      const urlTab = new URLSearchParams(window.location.search).get("tab");
+      const validTabs = ["discover", "resumes", "board", "stats"];
+      if (urlTab && validTabs.includes(urlTab)) return urlTab;
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
       return stored || "discover";
     } catch {
       return "discover";
+    }
+  });
+  // Resume ID to auto-open in ResumesTab (set from ?resume= URL param)
+  const [highlightResumeId, setHighlightResumeId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return new URLSearchParams(window.location.search).get("resume");
+    } catch {
+      return null;
     }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -53,6 +67,25 @@ export default function SessionPage() {
       // sessionStorage can throw in private mode — non-fatal
     }
   }, [tab]);
+
+  // React to URL ?tab= param changes while the component is already mounted
+  // (e.g. when clicking "View tailored resume" from BoardTab while on this page).
+  useEffect(() => {
+    const urlTab = searchParams.get("tab");
+    const validTabs = ["discover", "resumes", "board", "stats"];
+    if (!urlTab || !validTabs.includes(urlTab)) return;
+
+    setTab(urlTab);
+    const resumeId = searchParams.get("resume");
+    if (resumeId) setHighlightResumeId(resumeId);
+
+    // Clean up URL so back-navigation doesn't re-trigger the switch.
+    const next = new URLSearchParams(searchParams);
+    next.delete("tab");
+    next.delete("resume");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("tab")]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -127,7 +160,14 @@ export default function SessionPage() {
       </div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+            {session.status === "archived" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-700 border border-amber-200">
+                <Archive className="w-3 h-3" /> Archived
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-1">
             Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
           </p>
@@ -163,7 +203,11 @@ export default function SessionPage() {
           <DiscoverTab sessionId={session.id} session={session} />
         </TabsContent>
         <TabsContent value="resumes" className="mt-6">
-          <ResumesTab sessionId={session.id} />
+          <ResumesTab
+            sessionId={session.id}
+            highlightResumeId={highlightResumeId}
+            onHighlightConsumed={() => setHighlightResumeId(null)}
+          />
         </TabsContent>
         <TabsContent value="board" className="mt-6">
           <BoardTab sessionId={session.id} key={boardReloadKey} />

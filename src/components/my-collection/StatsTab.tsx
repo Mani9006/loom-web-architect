@@ -131,12 +131,41 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && counts.total > 0 && (
+        <Card className="p-5">
+          <div className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">Pipeline funnel</div>
+          <div className="space-y-2">
+            {[
+              { label: "On board", value: counts.total, color: "bg-slate-200" },
+              { label: "Applied", value: counts.applied, color: "bg-indigo-200" },
+              { label: "Interviews", value: counts.interview, color: "bg-amber-200" },
+              { label: "Offers", value: counts.offer, color: "bg-emerald-200" },
+            ].map(({ label, value, color }) => {
+              const pct = counts.total > 0 ? Math.round((value / counts.total) * 100) : 0;
+              return (
+                <div key={label}>
+                  <div className="flex justify-between text-[11px] mb-1">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-medium">{value} ({pct}%)</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {!loading && counts.total === 0 && (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Add jobs to the board from the Discover or Board tabs to see your pipeline funnel here.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }

@@ -36,7 +36,15 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+interface ResumesTabProps {
+  sessionId: string;
+  /** When set, auto-open the editor for this resume ID (from ?resume= URL param). */
+  highlightResumeId?: string | null;
+  /** Called after the highlight has been consumed so the parent can clear state. */
+  onHighlightConsumed?: () => void;
+}
+
+export default function ResumesTab({ sessionId, highlightResumeId, onHighlightConsumed }: ResumesTabProps) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +52,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
-  async function load() {
+  async function load(autoOpenResumeId?: string | null) {
     setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_tailored_resumes")
@@ -54,13 +62,24 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
     if (error) {
       toast({ title: "Couldn't load resumes", description: error.message, variant: "destructive" });
     } else {
-      setResumes((data as TailoredResume[]) ?? []);
+      const loaded = (data as TailoredResume[]) ?? [];
+      setResumes(loaded);
+      // Auto-open editor when navigated here from BoardTab "View tailored resume" link.
+      if (autoOpenResumeId) {
+        const target = loaded.find((r) => r.id === autoOpenResumeId);
+        if (target) {
+          setEditing(target);
+          onHighlightConsumed?.();
+        }
+      }
     }
     setLoading(false);
   }
 
   useEffect(() => {
-    load();
+    load(highlightResumeId);
+    // Only re-run when sessionId changes — highlightResumeId is consumed once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   async function deleteResume(id: string) {
