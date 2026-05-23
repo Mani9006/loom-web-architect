@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { isWorkerOnline } from "@/lib/mc-ai-jobs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -37,7 +38,7 @@ export default function WorkerStatusBadge() {
   }, []);
 
   if (!state) {
-    return null;
+    return <Skeleton className="h-6 w-20 rounded-full" />;
   }
 
   const dotColor = state.online ? "bg-emerald-500" : "bg-zinc-400";

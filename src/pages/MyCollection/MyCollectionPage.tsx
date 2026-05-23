@@ -5,12 +5,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
@@ -31,6 +38,18 @@ interface SessionStats {
 }
 
 const ACTIVE_LIMIT = 5;
+
+function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 export default function MyCollectionPage() {
   const [sessions, setSessions] = useState<MCSession[]>([]);
@@ -147,9 +166,22 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {atCap && (
+              <TooltipContent className="max-w-[200px] text-[11px]">
+                You've reached the {ACTIVE_LIMIT}-session limit. Archive an active session first.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
@@ -167,7 +199,22 @@ export default function MyCollectionPage() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="p-5 space-y-3">
+              <Skeleton className="h-5 w-2/3" />
+              <div className="flex gap-1">
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+              <div className="grid grid-cols-3 gap-2 pt-3 border-t">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            </Card>
+          ))}
+        </div>
       ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
@@ -303,7 +350,7 @@ function SessionCard({
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
         <Sparkles className="w-3 h-3" />
-        Updated {new Date(session.updated_at).toLocaleDateString()}
+        Updated {relativeTime(session.updated_at)}
       </div>
     </Card>
   );

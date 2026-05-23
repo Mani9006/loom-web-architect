@@ -57,7 +57,6 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -67,41 +66,44 @@ export default function SessionPage() {
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
+      // Don't bounce the user on transient failures (network blip, token
+      // refresh). Only navigate away / show an error if we don't already have
+      // session data loaded — i.e. this is the very first attempt.
       if (error) {
         // eslint-disable-next-line no-console
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          toast({
-            title: "Couldn't load session",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
+        console.error("[SessionPage] load failed:", error.message);
+        setSession((cur) => {
+          if (!cur) {
+            toast({
+              title: "Couldn't load session",
+              description: error.message,
+              variant: "destructive",
+            });
+          }
+          return cur;
+        });
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        setSession((cur) => {
+          if (!cur) {
+            toast({ title: "Session not found" });
+            navigate("/my-collection");
+          }
+          return cur;
+        });
+        setLoading(false);
         return;
       }
-      hadInitialLoad = true;
       setSession(data);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render — which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // Only re-run when sessionId changes. navigate/toast are accessed via
+    // functional setState to avoid adding them as unstable effect deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
@@ -128,9 +130,21 @@ export default function SessionPage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
-          </p>
+          {(() => {
+            const tp = session.target_profile ?? {};
+            const roles = Array.isArray(tp.target_roles) ? (tp.target_roles as string[]) : [];
+            const locations = Array.isArray(tp.target_locations) ? (tp.target_locations as string[]) : [];
+            if (roles.length === 0 && locations.length === 0) return (
+              <p className="text-xs text-muted-foreground mt-1">
+                No target profile set — <button className="underline underline-offset-2 hover:text-foreground" onClick={() => setSettingsOpen(true)}>configure in settings</button>
+              </p>
+            );
+            const summary = [
+              roles.slice(0, 2).join(", "),
+              locations.length > 0 ? `· ${locations.slice(0, 2).join(", ")}` : "",
+            ].filter(Boolean).join(" ");
+            return <p className="text-xs text-muted-foreground mt-1 truncate max-w-lg">{summary}</p>;
+          })()}
         </div>
         <div className="flex items-center gap-2">
           <WorkerStatusBadge />

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -131,11 +131,12 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <TrendingUp className="w-4 h-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium">Pipeline funnel</h3>
+        </div>
+        <PipelineFunnel counts={counts} loading={loading} />
       </Card>
     </div>
   );
@@ -158,5 +159,45 @@ function StatCard({
       </div>
       <div className="text-2xl font-semibold">{value}</div>
     </Card>
+  );
+}
+
+const FUNNEL_STAGES: { key: keyof Pick<StatusCounts, "total" | "applied" | "interview" | "offer">; label: string; color: string }[] = [
+  { key: "total", label: "On board", color: "bg-slate-400" },
+  { key: "applied", label: "Applied", color: "bg-indigo-500" },
+  { key: "interview", label: "Interview", color: "bg-amber-500" },
+  { key: "offer", label: "Offer", color: "bg-emerald-500" },
+];
+
+function PipelineFunnel({ counts, loading }: { counts: StatusCounts; loading: boolean }) {
+  const max = counts.total || 1;
+  return (
+    <div className="space-y-2.5">
+      {FUNNEL_STAGES.map((stage) => {
+        const value = counts[stage.key];
+        const pct = Math.round((value / max) * 100);
+        return (
+          <div key={stage.key} className="flex items-center gap-3">
+            <div className="w-20 text-[11px] text-muted-foreground text-right shrink-0">
+              {stage.label}
+            </div>
+            <div className="flex-1 h-5 bg-muted rounded overflow-hidden">
+              <div
+                className={`h-full rounded transition-all duration-500 ${stage.color}`}
+                style={{ width: loading ? "0%" : `${pct}%` }}
+              />
+            </div>
+            <div className="w-8 text-[11px] font-medium tabular-nums text-right shrink-0">
+              {loading ? "…" : value}
+            </div>
+          </div>
+        );
+      })}
+      {!loading && counts.total === 0 && (
+        <p className="text-[11px] text-muted-foreground text-center py-2">
+          No jobs on the board yet. Add some from the Discover or Board tabs.
+        </p>
+      )}
+    </div>
   );
 }
