@@ -128,9 +128,9 @@ export default function SessionPage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
-          </p>
+          {session.status !== "active" && (
+            <p className="text-xs text-amber-600 mt-1 font-medium capitalize">{session.status}</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <WorkerStatusBadge />

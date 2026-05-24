@@ -318,9 +318,14 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
               Next
             </Button>
           ) : (
-            <Button onClick={createSession} disabled={submitting}>
-              {submitting ? "Creating..." : "Create session"}
-            </Button>
+            <>
+              <Button variant="outline" onClick={createSession} disabled={submitting}>
+                {submitting ? "Creating..." : "Skip & create"}
+              </Button>
+              <Button onClick={createSession} disabled={submitting}>
+                {submitting ? "Creating..." : "Create session"}
+              </Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>

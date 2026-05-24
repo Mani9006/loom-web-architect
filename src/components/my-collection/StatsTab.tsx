@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -11,6 +11,7 @@ interface StatusCounts {
   interview: number;
   offer: number;
   rejected: number;
+  withdrawn: number;
   resumes: number;
 }
 
@@ -21,8 +22,15 @@ const EMPTY_COUNTS: StatusCounts = {
   interview: 0,
   offer: 0,
   rejected: 0,
+  withdrawn: 0,
   resumes: 0,
 };
+
+interface FunnelStep {
+  label: string;
+  value: number;
+  color: string;
+}
 
 export default function StatsTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
@@ -56,11 +64,12 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         setCounts({
           total: rows.length,
-          saved: tally("saved"),
+          saved: tally("saved") + tally("discovered"),
           applied: tally("applied"),
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
+          withdrawn: tally("withdrawn"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -83,6 +92,15 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     counts.applied > 0
       ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
       : null;
+
+  const funnelSteps: FunnelStep[] = [
+    { label: "Saved", value: counts.saved, color: "bg-blue-500" },
+    { label: "Applied", value: counts.applied, color: "bg-indigo-500" },
+    { label: "Interviews", value: counts.interview, color: "bg-amber-500" },
+    { label: "Offers", value: counts.offer, color: "bg-emerald-500" },
+  ];
+
+  const funnelMax = Math.max(...funnelSteps.map((s) => s.value), 1);
 
   return (
     <div className="space-y-4">
@@ -125,17 +143,65 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
             <StatCard
               label="Response rate"
               value={`${responseRate}%`}
-              icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+              icon={<TrendingUp className="w-4 h-4 text-amber-500" />}
             />
           )}
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
+      {/* Application funnel */}
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <TrendingUp className="w-4 h-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium">Application funnel</h3>
+        </div>
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-8 bg-muted rounded animate-pulse" style={{ width: `${100 - i * 15}%` }} />
+            ))}
+          </div>
+        ) : counts.total === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No jobs tracked yet. Add jobs to see your funnel.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {funnelSteps.map((step) => {
+              const pct = Math.round((step.value / funnelMax) * 100);
+              const convPct =
+                step.label === "Applied" && counts.saved > 0
+                  ? Math.round((step.value / counts.saved) * 100)
+                  : step.label === "Interviews" && counts.applied > 0
+                  ? Math.round((step.value / counts.applied) * 100)
+                  : step.label === "Offers" && counts.interview > 0
+                  ? Math.round((step.value / counts.interview) * 100)
+                  : null;
+
+              return (
+                <div key={step.label} className="flex items-center gap-3">
+                  <div className="w-20 shrink-0 text-right text-xs text-muted-foreground">
+                    {step.label}
+                  </div>
+                  <div className="flex-1 relative h-7 bg-muted/40 rounded overflow-hidden">
+                    <div
+                      className={`h-full rounded transition-all duration-500 ${step.color}`}
+                      style={{ width: step.value === 0 ? "0%" : `${Math.max(pct, 4)}%` }}
+                    />
+                    <span className="absolute inset-0 flex items-center pl-2 text-xs font-medium text-white mix-blend-luminosity">
+                      {step.value}
+                    </span>
+                  </div>
+                  {convPct !== null && (
+                    <div className="w-12 shrink-0 text-right text-[11px] text-muted-foreground">
+                      {convPct}%
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
     </div>
   );

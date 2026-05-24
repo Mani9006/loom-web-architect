@@ -677,7 +677,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           {busy ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              {progress === "queued" ? "Queued on your Mac…" : progress === "running" ? "AI is searching…" : "Working…"}
+              {progress === "queued" ? "Queued…" : progress === "running" ? "AI is searching…" : "Working…"}
             </>
           ) : (
             <>
@@ -755,10 +755,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         <Sparkles className="w-6 h-6 mx-auto text-primary mb-2 opacity-70" />
         <p className="text-sm font-medium mb-1">Let the AI find jobs for you</p>
         <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
-          The AI reads your master resume and your targets, then searches the web for openings that
-          fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask you a quick
-          question or two first.
+          The AI reads your master resume and target roles, then searches the web for openings.
+          Takes 30–90 seconds. It may ask a clarifying question or two before returning results.
         </p>
+        {targetRoles.length === 0 && (
+          <p className="text-xs text-amber-600 mb-4 font-medium">
+            Tip: add target roles in Settings to get more focused results.
+          </p>
+        )}
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Button onClick={() => runSearch([])} disabled={busy}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI

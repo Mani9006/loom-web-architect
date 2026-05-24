@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-50 text-zinc-500" },
 ];
 
 type TrackedStatus =
@@ -64,6 +65,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<TrackedJob | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<TrackedStatus | null>(null);
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
@@ -359,12 +361,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
             const items = jobs.filter((j) => j.status === col.id);
+            const isDropTarget = dropTarget === col.id && draggedId !== null;
             return (
               <div
                 key={col.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => draggedId && moveTo(draggedId, col.id)}
-                className="w-[260px] shrink-0"
+                onDragOver={(e) => { e.preventDefault(); setDropTarget(col.id); }}
+                onDragLeave={() => setDropTarget(null)}
+                onDrop={() => { if (draggedId) moveTo(draggedId, col.id); setDropTarget(null); }}
+                className={`w-[260px] shrink-0 rounded-md transition-colors ${isDropTarget ? "bg-primary/5 ring-1 ring-primary/30" : ""}`}
               >
                 <div className={`px-3 py-1.5 rounded-md text-[11px] font-medium ${col.tone} flex items-center justify-between`}>
                   <span>{col.label}</span>
@@ -376,9 +380,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       key={job.id}
                       draggable
                       onDragStart={() => setDraggedId(job.id)}
-                      onDragEnd={() => setDraggedId(null)}
+                      onDragEnd={() => { setDraggedId(null); setDropTarget(null); }}
                       onClick={() => setSelected(job)}
-                      className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
+                      className="group relative bg-card border rounded-md p-3 text-[12px] cursor-grab active:cursor-grabbing hover:border-primary/40 hover:shadow-sm transition"
                     >
                       <button
                         type="button"

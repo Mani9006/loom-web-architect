@@ -15,38 +15,52 @@ const PLANS = [
     name: "Free",
     price: "$0",
     period: "forever",
-    description: "Get started with job discovery",
+    description: "Everything you need to start applying.",
     features: [
-      "AI-powered job matching",
-      "Job discovery from 4+ sources",
-      "Save & track jobs",
-      "Resume ATS scoring",
-      "Manual apply (redirect to job portal)",
-      "Up to 50 matches per day",
+      "3 AI résumés",
+      "ATS score checking",
+      "Basic job search",
+      "5 cover letters / month",
+      "Job pipeline tracker",
     ],
     cta: "Current Plan",
     popular: false,
     planType: "free",
   },
   {
-    name: "Premium",
-    price: "$120",
+    name: "Pro",
+    price: "$12",
     period: "/month",
-    description: "Automated job applications at scale",
+    description: "For serious candidates running a real search.",
     features: [
-      "Everything in Free",
-      "Auto-Apply to matched jobs",
-      "AI-optimized applications",
-      "Priority job matching",
-      "Application tracking & analytics",
-      "Email notifications & alerts",
-      "Unlimited matches per day",
-      "ATS password manager",
+      "Unlimited résumés",
+      "Matches + evaluations",
+      "Unlimited cover letters",
+      "Voice interview prep",
+      "Real-time job matching",
+      "My Collection sessions",
       "Priority support",
     ],
-    cta: "Upgrade to Premium",
+    cta: "Start free trial",
     popular: true,
-    planType: "premium",
+    planType: "pro",
+  },
+  {
+    name: "Enterprise",
+    price: "$29",
+    period: "/month",
+    description: "The whole studio, with auto-apply + coach.",
+    features: [
+      "Everything in Pro",
+      "Greenhouse auto-apply",
+      "LinkedIn optimizer",
+      "Skill gap analyzer",
+      "Career coach AI",
+      "API access",
+    ],
+    cta: "Contact sales",
+    popular: false,
+    planType: "enterprise",
   },
 ];
 
@@ -115,7 +129,7 @@ export default function PricingPage() {
           <p className="text-muted-foreground">Supercharge your job search with AI-powered automation</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {PLANS.map((plan) => (
             <Card
               key={plan.name}

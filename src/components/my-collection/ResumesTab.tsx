@@ -292,7 +292,11 @@ function CanvasEditor({
 
   function applySuggestion(text: string) {
     if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    setCv((c) => {
+      const idx = c.indexOf(selectedLine);
+      if (idx === -1) return c;
+      return c.slice(0, idx) + text + c.slice(idx + selectedLine.length);
+    });
     setSelectedLine(text);
     setAiSuggestions([]);
   }

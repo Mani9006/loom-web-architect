@@ -147,13 +147,25 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+        <Button
+          onClick={() => {
+            if (atCap) {
+              toast({
+                title: "Active session limit reached",
+                description: `Archive one of your ${ACTIVE_LIMIT} active sessions to create a new one.`,
+              });
+              return;
+            }
+            setWizardOpen(true);
+          }}
+          className="shrink-0"
+        >
           <Plus className="w-4 h-4 mr-1" /> New Session
         </Button>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
-        <Badge variant="outline" className="font-normal">
+        <Badge variant={atCap ? "destructive" : "outline"} className="font-normal">
           {activeSessions.length}/{ACTIVE_LIMIT} active
         </Badge>
         {archivedSessions.length > 0 && (
@@ -296,7 +308,7 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Tracked" value={stats?.discovered ?? "—"} />
         <SessionStat label="Applied" value={stats?.applied ?? "—"} />
         <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
