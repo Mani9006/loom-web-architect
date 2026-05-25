@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -24,15 +24,19 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = new Set(["discover", "resumes", "board", "stats"]);
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // Priority: ?tab= URL param > sessionStorage > default "discover"
+    const urlTab = searchParams.get("tab");
+    if (urlTab && VALID_TABS.has(urlTab)) return urlTab;
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -52,7 +56,17 @@ export default function SessionPage() {
     } catch {
       // sessionStorage can throw in private mode — non-fatal
     }
-  }, [tab]);
+    // Keep the URL in sync so ?tab= links work
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (tab === "discover") {
+        next.delete("tab");
+      } else {
+        next.set("tab", tab);
+      }
+      return next;
+    }, { replace: true });
+  }, [tab, setSearchParams]);
 
   useEffect(() => {
     if (!sessionId) return;

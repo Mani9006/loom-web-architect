@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -131,12 +131,24 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && counts.total > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-medium">Application pipeline</h3>
+          </div>
+          <PipelineFunnel counts={counts} />
+        </Card>
+      )}
+
+      {!loading && counts.total === 0 && (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Stats will appear once you add jobs to the board.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }
@@ -158,5 +170,55 @@ function StatCard({
       </div>
       <div className="text-2xl font-semibold">{value}</div>
     </Card>
+  );
+}
+
+interface FunnelStep {
+  label: string;
+  value: number;
+  color: string;
+}
+
+function PipelineFunnel({ counts }: { counts: StatusCounts }) {
+  const steps: FunnelStep[] = [
+    { label: "On board", value: counts.total, color: "bg-slate-400" },
+    { label: "Applied", value: counts.applied, color: "bg-indigo-500" },
+    { label: "Interviews", value: counts.interview, color: "bg-amber-500" },
+    { label: "Offers", value: counts.offer, color: "bg-emerald-500" },
+  ];
+  const max = steps[0]?.value || 1;
+
+  return (
+    <div className="space-y-2">
+      {steps.map((step) => {
+        const pct = max > 0 ? Math.round((step.value / max) * 100) : 0;
+        return (
+          <div key={step.label} className="flex items-center gap-3">
+            <div className="w-20 text-[11px] text-muted-foreground text-right shrink-0">
+              {step.label}
+            </div>
+            <div className="flex-1 bg-muted rounded-full h-5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${step.color}`}
+                style={{ width: `${Math.max(pct, step.value > 0 ? 4 : 0)}%` }}
+              />
+            </div>
+            <div className="w-8 text-[11px] font-medium tabular-nums">{step.value}</div>
+          </div>
+        );
+      })}
+      {counts.rejected > 0 && (
+        <div className="flex items-center gap-3">
+          <div className="w-20 text-[11px] text-muted-foreground text-right shrink-0">Rejected</div>
+          <div className="flex-1 bg-muted rounded-full h-5 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-red-400 transition-all duration-500"
+              style={{ width: `${Math.max(Math.round((counts.rejected / max) * 100), counts.rejected > 0 ? 4 : 0)}%` }}
+            />
+          </div>
+          <div className="w-8 text-[11px] font-medium tabular-nums">{counts.rejected}</div>
+        </div>
+      )}
+    </div>
   );
 }

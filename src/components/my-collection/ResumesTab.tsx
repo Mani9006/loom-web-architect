@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles, Eye, Code2 } from "lucide-react";
 
 interface TailoredResume {
   id: string;
@@ -43,6 +44,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -146,11 +148,35 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
+                <DropdownMenuItem
+                  disabled={downloadingId === r.id}
+                  onClick={async () => {
+                    setDownloadingId(r.id);
+                    await downloadAsPdf(r, toast);
+                    setDownloadingId(null);
+                  }}
+                >
+                  {downloadingId === r.id ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                  )}
+                  Download .pdf
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
+                <DropdownMenuItem
+                  disabled={downloadingId === r.id}
+                  onClick={async () => {
+                    setDownloadingId(r.id);
+                    await downloadAsDocx(r, toast);
+                    setDownloadingId(null);
+                  }}
+                >
+                  {downloadingId === r.id ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                  )}
+                  Download .docx
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
                   Delete
@@ -253,6 +279,7 @@ function CanvasEditor({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   async function save() {
     setSaving(true);
@@ -318,35 +345,56 @@ function CanvasEditor({
         </DialogHeader>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-3 flex-1 overflow-hidden">
-          {/* Editor */}
+          {/* Editor / Preview */}
           <div className="flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Markdown — click any line to enable AI suggestions
-              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant={showPreview ? "ghost" : "secondary"}
+                  onClick={() => setShowPreview(false)}
+                  className="h-6 text-[10px] gap-1"
+                >
+                  <Code2 className="w-3 h-3" /> Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant={showPreview ? "secondary" : "ghost"}
+                  onClick={() => setShowPreview(true)}
+                  className="h-6 text-[10px] gap-1"
+                >
+                  <Eye className="w-3 h-3" /> Preview
+                </Button>
+              </div>
               <Button size="sm" variant="ghost" onClick={copyMarkdown} className="h-6 text-[10px]">
                 {copied ? "Copied!" : "Copy .md"}
               </Button>
             </div>
-            <Textarea
-              value={cv}
-              onChange={(e) => {
-                setCv(e.target.value);
-                setSelectedLine(null);
-              }}
-              onSelect={(e) => {
-                const el = e.currentTarget;
-                const start = el.selectionStart ?? 0;
-                const end = el.selectionEnd ?? start;
-                const text = cv.slice(0, end);
-                const lineStart = text.lastIndexOf("\n", start - 1) + 1;
-                const lineEndOff = cv.indexOf("\n", start);
-                const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
-                const line = cv.slice(lineStart, lineEnd).trim();
-                if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
-              }}
-              className="font-mono text-xs flex-1 resize-none"
-            />
+            {showPreview ? (
+              <div className="flex-1 border rounded-md overflow-y-auto p-4 text-sm prose prose-sm dark:prose-invert max-w-none">
+                <ReactMarkdown>{cv}</ReactMarkdown>
+              </div>
+            ) : (
+              <Textarea
+                value={cv}
+                onChange={(e) => {
+                  setCv(e.target.value);
+                  setSelectedLine(null);
+                }}
+                onSelect={(e) => {
+                  const el = e.currentTarget;
+                  const start = el.selectionStart ?? 0;
+                  const end = el.selectionEnd ?? start;
+                  const text = cv.slice(0, end);
+                  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+                  const lineEndOff = cv.indexOf("\n", start);
+                  const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
+                  const line = cv.slice(lineStart, lineEnd).trim();
+                  if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
+                }}
+                className="font-mono text-xs flex-1 resize-none"
+              />
+            )}
           </div>
 
           {/* AI side panel */}

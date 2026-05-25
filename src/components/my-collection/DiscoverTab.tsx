@@ -17,12 +17,14 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
+  AlertCircle,
 } from "lucide-react";
 import {
   runOnLocalWorker,
   resumeRowToMarkdown,
   waitForJob,
   enqueueJob,
+  isWorkerOnline,
   type JobStatus,
   type AIJob,
 } from "@/lib/mc-ai-jobs";
@@ -108,6 +110,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<JobStatus | null>(null);
+  const [workerOnline, setWorkerOnline] = useState<boolean | null>(null);
   const [foundJobs, setFoundJobs] = useState<FoundJob[]>(initial.current?.foundJobs ?? []);
   const [clarification, setClarification] = useState<{ questions: string[]; answers: string[] } | null>(
     initial.current?.clarification ?? null,
@@ -127,6 +130,23 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+
+  // Poll worker status on mount and every 20s.
+  useEffect(() => {
+    let stopped = false;
+    async function check() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user || stopped) return;
+      const status = await isWorkerOnline(userData.user.id);
+      if (!stopped) setWorkerOnline(status.online);
+    }
+    check();
+    const iv = setInterval(check, 20000);
+    return () => {
+      stopped = true;
+      clearInterval(iv);
+    };
+  }, []);
 
   // Mirror state to sessionStorage on every change.
   useEffect(() => {
@@ -650,6 +670,21 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  const isAiDisabled = busy || workerOnline === false;
+
+  // Worker offline banner
+  const workerOfflineBanner =
+    workerOnline === false ? (
+      <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2.5 text-xs">
+        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+        <span>
+          AI features are <strong>offline</strong>. The local worker (Claude Code on your Mac) needs to
+          be running to search for jobs or tailor resumes. Start it and the badge in the header will
+          turn green.
+        </span>
+      </div>
+    ) : null;
+
   // Chat-style state header (shows the conversation so far)
   const headerSection = (
     <div className="flex items-center justify-between flex-wrap gap-2">
@@ -673,7 +708,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             <RefreshCw className="w-3.5 h-3.5 mr-1" /> Start over
           </Button>
         )}
-        <Button size="sm" onClick={() => runSearch(conversation)} disabled={busy}>
+        <Button size="sm" onClick={() => runSearch(conversation)} disabled={isAiDisabled} title={workerOnline === false ? "Worker is offline" : undefined}>
           {busy ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
@@ -760,7 +795,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           question or two first.
         </p>
         <div className="flex items-center justify-center gap-2 flex-wrap">
-          <Button onClick={() => runSearch([])} disabled={busy}>
+          <Button onClick={() => runSearch([])} disabled={isAiDisabled} title={workerOnline === false ? "Worker is offline" : undefined}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI
           </Button>
           <Button variant="outline" onClick={() => setAddOpen(true)}>
@@ -809,7 +844,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
-                    disabled={tailoringKey === key}
+                    disabled={tailoringKey === key || workerOnline === false}
+                    title={workerOnline === false ? "Worker is offline" : undefined}
                     className="h-7 text-[11px]"
                   >
                     {tailoringKey === key ? (
@@ -854,6 +890,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   return (
     <div className="space-y-4">
       {headerSection}
+      {workerOfflineBanner}
       {historySection}
       {clarificationCard}
       {emptyState}
