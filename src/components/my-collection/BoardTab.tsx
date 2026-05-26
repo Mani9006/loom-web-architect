@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sheet,
@@ -13,7 +14,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search, X } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -29,6 +30,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-50 text-zinc-500" },
 ];
 
 type TrackedStatus =
@@ -67,6 +69,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [filter, setFilter] = useState("");
 
   async function tailorJob(job: TrackedJob) {
     if (!job.jd_md || !job.jd_md.trim()) {
@@ -203,10 +206,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     }
   }
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
-    // Filter out soft-deleted cards (deleted_at IS NULL). The Trash dialog
-    // surfaces deleted_at IS NOT NULL rows separately.
     const { data, error } = await (supabase as any)
       .from("mc_tracked_jobs")
       .select("*")
@@ -219,7 +220,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       setJobs((data as TrackedJob[]) ?? []);
     }
     setLoading(false);
-  }
+  }, [sessionId, toast]);
 
   // Soft-delete with 5-second undo via toast action.
   async function trashJob(job: TrackedJob, e?: React.MouseEvent) {
@@ -274,7 +275,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     load();
-  }, [sessionId]);
+  }, [load]);
 
   async function moveTo(jobId: string, status: TrackedStatus) {
     const job = jobs.find((j) => j.id === jobId);
@@ -345,11 +346,41 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     );
   }
 
+  const filteredJobs = filter.trim()
+    ? jobs.filter((j) => {
+        const q = filter.toLowerCase();
+        return (
+          j.job_title.toLowerCase().includes(q) ||
+          j.company.toLowerCase().includes(q) ||
+          (j.location ?? "").toLowerCase().includes(q)
+        );
+      })
+    : jobs;
+
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter by title, company…"
+            className="pl-8 h-8 text-xs"
+          />
+          {filter && (
+            <button
+              onClick={() => setFilter("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground shrink-0">
+          {filteredJobs.length !== jobs.length
+            ? `${filteredJobs.length} of ${jobs.length}`
+            : `${jobs.length} ${jobs.length === 1 ? "card" : "cards"}`}
         </p>
         <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
@@ -358,7 +389,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
-            const items = jobs.filter((j) => j.status === col.id);
+            const items = filteredJobs.filter((j) => j.status === col.id);
             return (
               <div
                 key={col.id}

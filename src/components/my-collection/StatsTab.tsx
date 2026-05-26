@@ -1,26 +1,39 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
 
 interface StatusCounts {
   total: number;
+  discovered: number;
   saved: number;
   applied: number;
   interview: number;
   offer: number;
   rejected: number;
+  withdrawn: number;
   resumes: number;
 }
 
 const EMPTY_COUNTS: StatusCounts = {
   total: 0,
+  discovered: 0,
   saved: 0,
   applied: 0,
   interview: 0,
   offer: 0,
   rejected: 0,
+  withdrawn: 0,
   resumes: 0,
 };
 
@@ -56,11 +69,13 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         setCounts({
           total: rows.length,
+          discovered: tally("discovered"),
           saved: tally("saved"),
           applied: tally("applied"),
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
+          withdrawn: tally("withdrawn"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -83,6 +98,19 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     counts.applied > 0
       ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
       : null;
+
+  const offerRate =
+    counts.applied > 0
+      ? Math.round((counts.offer / counts.applied) * 100)
+      : null;
+
+  const pipelineData = [
+    { name: "Discovered", value: counts.discovered, color: "#94a3b8" },
+    { name: "Saved", value: counts.saved, color: "#3b82f6" },
+    { name: "Applied", value: counts.applied, color: "#6366f1" },
+    { name: "Interview", value: counts.interview, color: "#f59e0b" },
+    { name: "Offer", value: counts.offer, color: "#10b981" },
+  ].filter((d) => d.value > 0);
 
   return (
     <div className="space-y-4">
@@ -110,7 +138,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
       </div>
 
       {!loading && counts.applied > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
             label="Offers"
             value={counts.offer}
@@ -125,18 +153,52 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
             <StatCard
               label="Response rate"
               value={`${responseRate}%`}
-              icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+              icon={<TrendingUp className="w-4 h-4 text-amber-500" />}
+              subtitle="interviews / applied"
+            />
+          )}
+          {offerRate !== null && (
+            <StatCard
+              label="Offer rate"
+              value={`${offerRate}%`}
+              icon={<TrendingUp className="w-4 h-4 text-emerald-600" />}
+              subtitle="offers / applied"
             />
           )}
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && pipelineData.length > 1 && (
+        <Card className="p-5">
+          <h3 className="text-sm font-medium mb-4 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-muted-foreground" /> Pipeline funnel
+          </h3>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={pipelineData} layout="vertical" margin={{ left: 20, right: 20 }}>
+              <XAxis type="number" hide />
+              <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 11 }} />
+              <Tooltip
+                formatter={(v: number) => [v, "Jobs"]}
+                contentStyle={{ fontSize: 12 }}
+              />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                {pipelineData.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
+      {!loading && counts.total === 0 && (
+        <Card className="p-8 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Add jobs to the board to start tracking your pipeline stats.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }
@@ -145,10 +207,12 @@ function StatCard({
   label,
   value,
   icon,
+  subtitle,
 }: {
   label: string;
   value: string | number;
   icon?: React.ReactNode;
+  subtitle?: string;
 }) {
   return (
     <Card className="p-5">
@@ -157,6 +221,7 @@ function StatCard({
         {icon && <span className="text-muted-foreground/60">{icon}</span>}
       </div>
       <div className="text-2xl font-semibold">{value}</div>
+      {subtitle && <div className="text-[10px] text-muted-foreground mt-0.5">{subtitle}</div>}
     </Card>
   );
 }

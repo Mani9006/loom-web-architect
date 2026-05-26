@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -43,8 +53,9 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_tailored_resumes")
@@ -57,17 +68,21 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
       setResumes((data as TailoredResume[]) ?? []);
     }
     setLoading(false);
-  }
+  }, [sessionId, toast]);
 
   useEffect(() => {
     load();
-  }, [sessionId]);
+  }, [load]);
 
   async function deleteResume(id: string) {
-    if (!confirm("Delete this tailored resume?")) return;
     const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
-    if (error) toast({ title: "Delete failed", description: error.message, variant: "destructive" });
-    else load();
+    if (error) {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+    } else {
+      setDeleteTargetId(null);
+      setResumes((arr) => arr.filter((r) => r.id !== id));
+      toast({ title: "Resume deleted" });
+    }
   }
 
   async function commitRename() {
@@ -152,7 +167,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
+                <DropdownMenuItem onClick={() => setDeleteTargetId(r.id)} className="text-destructive">
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -190,6 +205,26 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
           }}
         />
       )}
+
+      <AlertDialog open={!!deleteTargetId} onOpenChange={(v) => !v && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this tailored resume?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the resume. You can always regenerate it from the board.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTargetId && deleteResume(deleteTargetId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

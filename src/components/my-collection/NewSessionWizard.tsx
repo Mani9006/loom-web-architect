@@ -203,6 +203,17 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && handleCancel()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex gap-1">
+              {[1, 2].map((s) => (
+                <span
+                  key={s}
+                  className={`inline-block h-1 w-6 rounded-full transition-colors ${s <= step ? "bg-primary" : "bg-muted"}`}
+                />
+              ))}
+            </div>
+            <span className="text-[10px] text-muted-foreground">Step {step} of 2</span>
+          </div>
           <DialogTitle>New Session</DialogTitle>
           <DialogDescription>
             {step === 1 && "Name your session and pick a master resume."}
