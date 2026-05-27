@@ -406,7 +406,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   async function runSearch(history: ClarificationTurn[]) {
     setBusy(true);
     setProgress("queued");
-    setFoundJobs([]);
+    // Keep previous results visible while the new search runs so the user
+    // doesn't lose context. They'll be replaced once the new results arrive.
     setClarification(null);
 
     try {

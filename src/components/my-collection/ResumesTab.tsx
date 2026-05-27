@@ -20,7 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles, Eye } from "lucide-react";
 
 interface TailoredResume {
   id: string;
@@ -41,8 +41,10 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
+  const [previewing, setPreviewing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [downloading, setDownloading] = useState<Set<string>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -125,13 +127,16 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 )}
               </div>
             </div>
+            <Button size="sm" variant="outline" onClick={() => setPreviewing(r)}>
+              <Eye className="w-3.5 h-3.5 mr-1" /> Preview
+            </Button>
             <Button size="sm" variant="outline" onClick={() => setEditing(r)}>
               <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-7 w-7">
-                  <MoreVertical className="w-4 h-4" />
+                <Button size="icon" variant="ghost" className="h-7 w-7" disabled={downloading.has(r.id)}>
+                  {downloading.has(r.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <MoreVertical className="w-4 h-4" />}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -146,10 +151,10 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
+                <DropdownMenuItem onClick={() => { setDownloading(s => new Set(s).add(r.id)); downloadAsPdf(r, toast).finally(() => setDownloading(s => { const n = new Set(s); n.delete(r.id); return n; })); }}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
+                <DropdownMenuItem onClick={() => { setDownloading(s => new Set(s).add(r.id)); downloadAsDocx(r, toast).finally(() => setDownloading(s => { const n = new Set(s); n.delete(r.id); return n; })); }}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
@@ -190,6 +195,26 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
           }}
         />
       )}
+
+      {/* Preview dialog — renders the markdown resume for a clean read-only view */}
+      <Dialog open={!!previewing} onOpenChange={(v) => !v && setPreviewing(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{previewing?.name ?? "Resume preview"}</DialogTitle>
+          </DialogHeader>
+          <div className="prose prose-sm max-w-none dark:prose-invert mt-2 text-sm leading-relaxed whitespace-pre-wrap font-sans">
+            {previewing?.cv_md}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPreviewing(null)}>Close</Button>
+            {previewing && (
+              <Button variant="outline" onClick={() => { if (previewing) { setEditing(previewing); setPreviewing(null); } }}>
+                <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

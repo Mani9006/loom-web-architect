@@ -11,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
@@ -20,6 +21,7 @@ interface MCSession {
   status: "active" | "archived" | "deleted";
   master_resume_id: string | null;
   target_profile: Record<string, unknown>;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -147,9 +149,22 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="shrink-0">
+                <Button onClick={() => setWizardOpen(true)} disabled={atCap}>
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {atCap && (
+              <TooltipContent>
+                You have {ACTIVE_LIMIT} active sessions (the limit). Archive one to create a new one.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
@@ -293,6 +308,12 @@ function SessionCard({
             </Badge>
           )}
         </div>
+      )}
+
+      {session.notes && (
+        <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2 italic">
+          {session.notes}
+        </p>
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">

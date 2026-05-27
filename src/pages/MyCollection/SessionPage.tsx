@@ -148,11 +148,11 @@ export default function SessionPage() {
           <TabsTrigger value="discover" className="gap-2">
             <Search className="w-4 h-4" /> Discover
           </TabsTrigger>
-          <TabsTrigger value="resumes" className="gap-2">
-            <FileText className="w-4 h-4" /> Resumes
-          </TabsTrigger>
           <TabsTrigger value="board" className="gap-2">
             <Columns3 className="w-4 h-4" /> Board
+          </TabsTrigger>
+          <TabsTrigger value="resumes" className="gap-2">
+            <FileText className="w-4 h-4" /> Resumes
           </TabsTrigger>
           <TabsTrigger value="stats" className="gap-2">
             <BarChart3 className="w-4 h-4" /> Stats
@@ -162,11 +162,11 @@ export default function SessionPage() {
         <TabsContent value="discover" className="mt-6">
           <DiscoverTab sessionId={session.id} session={session} />
         </TabsContent>
-        <TabsContent value="resumes" className="mt-6">
-          <ResumesTab sessionId={session.id} />
-        </TabsContent>
         <TabsContent value="board" className="mt-6">
           <BoardTab sessionId={session.id} key={boardReloadKey} />
+        </TabsContent>
+        <TabsContent value="resumes" className="mt-6">
+          <ResumesTab sessionId={session.id} />
         </TabsContent>
         <TabsContent value="stats" className="mt-6">
           <StatsTab sessionId={session.id} />

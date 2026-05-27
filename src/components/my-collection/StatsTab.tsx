@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -11,6 +12,10 @@ interface StatusCounts {
   interview: number;
   offer: number;
   rejected: number;
+  hold: number;
+  withdrawn: number;
+  viewed: number;
+  discovered: number;
   resumes: number;
 }
 
@@ -21,6 +26,10 @@ const EMPTY_COUNTS: StatusCounts = {
   interview: 0,
   offer: 0,
   rejected: 0,
+  hold: 0,
+  withdrawn: 0,
+  viewed: 0,
+  discovered: 0,
   resumes: 0,
 };
 
@@ -56,11 +65,15 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         setCounts({
           total: rows.length,
+          discovered: tally("discovered"),
           saved: tally("saved"),
           applied: tally("applied"),
+          viewed: tally("viewed"),
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
+          hold: tally("hold"),
+          withdrawn: tally("withdrawn"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -83,6 +96,19 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     counts.applied > 0
       ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
       : null;
+
+  const chartData = !loading && counts.total > 0
+    ? [
+        { name: "Saved", value: counts.saved, fill: "#3b82f6" },
+        { name: "Applied", value: counts.applied, fill: "#6366f1" },
+        { name: "Viewed", value: counts.viewed, fill: "#a855f7" },
+        { name: "Interview", value: counts.interview, fill: "#f59e0b" },
+        { name: "Offer", value: counts.offer, fill: "#10b981" },
+        { name: "Hold", value: counts.hold, fill: "#94a3b8" },
+        { name: "Rejected", value: counts.rejected, fill: "#ef4444" },
+        { name: "Withdrawn", value: counts.withdrawn, fill: "#6b7280" },
+      ].filter((d) => d.value > 0)
+    : [];
 
   return (
     <div className="space-y-4">
@@ -131,12 +157,35 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && chartData.length > 0 && (
+        <Card className="p-5">
+          <h3 className="text-sm font-medium mb-4">Status breakdown</h3>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+              <RechartsTooltip
+                contentStyle={{ fontSize: 12 }}
+                formatter={(val: number) => [val, "Jobs"]}
+              />
+              <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+                {chartData.map((d, i) => (
+                  <Cell key={i} fill={d.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
+      {!loading && counts.total === 0 && (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            No jobs on the board yet. Discover or add jobs manually to see stats here.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }
