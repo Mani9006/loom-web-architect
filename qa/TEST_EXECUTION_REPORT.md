@@ -10,8 +10,9 @@
 ✅ **QA Pipeline Setup: COMPLETE**
 ✅ **Regression Matrix Created: COMPLETE**
 ✅ **Test Infrastructure: READY**
+✅ **Enterprise-Scale ATS Validation: ADDED**
 
-QA pipeline for Phase 1 deliverables is now operational. All test categories (unit, integration, E2E, regression) are scaffolded and ready for execution.
+QA pipeline for Phase 1 deliverables is now operational. All test categories (unit, integration, E2E, regression) are scaffolded and ready for execution. The suite now also includes deterministic high-scale ATS validation for a 30-project executive portfolio, one million synthetic job-market signals, and malformed parser-risk content.
 
 ---
 
@@ -49,7 +50,26 @@ QA pipeline for Phase 1 deliverables is now operational. All test categories (un
 - **Flow 5: Cover Letter** — Generation, editing, export
 - **Flow 6: Voice Interview** — Question rendering
 - **Flow 7: Job Search** — Search, results, job details
-- **Status:** 18/18 test cases scaffolded ✅
+- **Enterprise screenshots:** Landing, auth, and protected route-guard screenshot attachments in `/src/test/e2e/enterprise-screenshots.spec.ts`
+- **Status:** 20/20 test cases scaffolded ✅
+
+### 4A. Enterprise-Scale ATS Tests
+**File:** `/src/test/enterprise-ats-scale.test.ts`
+- 30-project executive portfolio resume with enterprise-grade evidence across AI, security, data, reliability, compliance, and release operations
+- One million deterministic synthetic job-market demand signals aggregated into a production-like job description without storing a million fixture rows
+- Keyword extraction bounded to the scorer contract (`<=25` matches) while validating top enterprise keywords are found
+- Malformed content scenario covering script-like names, tab characters, emoji, parser-risk formatting, and bounded scoring behavior
+- **Status:** 3/3 tests executable ✅
+
+#### Screenshot and Artifact Capture Standard
+
+| Surface | Evidence to capture | Artifact path | Standard |
+|---------|---------------------|---------------|----------|
+| Landing and dashboard | Desktop + mobile screenshots, no console errors | `qa/results/artifacts/landing-*` | Chrome, Firefox, Safari baseline |
+| Resume builder | Filled 30-project enterprise portfolio preview | `qa/results/artifacts/resume-builder-*` | ATS score visible, no layout clipping |
+| ATS checker | Million-signal JD score result and keyword list | `qa/results/artifacts/ats-scale-*` | Score, matched keywords, and issue list visible |
+| Admin portal | RBAC-gated enterprise controls | `qa/results/artifacts/admin-*` | Unauthorized redirect + authorized render |
+| ApplyPass/job search | High-volume job card and fallback URL behavior | `qa/results/artifacts/applypass-*` | Direct/fallback apply labels verified |
 
 ### 5. Regression Matrix (KAN-18)
 **File:** `/qa/regression-matrix-kan-18.md`
@@ -96,6 +116,7 @@ npm run test:coverage
 | Unit Tests | >80% | Setup ✅ |
 | Integration Tests | All critical workflows | Setup ✅ |
 | E2E Tests | All 7 critical flows | Scaffolded ✅ |
+| Enterprise Scale ATS | 30 projects + 1M synthetic market signals | Executable ✅ |
 | Regression Matrix | 42 test cases | Ready ✅ |
 
 ---
@@ -145,6 +166,8 @@ npm run test:coverage
 | Build Time | <5min | — |
 | Lighthouse Score | >90 | — |
 | Bundle Size (gzip) | <500KB | — |
+| Enterprise synthetic data scale | 1M demand signals | Added |
+| Portfolio project coverage | 30 projects | Added |
 
 ---
 
