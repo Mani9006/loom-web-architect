@@ -57,6 +57,8 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
+    // Tracks whether we've successfully loaded once in this mount cycle.
+    // Must be a ref-like local so it persists across the async boundary.
     let hadInitialLoad = false;
     (async () => {
       setLoading(true);
@@ -64,16 +66,12 @@ export default function SessionPage() {
         .from("mc_sessions")
         .select("*")
         .eq("id", sessionId)
+        .neq("status", "deleted")
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
       if (error) {
-        // eslint-disable-next-line no-console
-        console.error("[SessionPage] reload failed:", error.message);
+        console.error("[SessionPage] load failed:", error.message);
         if (!hadInitialLoad) {
           toast({
             title: "Couldn't load session",
@@ -99,9 +97,7 @@ export default function SessionPage() {
       cancelled = true;
     };
     // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render — which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // unstable references that, if included, would re-fire on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
@@ -127,9 +123,16 @@ export default function SessionPage() {
       </div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+            {session.status === "archived" && (
+              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                archived
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
+            Updated {new Date(session.updated_at).toLocaleDateString()}
           </p>
         </div>
         <div className="flex items-center gap-2">

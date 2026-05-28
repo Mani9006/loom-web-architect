@@ -107,8 +107,17 @@ export async function enqueueJob(args: EnqueueArgs): Promise<EnqueueResult> {
     .select("id")
     .single();
 
-  if (error || !data) {
-    throw new Error(`Couldn't enqueue job: ${error?.message ?? "unknown error"}`);
+  if (error) {
+    // 42P01 = relation does not exist — migration hasn't been applied yet
+    if (error.code === "42P01") {
+      throw new Error(
+        "AI features require a database migration. Contact support or run the latest migration."
+      );
+    }
+    throw new Error(`Couldn't enqueue job: ${error.message}`);
+  }
+  if (!data) {
+    throw new Error("Couldn't enqueue job: no row returned");
   }
   return { jobId: data.id };
 }
@@ -308,17 +317,24 @@ export async function isWorkerOnline(userId: string): Promise<{
   online: boolean;
   lastSeen: string | null;
   hostname: string | null;
+  unavailable?: boolean;
 }> {
-  const { data, error } = await (supabase as any)
-    .from("mc_worker_heartbeats")
-    .select("last_seen,hostname")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error || !data) return { online: false, lastSeen: null, hostname: null };
-  const ageMs = Date.now() - new Date(data.last_seen).getTime();
-  return {
-    online: ageMs < 90 * 1000,
-    lastSeen: data.last_seen,
-    hostname: data.hostname,
-  };
+  try {
+    const { data, error } = await (supabase as any)
+      .from("mc_worker_heartbeats")
+      .select("last_seen,hostname")
+      .eq("user_id", userId)
+      .maybeSingle();
+    // 42P01 = "relation does not exist" — migration not yet applied
+    if (error?.code === "42P01") return { online: false, lastSeen: null, hostname: null, unavailable: true };
+    if (error || !data) return { online: false, lastSeen: null, hostname: null };
+    const ageMs = Date.now() - new Date(data.last_seen).getTime();
+    return {
+      online: ageMs < 90 * 1000,
+      lastSeen: data.last_seen,
+      hostname: data.hostname,
+    };
+  } catch {
+    return { online: false, lastSeen: null, hostname: null, unavailable: true };
+  }
 }

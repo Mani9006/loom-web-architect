@@ -15,6 +15,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -43,6 +53,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<TailoredResume | null>(null);
 
   async function load() {
     setLoading(true);
@@ -64,10 +75,13 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   }, [sessionId]);
 
   async function deleteResume(id: string) {
-    if (!confirm("Delete this tailored resume?")) return;
     const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
+    setDeleteTarget(null);
     if (error) toast({ title: "Delete failed", description: error.message, variant: "destructive" });
-    else load();
+    else {
+      setResumes((arr) => arr.filter((r) => r.id !== id));
+      toast({ title: "Resume deleted" });
+    }
   }
 
   async function commitRename() {
@@ -152,7 +166,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
+                <DropdownMenuItem onClick={() => setDeleteTarget(r)} className="text-destructive">
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -190,6 +204,27 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
           }}
         />
       )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete tailored resume?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{deleteTarget?.name}</strong> will be permanently removed. This cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTarget && deleteResume(deleteTarget.id)}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
