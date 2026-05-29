@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useEffect, useState, useRef } from "react";
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,14 +27,21 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  // Track whether we consumed a ?tab= URL param so we only do it once.
+  const urlTabConsumed = useRef(false);
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // URL param wins (e.g. links to ?tab=resumes from the Board sheet).
+    // Falls back to sessionStorage so tab state survives app-switches.
     if (typeof window === "undefined") return "discover";
     try {
+      const params = new URLSearchParams(window.location.search);
+      const urlTab = params.get("tab");
+      const validTabs = ["discover", "resumes", "board", "stats"];
+      if (urlTab && validTabs.includes(urlTab)) return urlTab;
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
       return stored || "discover";
     } catch {
@@ -53,6 +60,25 @@ export default function SessionPage() {
       // sessionStorage can throw in private mode — non-fatal
     }
   }, [tab]);
+
+  // Remove the ?tab= query param from the URL after it has been applied to
+  // state. This way the URL stays clean and browser back/forward works
+  // correctly without re-applying the param on every visit.
+  useEffect(() => {
+    if (urlTabConsumed.current) return;
+    const params = new URLSearchParams(location.search);
+    if (params.has("tab")) {
+      urlTabConsumed.current = true;
+      params.delete("tab");
+      params.delete("resume");
+      const newSearch = params.toString();
+      navigate(
+        { pathname: location.pathname, search: newSearch ? `?${newSearch}` : "" },
+        { replace: true }
+      );
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!sessionId) return;

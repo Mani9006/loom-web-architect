@@ -650,6 +650,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  // Banner when no master resume is set — searching without one usually fails.
+  const noResumeBanner = !session.master_resume_id ? (
+    <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 flex items-center gap-2">
+      <span className="font-medium">No master resume set.</span>
+      <span>The AI needs a resume to search against. Set one in <strong>Settings</strong> (top-right) or create one in Resume Builder first.</span>
+    </div>
+  ) : null;
+
   // Chat-style state header (shows the conversation so far)
   const headerSection = (
     <div className="flex items-center justify-between flex-wrap gap-2">
@@ -853,6 +861,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   return (
     <div className="space-y-4">
+      {noResumeBanner}
       {headerSection}
       {historySection}
       {clarificationCard}

@@ -11,6 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
@@ -46,6 +52,7 @@ export default function MyCollectionPage() {
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
+      .neq("status", "deleted")
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
@@ -147,9 +154,22 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {atCap && (
+              <TooltipContent side="left" className="max-w-[220px] text-[11px]">
+                You have {ACTIVE_LIMIT} active sessions — the maximum. Archive one to create a new session.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
