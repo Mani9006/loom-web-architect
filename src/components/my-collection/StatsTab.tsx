@@ -11,6 +11,7 @@ interface StatusCounts {
   interview: number;
   offer: number;
   rejected: number;
+  withdrawn: number;
   resumes: number;
 }
 
@@ -21,6 +22,7 @@ const EMPTY_COUNTS: StatusCounts = {
   interview: 0,
   offer: 0,
   rejected: 0,
+  withdrawn: 0,
   resumes: 0,
 };
 
@@ -61,6 +63,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
+          withdrawn: tally("withdrawn"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -81,11 +84,12 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
   const responseRate =
     counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
+      ? Math.min(100, Math.round(((counts.interview + counts.offer) / counts.applied) * 100))
       : null;
 
   return (
     <div className="space-y-4">
+      {/* Top-line metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="On the board"
@@ -109,8 +113,9 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
       </div>
 
+      {/* Outcome metrics — only shown when there are applications */}
       {!loading && counts.applied > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
             label="Offers"
             value={counts.offer}
@@ -121,14 +126,28 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
             value={counts.rejected}
             icon={<BarChart3 className="w-4 h-4 text-red-500" />}
           />
-          {responseRate !== null && (
+          {counts.withdrawn > 0 && (
             <StatCard
-              label="Response rate"
-              value={`${responseRate}%`}
-              icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+              label="Withdrawn"
+              value={counts.withdrawn}
+              icon={<BarChart3 className="w-4 h-4 text-gray-400" />}
             />
           )}
+          <StatCard
+            label="Response rate"
+            value={responseRate !== null ? `${responseRate}%` : "—"}
+            icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+          />
         </div>
+      )}
+
+      {/* Funnel hint — shown when there are no applications yet */}
+      {!loading && counts.total > 0 && counts.applied === 0 && (
+        <Card className="p-4 border-dashed">
+          <p className="text-sm text-muted-foreground text-center">
+            Move cards to <strong>Applied</strong> to start tracking your response rate and outcomes.
+          </p>
+        </Card>
       )}
 
       <Card className="p-6 text-center border-dashed">

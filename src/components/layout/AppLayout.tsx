@@ -99,7 +99,10 @@ export default function AppLayout() {
   };
   const isActive = (path: string) => {
     const [pathname] = path.split("?");
-    return location.pathname === pathname;
+    return (
+      location.pathname === pathname ||
+      (pathname !== "/" && location.pathname.startsWith(pathname + "/"))
+    );
   };
   const initials = displayName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "U";
 

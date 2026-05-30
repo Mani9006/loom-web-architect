@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { useParams, useNavigate, Link, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -27,12 +27,18 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const VALID_TABS = ["discover", "resumes", "board", "stats"] as const;
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // Priority: URL ?tab= param > sessionStorage > default "discover"
+    if (typeof window !== "undefined") {
+      const tabParam = new URLSearchParams(window.location.search).get("tab");
+      if (tabParam && (VALID_TABS as readonly string[]).includes(tabParam)) return tabParam;
+    }
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -54,12 +60,22 @@ export default function SessionPage() {
     }
   }, [tab]);
 
+  // Sync tab from URL ?tab= param whenever it changes (e.g. user follows a
+  // "view tailored resume" link that includes ?tab=resumes).
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam && (VALID_TABS as readonly string[]).includes(tabParam)) {
+      setTab(tabParam);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       const { data, error } = await (supabase as any)
         .from("mc_sessions")
         .select("*")
@@ -67,50 +83,65 @@ export default function SessionPage() {
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
       if (error) {
         // eslint-disable-next-line no-console
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          toast({
-            title: "Couldn't load session",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
+        console.error("[SessionPage] load failed:", error.message);
+        setLoadError(error.message);
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
         return;
       }
-      hadInitialLoad = true;
       setSession(data);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render — which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // Intentionally only re-run when sessionId changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  if (loading || !session) {
+  if (loading) {
     return (
       <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8 space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-10 w-full max-w-md" />
         <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
+  if (loadError || !session) {
+    return (
+      <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8">
+        <Button asChild variant="ghost" size="sm" className="-ml-2 mb-6">
+          <Link to="/my-collection">
+            <ArrowLeft className="w-4 h-4 mr-1" /> My Collection
+          </Link>
+        </Button>
+        <div className="flex flex-col items-center py-16 text-center gap-3">
+          <AlertCircle className="w-10 h-10 text-muted-foreground/50" />
+          <h3 className="font-medium">Couldn't load session</h3>
+          {loadError && (
+            <p className="text-sm text-muted-foreground max-w-sm">{loadError}</p>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => {
+              setLoadError(null);
+              setLoading(true);
+              setSession(null);
+            }}
+          >
+            Try again
+          </Button>
+        </div>
       </div>
     );
   }
