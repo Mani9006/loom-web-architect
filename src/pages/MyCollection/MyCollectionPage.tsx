@@ -11,6 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
@@ -147,9 +153,22 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <TooltipProvider delayDuration={150}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={atCap ? 0 : -1} className="shrink-0">
+                <Button onClick={() => setWizardOpen(true)} disabled={atCap}>
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {atCap && (
+              <TooltipContent side="left" className="max-w-[220px] text-[11px]">
+                You have {ACTIVE_LIMIT} active sessions (the limit). Archive one to create a new one.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
@@ -181,6 +200,24 @@ export default function MyCollectionPage() {
         </Card>
       ) : (
         <>
+          {activeSessions.length === 0 && archivedSessions.length > 0 && (
+            <Card className="p-8 text-center border-dashed mb-4">
+              <Archive className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+              <h3 className="font-medium mb-1">All sessions archived</h3>
+              <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">
+                You have {archivedSessions.length} archived session{archivedSessions.length === 1 ? "" : "s"}.
+                Reactivate one, or create a new session to start a fresh search.
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <Button variant="outline" onClick={() => setShowArchived(true)}>
+                  <Archive className="w-4 h-4 mr-1" /> Show archived
+                </Button>
+                <Button onClick={() => setWizardOpen(true)}>
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </div>
+            </Card>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeSessions.map((s) => (
               <SessionCard

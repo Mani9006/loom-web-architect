@@ -17,6 +17,7 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
+  AlertTriangle,
 } from "lucide-react";
 import {
   runOnLocalWorker,
@@ -650,6 +651,17 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  const noResumeWarning = !session.master_resume_id ? (
+    <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-[12px] text-amber-800">
+      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+      <span>
+        No master resume set for this session. The AI will try your most recent resume as a fallback,
+        but for best results{" "}
+        <strong>go to Settings → Master resume</strong> and pick the one you want to use.
+      </span>
+    </div>
+  ) : null;
+
   // Chat-style state header (shows the conversation so far)
   const headerSection = (
     <div className="flex items-center justify-between flex-wrap gap-2">
@@ -853,6 +865,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   return (
     <div className="space-y-4">
+      {noResumeWarning}
       {headerSection}
       {historySection}
       {clarificationCard}

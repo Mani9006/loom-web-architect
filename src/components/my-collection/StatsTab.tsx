@@ -6,21 +6,31 @@ import { useToast } from "@/hooks/use-toast";
 
 interface StatusCounts {
   total: number;
+  discovered: number;
   saved: number;
   applied: number;
+  viewed: number;
   interview: number;
+  take_home: number;
   offer: number;
+  hold: number;
   rejected: number;
+  withdrawn: number;
   resumes: number;
 }
 
 const EMPTY_COUNTS: StatusCounts = {
   total: 0,
+  discovered: 0,
   saved: 0,
   applied: 0,
+  viewed: 0,
   interview: 0,
+  take_home: 0,
   offer: 0,
+  hold: 0,
   rejected: 0,
+  withdrawn: 0,
   resumes: 0,
 };
 
@@ -56,11 +66,16 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         setCounts({
           total: rows.length,
+          discovered: tally("discovered"),
           saved: tally("saved"),
           applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
+          viewed: tally("viewed"),
+          interview: tally("interview"),
+          take_home: tally("take_home"),
           offer: tally("offer"),
+          hold: tally("hold"),
           rejected: tally("rejected"),
+          withdrawn: tally("withdrawn"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -79,9 +94,10 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     };
   }, [sessionId]);
 
+  const totalInterviews = counts.interview + counts.take_home;
   const responseRate =
     counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
+      ? Math.round(((totalInterviews + counts.offer) / counts.applied) * 100)
       : null;
 
   return (
@@ -99,7 +115,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
         <StatCard
           label="Interviews"
-          value={loading ? "…" : counts.interview}
+          value={loading ? "…" : totalInterviews}
           icon={<BarChart3 className="w-4 h-4" />}
         />
         <StatCard
@@ -109,18 +125,29 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
       </div>
 
-      {!loading && counts.applied > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <StatCard
-            label="Offers"
-            value={counts.offer}
-            icon={<Star className="w-4 h-4 text-emerald-600" />}
-          />
-          <StatCard
-            label="Rejected"
-            value={counts.rejected}
-            icon={<BarChart3 className="w-4 h-4 text-red-500" />}
-          />
+      {!loading && counts.total > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+          {counts.saved > 0 && (
+            <StatCard label="Saved" value={counts.saved} icon={<Briefcase className="w-4 h-4 text-blue-500" />} />
+          )}
+          {counts.viewed > 0 && (
+            <StatCard label="Viewed by recruiter" value={counts.viewed} icon={<BarChart3 className="w-4 h-4 text-purple-500" />} />
+          )}
+          {counts.take_home > 0 && (
+            <StatCard label="Take-home tests" value={counts.take_home} icon={<BarChart3 className="w-4 h-4 text-orange-500" />} />
+          )}
+          {counts.offer > 0 && (
+            <StatCard label="Offers" value={counts.offer} icon={<Star className="w-4 h-4 text-emerald-600" />} />
+          )}
+          {counts.rejected > 0 && (
+            <StatCard label="Rejected" value={counts.rejected} icon={<BarChart3 className="w-4 h-4 text-red-500" />} />
+          )}
+          {counts.hold > 0 && (
+            <StatCard label="On hold" value={counts.hold} icon={<Briefcase className="w-4 h-4 text-zinc-500" />} />
+          )}
+          {counts.withdrawn > 0 && (
+            <StatCard label="Withdrawn" value={counts.withdrawn} icon={<BarChart3 className="w-4 h-4 text-zinc-400" />} />
+          )}
           {responseRate !== null && (
             <StatCard
               label="Response rate"

@@ -204,6 +204,11 @@ function downloadAsMarkdown(r: TailoredResume) {
   URL.revokeObjectURL(url);
 }
 
+function safeOpenUrl(url: string) {
+  if (!url.startsWith("https://")) return;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
   const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "pdf" },
@@ -216,7 +221,7 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
     });
     return;
   }
-  window.open(data.url, "_blank");
+  safeOpenUrl(data.url);
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
@@ -231,7 +236,7 @@ async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToa
     });
     return;
   }
-  window.open(data.url, "_blank");
+  safeOpenUrl(data.url);
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────
@@ -253,6 +258,13 @@ function CanvasEditor({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+
+  const isDirty = cv !== resume.cv_md || name.trim() !== resume.name;
+
+  function handleClose() {
+    if (isDirty && !confirm("You have unsaved changes. Close without saving?")) return;
+    onClose();
+  }
 
   async function save() {
     setSaving(true);
@@ -308,7 +320,7 @@ function CanvasEditor({
   }
 
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -419,10 +431,10 @@ function CanvasEditor({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
-            Cancel
+          <Button variant="ghost" onClick={handleClose} disabled={saving}>
+            {isDirty ? "Discard changes" : "Close"}
           </Button>
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving || !isDirty}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
