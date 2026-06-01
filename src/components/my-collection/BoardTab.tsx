@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-50 text-zinc-500" },
 ];
 
 type TrackedStatus =
@@ -451,6 +452,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                   )}
                   <Button variant="outline" size="sm" onClick={() => setEditing(selected)}>
                     <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10"
+                    onClick={() => { trashJob(selected); setSelected(null); }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash
                   </Button>
                   <Button
                     variant="default"

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -147,9 +147,17 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {atCap && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Info className="w-3.5 h-3.5" />
+              Archive a session to create a new one
+            </span>
+          )}
+          <Button onClick={() => setWizardOpen(true)} disabled={atCap}>
+            <Plus className="w-4 h-4 mr-1" /> New Session
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">

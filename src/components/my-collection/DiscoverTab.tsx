@@ -650,6 +650,18 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  // Warn when session has no target roles — the AI will produce weaker results.
+  const noRolesWarning =
+    targetRoles.length === 0 ? (
+      <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        <span className="mt-0.5 shrink-0">⚠️</span>
+        <span>
+          No target roles configured. Open <strong>Settings</strong> (top right) to add the roles you're
+          targeting — the AI search will be much more accurate.
+        </span>
+      </div>
+    ) : null;
+
   // Chat-style state header (shows the conversation so far)
   const headerSection = (
     <div className="flex items-center justify-between flex-wrap gap-2">
@@ -853,6 +865,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   return (
     <div className="space-y-4">
+      {noRolesWarning}
       {headerSection}
       {historySection}
       {clarificationCard}
