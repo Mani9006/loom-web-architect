@@ -439,6 +439,12 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       {col.label}
                     </Button>
                   ))}
+                  {/* Withdrawn is a terminal state — only show when already set */}
+                  {selected.status === "withdrawn" && (
+                    <Button variant="default" size="sm" className="text-[11px]" disabled>
+                      Withdrawn
+                    </Button>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2">

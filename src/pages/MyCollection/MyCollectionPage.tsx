@@ -147,9 +147,16 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+            <Plus className="w-4 h-4 mr-1" /> New Session
+          </Button>
+          {atCap && (
+            <p className="text-[11px] text-muted-foreground">
+              Archive a session to create a new one.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
@@ -303,7 +310,7 @@ function SessionCard({
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
         <Sparkles className="w-3 h-3" />
-        Updated {new Date(session.updated_at).toLocaleDateString()}
+        Updated {formatRelativeDate(session.updated_at)}
       </div>
     </Card>
   );
@@ -316,4 +323,16 @@ function SessionStat({ label, value }: { label: string; value: string | number }
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
     </div>
   );
+}
+
+function formatRelativeDate(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
