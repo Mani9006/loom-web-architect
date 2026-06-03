@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS mc_tracked_jobs (
   applied_at        timestamptz,
   clicked_at        timestamptz,           -- when user clicked the apply link
   notes             text,
+  deleted_at        timestamptz,           -- soft-delete; NULL = active, non-NULL = in trash
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()
 );

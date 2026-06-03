@@ -205,13 +205,17 @@ function downloadAsMarkdown(r: TailoredResume) {
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
+  if (r.pdf_url) {
+    window.open(r.pdf_url, "_blank");
+    return;
+  }
   const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "pdf" },
   });
   if (error || !data?.url) {
     toast({
-      title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      title: "PDF export not available",
+      description: "Download the .md file and convert it to PDF with your preferred tool.",
       variant: "destructive",
     });
     return;
@@ -220,13 +224,17 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
+  if (r.docx_url) {
+    window.open(r.docx_url, "_blank");
+    return;
+  }
   const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "docx" },
   });
   if (error || !data?.url) {
     toast({
-      title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      title: "DOCX export not available",
+      description: "Download the .md file and convert it to DOCX with Pandoc or similar.",
       variant: "destructive",
     });
     return;

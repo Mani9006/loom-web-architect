@@ -17,6 +17,7 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
+  AlertTriangle,
 } from "lucide-react";
 import {
   runOnLocalWorker,
@@ -759,6 +760,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask you a quick
           question or two first.
         </p>
+        {targetRoles.length === 0 && (
+          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-4 py-3 text-xs mb-5 max-w-md mx-auto">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+            <span>
+              No target roles set yet. Open <strong>Settings</strong> (top-right) to add roles so the AI knows what to search for.
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Button onClick={() => runSearch([])} disabled={busy}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI
