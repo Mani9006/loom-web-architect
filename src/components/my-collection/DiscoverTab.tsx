@@ -748,6 +748,17 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     </Card>
   );
 
+  const noRolesWarning =
+    targetRoles.length === 0 && foundJobs.length === 0 && !busy ? (
+      <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+        <ChevronRight className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          No target roles set. The AI will ask clarifying questions on every search. Set target roles
+          in <strong>Session Settings</strong> to get faster, more focused results.
+        </span>
+      </div>
+    ) : null;
+
   // Empty state (no search yet, no clarification, no results)
   const emptyState =
     foundJobs.length === 0 && !clarification && !busy ? (
@@ -854,6 +865,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   return (
     <div className="space-y-4">
       {headerSection}
+      {noRolesWarning}
       {historySection}
       {clarificationCard}
       {emptyState}

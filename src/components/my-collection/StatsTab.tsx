@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp, Trophy, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -11,6 +11,8 @@ interface StatusCounts {
   interview: number;
   offer: number;
   rejected: number;
+  withdrawn: number;
+  hold: number;
   resumes: number;
 }
 
@@ -21,8 +23,17 @@ const EMPTY_COUNTS: StatusCounts = {
   interview: 0,
   offer: 0,
   rejected: 0,
+  withdrawn: 0,
+  hold: 0,
   resumes: 0,
 };
+
+const FUNNEL_STAGES = [
+  { key: "saved" as const,      label: "Saved",      color: "bg-blue-500" },
+  { key: "applied" as const,    label: "Applied",    color: "bg-indigo-500" },
+  { key: "interview" as const,  label: "Interview",  color: "bg-amber-500" },
+  { key: "offer" as const,      label: "Offer",      color: "bg-emerald-500" },
+];
 
 export default function StatsTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
@@ -56,11 +67,13 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         setCounts({
           total: rows.length,
-          saved: tally("saved"),
-          applied: tally("applied"),
+          saved: tally("saved") + tally("discovered"),
+          applied: tally("applied") + tally("viewed"),
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
+          withdrawn: tally("withdrawn"),
+          hold: tally("hold"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -84,8 +97,12 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
       ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
       : null;
 
+  // Funnel: largest value determines 100% bar width
+  const funnelMax = Math.max(counts.saved, counts.applied, counts.interview, counts.offer, 1);
+
   return (
     <div className="space-y-4">
+      {/* Top summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="On the board"
@@ -109,34 +126,76 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
       </div>
 
+      {/* Secondary stats (only when there's something to show) */}
       {!loading && counts.applied > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
             label="Offers"
             value={counts.offer}
-            icon={<Star className="w-4 h-4 text-emerald-600" />}
+            icon={<Trophy className="w-4 h-4 text-emerald-600" />}
           />
           <StatCard
             label="Rejected"
             value={counts.rejected}
-            icon={<BarChart3 className="w-4 h-4 text-red-500" />}
+            icon={<XCircle className="w-4 h-4 text-red-500" />}
+          />
+          <StatCard
+            label="On hold"
+            value={counts.hold}
+            icon={<BarChart3 className="w-4 h-4 text-zinc-500" />}
           />
           {responseRate !== null && (
             <StatCard
               label="Response rate"
               value={`${responseRate}%`}
-              icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+              icon={<TrendingUp className="w-4 h-4 text-amber-500" />}
             />
           )}
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {/* Pipeline funnel */}
+      {!loading && counts.total > 0 && (
+        <Card className="p-5">
+          <h3 className="text-sm font-medium mb-4">Application pipeline</h3>
+          <div className="space-y-3">
+            {FUNNEL_STAGES.map((stage) => {
+              const val = counts[stage.key];
+              const pct = Math.round((val / funnelMax) * 100);
+              return (
+                <div key={stage.key} className="flex items-center gap-3">
+                  <div className="w-20 text-[11px] text-muted-foreground text-right shrink-0">
+                    {stage.label}
+                  </div>
+                  <div className="flex-1 h-5 bg-muted rounded overflow-hidden">
+                    <div
+                      className={`h-full ${stage.color} rounded transition-all duration-500`}
+                      style={{ width: `${Math.max(pct, val > 0 ? 4 : 0)}%` }}
+                    />
+                  </div>
+                  <div className="w-8 text-[12px] font-medium text-right shrink-0">{val}</div>
+                </div>
+              );
+            })}
+          </div>
+          {counts.applied > 0 && responseRate !== null && (
+            <p className="text-[11px] text-muted-foreground mt-4 text-center">
+              {responseRate}% response rate — {counts.interview + counts.offer} responses from {counts.applied} applications
+            </p>
+          )}
+        </Card>
+      )}
+
+      {/* Empty state */}
+      {!loading && counts.total === 0 && (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            No stats yet. Add jobs to the board — save from Discover or add manually — to start tracking
+            your pipeline.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }

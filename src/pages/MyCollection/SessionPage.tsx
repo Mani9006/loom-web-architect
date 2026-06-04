@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -31,8 +31,12 @@ export default function SessionPage() {
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // URL ?tab= takes priority for deep-linking (e.g. "View tailored resume"
+    // link in BoardTab sends the user straight to the Resumes tab).
+    const urlTab = new URLSearchParams(window.location.search).get("tab");
+    const validTabs = ["discover", "resumes", "board", "stats"];
+    if (urlTab && validTabs.includes(urlTab)) return urlTab;
+    // Fall back to sessionStorage so normal tab switches survive page refreshes.
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -45,6 +49,10 @@ export default function SessionPage() {
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+  // Track whether we've successfully loaded the session at least once so that
+  // transient re-fetch errors (network blip, token refresh) don't navigate the
+  // user back to /my-collection after they're already looking at the page.
+  const everLoadedRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -57,7 +65,6 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -70,11 +77,11 @@ export default function SessionPage() {
       // Don't bounce the user back to /my-collection on transient failures
       // (e.g. Supabase token refresh on tab focus, network blip). Only
       // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
+      // first load — i.e. we haven't yet successfully shown data.
       if (error) {
         // eslint-disable-next-line no-console
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!everLoadedRef.current) {
           toast({
             title: "Couldn't load session",
             description: error.message,
@@ -85,13 +92,13 @@ export default function SessionPage() {
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
+        if (!everLoadedRef.current) {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
         return;
       }
-      hadInitialLoad = true;
+      everLoadedRef.current = true;
       setSession(data);
       setLoading(false);
     })();
@@ -142,6 +149,22 @@ export default function SessionPage() {
           </Button>
         </div>
       </div>
+
+      {!session.master_resume_id && (
+        <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            No master resume set. The AI Discover and Tailor features need a resume to work from.{" "}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="underline font-medium hover:text-amber-900"
+            >
+              Pick one in Settings
+            </button>
+            .
+          </span>
+        </div>
+      )}
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="grid w-full max-w-2xl grid-cols-4">
