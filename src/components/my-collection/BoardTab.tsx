@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sheet,
@@ -13,7 +14,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Check } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -29,6 +30,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-gray-100 text-gray-500" },
 ];
 
 type TrackedStatus =
@@ -67,6 +69,30 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [notesDraft, setNotesDraft] = useState<string>("");
+  const [savingNotes, setSavingNotes] = useState(false);
+
+  function openDetail(job: TrackedJob) {
+    setSelected(job);
+    setNotesDraft(job.notes ?? "");
+  }
+
+  async function saveNotes(jobId: string) {
+    setSavingNotes(true);
+    const notes = notesDraft.trim() || null;
+    const { error } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .update({ notes })
+      .eq("id", jobId);
+    setSavingNotes(false);
+    if (error) {
+      toast({ title: "Couldn't save notes", description: error.message, variant: "destructive" });
+      return;
+    }
+    setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, notes } : j)));
+    setSelected((cur) => (cur && cur.id === jobId ? { ...cur, notes } : cur));
+    toast({ title: "Notes saved" });
+  }
 
   async function tailorJob(job: TrackedJob) {
     if (!job.jd_md || !job.jd_md.trim()) {
@@ -377,7 +403,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       draggable
                       onDragStart={() => setDraggedId(job.id)}
                       onDragEnd={() => setDraggedId(null)}
-                      onClick={() => setSelected(job)}
+                      onClick={() => openDetail(job)}
                       className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
                     >
                       <button
@@ -481,19 +507,41 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                   </Button>
                 )}
 
+                {/* Inline notes editor */}
+                <div>
+                  <h4 className="font-medium text-sm mb-1.5">Notes</h4>
+                  <Textarea
+                    value={notesDraft}
+                    onChange={(e) => setNotesDraft(e.target.value)}
+                    rows={3}
+                    placeholder="Recruiter name, referral, your thoughts after a call…"
+                    className="text-[12px]"
+                    disabled={savingNotes}
+                  />
+                  {notesDraft.trim() !== (selected.notes ?? "") && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-1.5"
+                      onClick={() => saveNotes(selected.id)}
+                      disabled={savingNotes}
+                    >
+                      {savingNotes ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      Save notes
+                    </Button>
+                  )}
+                </div>
+
                 {selected.jd_md && (
                   <div>
                     <h4 className="font-medium text-sm mb-2">Job description</h4>
-                    <div className="bg-muted rounded p-3 text-xs whitespace-pre-wrap max-h-96 overflow-y-auto">
+                    <div className="bg-muted rounded p-3 text-xs whitespace-pre-wrap max-h-72 overflow-y-auto">
                       {selected.jd_md}
                     </div>
-                  </div>
-                )}
-
-                {selected.notes && (
-                  <div>
-                    <h4 className="font-medium text-sm mb-2">Notes</h4>
-                    <p className="text-sm text-muted-foreground">{selected.notes}</p>
                   </div>
                 )}
               </div>

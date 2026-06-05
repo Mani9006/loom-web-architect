@@ -1,26 +1,34 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, Eye, PauseCircle, XCircle, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 interface StatusCounts {
   total: number;
+  discovered: number;
   saved: number;
   applied: number;
+  viewed: number;
   interview: number;
   offer: number;
   rejected: number;
+  hold: number;
+  withdrawn: number;
   resumes: number;
 }
 
 const EMPTY_COUNTS: StatusCounts = {
   total: 0,
+  discovered: 0,
   saved: 0,
   applied: 0,
+  viewed: 0,
   interview: 0,
   offer: 0,
   rejected: 0,
+  hold: 0,
+  withdrawn: 0,
   resumes: 0,
 };
 
@@ -56,11 +64,15 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         setCounts({
           total: rows.length,
+          discovered: tally("discovered"),
           saved: tally("saved"),
           applied: tally("applied"),
+          viewed: tally("viewed"),
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
+          hold: tally("hold"),
+          withdrawn: tally("withdrawn"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -84,8 +96,12 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
       ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
       : null;
 
+  const conversionRate =
+    counts.total > 0 ? Math.round((counts.applied / counts.total) * 100) : null;
+
   return (
     <div className="space-y-4">
+      {/* Top-line metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="On the board"
@@ -109,8 +125,9 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
       </div>
 
+      {/* Outcome breakdown */}
       {!loading && counts.applied > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
             label="Offers"
             value={counts.offer}
@@ -119,24 +136,79 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
           <StatCard
             label="Rejected"
             value={counts.rejected}
-            icon={<BarChart3 className="w-4 h-4 text-red-500" />}
+            icon={<XCircle className="w-4 h-4 text-red-500" />}
           />
           {responseRate !== null && (
             <StatCard
               label="Response rate"
               value={`${responseRate}%`}
-              icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+              icon={<TrendingUp className="w-4 h-4 text-amber-500" />}
+            />
+          )}
+          {conversionRate !== null && (
+            <StatCard
+              label="Apply rate"
+              value={`${conversionRate}%`}
+              icon={<TrendingUp className="w-4 h-4 text-blue-500" />}
             />
           )}
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {/* Pipeline breakdown */}
+      {!loading && counts.total > 0 && (
+        <Card className="p-5">
+          <h3 className="text-sm font-medium mb-4 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-muted-foreground" /> Pipeline breakdown
+          </h3>
+          <div className="space-y-2">
+            {[
+              { label: "Discovered", value: counts.discovered, color: "bg-slate-300" },
+              { label: "Saved", value: counts.saved, color: "bg-blue-400" },
+              { label: "Applied", value: counts.applied, color: "bg-indigo-500" },
+              { label: "Viewed by recruiter", value: counts.viewed, color: "bg-purple-400" },
+              { label: "Interview / Take-home", value: counts.interview, color: "bg-amber-400" },
+              { label: "Offers", value: counts.offer, color: "bg-emerald-500" },
+              { label: "On hold", value: counts.hold, color: "bg-gray-300" },
+              { label: "Rejected", value: counts.rejected, color: "bg-red-400" },
+              { label: "Withdrawn", value: counts.withdrawn, color: "bg-gray-200" },
+            ]
+              .filter((row) => row.value > 0)
+              .map((row) => (
+                <div key={row.label} className="flex items-center gap-3 text-xs">
+                  <div className="w-36 shrink-0 text-muted-foreground">{row.label}</div>
+                  <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${row.color}`}
+                      style={{ width: `${Math.max(4, Math.round((row.value / counts.total) * 100))}%` }}
+                    />
+                  </div>
+                  <div className="w-6 text-right font-medium">{row.value}</div>
+                </div>
+              ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Supplementary counts */}
+      {!loading && (counts.hold > 0 || counts.withdrawn > 0) && (
+        <div className="grid grid-cols-2 gap-4">
+          {counts.hold > 0 && (
+            <StatCard
+              label="On hold"
+              value={counts.hold}
+              icon={<PauseCircle className="w-4 h-4 text-gray-400" />}
+            />
+          )}
+          {counts.withdrawn > 0 && (
+            <StatCard
+              label="Withdrawn"
+              value={counts.withdrawn}
+              icon={<XCircle className="w-4 h-4 text-gray-400" />}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

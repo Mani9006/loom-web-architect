@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,8 +11,23 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
 
 interface MCSession {
   id: string;
@@ -147,19 +162,37 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <TooltipProvider delayDuration={150}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="shrink-0">
+                <Button onClick={() => setWizardOpen(true)} disabled={atCap}>
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {atCap && (
+              <TooltipContent className="max-w-[240px] text-[11px]">
+                You've reached the {ACTIVE_LIMIT}-session limit. Archive one of your active sessions first to create a new one.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
-        <Badge variant="outline" className="font-normal">
+        <Badge variant="outline" className={`font-normal ${atCap ? "border-amber-400 text-amber-700" : ""}`}>
           {activeSessions.length}/{ACTIVE_LIMIT} active
         </Badge>
+        {atCap && (
+          <span className="flex items-center gap-1 text-amber-700">
+            <Info className="w-3 h-3" /> Archive a session to create a new one
+          </span>
+        )}
         {archivedSessions.length > 0 && (
           <button
             onClick={() => setShowArchived((s) => !s)}
-            className="hover:text-foreground transition-colors"
+            className="hover:text-foreground transition-colors ml-auto"
           >
             {showArchived ? "Hide" : "Show"} {archivedSessions.length} archived
           </button>
@@ -303,7 +336,7 @@ function SessionCard({
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
         <Sparkles className="w-3 h-3" />
-        Updated {new Date(session.updated_at).toLocaleDateString()}
+        Updated {timeAgo(session.updated_at)}
       </div>
     </Card>
   );

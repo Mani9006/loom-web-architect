@@ -126,11 +126,13 @@ export default function SessionPage() {
         </Button>
       </div>
       <div className="flex items-center justify-between mb-5">
-        <div>
+        <div className="flex items-center gap-2 flex-wrap">
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
-          </p>
+          {session.status === "archived" && (
+            <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted">
+              Archived
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <WorkerStatusBadge />

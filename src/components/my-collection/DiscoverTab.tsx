@@ -650,6 +650,18 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  const noTargetWarning =
+    targetRoles.length === 0 && foundJobs.length === 0 && !clarification && !busy ? (
+      <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <span className="shrink-0 mt-0.5">⚠️</span>
+        <span>
+          No target roles are set for this session.{" "}
+          <strong>Open Settings</strong> and add at least one role (e.g. "Senior ML Engineer") so the
+          AI knows what to search for.
+        </span>
+      </div>
+    ) : null;
+
   // Chat-style state header (shows the conversation so far)
   const headerSection = (
     <div className="flex items-center justify-between flex-wrap gap-2">
@@ -854,6 +866,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   return (
     <div className="space-y-4">
       {headerSection}
+      {noTargetWarning}
       {historySection}
       {clarificationCard}
       {emptyState}
