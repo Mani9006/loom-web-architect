@@ -748,6 +748,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     </Card>
   );
 
+  const hasNoTargets = targetRoles.length === 0;
+
   // Empty state (no search yet, no clarification, no results)
   const emptyState =
     foundJobs.length === 0 && !clarification && !busy ? (
@@ -759,6 +761,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask you a quick
           question or two first.
         </p>
+        {hasNoTargets && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4 max-w-sm mx-auto">
+            No target roles set yet. Open <strong>Settings</strong> to add roles — the AI will ask clarifying questions on first run without them.
+          </p>
+        )}
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Button onClick={() => runSearch([])} disabled={busy}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI

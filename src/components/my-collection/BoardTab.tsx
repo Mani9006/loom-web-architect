@@ -13,7 +13,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Briefcase } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-50 text-zinc-600" },
 ];
 
 type TrackedStatus =
@@ -296,7 +297,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
     if (user) {
       await (supabase as any).from("mc_status_history").insert({
         tracked_job_id: jobId,
@@ -324,9 +326,10 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     return (
       <>
         <Card className="p-8 text-center border-dashed">
-          <p className="text-sm text-muted-foreground mb-4">
-            No jobs on the board yet. Save some from the <strong>Discover</strong> tab — or add
-            one manually if the scanner hasn't found matches yet.
+          <Briefcase className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm font-medium mb-1">Your board is empty</p>
+          <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">
+            Use the <strong>Discover</strong> tab to let AI find matching jobs and save them here, or add one yourself if you already have a posting in mind.
           </p>
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="w-4 h-4 mr-1" /> Add job manually

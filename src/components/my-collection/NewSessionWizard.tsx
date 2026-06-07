@@ -203,10 +203,15 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && handleCancel()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ${step === 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>1</span>
+            <div className="h-px flex-1 bg-muted" />
+            <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ${step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>2</span>
+          </div>
           <DialogTitle>New Session</DialogTitle>
           <DialogDescription>
             {step === 1 && "Name your session and pick a master resume."}
-            {step === 2 && "Define what you're targeting."}
+            {step === 2 && "Define what you're targeting. You can change these any time in Settings."}
           </DialogDescription>
         </DialogHeader>
 
