@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -24,26 +24,25 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = ["discover", "resumes", "board", "stats"] as const;
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount. Priority:
-    //   1. ?tab= query param (enables deep-links like BoardTab's "View tailored resume")
-    //   2. sessionStorage (persists across same-session tab-switches)
+    // Restore the active tab on initial mount. Priority:
+    //   1. ?tab= query param (deep-link from "View tailored resume" in BoardTab)
+    //   2. sessionStorage (persists across same-session tab switches)
     //   3. default to "discover"
     if (typeof window === "undefined") return "discover";
-    const params = new URLSearchParams(window.location.search);
-    const fromUrl = params.get("tab");
-    if (fromUrl && ["discover", "resumes", "board", "stats"].includes(fromUrl)) {
-      return fromUrl;
-    }
+    const fromUrl = new URLSearchParams(window.location.search).get("tab");
+    if (fromUrl && (VALID_TABS as readonly string[]).includes(fromUrl)) return fromUrl;
     try {
-      const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`) || "discover";
     } catch {
       return "discover";
     }
@@ -60,6 +59,17 @@ export default function SessionPage() {
       // sessionStorage can throw in private mode — non-fatal
     }
   }, [tab]);
+
+  // Respond to ?tab= changes from same-page navigation (e.g. BoardTab's
+  // "View tailored resume" link navigates to ?tab=resumes while staying on
+  // the same route — React Router keeps the component mounted, so the
+  // useState initializer above won't re-run, but this effect will).
+  useEffect(() => {
+    const fromUrl = searchParams.get("tab");
+    if (fromUrl && (VALID_TABS as readonly string[]).includes(fromUrl)) {
+      setTab(fromUrl);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!sessionId) return;
