@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import {
   type JobStatus,
   type AIJob,
 } from "@/lib/mc-ai-jobs";
+import { ToastAction } from "@/components/ui/toast";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
@@ -102,6 +104,7 @@ interface Props {
  */
 export default function DiscoverTab({ sessionId, session }: Props) {
   const { toast } = useToast();
+  const navigate = useNavigate();
   // Read persisted state once on mount. After this the React state is the
   // source of truth and the persistence effect mirrors it back to storage.
   const initial = useRef<PersistedDiscover | null>(readPersisted(sessionId));
@@ -413,10 +416,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       const resumeMd = await loadResumeMd();
       if (!resumeMd) {
         toast({
-          title: "Create a resume first",
-          description:
-            "The AI needs a resume to base the search on. Open Resume Builder, save one, and try again.",
+          title: "No resume found",
+          description: "The AI needs a base resume. Create one in Resume Builder first, then try again.",
           variant: "destructive",
+          action: (
+            <ToastAction altText="Open builder" onClick={() => navigate("/resume-builder")}>
+              Open builder
+            </ToastAction>
+          ),
         });
         return;
       }
@@ -759,6 +766,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask you a quick
           question or two first.
         </p>
+        {targetRoles.length === 0 && (
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-3 py-2 mb-4 max-w-sm mx-auto">
+            No target roles configured — the AI will try to infer them from your resume. Adding 1–3
+            roles via the <strong>Settings</strong> button above gives much better results.
+          </p>
+        )}
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Button onClick={() => runSearch([])} disabled={busy}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI

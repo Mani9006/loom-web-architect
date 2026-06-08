@@ -135,9 +135,21 @@ export default function SessionPage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
-          </p>
+          {(() => {
+            const tp = (session.target_profile ?? {}) as Record<string, unknown>;
+            const roles = Array.isArray(tp.target_roles) ? (tp.target_roles as string[]) : [];
+            const remote = !!tp.remote_only;
+            const locs = Array.isArray(tp.target_locations) ? (tp.target_locations as string[]) : [];
+            const parts = [
+              roles.slice(0, 2).join(", "),
+              remote ? "Remote" : locs.slice(0, 1).join(""),
+            ].filter(Boolean);
+            return parts.length > 0 ? (
+              <p className="text-xs text-muted-foreground mt-1">{parts.join(" · ")}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">No targets set — configure in Settings</p>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2">
           <WorkerStatusBadge />
