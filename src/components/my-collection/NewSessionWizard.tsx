@@ -297,6 +297,12 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
                 </SelectContent>
               </Select>
             </div>
+            {!targetRolesText.trim() && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
+                No target roles set. Discover will ask the AI to infer them from your resume — it works,
+                but naming 1–3 roles (e.g. "ML Engineer, Applied AI Engineer") gives much better results.
+              </p>
+            )}
             <Badge variant="outline" className="text-[10px] font-normal">
               You can edit any of this later from session settings.
             </Badge>

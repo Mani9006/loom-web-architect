@@ -31,9 +31,16 @@ export default function SessionPage() {
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // Restore the active tab on remount. Priority:
+    //   1. ?tab= query param (enables deep-links like BoardTab's "View tailored resume")
+    //   2. sessionStorage (persists across same-session tab-switches)
+    //   3. default to "discover"
     if (typeof window === "undefined") return "discover";
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("tab");
+    if (fromUrl && ["discover", "resumes", "board", "stats"].includes(fromUrl)) {
+      return fromUrl;
+    }
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
       return stored || "discover";

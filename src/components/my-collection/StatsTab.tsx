@@ -77,7 +77,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const responseRate =
     counts.applied > 0

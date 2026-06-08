@@ -43,6 +43,9 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  // Tracks which resume+format combination is currently being exported.
+  // Format: `${resumeId}:pdf` or `${resumeId}:docx`
+  const [exporting, setExporting] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -146,11 +149,35 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
+                <DropdownMenuItem
+                  disabled={exporting === `${r.id}:pdf`}
+                  onClick={async () => {
+                    setExporting(`${r.id}:pdf`);
+                    await downloadAsPdf(r, toast);
+                    setExporting(null);
+                  }}
+                >
+                  {exporting === `${r.id}:pdf` ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                  )}
+                  Download .pdf
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
+                <DropdownMenuItem
+                  disabled={exporting === `${r.id}:docx`}
+                  onClick={async () => {
+                    setExporting(`${r.id}:docx`);
+                    await downloadAsDocx(r, toast);
+                    setExporting(null);
+                  }}
+                >
+                  {exporting === `${r.id}:docx` ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                  )}
+                  Download .docx
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
                   Delete
