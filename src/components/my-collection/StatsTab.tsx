@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -23,6 +23,14 @@ const EMPTY_COUNTS: StatusCounts = {
   rejected: 0,
   resumes: 0,
 };
+
+const PIPELINE_STAGES = [
+  { key: "saved" as const, label: "Saved", color: "bg-blue-500" },
+  { key: "applied" as const, label: "Applied", color: "bg-indigo-500" },
+  { key: "interview" as const, label: "Interviewed", color: "bg-amber-500" },
+  { key: "offer" as const, label: "Offer", color: "bg-emerald-500" },
+  { key: "rejected" as const, label: "Rejected", color: "bg-red-400" },
+];
 
 export default function StatsTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
@@ -84,8 +92,20 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
       ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
       : null;
 
+  const maxStage = Math.max(
+    counts.saved,
+    counts.applied,
+    counts.interview,
+    counts.offer,
+    counts.rejected,
+    1,
+  );
+
+  const hasPipelineData = !loading && counts.total > 0;
+
   return (
     <div className="space-y-4">
+      {/* Primary metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="On the board"
@@ -109,6 +129,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
       </div>
 
+      {/* Secondary metrics — only show when there's applied activity */}
       {!loading && counts.applied > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <StatCard
@@ -125,18 +146,58 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
             <StatCard
               label="Response rate"
               value={`${responseRate}%`}
-              icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+              icon={<TrendingUp className="w-4 h-4 text-amber-500" />}
             />
           )}
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {/* Pipeline bar chart — shown when there's data */}
+      {hasPipelineData ? (
+        <Card className="p-5">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-4">
+            Pipeline breakdown
+          </h3>
+          <div className="space-y-3">
+            {PIPELINE_STAGES.map(({ key, label, color }) => {
+              const value = counts[key];
+              const pct = Math.round((value / maxStage) * 100);
+              return (
+                <div key={key} className="flex items-center gap-3">
+                  <div className="w-20 text-right text-[11px] text-muted-foreground shrink-0">
+                    {label}
+                  </div>
+                  <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden">
+                    <div
+                      className={`h-full ${color} rounded-sm transition-all duration-500`}
+                      style={{ width: value === 0 ? "0%" : `${Math.max(pct, 2)}%` }}
+                    />
+                  </div>
+                  <div className="w-7 text-right text-[11px] font-medium tabular-nums">
+                    {value}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {counts.applied > 0 && responseRate !== null && (
+            <p className="text-[10px] text-muted-foreground mt-4 text-right">
+              {responseRate}% response rate ({counts.interview + counts.offer} responses /{" "}
+              {counts.applied} applied)
+            </p>
+          )}
+        </Card>
+      ) : (
+        !loading && (
+          <Card className="p-6 text-center border-dashed">
+            <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Pipeline charts will appear once you have jobs on the board. Use Discover to find
+              roles, or add them manually.
+            </p>
+          </Card>
+        )
+      )}
     </div>
   );
 }
