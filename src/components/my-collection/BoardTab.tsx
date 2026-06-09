@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-100 text-zinc-600" },
 ];
 
 type TrackedStatus =
@@ -64,6 +65,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<TrackedJob | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<TrackedStatus | null>(null);
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
@@ -362,15 +364,21 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
             return (
               <div
                 key={col.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => draggedId && moveTo(draggedId, col.id)}
-                className="w-[260px] shrink-0"
+                onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.id); }}
+                onDragLeave={() => setDragOverCol(null)}
+                onDrop={() => { draggedId && moveTo(draggedId, col.id); setDragOverCol(null); }}
+                className={`w-[260px] shrink-0 rounded-lg transition-colors ${dragOverCol === col.id && draggedId ? "bg-primary/5 ring-2 ring-primary/20" : ""}`}
               >
                 <div className={`px-3 py-1.5 rounded-md text-[11px] font-medium ${col.tone} flex items-center justify-between`}>
                   <span>{col.label}</span>
                   <span className="opacity-60">{items.length}</span>
                 </div>
-                <div className="space-y-2 mt-2 min-h-[200px]">
+                <div className="space-y-2 mt-2 min-h-[200px] rounded-md transition-colors">
+                  {items.length === 0 && (
+                    <div className="h-full min-h-[200px] border-2 border-dashed border-border/40 rounded-md flex items-center justify-center">
+                      <span className="text-[11px] text-muted-foreground/40">Drop here</span>
+                    </div>
+                  )}
                   {items.map((job) => (
                     <div
                       key={job.id}

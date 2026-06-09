@@ -639,6 +639,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   function reset() {
+    if (
+      foundJobs.length > 0 &&
+      !confirm("Clear current results and start a new search?")
+    ) {
+      return;
+    }
     setFoundJobs([]);
     setClarification(null);
     setConversation([]);
@@ -677,7 +683,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           {busy ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              {progress === "queued" ? "Queued on your Mac…" : progress === "running" ? "AI is searching…" : "Working…"}
+              {progress === "queued" ? "Queued…" : progress === "running" ? "AI is searching…" : "Working…"}
             </>
           ) : (
             <>

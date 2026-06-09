@@ -125,11 +125,19 @@ export default function MyCollectionPage() {
   }
 
   async function deleteSession(id: string) {
-    if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
+    const session = sessions.find((s) => s.id === id);
+    const name = session?.name ?? "this session";
+    if (
+      !confirm(
+        `Permanently delete "${name}"?\n\nThis removes all jobs, resumes, and history inside it and cannot be undone.\n\nConsider archiving it instead if you might need it later.`
+      )
+    )
+      return;
     const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {
+      toast({ title: "Session deleted" });
       await loadSessions();
     }
   }

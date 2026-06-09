@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { saveAs } from "file-saver";
+import { Document, Paragraph, TextRun, HeadingLevel, Packer } from "docx";
 
 interface TailoredResume {
   id: string;
@@ -36,13 +38,20 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+export default function ResumesTab({
+  sessionId,
+  highlightResumeId,
+}: {
+  sessionId: string;
+  highlightResumeId?: string | null;
+}) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const highlightRef = useRef<HTMLDivElement | null>(null);
 
   async function load() {
     setLoading(true);
@@ -62,6 +71,14 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     load();
   }, [sessionId]);
+
+  // Scroll highlighted resume into view after data loads.
+  useEffect(() => {
+    if (!highlightResumeId || loading) return;
+    setTimeout(() => {
+      highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+  }, [highlightResumeId, loading]);
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
@@ -114,7 +131,11 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
     <>
       <div className="space-y-2">
         {resumes.map((r) => (
-          <Card key={r.id} className="p-3 flex items-center gap-3">
+          <Card
+            key={r.id}
+            ref={r.id === highlightResumeId ? highlightRef : undefined}
+            className={`p-3 flex items-center gap-3 transition-all ${r.id === highlightResumeId ? "ring-2 ring-primary/40 bg-primary/5" : ""}`}
+          >
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{r.name}</div>
@@ -205,33 +226,94 @@ function downloadAsMarkdown(r: TailoredResume) {
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
+  try {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const margin = 50;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const maxWidth = pageWidth - margin * 2;
+    const lineHeight = 14;
+    let y = margin;
+
+    const lines = r.cv_md.split("\n");
+    for (const raw of lines) {
+      const line = raw.trimEnd();
+      if (y + lineHeight > doc.internal.pageSize.getHeight() - margin) {
+        doc.addPage();
+        y = margin;
+      }
+      if (line.startsWith("# ")) {
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.text(line.slice(2), margin, y);
+        y += lineHeight + 6;
+      } else if (line.startsWith("## ")) {
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text(line.slice(3), margin, y);
+        y += lineHeight + 4;
+      } else if (line.startsWith("**") && line.endsWith("**")) {
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text(line.slice(2, -2), margin, y);
+        y += lineHeight;
+      } else {
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        const wrapped = doc.splitTextToSize(line || " ", maxWidth);
+        for (const wl of wrapped) {
+          if (y + lineHeight > doc.internal.pageSize.getHeight() - margin) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(wl, margin, y);
+          y += lineHeight;
+        }
+      }
+    }
+
+    doc.save(`${r.name}.pdf`);
+  } catch (e) {
     toast({
       title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : "Unexpected error generating PDF.",
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    const paragraphs: Paragraph[] = [];
+    const lines = r.cv_md.split("\n");
+
+    for (const raw of lines) {
+      const line = raw.trimEnd();
+      if (line.startsWith("# ")) {
+        paragraphs.push(new Paragraph({ text: line.slice(2), heading: HeadingLevel.HEADING_1 }));
+      } else if (line.startsWith("## ")) {
+        paragraphs.push(new Paragraph({ text: line.slice(3), heading: HeadingLevel.HEADING_2 }));
+      } else if (line.startsWith("- ") || line.startsWith("* ")) {
+        paragraphs.push(new Paragraph({ text: line.slice(2), bullet: { level: 0 } }));
+      } else if (line.startsWith("**") && line.endsWith("**")) {
+        paragraphs.push(
+          new Paragraph({ children: [new TextRun({ text: line.slice(2, -2), bold: true })] })
+        );
+      } else {
+        paragraphs.push(new Paragraph({ text: line || "" }));
+      }
+    }
+
+    const doc = new Document({ sections: [{ children: paragraphs }] });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, `${r.name}.docx`);
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : "Unexpected error generating DOCX.",
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────
