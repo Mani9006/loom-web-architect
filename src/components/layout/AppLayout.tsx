@@ -99,7 +99,12 @@ export default function AppLayout() {
   };
   const isActive = (path: string) => {
     const [pathname] = path.split("?");
-    return location.pathname === pathname;
+    // Exact match for root-level paths like /home, /job-search, etc.
+    // Prefix match for collection-style routes: /my-collection highlights
+    // even when the user is on /my-collection/:sessionId.
+    if (location.pathname === pathname) return true;
+    if (pathname !== "/" && location.pathname.startsWith(pathname + "/")) return true;
+    return false;
   };
   const initials = displayName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "U";
 

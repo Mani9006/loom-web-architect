@@ -45,7 +45,17 @@ export default function SessionPage() {
     }
   });
   // Resume to scroll-to when the resumes tab opens (from ?resume= param).
-  const [highlightResumeId] = useState<string | null>(searchParams.get("resume"));
+  const [highlightResumeId, setHighlightResumeId] = useState<string | null>(searchParams.get("resume"));
+
+  // When a deep-link navigation arrives (e.g. "View tailored resume" from BoardTab),
+  // the component may already be mounted with the same sessionId. Read the new
+  // search params and apply them so the tab switch actually happens.
+  useEffect(() => {
+    const urlTab = searchParams.get("tab");
+    const urlResume = searchParams.get("resume");
+    if (urlTab) setTab(urlTab);
+    if (urlResume !== null) setHighlightResumeId(urlResume);
+  }, [searchParams]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
@@ -167,7 +177,7 @@ export default function SessionPage() {
         <TabsContent value="discover" className="mt-6">
           <DiscoverTab sessionId={session.id} session={session} />
         </TabsContent>
-        <TabsContent value="resumes" className="mt-6">
+        <TabsContent value="resumes" className="mt-6" key={highlightResumeId ?? "resumes"}>
           <ResumesTab sessionId={session.id} highlightResumeId={highlightResumeId} />
         </TabsContent>
         <TabsContent value="board" className="mt-6">
