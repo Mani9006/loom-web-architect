@@ -9,8 +9,10 @@ interface StatusCounts {
   saved: number;
   applied: number;
   interview: number;
+  take_home: number;
   offer: number;
   rejected: number;
+  withdrawn: number;
   resumes: number;
 }
 
@@ -19,8 +21,10 @@ const EMPTY_COUNTS: StatusCounts = {
   saved: 0,
   applied: 0,
   interview: 0,
+  take_home: 0,
   offer: 0,
   rejected: 0,
+  withdrawn: 0,
   resumes: 0,
 };
 
@@ -58,9 +62,11 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
           total: rows.length,
           saved: tally("saved"),
           applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
+          interview: tally("interview"),
+          take_home: tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
+          withdrawn: tally("withdrawn"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -79,9 +85,10 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     };
   }, [sessionId]);
 
+  const interviewTotal = counts.interview + counts.take_home;
   const responseRate =
     counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
+      ? Math.round(((interviewTotal + counts.offer) / counts.applied) * 100)
       : null;
 
   return (
@@ -99,7 +106,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
         <StatCard
           label="Interviews"
-          value={loading ? "…" : counts.interview}
+          value={loading ? "…" : interviewTotal}
           icon={<BarChart3 className="w-4 h-4" />}
         />
         <StatCard
@@ -131,11 +138,66 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
+      <Card className="p-5">
+        <h3 className="text-sm font-medium mb-4">Application pipeline</h3>
+        {loading || counts.total === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            {loading ? "Loading…" : "No jobs on the board yet. Add some via Discover or the Board tab."}
+          </p>
+        ) : (
+          <>
+            <div className="space-y-2.5">
+              {[
+                { label: "On board", count: counts.total, color: "bg-slate-400" },
+                { label: "Applied", count: counts.applied, color: "bg-indigo-500" },
+                { label: "Interviews", count: interviewTotal, color: "bg-amber-500" },
+                { label: "Offers", count: counts.offer, color: "bg-emerald-500" },
+                { label: "Rejected", count: counts.rejected, color: "bg-red-400" },
+                ...(counts.withdrawn > 0
+                  ? [{ label: "Withdrawn", count: counts.withdrawn, color: "bg-slate-300" }]
+                  : []),
+              ].map(({ label, count, color }) => {
+                const pct = counts.total > 0 ? (count / counts.total) * 100 : 0;
+                return (
+                  <div
+                    key={label}
+                    className="grid items-center gap-3"
+                    style={{ gridTemplateColumns: "88px 1fr 44px" }}
+                  >
+                    <span className="text-[11px] text-muted-foreground text-right">{label}</span>
+                    <div className="h-4 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${color} transition-[width] duration-700 ease-out`}
+                        style={{ width: `${Math.max(pct, count > 0 ? 2 : 0)}%` }}
+                      />
+                    </div>
+                    <span className="text-[12px] font-medium tabular-nums text-right">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {counts.applied > 0 && (
+              <div className="mt-4 pt-4 border-t flex flex-wrap gap-x-8 gap-y-3">
+                <ConversionStat
+                  label="Applied → Interview"
+                  rate={Math.round((interviewTotal / counts.applied) * 100)}
+                />
+                {interviewTotal > 0 && (
+                  <ConversionStat
+                    label="Interview → Offer"
+                    rate={Math.round((counts.offer / interviewTotal) * 100)}
+                  />
+                )}
+                {counts.rejected > 0 && (
+                  <ConversionStat
+                    label="Reject rate"
+                    rate={Math.round((counts.rejected / counts.applied) * 100)}
+                  />
+                )}
+              </div>
+            )}
+          </>
+        )}
       </Card>
     </div>
   );
@@ -158,5 +220,14 @@ function StatCard({
       </div>
       <div className="text-2xl font-semibold">{value}</div>
     </Card>
+  );
+}
+
+function ConversionStat({ label, rate }: { label: string; rate: number }) {
+  return (
+    <div className="text-center">
+      <div className="text-sm font-semibold">{rate}%</div>
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+    </div>
   );
 }

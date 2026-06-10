@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Archive } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import DiscoverTab from "@/components/my-collection/DiscoverTab";
 import ResumesTab from "@/components/my-collection/ResumesTab";
@@ -127,9 +128,16 @@ export default function SessionPage() {
       </div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+            {session.status === "archived" && (
+              <Badge variant="outline" className="text-[10px] py-0 gap-1">
+                <Archive className="w-3 h-3" /> Archived
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
+            Created {new Date(session.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
           </p>
         </div>
         <div className="flex items-center gap-2">

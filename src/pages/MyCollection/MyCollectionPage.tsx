@@ -28,6 +28,7 @@ interface SessionStats {
   discovered: number;
   applied: number;
   interviews: number;
+  offers: number;
 }
 
 const ACTIVE_LIMIT = 5;
@@ -76,6 +77,7 @@ export default function MyCollectionPage() {
           interviews:
             jobRows.filter((r) => r.status === "interview").length +
             jobRows.filter((r) => r.status === "take_home").length,
+          offers: jobRows.filter((r) => r.status === "offer").length,
         };
       }
       setStatsMap(map);
@@ -147,8 +149,14 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
+        <Button
+          onClick={() => setWizardOpen(true)}
+          disabled={atCap}
+          className="shrink-0"
+          title={atCap ? `You can have at most ${ACTIVE_LIMIT} active sessions. Archive one to create a new one.` : undefined}
+        >
+          <Plus className="w-4 h-4 mr-1" />
+          {atCap ? `At limit (${ACTIVE_LIMIT}/${ACTIVE_LIMIT})` : "New Session"}
         </Button>
       </div>
 
@@ -295,10 +303,11 @@ function SessionCard({
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
+      <div className={`grid gap-2 text-center mt-4 pt-3 border-t ${stats?.offers ? "grid-cols-4" : "grid-cols-3"}`}>
         <SessionStat label="On board" value={stats?.discovered ?? "—"} />
         <SessionStat label="Applied" value={stats?.applied ?? "—"} />
         <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
+        {stats?.offers ? <SessionStat label="Offers" value={stats.offers} highlight /> : null}
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
@@ -309,10 +318,10 @@ function SessionCard({
   );
 }
 
-function SessionStat({ label, value }: { label: string; value: string | number }) {
+function SessionStat({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
   return (
     <div>
-      <div className="text-base font-semibold">{value}</div>
+      <div className={`text-base font-semibold ${highlight ? "text-emerald-600" : ""}`}>{value}</div>
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
     </div>
   );

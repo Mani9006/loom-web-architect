@@ -17,6 +17,7 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
+  AlertCircle,
 } from "lucide-react";
 import {
   runOnLocalWorker,
@@ -748,6 +749,18 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     </Card>
   );
 
+  // Warning when no target roles are set
+  const noTargetsWarning =
+    targetRoles.length === 0 && !busy && foundJobs.length === 0 ? (
+      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 flex items-start gap-2">
+        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+        <span>
+          No target roles configured. Open <strong>Settings</strong> (top-right of the page) to add
+          roles like "ML Engineer" or "Product Manager" so the AI knows what to search for.
+        </span>
+      </div>
+    ) : null;
+
   // Empty state (no search yet, no clarification, no results)
   const emptyState =
     foundJobs.length === 0 && !clarification && !busy ? (
@@ -854,6 +867,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   return (
     <div className="space-y-4">
       {headerSection}
+      {noTargetsWarning}
       {historySection}
       {clarificationCard}
       {emptyState}
