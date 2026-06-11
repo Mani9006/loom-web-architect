@@ -292,7 +292,10 @@ function CanvasEditor({
 
   function applySuggestion(text: string) {
     if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    // Escape regex metacharacters so literal bullet text (e.g. "C++", "(2023)")
+    // isn't misinterpreted as a regex pattern.
+    const escaped = selectedLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    setCv((c) => c.replace(new RegExp(escaped), text));
     setSelectedLine(text);
     setAiSuggestions([]);
   }

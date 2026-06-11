@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-slate-50 text-slate-400" },
 ];
 
 type TrackedStatus =
@@ -60,6 +61,7 @@ interface TrackedJob {
 
 export default function BoardTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<TrackedJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<TrackedJob | null>(null);
@@ -474,10 +476,12 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 </div>
 
                 {selected.tailored_resume_id && (
-                  <Button asChild variant="outline" size="sm">
-                    <Link to={`/my-collection/${sessionId}?tab=resumes&resume=${selected.tailored_resume_id}`}>
-                      <FileText className="w-3.5 h-3.5 mr-1" /> View tailored resume
-                    </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`/my-collection/${sessionId}?tab=resumes`)}
+                  >
+                    <FileText className="w-3.5 h-3.5 mr-1" /> View in Resumes tab
                   </Button>
                 )}
 

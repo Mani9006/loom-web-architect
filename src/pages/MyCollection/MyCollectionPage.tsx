@@ -11,6 +11,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
@@ -38,6 +48,7 @@ export default function MyCollectionPage() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<MCSession | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -124,8 +135,10 @@ export default function MyCollectionPage() {
     }
   }
 
-  async function deleteSession(id: string) {
-    if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
+  async function confirmDeleteSession() {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleteTarget(null);
     const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
@@ -189,7 +202,7 @@ export default function MyCollectionPage() {
                 stats={statsMap[s.id]}
                 onOpen={() => navigate(`/my-collection/${s.id}`)}
                 onArchive={() => archiveSession(s.id)}
-                onDelete={() => deleteSession(s.id)}
+                onDelete={() => setDeleteTarget(s)}
               />
             ))}
           </div>
@@ -208,7 +221,7 @@ export default function MyCollectionPage() {
                     archived
                     onOpen={() => navigate(`/my-collection/${s.id}`)}
                     onReactivate={() => reactivateSession(s.id)}
-                    onDelete={() => deleteSession(s.id)}
+                    onDelete={() => setDeleteTarget(s)}
                   />
                 ))}
               </div>
@@ -225,6 +238,27 @@ export default function MyCollectionPage() {
           navigate(`/my-collection/${id}`);
         }}
       />
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{deleteTarget?.name}</strong> and all its jobs, tailored resumes, and history
+              will be permanently deleted. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDeleteSession}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

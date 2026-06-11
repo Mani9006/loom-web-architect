@@ -8,6 +8,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -40,6 +50,7 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
   const [items, setItems] = useState<DeletedJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<DeletedJob | null>(null);
 
   async function load() {
     setLoading(true);
@@ -79,20 +90,49 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
     onRestored();
   }
 
-  async function deleteForever(id: string, label: string) {
-    if (!confirm(`Permanently delete "${label}"?\n\nThis cannot be undone.`)) return;
-    setBusyId(id);
-    const { error } = await (supabase as any).from("mc_tracked_jobs").delete().eq("id", id);
+  async function deleteForever(job: DeletedJob) {
+    setBusyId(job.id);
+    const { error } = await (supabase as any).from("mc_tracked_jobs").delete().eq("id", job.id);
     setBusyId(null);
     if (error) {
       toast({ title: "Couldn't delete", description: error.message, variant: "destructive" });
       return;
     }
-    setItems((arr) => arr.filter((j) => j.id !== id));
+    setItems((arr) => arr.filter((j) => j.id !== job.id));
     toast({ title: "Deleted forever" });
   }
 
   return (
+    <>
+    <AlertDialog
+      open={!!permanentDeleteTarget}
+      onOpenChange={(v) => !v && setPermanentDeleteTarget(null)}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete forever?</AlertDialogTitle>
+          <AlertDialogDescription>
+            <strong>{permanentDeleteTarget?.company} · {permanentDeleteTarget?.job_title}</strong>{" "}
+            will be permanently removed from the database. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              if (permanentDeleteTarget) {
+                void deleteForever(permanentDeleteTarget);
+                setPermanentDeleteTarget(null);
+              }
+            }}
+          >
+            Delete forever
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
     <Dialog open={open} onOpenChange={(v) => !v && !busyId && onClose()}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
@@ -150,7 +190,7 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
                       size="sm"
                       variant="ghost"
                       className="text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteForever(job.id, `${job.company} · ${job.job_title}`)}
+                      onClick={() => setPermanentDeleteTarget(job)}
                       disabled={busyId === job.id}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -169,5 +209,6 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
