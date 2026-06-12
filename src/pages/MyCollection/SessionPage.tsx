@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,32 +27,38 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
-    if (typeof window === "undefined") return "discover";
+
+  // Tab is synced with the URL ?tab= param so deep-links and browser
+  // back/forward work correctly. Falls back to sessionStorage for clients
+  // that don't have the param, then to "discover".
+  const [tab, setTabState] = useState<string>(() => {
+    const urlTab = new URLSearchParams(window.location.search).get("tab");
+    if (urlTab) return urlTab;
     try {
-      const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`) || "discover";
     } catch {
       return "discover";
     }
   });
+
+  const setTab = useCallback((next: string) => {
+    setTabState(next);
+    setSearchParams((p) => { p.set("tab", next); return p; }, { replace: true });
+    try {
+      sessionStorage.setItem(`mc:active-tab:${window.location.pathname}`, next);
+    } catch {
+      // sessionStorage can throw in private mode — non-fatal
+    }
+  }, [setSearchParams]);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
-
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(`mc:active-tab:${window.location.pathname}`, tab);
-    } catch {
-      // sessionStorage can throw in private mode — non-fatal
-    }
-  }, [tab]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -128,9 +134,9 @@ export default function SessionPage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
-          </p>
+          {session.status === "archived" && (
+            <p className="text-xs text-amber-600 mt-1">Archived — reactivate from My Collection to enable AI features.</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <WorkerStatusBadge />

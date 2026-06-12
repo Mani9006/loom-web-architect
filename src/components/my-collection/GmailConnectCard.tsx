@@ -4,6 +4,16 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Mail, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
 
 interface Connection {
@@ -19,6 +29,7 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
   const [conn, setConn] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [disconnectConfirm, setDisconnectConfirm] = useState(false);
 
   async function load() {
     const { data } = await (supabase as any)
@@ -55,9 +66,9 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
 
   async function disconnect() {
     if (!conn) return;
-    if (!confirm("Disconnect Gmail from this session? Auto-status updates from email will stop.")) return;
     await (supabase as any).from("mc_gmail_connections").delete().eq("id", conn.id);
     setConn(null);
+    toast({ title: "Gmail disconnected" });
   }
 
   async function pollNow() {
@@ -81,6 +92,23 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
   if (loading) return null;
 
   return (
+    <>
+    <AlertDialog open={disconnectConfirm} onOpenChange={setDisconnectConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Disconnect Gmail?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Auto-status updates from email will stop for this session. You can reconnect at any time.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => { setDisconnectConfirm(false); disconnect(); }}>
+            Disconnect
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <Card className="p-4">
       <div className="flex items-start gap-3">
         <Mail className="w-5 h-5 text-primary shrink-0 mt-0.5" />
@@ -113,7 +141,7 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
                 <Button size="sm" variant="outline" onClick={pollNow} disabled={busy}>
                   <RefreshCw className={`w-3.5 h-3.5 mr-1 ${busy ? "animate-spin" : ""}`} /> Check now
                 </Button>
-                <Button size="sm" variant="ghost" onClick={disconnect} disabled={busy} className="text-destructive">
+                <Button size="sm" variant="ghost" onClick={() => setDisconnectConfirm(true)} disabled={busy} className="text-destructive">
                   Disconnect
                 </Button>
               </div>
@@ -133,5 +161,6 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
         </div>
       </div>
     </Card>
+    </>
   );
 }
