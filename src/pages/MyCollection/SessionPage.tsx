@@ -129,7 +129,12 @@ export default function SessionPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
+            Started {new Date(session.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+            {session.status !== "active" && (
+              <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                {session.status}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">

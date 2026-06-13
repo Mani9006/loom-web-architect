@@ -1,16 +1,23 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, MoreVertical, Briefcase, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
@@ -153,9 +160,24 @@ export default function MyCollectionPage() {
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
-        <Badge variant="outline" className="font-normal">
-          {activeSessions.length}/{ACTIVE_LIMIT} active
-        </Badge>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                variant={atCap ? "destructive" : "outline"}
+                className="font-normal cursor-help gap-1"
+              >
+                {activeSessions.length}/{ACTIVE_LIMIT} active
+                {atCap && <Info className="w-3 h-3" />}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs max-w-[220px]">
+              {atCap
+                ? "You've reached the limit. Archive a session to create a new one."
+                : `You can have up to ${ACTIVE_LIMIT} active sessions at once.`}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         {archivedSessions.length > 0 && (
           <button
             onClick={() => setShowArchived((s) => !s)}
@@ -167,7 +189,11 @@ export default function MyCollectionPage() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-48" />
+          ))}
+        </div>
       ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
@@ -301,9 +327,11 @@ function SessionCard({
         <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
-      <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
-        <Sparkles className="w-3 h-3" />
-        Updated {new Date(session.updated_at).toLocaleDateString()}
+      <div className="text-[10px] text-muted-foreground mt-3 flex items-center justify-between">
+        <span>Updated {new Date(session.updated_at).toLocaleDateString()}</span>
+        <span className="opacity-60">
+          Created {new Date(session.created_at).toLocaleDateString()}
+        </span>
       </div>
     </Card>
   );
