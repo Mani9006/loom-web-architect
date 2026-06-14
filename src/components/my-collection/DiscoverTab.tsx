@@ -17,6 +17,7 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
+  AlertTriangle,
 } from "lucide-react";
 import {
   runOnLocalWorker,
@@ -748,6 +749,24 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     </Card>
   );
 
+  const noTargetsWarning =
+    targetRoles.length === 0 && foundJobs.length === 0 && !clarification && !busy ? (
+      <Card className="p-4 border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+              No target roles configured
+            </p>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+              Open <strong>Settings</strong> (top right) to add target roles and locations. The AI
+              uses these to search for relevant jobs.
+            </p>
+          </div>
+        </div>
+      </Card>
+    ) : null;
+
   // Empty state (no search yet, no clarification, no results)
   const emptyState =
     foundJobs.length === 0 && !clarification && !busy ? (
@@ -854,6 +873,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   return (
     <div className="space-y-4">
       {headerSection}
+      {noTargetsWarning}
       {historySection}
       {clarificationCard}
       {emptyState}

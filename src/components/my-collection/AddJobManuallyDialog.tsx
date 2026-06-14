@@ -108,11 +108,29 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
     clearDraft(sessionId);
   }
 
+  function isValidUrl(value: string): boolean {
+    if (!value.trim()) return true;
+    try {
+      const url = new URL(value.trim());
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
   async function save() {
     if (!company.trim() || !jobTitle.trim()) {
       toast({
         title: "Need company + title",
         description: "These two are required so the card has something to display.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (applyUrl.trim() && !isValidUrl(applyUrl)) {
+      toast({
+        title: "Invalid apply URL",
+        description: "Enter a valid URL starting with https:// or leave it blank.",
         variant: "destructive",
       });
       return;

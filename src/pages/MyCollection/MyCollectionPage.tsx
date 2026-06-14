@@ -147,9 +147,16 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+            <Plus className="w-4 h-4 mr-1" /> New Session
+          </Button>
+          {atCap && (
+            <p className="text-[10px] text-muted-foreground">
+              Archive an active session to create a new one.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">

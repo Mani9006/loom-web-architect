@@ -456,7 +456,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                     variant="default"
                     size="sm"
                     onClick={() => tailorJob(selected)}
-                    disabled={tailoring?.jobId === selected.id}
+                    disabled={tailoring !== null}
+                    title={tailoring && tailoring.jobId !== selected.id ? "Another job is already being tailored" : undefined}
                   >
                     {tailoring?.jobId === selected.id ? (
                       <>

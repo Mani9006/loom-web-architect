@@ -20,7 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
 
 interface TailoredResume {
   id: string;
@@ -43,6 +43,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -130,8 +131,12 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-7 w-7">
-                  <MoreVertical className="w-4 h-4" />
+                <Button size="icon" variant="ghost" className="h-7 w-7" disabled={exportingId === r.id}>
+                  {exportingId === r.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <MoreVertical className="w-4 h-4" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -146,10 +151,16 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
+                <DropdownMenuItem
+                  onClick={() => downloadAsPdf(r, toast, setExportingId)}
+                  disabled={exportingId !== null}
+                >
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
+                <DropdownMenuItem
+                  onClick={() => downloadAsDocx(r, toast, setExportingId)}
+                  disabled={exportingId !== null}
+                >
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
@@ -204,34 +215,60 @@ function downloadAsMarkdown(r: TailoredResume) {
   URL.revokeObjectURL(url);
 }
 
-async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
-    toast({
-      title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
-      variant: "destructive",
+async function downloadAsPdf(
+  r: TailoredResume,
+  toast: ReturnType<typeof useToast>["toast"],
+  setExportingId: (id: string | null) => void,
+) {
+  setExportingId(r.id);
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
+      body: { resume_id: r.id, format: "pdf" },
     });
-    return;
+    clearTimeout(timeout);
+    if (error || !data?.url) {
+      toast({
+        title: "PDF export failed",
+        description: error?.message ?? "The server didn't return a download URL.",
+        variant: "destructive",
+      });
+      return;
+    }
+    window.open(data.url, "_blank");
+  } catch (e) {
+    const msg = e instanceof Error && e.name === "AbortError" ? "Export timed out (30s). Try again." : String(e);
+    toast({ title: "PDF export failed", description: msg, variant: "destructive" });
+  } finally {
+    setExportingId(null);
   }
-  window.open(data.url, "_blank");
 }
 
-async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
-    toast({
-      title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
-      variant: "destructive",
+async function downloadAsDocx(
+  r: TailoredResume,
+  toast: ReturnType<typeof useToast>["toast"],
+  setExportingId: (id: string | null) => void,
+) {
+  setExportingId(r.id);
+  try {
+    const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
+      body: { resume_id: r.id, format: "docx" },
     });
-    return;
+    if (error || !data?.url) {
+      toast({
+        title: "DOCX export failed",
+        description: error?.message ?? "The server didn't return a download URL.",
+        variant: "destructive",
+      });
+      return;
+    }
+    window.open(data.url, "_blank");
+  } catch (e) {
+    toast({ title: "DOCX export failed", description: String(e), variant: "destructive" });
+  } finally {
+    setExportingId(null);
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────

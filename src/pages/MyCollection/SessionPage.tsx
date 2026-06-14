@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,6 +45,9 @@ export default function SessionPage() {
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+  // Tracks whether we've successfully loaded the session at least once.
+  // Using a ref so it persists across effect re-runs without triggering renders.
+  const hadInitialLoadRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -57,7 +60,6 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -74,7 +76,7 @@ export default function SessionPage() {
       if (error) {
         // eslint-disable-next-line no-console
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!hadInitialLoadRef.current) {
           toast({
             title: "Couldn't load session",
             description: error.message,
@@ -85,13 +87,13 @@ export default function SessionPage() {
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
+        if (!hadInitialLoadRef.current) {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
         return;
       }
-      hadInitialLoad = true;
+      hadInitialLoadRef.current = true;
       setSession(data);
       setLoading(false);
     })();
