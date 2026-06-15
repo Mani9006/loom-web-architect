@@ -174,7 +174,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         setActiveJobHistory([]);
         // Don't toast on transient mount-time failures; the user might not
         // have triggered this run themselves (page was just rehydrated).
-        // eslint-disable-next-line no-console
+         
         console.warn("[Discover] couldn't reattach to previous search:", e);
       } finally {
         if (!cancelled) {
@@ -328,13 +328,13 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     if (!parsed && result) {
       const fence = result.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
       if (fence) {
-        try { parsed = JSON.parse(fence[1].trim()); } catch {}
+        try { parsed = JSON.parse(fence[1].trim()); } catch (_e) { /* malformed JSON — try next pattern */ }
       }
     }
     if (!parsed && result) {
       const objMatch = result.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
       if (objMatch) {
-        try { parsed = JSON.parse(objMatch[0]); } catch {}
+        try { parsed = JSON.parse(objMatch[0]); } catch (_e) { /* malformed JSON — give up and show error */ }
       }
     }
 
@@ -621,7 +621,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         .update({ tailored_resume_id: tailored.id })
         .eq("id", trackedJobId);
       if (linkErr) {
-        // eslint-disable-next-line no-console
+         
         console.error("Couldn't link tailored resume to card:", linkErr.message);
       }
 
@@ -748,6 +748,24 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     </Card>
   );
 
+  const noTargetsWarning = targetRoles.length === 0 && !busy && foundJobs.length === 0 && !clarification ? (
+    <Card className="p-4 border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+      <div className="flex items-start gap-3">
+        <ChevronRight className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+            No target roles set
+          </p>
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+            Add target roles in{" "}
+            <strong>Settings</strong> so the AI knows what to search for. You can still search now
+            and the AI will ask you clarifying questions.
+          </p>
+        </div>
+      </div>
+    </Card>
+  ) : null;
+
   // Empty state (no search yet, no clarification, no results)
   const emptyState =
     foundJobs.length === 0 && !clarification && !busy ? (
@@ -855,6 +873,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     <div className="space-y-4">
       {headerSection}
       {historySection}
+      {noTargetsWarning}
       {clarificationCard}
       {emptyState}
       {resultsList}

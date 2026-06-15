@@ -255,7 +255,7 @@ export default function ATSCheckerPage() {
                 const parsed = JSON.parse(line.slice(6));
                 const c = parsed.choices?.[0]?.delta?.content;
                 if (c) content += c;
-              } catch {}
+              } catch (_e) { /* malformed SSE line — skip */ }
             }
           }
         }

@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Bar,
+  BarChart,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 interface StatusCounts {
   total: number;
@@ -23,6 +32,8 @@ const EMPTY_COUNTS: StatusCounts = {
   rejected: 0,
   resumes: 0,
 };
+
+const FUNNEL_COLORS = ["#6366f1", "#8b5cf6", "#a855f7", "#22c55e"];
 
 export default function StatsTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
@@ -56,7 +67,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         setCounts({
           total: rows.length,
-          saved: tally("saved"),
+          saved: tally("saved") + tally("discovered"),
           applied: tally("applied"),
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
@@ -83,6 +94,20 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     counts.applied > 0
       ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
       : null;
+
+  const offerRate =
+    counts.applied > 0
+      ? Math.round((counts.offer / counts.applied) * 100)
+      : null;
+
+  const funnelData = [
+    { stage: "Saved", count: counts.saved },
+    { stage: "Applied", count: counts.applied },
+    { stage: "Interview", count: counts.interview },
+    { stage: "Offer", count: counts.offer },
+  ];
+
+  const hasFunnelData = counts.applied > 0 || counts.saved > 0;
 
   return (
     <div className="space-y-4">
@@ -125,18 +150,54 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
             <StatCard
               label="Response rate"
               value={`${responseRate}%`}
-              icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+              icon={<TrendingUp className="w-4 h-4 text-amber-500" />}
             />
           )}
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && hasFunnelData && (
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-medium">Application pipeline</h3>
+          </div>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={funnelData} margin={{ top: 0, right: 0, bottom: 0, left: -24 }}>
+              <XAxis dataKey="stage" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+              <Tooltip
+                contentStyle={{ fontSize: 12, borderRadius: 6 }}
+                formatter={(v: number) => [v, "jobs"]}
+              />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {funnelData.map((_, i) => (
+                  <Cell key={i} fill={FUNNEL_COLORS[i]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+
+          {offerRate !== null && (
+            <p className="text-[11px] text-muted-foreground text-center mt-2">
+              {offerRate}% offer rate from applications
+              {responseRate !== null && responseRate !== offerRate
+                ? ` · ${responseRate}% reached interview stage`
+                : ""}
+            </p>
+          )}
+        </Card>
+      )}
+
+      {!loading && !hasFunnelData && (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Start applying to jobs to see your pipeline stats here — response rate, interview
+            conversion, and offer rate update automatically.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }

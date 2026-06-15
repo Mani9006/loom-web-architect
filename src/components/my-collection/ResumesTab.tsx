@@ -117,12 +117,12 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
           <Card key={r.id} className="p-3 flex items-center gap-3">
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">{r.name}</div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium truncate">{r.name}</div>
+                {r.ats_score !== null && <ATSBadge score={Math.round(r.ats_score)} />}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
                 Updated {new Date(r.updated_at).toLocaleDateString()}
-                {r.ats_score !== null && (
-                  <span className="ml-2">· ATS {Math.round(r.ats_score)}/100</span>
-                )}
               </div>
             </div>
             <Button size="sm" variant="outline" onClick={() => setEditing(r)}>
@@ -428,5 +428,19 @@ function CanvasEditor({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ATSBadge({ score }: { score: number }) {
+  const color =
+    score >= 80
+      ? "bg-green-100 text-green-800 border-green-300"
+      : score >= 60
+      ? "bg-amber-100 text-amber-800 border-amber-300"
+      : "bg-red-100 text-red-800 border-red-300";
+  return (
+    <span className={`inline-flex items-center text-[10px] border rounded px-1.5 py-0.5 font-medium ${color}`}>
+      ATS {score}
+    </span>
   );
 }

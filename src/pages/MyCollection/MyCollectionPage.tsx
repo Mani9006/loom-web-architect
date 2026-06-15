@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -147,7 +148,12 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+        <Button
+          onClick={() => setWizardOpen(true)}
+          disabled={atCap}
+          title={atCap ? `Archive one of your ${ACTIVE_LIMIT} active sessions to create a new one` : undefined}
+          className="shrink-0"
+        >
           <Plus className="w-4 h-4 mr-1" /> New Session
         </Button>
       </div>
@@ -167,7 +173,11 @@ export default function MyCollectionPage() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-48 rounded-xl" />
+          ))}
+        </div>
       ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />

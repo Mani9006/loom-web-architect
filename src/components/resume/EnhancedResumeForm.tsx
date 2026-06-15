@@ -21,7 +21,7 @@ function formatResponsibilitiesAsBullets(responsibilities: string | string[]): s
   if (Array.isArray(responsibilities)) {
     return responsibilities
       .filter(r => r && r.trim())
-      .map(r => r.trim().replace(/^[•\-\*]\s*/, ''));
+      .map(r => r.trim().replace(/^[•\-*]\s*/, ''));
   }
   
   const text = String(responsibilities);
@@ -31,14 +31,15 @@ function formatResponsibilitiesAsBullets(responsibilities: string | string[]): s
     .split(/\n|(?=•)|(?=-)/)
     .map(line => line.trim())
     .filter(line => line.length > 0)
-    .map(line => line.replace(/^[•\-\*]\s*/, ''));
+    .map(line => line.replace(/^[•\-*]\s*/, ''));
 
 }
 
+/* eslint-disable no-control-regex */
 // Robust JSON parser that handles common AI response issues
 function parseAIResponse(content: string): Record<string, any> | null {
   // Remove markdown code blocks if present
-  let cleaned = content
+  const cleaned = content
     .replace(/```json\s*/gi, '')
     .replace(/```\s*/g, '')
     .trim();
@@ -87,7 +88,7 @@ function parseAIResponse(content: string): Record<string, any> | null {
     return null;
   }
   
-  let jsonString = cleaned.substring(startIdx, endIdx);
+  const jsonString = cleaned.substring(startIdx, endIdx);
   
   // Attempt 1: Direct parse
   try {
@@ -100,8 +101,8 @@ function parseAIResponse(content: string): Record<string, any> | null {
   
   // Attempt 2: Fix common JSON issues
   try {
-    let fixed = jsonString
-      .replace(/[\x00-\x1F\x7F]/g, ' ')
+    const fixed = jsonString
+      .replace(/[\u0000-\u001F\u007F]/g, ' ')
       .replace(/,(\s*[}\]])/g, '$1')
       .replace(/:\s*true\s*([,}])/gi, ': true$1')
       .replace(/:\s*false\s*([,}])/gi, ': false$1');
@@ -115,8 +116,9 @@ function parseAIResponse(content: string): Record<string, any> | null {
   
   // Attempt 3: More aggressive cleanup
   try {
+    // eslint-disable-next-line no-control-regex
     let aggressive = jsonString
-      .replace(/[\x00-\x1F\x7F]/g, ' ')
+      .replace(/[\u0000-\u001F\u007F]/g, ' ')
       .replace(/,(\s*[}\]])/g, '$1');
     
     aggressive = aggressive.replace(/([^\\])\\([^"\\nrtbfu])/g, '$1\\\\$2');
@@ -207,6 +209,7 @@ function parseAIResponse(content: string): Record<string, any> | null {
   console.error("All parsing attempts failed");
   return null;
 }
+/* eslint-enable no-control-regex */
 
 interface EnhancedResumeFormProps {
   data: ResumeJSON;
