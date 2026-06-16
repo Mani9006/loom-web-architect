@@ -650,6 +650,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  const savedCount = savedTitles.size;
+
   // Chat-style state header (shows the conversation so far)
   const headerSection = (
     <div className="flex items-center justify-between flex-wrap gap-2">
@@ -666,6 +668,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             {l}
           </Badge>
         ))}
+        {foundJobs.length > 0 && savedCount > 0 && (
+          <Badge variant="outline" className="font-normal text-[10px]">
+            {savedCount} saved to board
+          </Badge>
+        )}
       </div>
       <div className="flex items-center gap-2">
         {(foundJobs.length > 0 || conversation.length > 0) && (
@@ -677,7 +684,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           {busy ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              {progress === "queued" ? "Queued on your Mac…" : progress === "running" ? "AI is searching…" : "Working…"}
+              {progress === "queued"
+                ? "Queued…"
+                : progress === "running"
+                  ? "AI is searching…"
+                  : "Working…"}
             </>
           ) : (
             <>
@@ -748,17 +759,26 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     </Card>
   );
 
+  const hasTargets = targetRoles.length > 0 || targetLocations.length > 0;
+
   // Empty state (no search yet, no clarification, no results)
   const emptyState =
     foundJobs.length === 0 && !clarification && !busy ? (
       <Card className="p-8 text-center border-dashed">
         <Sparkles className="w-6 h-6 mx-auto text-primary mb-2 opacity-70" />
         <p className="text-sm font-medium mb-1">Let the AI find jobs for you</p>
-        <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
-          The AI reads your master resume and your targets, then searches the web for openings that
-          fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask you a quick
-          question or two first.
-        </p>
+        {!hasTargets ? (
+          <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
+            Your session has no target roles set yet. Open{" "}
+            <strong>Settings</strong> (top right) to add target roles and locations — this helps the AI
+            find better matches. Or click below and the AI will ask you what you're looking for.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
+            The AI reads your master resume and targets, then searches the web for openings that fit.
+            Takes 30–90 seconds. If anything's unclear it'll ask one or two quick questions first.
+          </p>
+        )}
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Button onClick={() => runSearch([])} disabled={busy}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI

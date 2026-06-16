@@ -5,12 +5,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
@@ -147,9 +154,26 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        {atCap ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0}>
+                  <Button disabled className="shrink-0">
+                    <Plus className="w-4 h-4 mr-1" /> New Session
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-[220px] text-[12px]">
+                You've reached the {ACTIVE_LIMIT}-session limit. Archive an active session to create a new one.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <Button onClick={() => setWizardOpen(true)} className="shrink-0">
+            <Plus className="w-4 h-4 mr-1" /> New Session
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
@@ -167,7 +191,11 @@ export default function MyCollectionPage() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-44 rounded-lg" />
+          ))}
+        </div>
       ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />

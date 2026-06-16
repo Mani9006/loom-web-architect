@@ -99,6 +99,11 @@ export default function AppLayout() {
   };
   const isActive = (path: string) => {
     const [pathname] = path.split("?");
+    // Exact match for most routes, but prefix-match for nested routes like
+    // /my-collection/:sessionId so the nav item stays highlighted inside sessions.
+    if (pathname === "/my-collection") {
+      return location.pathname.startsWith("/my-collection");
+    }
     return location.pathname === pathname;
   };
   const initials = displayName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "U";

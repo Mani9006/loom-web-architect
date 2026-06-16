@@ -292,7 +292,13 @@ function CanvasEditor({
 
   function applySuggestion(text: string) {
     if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    // Use indexOf for exact single-occurrence replacement to avoid replacing
+    // duplicate lines elsewhere in the resume.
+    setCv((c) => {
+      const idx = c.indexOf(selectedLine);
+      if (idx === -1) return c;
+      return c.slice(0, idx) + text + c.slice(idx + selectedLine.length);
+    });
     setSelectedLine(text);
     setAiSuggestions([]);
   }

@@ -229,7 +229,14 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
           </div>
 
           <div>
-            <Label htmlFor="mc-add-jd">Job description</Label>
+            <div className="flex items-center justify-between mb-1">
+              <Label htmlFor="mc-add-jd">Job description</Label>
+              {jdMd.length > 0 && (
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {jdMd.length.toLocaleString()} chars
+                </span>
+              )}
+            </div>
             <Textarea
               id="mc-add-jd"
               placeholder="Paste the full JD here. Plain text is fine. Used by the AI tailor."
@@ -239,7 +246,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
               className="font-mono text-[12px]"
             />
             <p className="text-[10px] text-muted-foreground mt-1">
-              Required if you want to use the "Tailor with AI" button on this card.
+              Required if you want to use "Tailor with AI" on this card.
             </p>
           </div>
         </div>

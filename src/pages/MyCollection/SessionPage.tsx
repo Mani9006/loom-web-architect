@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { useParams, useNavigate, Link, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Archive } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import DiscoverTab from "@/components/my-collection/DiscoverTab";
@@ -27,32 +28,31 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  // Tab state is synced to the URL (?tab=board) so back/forward navigation
+  // and shared links land on the correct tab.
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
-    if (typeof window === "undefined") return "discover";
-    try {
-      const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
-    } catch {
-      return "discover";
-    }
+    return searchParams.get("tab") || "discover";
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
 
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(`mc:active-tab:${window.location.pathname}`, tab);
-    } catch {
-      // sessionStorage can throw in private mode — non-fatal
-    }
-  }, [tab]);
+  function handleTabChange(newTab: string) {
+    setTab(newTab);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", newTab);
+        return next;
+      },
+      { replace: true },
+    );
+  }
 
   useEffect(() => {
     if (!sessionId) return;
@@ -115,6 +115,10 @@ export default function SessionPage() {
     );
   }
 
+  const tp = (session.target_profile ?? {}) as Record<string, unknown>;
+  const targetRoles = (tp.target_roles as string[]) ?? [];
+  const isArchived = session.status === "archived";
+
   return (
     <div className="container max-w-7xl mx-auto py-6 px-4 md:px-8">
       <div className="flex items-center gap-2 mb-1">
@@ -125,14 +129,50 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
-          </p>
+
+      {isArchived && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <Archive className="w-4 h-4 shrink-0" />
+          This session is archived. You can view everything but AI features are disabled. Reactivate
+          it from{" "}
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="underline underline-offset-2 hover:text-amber-900"
+          >
+            Settings
+          </button>{" "}
+          to start using it again.
         </div>
-        <div className="flex items-center gap-2">
+      )}
+
+      <div className="flex items-start justify-between mb-5 gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight truncate">{session.name}</h1>
+          <div className="flex flex-wrap items-center gap-1 mt-1.5">
+            {targetRoles.slice(0, 4).map((r) => (
+              <Badge key={r} variant="secondary" className="text-[10px] font-normal">
+                {r}
+              </Badge>
+            ))}
+            {targetRoles.length > 4 && (
+              <Badge variant="outline" className="text-[10px] font-normal">
+                +{targetRoles.length - 4} more
+              </Badge>
+            )}
+            {targetRoles.length === 0 && (
+              <span className="text-[11px] text-muted-foreground">
+                No target roles set —{" "}
+                <button
+                  onClick={() => setSettingsOpen(true)}
+                  className="underline underline-offset-2 hover:text-foreground transition-colors"
+                >
+                  add them in Settings
+                </button>
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <WorkerStatusBadge />
           <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
             <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash
@@ -143,7 +183,7 @@ export default function SessionPage() {
         </div>
       </div>
 
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="discover" className="gap-2">
             <Search className="w-4 h-4" /> Discover

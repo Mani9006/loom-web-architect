@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -13,7 +14,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search, X } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -67,6 +68,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [filter, setFilter] = useState("");
 
   async function tailorJob(job: TrackedJob) {
     if (!job.jd_md || !job.jd_md.trim()) {
@@ -345,20 +347,54 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     );
   }
 
+  const query = filter.trim().toLowerCase();
+  const filteredJobs = query
+    ? jobs.filter(
+        (j) =>
+          j.job_title.toLowerCase().includes(query) ||
+          j.company.toLowerCase().includes(query) ||
+          (j.location ?? "").toLowerCase().includes(query),
+      )
+    : jobs;
+  const hiddenCount = jobs.length - filteredJobs.length;
+
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
+      <div className="flex items-center gap-2 mb-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Filter by company or title…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="pl-8 h-8 text-[12px]"
+          />
+          {filter && (
+            <button
+              onClick={() => setFilter("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear filter"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground whitespace-nowrap">
+          {filter
+            ? `${filteredJobs.length} of ${jobs.length}`
+            : `${jobs.length} ${jobs.length === 1 ? "card" : "cards"}`}
+          {hiddenCount > 0 && (
+            <span className="ml-1 text-muted-foreground/70">({hiddenCount} hidden)</span>
+          )}
         </p>
-        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="ml-auto">
           <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
         </Button>
       </div>
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
-            const items = jobs.filter((j) => j.status === col.id);
+            const items = filteredJobs.filter((j) => j.status === col.id);
             return (
               <div
                 key={col.id}
