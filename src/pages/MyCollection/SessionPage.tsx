@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,8 +43,10 @@ export default function SessionPage() {
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
-  // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+  // Track whether we've completed at least one successful load so transient
+  // errors after the initial render don't bounce the user back to /my-collection.
+  const hadSuccessRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -57,7 +59,6 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -69,12 +70,12 @@ export default function SessionPage() {
 
       // Don't bounce the user back to /my-collection on transient failures
       // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
+      // navigate away if we KNOW the session doesn't exist — and only on
+      // the very first successful load (tracked via ref so async state is safe).
       if (error) {
         // eslint-disable-next-line no-console
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!hadSuccessRef.current) {
           toast({
             title: "Couldn't load session",
             description: error.message,
@@ -85,13 +86,13 @@ export default function SessionPage() {
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
+        if (!hadSuccessRef.current) {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
         return;
       }
-      hadInitialLoad = true;
+      hadSuccessRef.current = true;
       setSession(data);
       setLoading(false);
     })();

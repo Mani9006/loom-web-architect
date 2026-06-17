@@ -11,6 +11,8 @@ interface StatusCounts {
   interview: number;
   offer: number;
   rejected: number;
+  hold: number;
+  withdrawn: number;
   resumes: number;
 }
 
@@ -21,6 +23,8 @@ const EMPTY_COUNTS: StatusCounts = {
   interview: 0,
   offer: 0,
   rejected: 0,
+  hold: 0,
+  withdrawn: 0,
   resumes: 0,
 };
 
@@ -61,6 +65,8 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
+          hold: tally("hold"),
+          withdrawn: tally("withdrawn"),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -109,7 +115,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
       </div>
 
-      {!loading && counts.applied > 0 && (
+      {!loading && counts.total > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <StatCard
             label="Offers"
@@ -121,11 +127,31 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
             value={counts.rejected}
             icon={<BarChart3 className="w-4 h-4 text-red-500" />}
           />
-          {responseRate !== null && (
+          {responseRate !== null ? (
             <StatCard
               label="Response rate"
               value={`${responseRate}%`}
               icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
+            />
+          ) : (
+            <StatCard
+              label="Response rate"
+              value="—"
+              icon={<BarChart3 className="w-4 h-4 text-muted-foreground" />}
+            />
+          )}
+          {counts.hold > 0 && (
+            <StatCard
+              label="On hold"
+              value={counts.hold}
+              icon={<BarChart3 className="w-4 h-4 text-zinc-400" />}
+            />
+          )}
+          {counts.withdrawn > 0 && (
+            <StatCard
+              label="Withdrawn"
+              value={counts.withdrawn}
+              icon={<BarChart3 className="w-4 h-4 text-zinc-400" />}
             />
           )}
         </div>

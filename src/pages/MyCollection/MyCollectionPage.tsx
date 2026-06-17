@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +47,7 @@ export default function MyCollectionPage() {
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
+      .neq("status", "deleted")
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
@@ -167,7 +169,22 @@ export default function MyCollectionPage() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="p-5 space-y-3">
+              <Skeleton className="h-5 w-3/4" />
+              <div className="flex gap-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+              <div className="grid grid-cols-3 gap-2 pt-3 border-t">
+                <Skeleton className="h-10" />
+                <Skeleton className="h-10" />
+                <Skeleton className="h-10" />
+              </div>
+            </Card>
+          ))}
+        </div>
       ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />

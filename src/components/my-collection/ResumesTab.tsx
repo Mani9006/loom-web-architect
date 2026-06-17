@@ -254,6 +254,13 @@ function CanvasEditor({
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
 
+  const isDirty = name !== resume.name || cv !== resume.cv_md;
+
+  function handleClose() {
+    if (isDirty && !confirm("You have unsaved changes. Discard them and close?")) return;
+    onClose();
+  }
+
   async function save() {
     setSaving(true);
     const { error } = await (supabase as any)
@@ -308,7 +315,7 @@ function CanvasEditor({
   }
 
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -419,11 +426,11 @@ function CanvasEditor({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="ghost" onClick={handleClose} disabled={saving}>
             Cancel
           </Button>
           <Button onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? "Saving…" : isDirty ? "Save changes" : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>
