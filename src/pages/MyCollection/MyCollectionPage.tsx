@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, Clock, MoreVertical, Briefcase } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,6 +31,18 @@ interface SessionStats {
 }
 
 const ACTIVE_LIMIT = 5;
+
+function relativeDate(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  const diffDays = Math.floor(diffHrs / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 export default function MyCollectionPage() {
   const [sessions, setSessions] = useState<MCSession[]>([]);
@@ -248,6 +260,7 @@ function SessionCard({
 }) {
   const tp = (session.target_profile ?? {}) as Record<string, unknown>;
   const targetRoles = Array.isArray(tp.target_roles) ? (tp.target_roles as string[]) : [];
+  const relativeTime = relativeDate(session.updated_at);
 
   return (
     <Card
@@ -302,8 +315,8 @@ function SessionCard({
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
-        <Sparkles className="w-3 h-3" />
-        Updated {new Date(session.updated_at).toLocaleDateString()}
+        <Clock className="w-3 h-3" />
+        {relativeTime}
       </div>
     </Card>
   );

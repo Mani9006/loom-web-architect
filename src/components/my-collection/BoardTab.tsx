@@ -20,15 +20,16 @@ import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
 
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
-  { id: "discovered", label: "Discovered", tone: "bg-rp-paper text-slate-700" },
+  { id: "discovered", label: "Discovered", tone: "bg-slate-100 text-slate-700" },
   { id: "saved", label: "Saved", tone: "bg-blue-50 text-blue-700" },
   { id: "applied", label: "Applied", tone: "bg-indigo-50 text-indigo-700" },
   { id: "viewed", label: "Viewed", tone: "bg-purple-50 text-purple-700" },
   { id: "interview", label: "Interview", tone: "bg-amber-50 text-amber-700" },
   { id: "take_home", label: "Take-home", tone: "bg-orange-50 text-orange-700" },
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
-  { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
+  { id: "hold", label: "Hold", tone: "bg-slate-100 text-slate-500" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-100 text-zinc-500" },
 ];
 
 type TrackedStatus =
@@ -406,6 +407,16 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                           {new Date(job.applied_at).toLocaleDateString()}
                         </div>
                       )}
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        {job.tailored_resume_id && (
+                          <span title="Tailored resume" className="inline-flex items-center text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 rounded px-1 py-0.5">
+                            <FileText className="w-2.5 h-2.5 mr-0.5" /> Tailored
+                          </span>
+                        )}
+                        {job.notes && (
+                          <span title="Has notes" className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

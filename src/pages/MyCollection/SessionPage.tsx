@@ -129,7 +129,10 @@ export default function SessionPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
+            {session.status === "archived" && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-700 mr-1.5">Archived</span>
+            )}
+            Updated {new Date(session.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -20,7 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Copy, Check, Loader2, Sparkles } from "lucide-react";
 
 interface TailoredResume {
   id: string;
@@ -36,6 +36,12 @@ interface TailoredResume {
   updated_at: string;
 }
 
+function atsColor(score: number): string {
+  if (score >= 80) return "text-emerald-700 bg-emerald-50 border-emerald-200";
+  if (score >= 60) return "text-amber-700 bg-amber-50 border-amber-200";
+  return "text-red-700 bg-red-50 border-red-200";
+}
+
 export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
@@ -43,6 +49,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -88,6 +95,16 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
     setRenameValue("");
   }
 
+  async function copyMarkdown(r: TailoredResume) {
+    try {
+      await navigator.clipboard.writeText(r.cv_md);
+      setCopiedId(r.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      toast({ title: "Couldn't copy — try opening edit view" });
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -117,14 +134,33 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
           <Card key={r.id} className="p-3 flex items-center gap-3">
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">{r.name}</div>
-              <div className="text-[11px] text-muted-foreground">
-                Updated {new Date(r.updated_at).toLocaleDateString()}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium truncate">{r.name}</span>
                 {r.ats_score !== null && (
-                  <span className="ml-2">· ATS {Math.round(r.ats_score)}/100</span>
+                  <span
+                    className={`inline-flex items-center border rounded px-1.5 py-0.5 text-[10px] font-medium ${atsColor(r.ats_score)}`}
+                  >
+                    ATS {Math.round(r.ats_score)}/100
+                  </span>
                 )}
               </div>
+              <div className="text-[11px] text-muted-foreground">
+                Updated {new Date(r.updated_at).toLocaleDateString()}
+              </div>
             </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 shrink-0"
+              title="Copy markdown"
+              onClick={() => copyMarkdown(r)}
+            >
+              {copiedId === r.id ? (
+                <Check className="w-3.5 h-3.5 text-emerald-500" />
+              ) : (
+                <Copy className="w-3.5 h-3.5" />
+              )}
+            </Button>
             <Button size="sm" variant="outline" onClick={() => setEditing(r)}>
               <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
             </Button>
