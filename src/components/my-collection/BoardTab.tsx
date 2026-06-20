@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sheet,
@@ -13,7 +14,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search, X } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -29,6 +30,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-50 text-zinc-600" },
 ];
 
 type TrackedStatus =
@@ -67,6 +69,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   async function tailorJob(job: TrackedJob) {
     if (!job.jd_md || !job.jd_md.trim()) {
@@ -345,12 +348,44 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     );
   }
 
+  const filteredJobs = searchQuery.trim()
+    ? jobs.filter((j) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          j.job_title.toLowerCase().includes(q) ||
+          j.company.toLowerCase().includes(q) ||
+          (j.location ?? "").toLowerCase().includes(q)
+        );
+      })
+    : jobs;
+
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
-        </p>
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="relative max-w-xs flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Filter cards…"
+              className="pl-8 h-8 text-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground whitespace-nowrap">
+            {filteredJobs.length !== jobs.length
+              ? `${filteredJobs.length} of ${jobs.length}`
+              : `${jobs.length} ${jobs.length === 1 ? "card" : "cards"}`}
+          </p>
+        </div>
         <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
         </Button>
@@ -358,7 +393,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
-            const items = jobs.filter((j) => j.status === col.id);
+            const items = filteredJobs.filter((j) => j.status === col.id);
             return (
               <div
                 key={col.id}

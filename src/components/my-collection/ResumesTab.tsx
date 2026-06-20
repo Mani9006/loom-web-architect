@@ -20,7 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles, Eye, Code } from "lucide-react";
 
 interface TailoredResume {
   id: string;
@@ -253,6 +253,7 @@ function CanvasEditor({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"edit" | "preview">("edit");
 
   async function save() {
     setSaving(true);
@@ -292,7 +293,12 @@ function CanvasEditor({
 
   function applySuggestion(text: string) {
     if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    // Replace the first exact occurrence to avoid clobbering duplicate lines.
+    setCv((c) => {
+      const idx = c.indexOf(selectedLine);
+      if (idx === -1) return c;
+      return c.slice(0, idx) + text + c.slice(idx + selectedLine.length);
+    });
     setSelectedLine(text);
     setAiSuggestions([]);
   }
@@ -318,35 +324,60 @@ function CanvasEditor({
         </DialogHeader>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-3 flex-1 overflow-hidden">
-          {/* Editor */}
+          {/* Editor or Preview */}
           <div className="flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Markdown — click any line to enable AI suggestions
-              </span>
+              <div className="flex items-center gap-1 border rounded-md p-0.5">
+                <button
+                  onClick={() => setPreviewMode("edit")}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-colors ${
+                    previewMode === "edit"
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Code className="w-3 h-3" /> Edit
+                </button>
+                <button
+                  onClick={() => setPreviewMode("preview")}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-colors ${
+                    previewMode === "preview"
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Eye className="w-3 h-3" /> Preview
+                </button>
+              </div>
               <Button size="sm" variant="ghost" onClick={copyMarkdown} className="h-6 text-[10px]">
                 {copied ? "Copied!" : "Copy .md"}
               </Button>
             </div>
-            <Textarea
-              value={cv}
-              onChange={(e) => {
-                setCv(e.target.value);
-                setSelectedLine(null);
-              }}
-              onSelect={(e) => {
-                const el = e.currentTarget;
-                const start = el.selectionStart ?? 0;
-                const end = el.selectionEnd ?? start;
-                const text = cv.slice(0, end);
-                const lineStart = text.lastIndexOf("\n", start - 1) + 1;
-                const lineEndOff = cv.indexOf("\n", start);
-                const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
-                const line = cv.slice(lineStart, lineEnd).trim();
-                if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
-              }}
-              className="font-mono text-xs flex-1 resize-none"
-            />
+            {previewMode === "edit" ? (
+              <Textarea
+                value={cv}
+                onChange={(e) => {
+                  setCv(e.target.value);
+                  setSelectedLine(null);
+                }}
+                onSelect={(e) => {
+                  const el = e.currentTarget;
+                  const start = el.selectionStart ?? 0;
+                  const end = el.selectionEnd ?? start;
+                  const text = cv.slice(0, end);
+                  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+                  const lineEndOff = cv.indexOf("\n", start);
+                  const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
+                  const line = cv.slice(lineStart, lineEnd).trim();
+                  if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
+                }}
+                className="font-mono text-xs flex-1 resize-none"
+              />
+            ) : (
+              <div className="flex-1 overflow-y-auto border rounded-md p-4 bg-background prose prose-sm dark:prose-invert max-w-none text-xs leading-relaxed">
+                <MarkdownPreview content={cv} />
+              </div>
+            )}
           </div>
 
           {/* AI side panel */}
@@ -423,10 +454,56 @@ function CanvasEditor({
             Cancel
           </Button>
           <Button onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Saving…</> : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function MarkdownPreview({ content }: { content: string }) {
+  const lines = content.split("\n");
+  return (
+    <div className="space-y-1 font-sans">
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} className="h-3" />;
+        if (line.startsWith("# ")) {
+          return <h1 key={i} className="text-base font-bold border-b pb-1 mb-1">{line.slice(2)}</h1>;
+        }
+        if (line.startsWith("## ")) {
+          return <h2 key={i} className="text-sm font-semibold mt-3 mb-0.5 text-primary">{line.slice(3)}</h2>;
+        }
+        if (line.startsWith("### ")) {
+          return <h3 key={i} className="text-xs font-semibold mt-2">{line.slice(4)}</h3>;
+        }
+        if (line.startsWith("- ") || line.startsWith("* ")) {
+          return (
+            <div key={i} className="flex gap-1.5 items-start">
+              <span className="mt-1 shrink-0 w-1 h-1 rounded-full bg-current opacity-60" />
+              <span>{line.slice(2)}</span>
+            </div>
+          );
+        }
+        if (/^\d+\. /.test(line)) {
+          const match = line.match(/^(\d+)\. (.*)$/);
+          if (match) {
+            return (
+              <div key={i} className="flex gap-1.5 items-start">
+                <span className="shrink-0 font-medium opacity-60">{match[1]}.</span>
+                <span>{match[2]}</span>
+              </div>
+            );
+          }
+        }
+        if (line.startsWith("**") && line.endsWith("**")) {
+          return <p key={i} className="font-semibold">{line.slice(2, -2)}</p>;
+        }
+        if (line.startsWith("---") || line.startsWith("===")) {
+          return <hr key={i} className="my-2" />;
+        }
+        return <p key={i} className="leading-relaxed">{line}</p>;
+      })}
+    </div>
   );
 }

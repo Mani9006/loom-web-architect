@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Copy, CheckCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -43,8 +43,19 @@ export default function SessionPage() {
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({ title: "Couldn't copy link" });
+    }
+  }
 
   useEffect(() => {
     try {
@@ -125,15 +136,23 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
+            Created {new Date(session.created_at).toLocaleDateString()} ·{" "}
+            <code className="text-[10px] bg-muted px-1 rounded">{session.id.slice(0, 8)}</code>
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <WorkerStatusBadge />
+          <Button variant="ghost" size="sm" onClick={copyLink} title="Copy link to this session">
+            {copied ? (
+              <><CheckCheck className="w-3.5 h-3.5 mr-1 text-emerald-500" /> Copied</>
+            ) : (
+              <><Copy className="w-3.5 h-3.5 mr-1" /> Copy link</>
+            )}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
             <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash
           </Button>

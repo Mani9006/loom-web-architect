@@ -17,12 +17,17 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
+  AlertTriangle,
+  Search,
+  X,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import {
   runOnLocalWorker,
   resumeRowToMarkdown,
   waitForJob,
   enqueueJob,
+  isWorkerOnline,
   type JobStatus,
   type AIJob,
 } from "@/lib/mc-ai-jobs";
@@ -127,6 +132,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [jobSearchQuery, setJobSearchQuery] = useState("");
+  const [workerOnline, setWorkerOnline] = useState<boolean | null>(null);
 
   // Mirror state to sessionStorage on every change.
   useEffect(() => {
@@ -139,6 +146,23 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       activeJobHistory,
     });
   }, [sessionId, foundJobs, clarification, conversation, savedTitles, activeJobId, activeJobHistory]);
+
+  // Check worker status once on mount and refresh every 30s.
+  useEffect(() => {
+    let stopped = false;
+    async function checkWorker() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user || stopped) return;
+      const status = await isWorkerOnline(userData.user.id);
+      if (!stopped) setWorkerOnline(status.online);
+    }
+    checkWorker();
+    const interval = setInterval(checkWorker, 30_000);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Auto-reattach to an in-flight search on mount. If the user clicked
   // "Find jobs with AI" and switched apps/tabs/refreshed before the worker
@@ -328,13 +352,13 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     if (!parsed && result) {
       const fence = result.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
       if (fence) {
-        try { parsed = JSON.parse(fence[1].trim()); } catch {}
+        try { parsed = JSON.parse(fence[1].trim()); } catch (_e) { /* ignore parse error, try next strategy */ }
       }
     }
     if (!parsed && result) {
       const objMatch = result.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
       if (objMatch) {
-        try { parsed = JSON.parse(objMatch[0]); } catch {}
+        try { parsed = JSON.parse(objMatch[0]); } catch (_e) { /* ignore parse error */ }
       }
     }
 
@@ -650,6 +674,31 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  // Filter found jobs by search query
+  const filteredFoundJobs = jobSearchQuery.trim()
+    ? foundJobs.filter((j) => {
+        const q = jobSearchQuery.toLowerCase();
+        return (
+          j.title.toLowerCase().includes(q) ||
+          j.company.toLowerCase().includes(q) ||
+          (j.location ?? "").toLowerCase().includes(q) ||
+          (j.summary ?? "").toLowerCase().includes(q)
+        );
+      })
+    : foundJobs;
+
+  // Worker offline banner
+  const workerOfflineBanner =
+    workerOnline === false ? (
+      <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2.5 text-xs text-amber-800 dark:text-amber-300">
+        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          Your AI worker is offline — searches won't start until it's back. Open the ResumePreps
+          worker app on your Mac to bring it online.
+        </span>
+      </div>
+    ) : null;
+
   // Chat-style state header (shows the conversation so far)
   const headerSection = (
     <div className="flex items-center justify-between flex-wrap gap-2">
@@ -774,7 +823,31 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const resultsList =
     foundJobs.length === 0 ? null : (
       <div className="space-y-2">
-        {foundJobs.map((job, idx) => {
+        {foundJobs.length > 4 && (
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              value={jobSearchQuery}
+              onChange={(e) => setJobSearchQuery(e.target.value)}
+              placeholder={`Filter ${foundJobs.length} results…`}
+              className="pl-8 h-8 text-sm"
+            />
+            {jobSearchQuery && (
+              <button
+                onClick={() => setJobSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+        {filteredFoundJobs.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4">
+            No results match "{jobSearchQuery}".
+          </p>
+        )}
+        {filteredFoundJobs.map((job, idx) => {
           const key = `${job.company}::${job.title}`;
           const isSaved = savedTitles.has(key);
           return (
@@ -853,6 +926,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   return (
     <div className="space-y-4">
+      {workerOfflineBanner}
       {headerSection}
       {historySection}
       {clarificationCard}
