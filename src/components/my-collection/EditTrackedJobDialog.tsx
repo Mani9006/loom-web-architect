@@ -14,6 +14,16 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export interface EditableTrackedJob {
   id: string;
@@ -47,6 +57,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
   const [jdMd, setJdMd] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   // Sync local form state with whichever job was opened.
   useEffect(() => {
@@ -93,9 +104,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
 
   async function deleteJob() {
     if (!job) return;
-    if (!confirm(`Delete this card from the board?\n\n${job.company} · ${job.job_title}\n\nThis can't be undone.`)) {
-      return;
-    }
+    setDeleteConfirmOpen(false);
     setSaving(true);
     const { error } = await (supabase as any)
       .from("mc_tracked_jobs")
@@ -111,6 +120,28 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
   }
 
   return (
+    <>
+    <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this card?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {job && `${job.company} · ${job.job_title} — `}This removes the card from the board
+            permanently and cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={deleteJob}
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
     <Dialog open={open} onOpenChange={(v) => !v && !saving && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
@@ -189,7 +220,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={deleteJob} disabled={saving} className="text-destructive">
+          <Button variant="outline" onClick={() => setDeleteConfirmOpen(true)} disabled={saving} className="text-destructive">
             <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete card
           </Button>
           <div className="flex-1" />
@@ -202,5 +233,6 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

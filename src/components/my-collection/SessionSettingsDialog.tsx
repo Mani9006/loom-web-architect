@@ -23,6 +23,16 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Archive } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import GmailConnectCard from "./GmailConnectCard";
 
 interface Resume {
@@ -63,6 +73,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
   const [visa, setVisa] = useState<string>("us_citizen");
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [saving, setSaving] = useState(false);
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
 
   // Hydrate form whenever the dialog opens.
   useEffect(() => {
@@ -124,9 +135,6 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
   }
 
   async function archive() {
-    if (!confirm(`Archive "${session.name}"?\n\nIt will disappear from your active sessions but the data is kept.`)) {
-      return;
-    }
     setSaving(true);
     const { error } = await (supabase as any)
       .from("mc_sessions")
@@ -142,6 +150,23 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
   }
 
   return (
+    <>
+    <AlertDialog open={archiveConfirmOpen} onOpenChange={setArchiveConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Archive "{session.name}"?</AlertDialogTitle>
+          <AlertDialogDescription>
+            The session will disappear from your active sessions but all jobs, resumes, and history
+            are kept. You can reactivate it at any time.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={archive}>Archive</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
     <Dialog open={open} onOpenChange={(v) => !v && !saving && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
@@ -257,7 +282,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={archive} disabled={saving} className="text-destructive">
+          <Button variant="outline" onClick={() => setArchiveConfirmOpen(true)} disabled={saving} className="text-destructive">
             <Archive className="w-3.5 h-3.5 mr-1" /> Archive session
           </Button>
           <div className="flex-1" />
@@ -270,5 +295,6 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

@@ -17,6 +17,7 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
+  AlertCircle,
 } from "lucide-react";
 import {
   runOnLocalWorker,
@@ -606,7 +607,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         .insert({
           user_id: userData.user.id,
           session_id: sessionId,
-          source_job_id: null,
+          source_job_id: trackedJobId,
           name: `${job.company} — ${job.title}`,
           cv_md: result,
         })
@@ -624,6 +625,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         // eslint-disable-next-line no-console
         console.error("Couldn't link tailored resume to card:", linkErr.message);
       }
+
+      // Mark as saved (if not already) so the Save button shows BookmarkCheck
+      setSavedTitles((s) => new Set(s).add(key));
 
       toast({
         title: "Tailored resume ready",
@@ -851,8 +855,22 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       </div>
     );
 
+  // Warn when session has no target roles — the AI search will ask clarifying
+  // questions or return unhelpful results without them.
+  const noRolesBanner =
+    targetRoles.length === 0 && foundJobs.length === 0 && !clarification ? (
+      <div className="flex items-start gap-2 text-[12px] bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-amber-800">
+        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+        <span>
+          No target roles set. Open <strong>Settings</strong> (top right) to add the roles you're
+          targeting — the AI will use them to find relevant jobs.
+        </span>
+      </div>
+    ) : null;
+
   return (
     <div className="space-y-4">
+      {noRolesBanner}
       {headerSection}
       {historySection}
       {clarificationCard}

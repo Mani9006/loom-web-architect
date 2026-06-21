@@ -219,6 +219,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
                 placeholder="e.g. ML Engineer — financial services"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) setStep(2); }}
                 autoFocus
               />
             </div>

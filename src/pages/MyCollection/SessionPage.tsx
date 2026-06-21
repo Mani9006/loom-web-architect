@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,19 +27,27 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const VALID_TABS = ["discover", "resumes", "board", "stats"] as const;
+  type ValidTab = typeof VALID_TABS[number];
+
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // URL param takes precedence (enables deep-linking like ?tab=board),
+    // then fall back to sessionStorage, then default to "discover".
+    const urlTab = searchParams.get("tab");
+    if (urlTab && VALID_TABS.includes(urlTab as ValidTab)) return urlTab;
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      if (stored && VALID_TABS.includes(stored as ValidTab)) return stored;
     } catch {
-      return "discover";
+      // sessionStorage unavailable in private mode — non-fatal
     }
+    return "discover";
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
@@ -52,6 +60,17 @@ export default function SessionPage() {
     } catch {
       // sessionStorage can throw in private mode — non-fatal
     }
+    // Keep the URL in sync with the active tab so the back button and
+    // share links work as expected.
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (tab === "discover") {
+        next.delete("tab");
+      } else {
+        next.set("tab", tab);
+      }
+      return next;
+    }, { replace: true });
   }, [tab]);
 
   useEffect(() => {

@@ -20,7 +20,17 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface TailoredResume {
   id: string;
@@ -43,6 +53,8 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -63,9 +75,9 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
     load();
   }, [sessionId]);
 
-  async function deleteResume(id: string) {
-    if (!confirm("Delete this tailored resume?")) return;
+  async function confirmDelete(id: string) {
     const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
+    setDeletingId(null);
     if (error) toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     else load();
   }
@@ -146,14 +158,38 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
+                <DropdownMenuItem
+                  disabled={downloadingId === r.id}
+                  onClick={async () => {
+                    setDownloadingId(r.id);
+                    await downloadAsPdf(r, toast);
+                    setDownloadingId(null);
+                  }}
+                >
+                  {downloadingId === r.id ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                  )}
+                  Download .pdf
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
+                <DropdownMenuItem
+                  disabled={downloadingId === r.id}
+                  onClick={async () => {
+                    setDownloadingId(r.id);
+                    await downloadAsDocx(r, toast);
+                    setDownloadingId(null);
+                  }}
+                >
+                  {downloadingId === r.id ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                  )}
+                  Download .docx
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
-                  Delete
+                <DropdownMenuItem onClick={() => setDeletingId(r.id)} className="text-destructive">
+                  <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -190,6 +226,26 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
           }}
         />
       )}
+
+      <AlertDialog open={!!deletingId} onOpenChange={(v) => !v && setDeletingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete tailored resume?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This cannot be undone. The resume will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deletingId && confirmDelete(deletingId)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

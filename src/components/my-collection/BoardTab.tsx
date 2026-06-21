@@ -13,7 +13,8 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -29,6 +30,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-100 text-zinc-600" },
 ];
 
 type TrackedStatus =
@@ -67,6 +69,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   async function tailorJob(job: TrackedJob) {
     if (!job.jd_md || !job.jd_md.trim()) {
@@ -177,7 +180,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         .insert({
           user_id: userData?.user?.id,
           session_id: sessionId,
-          source_job_id: null,
+          source_job_id: job.id,
           name: `${job.company} — ${job.job_title}`,
           cv_md: result,
         })
@@ -347,9 +350,27 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
+      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[160px] max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Filter jobs…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 h-8 text-xs"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground shrink-0">
+          {jobs.length} {jobs.length === 1 ? "card" : "cards"}
+          {searchQuery && ` · filtered`}
         </p>
         <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
@@ -358,7 +379,16 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
-            const items = jobs.filter((j) => j.status === col.id);
+            const q = searchQuery.toLowerCase().trim();
+            const items = jobs.filter((j) => {
+              if (j.status !== col.id) return false;
+              if (!q) return true;
+              return (
+                j.job_title.toLowerCase().includes(q) ||
+                j.company.toLowerCase().includes(q) ||
+                (j.location ?? "").toLowerCase().includes(q)
+              );
+            });
             return (
               <div
                 key={col.id}
@@ -389,7 +419,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                      <div className="font-medium leading-tight pr-6">{job.job_title}</div>
+                      <div className="font-medium leading-tight pr-6 flex items-start gap-1.5">
+                        <span className="flex-1">{job.job_title}</span>
+                        {job.tailored_resume_id && (
+                          <span title="Has tailored resume" className="shrink-0 mt-0.5">
+                            <Sparkles className="w-3 h-3 text-primary" aria-label="Has tailored resume" />
+                          </span>
+                        )}
+                      </div>
                       <div className="text-muted-foreground text-[11px] mt-1 flex items-center gap-1">
                         <Building2 className="w-3 h-3" />
                         {job.company}
