@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, RefreshCw, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>(() => {
     // Restore the active tab on remount (tab switches, browser back/forward)
     // so a tab-app switch doesn't reset the user to "discover".
@@ -54,63 +55,65 @@ export default function SessionPage() {
     }
   }, [tab]);
 
-  useEffect(() => {
+  const loadSession = useCallback(async () => {
     if (!sessionId) return;
-    let cancelled = false;
-    let hadInitialLoad = false;
-    (async () => {
-      setLoading(true);
-      const { data, error } = await (supabase as any)
-        .from("mc_sessions")
-        .select("*")
-        .eq("id", sessionId)
-        .maybeSingle();
-      if (cancelled) return;
+    setLoading(true);
+    setLoadError(null);
+    const { data, error } = await (supabase as any)
+      .from("mc_sessions")
+      .select("*")
+      .eq("id", sessionId)
+      .maybeSingle();
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
-      if (error) {
-        // eslint-disable-next-line no-console
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          toast({
-            title: "Couldn't load session",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
-        setLoading(false);
-        return;
-      }
-      if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
-        return;
-      }
-      hadInitialLoad = true;
-      setSession(data);
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error("[SessionPage] load failed:", error.message);
+      setLoadError(error.message);
       setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render — which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      return;
+    }
+    if (!data) {
+      toast({ title: "Session not found" });
+      navigate("/my-collection");
+      return;
+    }
+    setSession(data);
+    setLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  if (loading || !session) {
+  useEffect(() => {
+    loadSession();
+  }, [loadSession]);
+
+  if (loading) {
     return (
       <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8 space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-10 w-full max-w-md" />
         <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
+  if (loadError || !session) {
+    return (
+      <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8 flex flex-col items-center justify-center min-h-[40vh] gap-4">
+        <AlertCircle className="w-10 h-10 text-destructive/60" />
+        <div className="text-center">
+          <p className="font-medium">Couldn't load session</p>
+          {loadError && <p className="text-sm text-muted-foreground mt-1">{loadError}</p>}
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" asChild>
+            <Link to="/my-collection">
+              <ArrowLeft className="w-4 h-4 mr-1" /> Back
+            </Link>
+          </Button>
+          <Button onClick={loadSession}>
+            <RefreshCw className="w-4 h-4 mr-1" /> Retry
+          </Button>
+        </div>
       </div>
     );
   }

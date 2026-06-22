@@ -147,9 +147,16 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <div className="relative group shrink-0">
+          <Button onClick={() => setWizardOpen(true)} disabled={atCap}>
+            <Plus className="w-4 h-4 mr-1" /> New Session
+          </Button>
+          {atCap && (
+            <div className="absolute right-0 top-full mt-1.5 w-56 rounded-md bg-popover border text-xs p-2.5 text-muted-foreground shadow-md hidden group-hover:block z-10 pointer-events-none">
+              You have {ACTIVE_LIMIT} active sessions — the maximum. Archive one to create a new session.
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
@@ -303,7 +310,7 @@ function SessionCard({
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
         <Sparkles className="w-3 h-3" />
-        Updated {new Date(session.updated_at).toLocaleDateString()}
+        Updated {relativeTime(session.updated_at)}
       </div>
     </Card>
   );
@@ -316,4 +323,16 @@ function SessionStat({ label, value }: { label: string; value: string | number }
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
     </div>
   );
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
