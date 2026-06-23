@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-slate-100 text-slate-500" },
 ];
 
 type TrackedStatus =
@@ -67,6 +68,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<TrackedStatus | null>(null);
 
   async function tailorJob(job: TrackedJob) {
     if (!job.jd_md || !job.jd_md.trim()) {
@@ -362,15 +364,16 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
             return (
               <div
                 key={col.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => draggedId && moveTo(draggedId, col.id)}
+                onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.id); }}
+                onDragLeave={() => setDragOverCol(null)}
+                onDrop={() => { setDragOverCol(null); draggedId && moveTo(draggedId, col.id); }}
                 className="w-[260px] shrink-0"
               >
                 <div className={`px-3 py-1.5 rounded-md text-[11px] font-medium ${col.tone} flex items-center justify-between`}>
                   <span>{col.label}</span>
                   <span className="opacity-60">{items.length}</span>
                 </div>
-                <div className="space-y-2 mt-2 min-h-[200px]">
+                <div className={`space-y-2 mt-2 min-h-[200px] rounded-md transition-colors ${dragOverCol === col.id && draggedId ? "bg-primary/5 outline outline-2 outline-dashed outline-primary/30" : ""}`}>
                   {items.map((job) => (
                     <div
                       key={job.id}

@@ -621,8 +621,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         .update({ tailored_resume_id: tailored.id })
         .eq("id", trackedJobId);
       if (linkErr) {
-        // eslint-disable-next-line no-console
-        console.error("Couldn't link tailored resume to card:", linkErr.message);
+        toast({
+          title: "Resume saved, but link failed",
+          description: "Open the Resumes tab and assign it to the card manually.",
+          variant: "destructive",
+        });
       }
 
       toast({

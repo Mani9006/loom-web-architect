@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,6 +45,11 @@ export default function SessionPage() {
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+  // Tracks whether we've successfully loaded this session at least once.
+  // Using a ref so it persists across re-renders without causing them, and
+  // so the async callback always reads the current value (unlike a closure
+  // over a `let` variable which resets on every effect run).
+  const hadSuccessfulLoad = useRef(false);
 
   useEffect(() => {
     try {
@@ -56,8 +61,9 @@ export default function SessionPage() {
 
   useEffect(() => {
     if (!sessionId) return;
+    // Reset for a new sessionId so errors on a fresh session are always surfaced.
+    hadSuccessfulLoad.current = false;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -74,7 +80,7 @@ export default function SessionPage() {
       if (error) {
         // eslint-disable-next-line no-console
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!hadSuccessfulLoad.current) {
           toast({
             title: "Couldn't load session",
             description: error.message,
@@ -85,13 +91,13 @@ export default function SessionPage() {
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
+        if (!hadSuccessfulLoad.current) {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
         return;
       }
-      hadInitialLoad = true;
+      hadSuccessfulLoad.current = true;
       setSession(data);
       setLoading(false);
     })();
@@ -128,9 +134,20 @@ export default function SessionPage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
-          </p>
+          {(() => {
+            const tp = (session.target_profile ?? {}) as Record<string, unknown>;
+            const roles = Array.isArray(tp.target_roles) ? (tp.target_roles as string[]) : [];
+            return roles.length > 0 ? (
+              <p className="text-xs text-muted-foreground mt-1">
+                {roles.slice(0, 4).join(" · ")}
+                {roles.length > 4 ? ` +${roles.length - 4} more` : ""}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">
+                Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
+              </p>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2">
           <WorkerStatusBadge />

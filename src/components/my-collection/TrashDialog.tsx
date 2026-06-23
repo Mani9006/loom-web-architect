@@ -92,6 +92,20 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
     toast({ title: "Deleted forever" });
   }
 
+  async function emptyTrash() {
+    if (!confirm(`Permanently delete all ${items.length} trashed cards?\n\nThis cannot be undone.`)) return;
+    setBusyId("__all__");
+    const ids = items.map((j) => j.id);
+    const { error } = await (supabase as any).from("mc_tracked_jobs").delete().in("id", ids);
+    setBusyId(null);
+    if (error) {
+      toast({ title: "Couldn't empty trash", description: error.message, variant: "destructive" });
+      return;
+    }
+    setItems([]);
+    toast({ title: "Trash emptied" });
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && !busyId && onClose()}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -162,7 +176,18 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2">
+          {items.length > 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:bg-destructive/10 mr-auto"
+              onClick={emptyTrash}
+              disabled={!!busyId}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1" /> Empty trash ({items.length})
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose} disabled={!!busyId}>
             Close
           </Button>
