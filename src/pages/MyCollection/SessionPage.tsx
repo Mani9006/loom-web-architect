@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Archive } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -125,6 +125,23 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
+
+      {session.status === "archived" && (
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+          <Archive className="w-4 h-4 shrink-0" />
+          <span>
+            This session is <strong>archived</strong>. You can still view and edit it, but it won't appear
+            in your active sessions list. Reactivate it from{" "}
+            <button
+              className="underline font-medium"
+              onClick={() => setSettingsOpen(true)}
+            >
+              Settings
+            </button>{" "}
+            to continue your search.
+          </span>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
@@ -184,6 +201,10 @@ export default function SessionPage() {
         onArchived={() => {
           setSettingsOpen(false);
           navigate("/my-collection");
+        }}
+        onReactivated={() => {
+          setSession((cur) => (cur ? { ...cur, status: "active" } : cur));
+          setSettingsOpen(false);
         }}
       />
 

@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-zinc-100 text-zinc-500" },
 ];
 
 type TrackedStatus =
@@ -404,6 +405,12 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                         <div className="text-muted-foreground text-[10px] mt-1.5 flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {new Date(job.applied_at).toLocaleDateString()}
+                        </div>
+                      )}
+                      {job.tailored_resume_id && (
+                        <div className="text-[10px] mt-1.5 flex items-center gap-1 text-primary/70">
+                          <FileText className="w-3 h-3" />
+                          Tailored resume
                         </div>
                       )}
                     </div>

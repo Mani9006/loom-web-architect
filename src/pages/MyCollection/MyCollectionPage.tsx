@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface MCSession {
   id: string;
@@ -147,19 +148,38 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {atCap && (
+              <TooltipContent>
+                You have {ACTIVE_LIMIT} active sessions (the maximum). Archive one to create a new one.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
-      <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
-        <Badge variant="outline" className="font-normal">
+      <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground flex-wrap">
+        <Badge variant={atCap ? "destructive" : "outline"} className="font-normal">
           {activeSessions.length}/{ACTIVE_LIMIT} active
         </Badge>
+        {atCap && (
+          <span className="flex items-center gap-1 text-destructive">
+            <Info className="w-3 h-3" />
+            Session limit reached — archive one to start a new search.
+          </span>
+        )}
         {archivedSessions.length > 0 && (
           <button
             onClick={() => setShowArchived((s) => !s)}
-            className="hover:text-foreground transition-colors"
+            className="hover:text-foreground transition-colors ml-auto"
           >
             {showArchived ? "Hide" : "Show"} {archivedSessions.length} archived
           </button>

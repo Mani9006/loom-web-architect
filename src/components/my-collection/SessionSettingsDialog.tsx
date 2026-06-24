@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Archive } from "lucide-react";
+import { Archive, RefreshCw } from "lucide-react";
 import GmailConnectCard from "./GmailConnectCard";
 
 interface Resume {
@@ -34,6 +34,7 @@ interface Resume {
 interface MCSession {
   id: string;
   name: string;
+  status?: string;
   master_resume_id: string | null;
   target_profile: Record<string, unknown>;
 }
@@ -46,13 +47,15 @@ interface Props {
   onSaved: (updated: MCSession) => void;
   /** Called after the session is archived. */
   onArchived: () => void;
+  /** Called after an archived session is reactivated. */
+  onReactivated?: () => void;
 }
 
 /**
  * Lets the user edit a session's name + targeting profile + master resume,
  * connect Gmail per-session, and archive the session.
  */
-export default function SessionSettingsDialog({ open, onClose, session, onSaved, onArchived }: Props) {
+export default function SessionSettingsDialog({ open, onClose, session, onSaved, onArchived, onReactivated }: Props) {
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [resumeId, setResumeId] = useState<string>("");
@@ -139,6 +142,21 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
     }
     toast({ title: "Session archived" });
     onArchived();
+  }
+
+  async function reactivate() {
+    setSaving(true);
+    const { error } = await (supabase as any)
+      .from("mc_sessions")
+      .update({ status: "active" })
+      .eq("id", session.id);
+    setSaving(false);
+    if (error) {
+      toast({ title: "Couldn't reactivate", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Session reactivated" });
+    onReactivated?.();
   }
 
   return (
@@ -257,9 +275,15 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={archive} disabled={saving} className="text-destructive">
-            <Archive className="w-3.5 h-3.5 mr-1" /> Archive session
-          </Button>
+          {session.status === "archived" ? (
+            <Button variant="outline" onClick={reactivate} disabled={saving}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1" /> Reactivate session
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={archive} disabled={saving} className="text-destructive">
+              <Archive className="w-3.5 h-3.5 mr-1" /> Archive session
+            </Button>
+          )}
           <div className="flex-1" />
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Close

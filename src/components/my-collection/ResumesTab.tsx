@@ -118,10 +118,12 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{r.name}</div>
-              <div className="text-[11px] text-muted-foreground">
-                Updated {new Date(r.updated_at).toLocaleDateString()}
+              <div className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap">
+                <span>Updated {new Date(r.updated_at).toLocaleDateString()}</span>
                 {r.ats_score !== null && (
-                  <span className="ml-2">· ATS {Math.round(r.ats_score)}/100</span>
+                  <span className={`font-medium ${atsScoreColor(r.ats_score)}`}>
+                    ATS {Math.round(r.ats_score)}/100
+                  </span>
                 )}
               </div>
             </div>
@@ -192,6 +194,12 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
       )}
     </>
   );
+}
+
+function atsScoreColor(score: number): string {
+  if (score >= 80) return "text-emerald-600";
+  if (score >= 60) return "text-amber-500";
+  return "text-red-500";
 }
 
 function downloadAsMarkdown(r: TailoredResume) {
