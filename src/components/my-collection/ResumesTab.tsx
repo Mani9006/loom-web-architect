@@ -20,7 +20,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles, Eye, Code2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface TailoredResume {
   id: string;
@@ -253,6 +254,7 @@ function CanvasEditor({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"edit" | "preview">("edit");
 
   async function save() {
     setSaving(true);
@@ -318,35 +320,60 @@ function CanvasEditor({
         </DialogHeader>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-3 flex-1 overflow-hidden">
-          {/* Editor */}
+          {/* Editor / Preview */}
           <div className="flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Markdown — click any line to enable AI suggestions
-              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPreviewMode("edit")}
+                  className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition ${
+                    previewMode === "edit"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Code2 className="w-3 h-3" /> Edit
+                </button>
+                <button
+                  onClick={() => setPreviewMode("preview")}
+                  className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition ${
+                    previewMode === "preview"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Eye className="w-3 h-3" /> Preview
+                </button>
+              </div>
               <Button size="sm" variant="ghost" onClick={copyMarkdown} className="h-6 text-[10px]">
                 {copied ? "Copied!" : "Copy .md"}
               </Button>
             </div>
-            <Textarea
-              value={cv}
-              onChange={(e) => {
-                setCv(e.target.value);
-                setSelectedLine(null);
-              }}
-              onSelect={(e) => {
-                const el = e.currentTarget;
-                const start = el.selectionStart ?? 0;
-                const end = el.selectionEnd ?? start;
-                const text = cv.slice(0, end);
-                const lineStart = text.lastIndexOf("\n", start - 1) + 1;
-                const lineEndOff = cv.indexOf("\n", start);
-                const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
-                const line = cv.slice(lineStart, lineEnd).trim();
-                if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
-              }}
-              className="font-mono text-xs flex-1 resize-none"
-            />
+            {previewMode === "edit" ? (
+              <Textarea
+                value={cv}
+                onChange={(e) => {
+                  setCv(e.target.value);
+                  setSelectedLine(null);
+                }}
+                onSelect={(e) => {
+                  const el = e.currentTarget;
+                  const start = el.selectionStart ?? 0;
+                  const end = el.selectionEnd ?? start;
+                  const text = cv.slice(0, end);
+                  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+                  const lineEndOff = cv.indexOf("\n", start);
+                  const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
+                  const line = cv.slice(lineStart, lineEnd).trim();
+                  if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
+                }}
+                className="font-mono text-xs flex-1 resize-none"
+              />
+            ) : (
+              <div className="flex-1 overflow-y-auto border rounded-md p-4 bg-card prose prose-sm prose-invert max-w-none text-sm">
+                <ReactMarkdown>{cv}</ReactMarkdown>
+              </div>
+            )}
           </div>
 
           {/* AI side panel */}

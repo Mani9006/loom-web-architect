@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 interface StatusCounts {
   total: number;
@@ -131,12 +132,67 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && counts.total > 0 && (
+        <Card className="p-5">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-4">
+            Pipeline breakdown
+          </h3>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart
+              data={[
+                { stage: "Saved", count: counts.saved, color: "#60a5fa" },
+                { stage: "Applied", count: counts.applied, color: "#818cf8" },
+                { stage: "Interview", count: counts.interview, color: "#fb923c" },
+                { stage: "Offer", count: counts.offer, color: "#34d399" },
+                { stage: "Rejected", count: counts.rejected, color: "#f87171" },
+              ]}
+              margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+            >
+              <XAxis
+                dataKey="stage"
+                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: 6,
+                  fontSize: 12,
+                }}
+                cursor={{ fill: "hsl(var(--muted))" }}
+              />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {[
+                  "#60a5fa",
+                  "#818cf8",
+                  "#fb923c",
+                  "#34d399",
+                  "#f87171",
+                ].map((color, i) => (
+                  <Cell key={i} fill={color} fillOpacity={0.85} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
+      {!loading && counts.total === 0 && (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Stats will appear once you start adding jobs to the board.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }

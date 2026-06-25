@@ -677,7 +677,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           {busy ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              {progress === "queued" ? "Queued on your Mac…" : progress === "running" ? "AI is searching…" : "Working…"}
+              {progress === "queued" ? "Queued…" : progress === "running" ? "AI is searching…" : "Working…"}
             </>
           ) : (
             <>
@@ -748,19 +748,29 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     </Card>
   );
 
+  const hasTargets = targetRoles.length > 0 || targetLocations.length > 0;
+
   // Empty state (no search yet, no clarification, no results)
   const emptyState =
     foundJobs.length === 0 && !clarification && !busy ? (
       <Card className="p-8 text-center border-dashed">
         <Sparkles className="w-6 h-6 mx-auto text-primary mb-2 opacity-70" />
         <p className="text-sm font-medium mb-1">Let the AI find jobs for you</p>
-        <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
-          The AI reads your master resume and your targets, then searches the web for openings that
-          fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask you a quick
-          question or two first.
-        </p>
+        {!hasTargets ? (
+          <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
+            You haven't set any target roles yet. Click{" "}
+            <strong>Settings</strong> (top right) to add the roles you're looking for, then come
+            back and search. You can also add jobs manually while you set up.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
+            The AI reads your master resume and your targets, then searches the web for openings that
+            fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask a quick
+            question or two first.
+          </p>
+        )}
         <div className="flex items-center justify-center gap-2 flex-wrap">
-          <Button onClick={() => runSearch([])} disabled={busy}>
+          <Button onClick={() => runSearch([])} disabled={busy || !hasTargets}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI
           </Button>
           <Button variant="outline" onClick={() => setAddOpen(true)}>

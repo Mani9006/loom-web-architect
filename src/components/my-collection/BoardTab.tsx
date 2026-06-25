@@ -13,22 +13,23 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, StickyNote } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
 
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
-  { id: "discovered", label: "Discovered", tone: "bg-rp-paper text-slate-700" },
-  { id: "saved", label: "Saved", tone: "bg-blue-50 text-blue-700" },
-  { id: "applied", label: "Applied", tone: "bg-indigo-50 text-indigo-700" },
-  { id: "viewed", label: "Viewed", tone: "bg-purple-50 text-purple-700" },
-  { id: "interview", label: "Interview", tone: "bg-amber-50 text-amber-700" },
-  { id: "take_home", label: "Take-home", tone: "bg-orange-50 text-orange-700" },
-  { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
-  { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
-  { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "discovered", label: "Discovered", tone: "bg-muted text-muted-foreground" },
+  { id: "saved", label: "Saved", tone: "bg-blue-500/10 text-blue-400" },
+  { id: "applied", label: "Applied", tone: "bg-indigo-500/10 text-indigo-400" },
+  { id: "viewed", label: "Viewed", tone: "bg-purple-500/10 text-purple-400" },
+  { id: "interview", label: "Interview", tone: "bg-amber-500/10 text-amber-400" },
+  { id: "take_home", label: "Take-home", tone: "bg-orange-500/10 text-orange-400" },
+  { id: "offer", label: "Offer", tone: "bg-emerald-500/10 text-emerald-400" },
+  { id: "hold", label: "Hold", tone: "bg-muted text-muted-foreground" },
+  { id: "rejected", label: "Rejected", tone: "bg-red-500/10 text-red-400" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-muted text-muted-foreground opacity-70" },
 ];
 
 type TrackedStatus =
@@ -406,6 +407,23 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                           {new Date(job.applied_at).toLocaleDateString()}
                         </div>
                       )}
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        {job.tailored_resume_id && (
+                          <span title="Has tailored resume" className="text-primary/70">
+                            <FileText className="w-3 h-3" />
+                          </span>
+                        )}
+                        {job.notes && (
+                          <span title="Has notes" className="text-muted-foreground/60">
+                            <StickyNote className="w-3 h-3" />
+                          </span>
+                        )}
+                        {job.jd_md && (
+                          <span title="Has job description saved" className="text-muted-foreground/50">
+                            <FileText className="w-3 h-3 opacity-60" />
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
