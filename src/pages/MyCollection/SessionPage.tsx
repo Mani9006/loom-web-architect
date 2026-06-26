@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -29,12 +29,15 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // URL param takes priority (enables sharing links to specific tabs).
+    // Falls back to sessionStorage so tab switches across apps survive.
+    const urlTab = searchParams.get("tab");
+    if (urlTab && ["discover", "resumes", "board", "stats"].includes(urlTab)) return urlTab;
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -49,12 +52,22 @@ export default function SessionPage() {
   const [boardReloadKey, setBoardReloadKey] = useState(0);
 
   useEffect(() => {
+    // Keep URL param and sessionStorage in sync with active tab.
+    setSearchParams((p) => {
+      const next = new URLSearchParams(p);
+      if (tab === "discover") {
+        next.delete("tab");
+      } else {
+        next.set("tab", tab);
+      }
+      return next;
+    }, { replace: true });
     try {
       sessionStorage.setItem(`mc:active-tab:${window.location.pathname}`, tab);
     } catch {
       // sessionStorage can throw in private mode — non-fatal
     }
-  }, [tab]);
+  }, [tab, setSearchParams]);
 
   useEffect(() => {
     if (!sessionId) return;

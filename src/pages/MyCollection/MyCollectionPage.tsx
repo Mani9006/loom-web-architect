@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,12 +33,25 @@ interface SessionStats {
 
 const ACTIVE_LIMIT = 5;
 
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 export default function MyCollectionPage() {
   const [sessions, setSessions] = useState<MCSession[]>([]);
   const [statsMap, setStatsMap] = useState<Record<string, SessionStats>>({});
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -91,6 +105,19 @@ export default function MyCollectionPage() {
   const activeSessions = sessions.filter((s) => s.status === "active");
   const archivedSessions = sessions.filter((s) => s.status === "archived");
   const atCap = activeSessions.length >= ACTIVE_LIMIT;
+
+  const filterSessions = (list: MCSession[]) =>
+    query.trim()
+      ? list.filter((s) =>
+          s.name.toLowerCase().includes(query.toLowerCase()) ||
+          ((s.target_profile?.target_roles as string[] | undefined) ?? []).some((r) =>
+            r.toLowerCase().includes(query.toLowerCase())
+          )
+        )
+      : list;
+
+  const visibleActive = filterSessions(activeSessions);
+  const visibleArchived = filterSessions(archivedSessions);
 
   async function archiveSession(id: string) {
     const { error } = await (supabase as any)
@@ -152,17 +179,28 @@ export default function MyCollectionPage() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
-        <Badge variant="outline" className="font-normal">
+      <div className="flex items-center gap-3 mt-4 mb-4 flex-wrap">
+        <Badge variant="outline" className="font-normal text-xs">
           {activeSessions.length}/{ACTIVE_LIMIT} active
         </Badge>
         {archivedSessions.length > 0 && (
           <button
             onClick={() => setShowArchived((s) => !s)}
-            className="hover:text-foreground transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             {showArchived ? "Hide" : "Show"} {archivedSessions.length} archived
           </button>
+        )}
+        {(activeSessions.length > 2 || archivedSessions.length > 0) && (
+          <div className="relative ml-auto w-56">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Filter sessions…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-7 pl-8 text-xs"
+            />
+          </div>
         )}
       </div>
 
@@ -181,37 +219,49 @@ export default function MyCollectionPage() {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {activeSessions.map((s) => (
-              <SessionCard
-                key={s.id}
-                session={s}
-                stats={statsMap[s.id]}
-                onOpen={() => navigate(`/my-collection/${s.id}`)}
-                onArchive={() => archiveSession(s.id)}
-                onDelete={() => deleteSession(s.id)}
-              />
-            ))}
-          </div>
+          {visibleActive.length === 0 && query.trim() ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              No sessions match &ldquo;{query}&rdquo;.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {visibleActive.map((s) => (
+                <SessionCard
+                  key={s.id}
+                  session={s}
+                  stats={statsMap[s.id]}
+                  onOpen={() => navigate(`/my-collection/${s.id}`)}
+                  onArchive={() => archiveSession(s.id)}
+                  onDelete={() => deleteSession(s.id)}
+                />
+              ))}
+            </div>
+          )}
 
           {showArchived && archivedSessions.length > 0 && (
             <>
               <h2 className="text-sm font-medium text-muted-foreground mt-10 mb-3 flex items-center gap-2">
                 <Archive className="w-4 h-4" /> Archived
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 opacity-75">
-                {archivedSessions.map((s) => (
-                  <SessionCard
-                    key={s.id}
-                    session={s}
-                    stats={statsMap[s.id]}
-                    archived
-                    onOpen={() => navigate(`/my-collection/${s.id}`)}
-                    onReactivate={() => reactivateSession(s.id)}
-                    onDelete={() => deleteSession(s.id)}
-                  />
-                ))}
-              </div>
+              {visibleArchived.length === 0 && query.trim() ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  No archived sessions match &ldquo;{query}&rdquo;.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 opacity-75">
+                  {visibleArchived.map((s) => (
+                    <SessionCard
+                      key={s.id}
+                      session={s}
+                      stats={statsMap[s.id]}
+                      archived
+                      onOpen={() => navigate(`/my-collection/${s.id}`)}
+                      onReactivate={() => reactivateSession(s.id)}
+                      onDelete={() => deleteSession(s.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </>
           )}
         </>
@@ -303,7 +353,7 @@ function SessionCard({
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
         <Sparkles className="w-3 h-3" />
-        Updated {new Date(session.updated_at).toLocaleDateString()}
+        Updated {relativeTime(session.updated_at)}
       </div>
     </Card>
   );
