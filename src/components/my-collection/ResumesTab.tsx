@@ -20,7 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles, Eye } from "lucide-react";
 
 interface TailoredResume {
   id: string;
@@ -41,6 +41,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
+  const [previewing, setPreviewing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
@@ -125,6 +126,9 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 )}
               </div>
             </div>
+            <Button size="sm" variant="ghost" onClick={() => setPreviewing(r)} title="Preview">
+              <Eye className="w-3.5 h-3.5" />
+            </Button>
             <Button size="sm" variant="outline" onClick={() => setEditing(r)}>
               <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
             </Button>
@@ -189,6 +193,34 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
             setResumes((arr) => arr.map((r) => (r.id === updated.id ? updated : r)));
           }}
         />
+      )}
+
+      {/* Quick preview dialog (read-only markdown) */}
+      {previewing && (
+        <Dialog open onOpenChange={(v) => !v && setPreviewing(null)}>
+          <DialogContent className="max-w-3xl h-[85vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-primary" />
+                {previewing.name}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto">
+              <pre className="font-mono text-xs whitespace-pre-wrap bg-muted rounded p-4 leading-relaxed">
+                {previewing.cv_md}
+              </pre>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => downloadAsMarkdown(previewing)}>
+                <Download className="w-3.5 h-3.5 mr-1" /> .md
+              </Button>
+              <Button variant="ghost" onClick={() => setPreviewing(null)}>Close</Button>
+              <Button onClick={() => { setEditing(previewing); setPreviewing(null); }}>
+                <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </>
   );
