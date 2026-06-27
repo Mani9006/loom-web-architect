@@ -43,6 +43,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -146,11 +147,27 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
+                <DropdownMenuItem
+                  disabled={downloadingId === r.id}
+                  onClick={async () => {
+                    setDownloadingId(r.id);
+                    await downloadAsPdf(r, toast);
+                    setDownloadingId(null);
+                  }}
+                >
+                  <Download className="w-3.5 h-3.5 mr-2" />
+                  {downloadingId === r.id ? "Exporting…" : "Download .pdf"}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
+                <DropdownMenuItem
+                  disabled={downloadingId === r.id}
+                  onClick={async () => {
+                    setDownloadingId(r.id);
+                    await downloadAsDocx(r, toast);
+                    setDownloadingId(null);
+                  }}
+                >
+                  <Download className="w-3.5 h-3.5 mr-2" />
+                  {downloadingId === r.id ? "Exporting…" : "Download .docx"}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">
                   Delete
@@ -250,6 +267,7 @@ function CanvasEditor({
   const [cv, setCv] = useState(resume.cv_md);
   const [saving, setSaving] = useState(false);
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [selectedLineStart, setSelectedLineStart] = useState<number>(-1);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
@@ -291,8 +309,13 @@ function CanvasEditor({
   }
 
   function applySuggestion(text: string) {
-    if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    if (!selectedLine || selectedLineStart < 0) return;
+    // Replace exactly at the recorded character offset to avoid replacing the
+    // wrong occurrence when the same bullet appears multiple times.
+    setCv((c) => {
+      const lineEnd = selectedLineStart + selectedLine.length;
+      return c.slice(0, selectedLineStart) + text + c.slice(lineEnd);
+    });
     setSelectedLine(text);
     setAiSuggestions([]);
   }
@@ -333,6 +356,7 @@ function CanvasEditor({
               onChange={(e) => {
                 setCv(e.target.value);
                 setSelectedLine(null);
+                setSelectedLineStart(-1);
               }}
               onSelect={(e) => {
                 const el = e.currentTarget;
@@ -343,7 +367,12 @@ function CanvasEditor({
                 const lineEndOff = cv.indexOf("\n", start);
                 const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
                 const line = cv.slice(lineStart, lineEnd).trim();
-                if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
+                // Track the untrimmed line start for precise offset-based replacement.
+                const untrimmedStart = lineStart + cv.slice(lineStart, lineEnd).indexOf(line.charAt(0));
+                if (line.length > 5 && line !== selectedLine) {
+                  setSelectedLine(line);
+                  setSelectedLineStart(untrimmedStart);
+                }
               }}
               className="font-mono text-xs flex-1 resize-none"
             />

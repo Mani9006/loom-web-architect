@@ -118,6 +118,28 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [savedTitles, setSavedTitles] = useState<Set<string>>(
     new Set(initial.current?.savedKeys ?? []),
   );
+  // Sync saved titles from DB on mount so bookmarks survive page reloads.
+  useEffect(() => {
+    (async () => {
+      const { data } = await (supabase as any)
+        .from("mc_tracked_jobs")
+        .select("company,job_title")
+        .eq("session_id", sessionId)
+        .is("deleted_at", null);
+      if (!data) return;
+      const keys = (data as { company: string; job_title: string }[]).map(
+        (r) => `${r.company}::${r.job_title}`,
+      );
+      if (keys.length > 0) {
+        setSavedTitles((prev) => {
+          const next = new Set(prev);
+          keys.forEach((k) => next.add(k));
+          return next;
+        });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
   const [activeJobId, setActiveJobId] = useState<string | null>(
     initial.current?.activeJobId ?? null,
   );
@@ -406,7 +428,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   async function runSearch(history: ClarificationTurn[]) {
     setBusy(true);
     setProgress("queued");
-    setFoundJobs([]);
+    // Don't clear results immediately — keep showing the previous batch until
+    // the new search completes so the user doesn't stare at an empty screen.
     setClarification(null);
 
     try {

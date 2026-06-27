@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -12,10 +12,12 @@ interface StatusCounts {
   offer: number;
   rejected: number;
   resumes: number;
+  discovered: number;
 }
 
 const EMPTY_COUNTS: StatusCounts = {
   total: 0,
+  discovered: 0,
   saved: 0,
   applied: 0,
   interview: 0,
@@ -56,6 +58,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         setCounts({
           total: rows.length,
+          discovered: tally("discovered"),
           saved: tally("saved"),
           applied: tally("applied"),
           interview: tally("interview") + tally("take_home"),
@@ -131,12 +134,40 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && counts.total > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-medium">Application pipeline</h3>
+          </div>
+          <div className="space-y-2">
+            {(
+              [
+                { label: "Discovered", value: counts.discovered, color: "bg-slate-400" },
+                { label: "Saved", value: counts.saved, color: "bg-blue-400" },
+                { label: "Applied", value: counts.applied, color: "bg-indigo-500" },
+                { label: "Interview / Take-home", value: counts.interview, color: "bg-amber-500" },
+                { label: "Offer", value: counts.offer, color: "bg-emerald-500" },
+                { label: "Rejected", value: counts.rejected, color: "bg-red-400" },
+              ] as { label: string; value: number; color: string }[]
+            ).map(({ label, value, color }) => {
+              const pct = counts.total > 0 ? Math.round((value / counts.total) * 100) : 0;
+              return (
+                <div key={label} className="flex items-center gap-3 text-sm">
+                  <span className="w-36 text-[12px] text-muted-foreground shrink-0">{label}</span>
+                  <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
+                    <div
+                      className={`h-2 rounded-full transition-all ${color}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <span className="w-8 text-right text-[12px] font-medium">{value}</span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
