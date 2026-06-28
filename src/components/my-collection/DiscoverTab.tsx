@@ -748,17 +748,27 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     </Card>
   );
 
+  const missingProfile = targetRoles.length === 0 && targetLocations.length === 0 && !remoteOnly;
+
   // Empty state (no search yet, no clarification, no results)
   const emptyState =
     foundJobs.length === 0 && !clarification && !busy ? (
       <Card className="p-8 text-center border-dashed">
         <Sparkles className="w-6 h-6 mx-auto text-primary mb-2 opacity-70" />
         <p className="text-sm font-medium mb-1">Let the AI find jobs for you</p>
-        <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
-          The AI reads your master resume and your targets, then searches the web for openings that
-          fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask you a quick
-          question or two first.
-        </p>
+        {missingProfile ? (
+          <p className="text-xs text-amber-400 mb-5 max-w-md mx-auto">
+            Tip: open <strong>Settings</strong> above and add target roles (e.g. "Senior Software Engineer")
+            and locations so the AI knows what to look for. You can still search without them — the AI
+            will ask clarifying questions.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground mb-5 max-w-md mx-auto">
+            The AI reads your master resume and your targets, then searches the web for openings that
+            fit. Takes about 30–90 seconds the first time. If anything's unclear it'll ask you a quick
+            question or two first.
+          </p>
+        )}
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Button onClick={() => runSearch([])} disabled={busy}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI
@@ -871,10 +881,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
 function FitBadge({ score }: { score: number }) {
   const map: Record<number, { label: string; cls: string }> = {
-    3: { label: "Strong fit", cls: "bg-green-100 text-green-800 border-green-300" },
-    2: { label: "Good fit", cls: "bg-blue-100 text-blue-800 border-blue-300" },
-    1: { label: "Stretch", cls: "bg-yellow-100 text-yellow-800 border-yellow-300" },
+    3: { label: "Strong fit", cls: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
+    2: { label: "Good fit", cls: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
+    1: { label: "Stretch", cls: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
   };
-  const m = map[score] ?? { label: `Fit ${score}`, cls: "bg-rp-paper text-gray-800 border-rp-rule-2" };
+  const m = map[score] ?? { label: `Fit ${score}`, cls: "bg-secondary text-muted-foreground border-border" };
   return <Badge className={`text-[10px] border ${m.cls}`}>{m.label}</Badge>;
 }

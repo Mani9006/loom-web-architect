@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -20,15 +20,16 @@ import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
 
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
-  { id: "discovered", label: "Discovered", tone: "bg-rp-paper text-slate-700" },
-  { id: "saved", label: "Saved", tone: "bg-blue-50 text-blue-700" },
-  { id: "applied", label: "Applied", tone: "bg-indigo-50 text-indigo-700" },
-  { id: "viewed", label: "Viewed", tone: "bg-purple-50 text-purple-700" },
-  { id: "interview", label: "Interview", tone: "bg-amber-50 text-amber-700" },
-  { id: "take_home", label: "Take-home", tone: "bg-orange-50 text-orange-700" },
-  { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
-  { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
-  { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "discovered", label: "Discovered", tone: "bg-secondary text-secondary-foreground" },
+  { id: "saved", label: "Saved", tone: "bg-blue-500/20 text-blue-300" },
+  { id: "applied", label: "Applied", tone: "bg-indigo-500/20 text-indigo-300" },
+  { id: "viewed", label: "Viewed", tone: "bg-purple-500/20 text-purple-300" },
+  { id: "interview", label: "Interview", tone: "bg-amber-500/20 text-amber-300" },
+  { id: "take_home", label: "Take-home", tone: "bg-orange-500/20 text-orange-300" },
+  { id: "offer", label: "Offer", tone: "bg-emerald-500/20 text-emerald-300" },
+  { id: "hold", label: "Hold", tone: "bg-secondary text-muted-foreground" },
+  { id: "rejected", label: "Rejected", tone: "bg-red-500/20 text-red-400" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-secondary text-muted-foreground" },
 ];
 
 type TrackedStatus =
@@ -42,6 +43,7 @@ type TrackedStatus =
   | "hold"
   | "rejected"
   | "withdrawn";
+
 
 interface TrackedJob {
   id: string;
@@ -203,7 +205,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     }
   }
 
-  async function load() {
+  const cancelLoadRef = useRef<(() => void) | null>(null);
+
+  const load = useCallback(async () => {
+    // Cancel any previous in-flight load before starting a new one.
+    cancelLoadRef.current?.();
+    let cancelled = false;
+    cancelLoadRef.current = () => { cancelled = true; };
+
     setLoading(true);
     // Filter out soft-deleted cards (deleted_at IS NULL). The Trash dialog
     // surfaces deleted_at IS NOT NULL rows separately.
@@ -213,13 +222,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       .eq("session_id", sessionId)
       .is("deleted_at", null)
       .order("updated_at", { ascending: false });
+    if (cancelled) return;
     if (error) {
       toast({ title: "Couldn't load board", description: error.message, variant: "destructive" });
     } else {
       setJobs((data as TrackedJob[]) ?? []);
     }
     setLoading(false);
-  }
+  }, [sessionId, toast]);
 
   // Soft-delete with 5-second undo via toast action.
   async function trashJob(job: TrackedJob, e?: React.MouseEvent) {
@@ -274,7 +284,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     load();
-  }, [sessionId]);
+    return () => { cancelLoadRef.current?.(); };
+  }, [load]);
 
   async function moveTo(jobId: string, status: TrackedStatus) {
     const job = jobs.find((j) => j.id === jobId);
@@ -296,7 +307,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
     if (user) {
       await (supabase as any).from("mc_status_history").insert({
         tracked_job_id: jobId,

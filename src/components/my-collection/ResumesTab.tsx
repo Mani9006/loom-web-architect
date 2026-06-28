@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,31 +43,45 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const cancelLoadRef = useRef<(() => void) | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
+    cancelLoadRef.current?.();
+    let cancelled = false;
+    cancelLoadRef.current = () => { cancelled = true; };
+
     setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_tailored_resumes")
       .select("*")
       .eq("session_id", sessionId)
       .order("updated_at", { ascending: false });
+    if (cancelled) return;
     if (error) {
       toast({ title: "Couldn't load resumes", description: error.message, variant: "destructive" });
     } else {
       setResumes((data as TailoredResume[]) ?? []);
     }
     setLoading(false);
-  }
+  }, [sessionId, toast]);
 
   useEffect(() => {
     load();
-  }, [sessionId]);
+    return () => { cancelLoadRef.current?.(); };
+  }, [load]);
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
+    // Optimistically remove so the list updates immediately.
+    setResumes((arr) => arr.filter((r) => r.id !== id));
     const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
-    if (error) toast({ title: "Delete failed", description: error.message, variant: "destructive" });
-    else load();
+    if (error) {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+      // Roll back on failure.
+      load();
+    } else {
+      toast({ title: "Resume deleted" });
+    }
   }
 
   async function commitRename() {
@@ -292,7 +306,13 @@ function CanvasEditor({
 
   function applySuggestion(text: string) {
     if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    // Replace only the first occurrence to avoid clobbering duplicate lines
+    // that appear elsewhere in the resume (e.g., repeated section headers).
+    setCv((c) => {
+      const idx = c.indexOf(selectedLine);
+      if (idx === -1) return c;
+      return c.slice(0, idx) + text + c.slice(idx + selectedLine.length);
+    });
     setSelectedLine(text);
     setAiSuggestions([]);
   }

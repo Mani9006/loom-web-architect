@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,24 +41,10 @@ export default function MyCollectionPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  async function loadSessions() {
-    setLoading(true);
-    const { data, error } = await (supabase as any)
-      .from("mc_sessions")
-      .select("*")
-      .order("updated_at", { ascending: false });
-    if (error) {
-      toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
-    } else {
-      const rows: MCSession[] = data ?? [];
-      setSessions(rows);
-      // Load per-session job counts in parallel, non-blocking.
-      void loadStats(rows.map((s) => s.id));
-    }
-    setLoading(false);
-  }
+  const cancelRef = useRef<(() => void) | null>(null);
 
-  async function loadStats(sessionIds: string[]) {
+  // Declared before loadSessions so the useCallback closure can reference it.
+  async function loadStats(sessionIds: string[], cancelled = false) {
     if (sessionIds.length === 0) return;
     try {
       const { data } = await (supabase as any)
@@ -66,6 +52,7 @@ export default function MyCollectionPage() {
         .select("session_id,status")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
+      if (cancelled) return;
       const rows: { session_id: string; status: string }[] = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
@@ -84,9 +71,32 @@ export default function MyCollectionPage() {
     }
   }
 
+  const loadSessions = useCallback(async () => {
+    cancelRef.current?.();
+    let cancelled = false;
+    cancelRef.current = () => { cancelled = true; };
+
+    setLoading(true);
+    const { data, error } = await (supabase as any)
+      .from("mc_sessions")
+      .select("*")
+      .order("updated_at", { ascending: false });
+    if (cancelled) return;
+    if (error) {
+      toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
+    } else {
+      const rows: MCSession[] = data ?? [];
+      setSessions(rows);
+      // Load per-session job counts in parallel, non-blocking.
+      void loadStats(rows.map((s) => s.id), cancelled);
+    }
+    setLoading(false);
+  }, [toast]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     loadSessions();
-  }, []);
+    return () => { cancelRef.current?.(); };
+  }, [loadSessions]);
 
   const activeSessions = sessions.filter((s) => s.status === "active");
   const archivedSessions = sessions.filter((s) => s.status === "archived");
@@ -100,7 +110,7 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Archive failed", description: error.message, variant: "destructive" });
     } else {
-      await loadSessions();
+      void loadSessions();
     }
   }
 
@@ -120,7 +130,7 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Reactivate failed", description: error.message, variant: "destructive" });
     } else {
-      await loadSessions();
+      void loadSessions();
     }
   }
 
@@ -130,7 +140,7 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {
-      await loadSessions();
+      void loadSessions();
     }
   }
 

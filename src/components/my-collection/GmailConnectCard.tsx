@@ -22,8 +22,7 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
 
   async function load() {
     const { data } = await (supabase as any)
-      
-.from("mc_gmail_connections")
+      .from("mc_gmail_connections")
       .select("id,gmail_email,enabled,last_polled_at,token_expires_at")
       .eq("session_id", sessionId)
       .maybeSingle();
@@ -65,7 +64,13 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
     try {
       const { data, error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
       if (error) throw error;
-      toast({ title: "Inbox checked", description: `${data?.results?.length ?? 0} sessions polled` });
+      const count = data?.results?.length ?? 0;
+      toast({
+        title: "Inbox checked",
+        description: count > 0
+          ? `${count} email${count === 1 ? "" : "s"} processed — check the board for status updates.`
+          : "No new recruiter emails found.",
+      });
       await load();
     } catch (e) {
       toast({
@@ -88,11 +93,11 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
           <div className="flex items-center gap-2 mb-1">
             <h4 className="font-medium text-sm">Gmail integration</h4>
             {conn ? (
-              <Badge className="bg-green-100 text-green-800 border-green-300 text-[10px]">
+              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]">
                 <CheckCircle2 className="w-3 h-3 mr-1" /> Connected
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-[10px] text-muted-foreground">
                 <AlertCircle className="w-3 h-3 mr-1" /> Not connected
               </Badge>
             )}
