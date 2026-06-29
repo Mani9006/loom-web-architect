@@ -165,11 +165,12 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
 
           <div>
             <Label htmlFor="mc-set-resume">Master resume</Label>
-            <Select value={resumeId || ""} onValueChange={setResumeId} disabled={saving}>
+            <Select value={resumeId || "__none__"} onValueChange={(v) => setResumeId(v === "__none__" ? "" : v)} disabled={saving}>
               <SelectTrigger id="mc-set-resume">
                 <SelectValue placeholder="None — pick a resume" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="__none__">None (use most recent)</SelectItem>
                 {resumes.map((r) => (
                   <SelectItem key={r.id} value={r.id}>
                     {r.title || "(untitled)"}

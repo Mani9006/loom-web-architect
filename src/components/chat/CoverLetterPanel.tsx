@@ -108,11 +108,14 @@ export function CoverLetterPanel({
     return [...messages].reverse().find(m => m.role === "assistant" && m.content && !m.isThinking);
   };
 
-  const handleCopyLetter = () => {
+  const handleCopyLetter = async () => {
     const lastAssistant = getLatestCoverLetter();
-    if (lastAssistant) {
-      navigator.clipboard.writeText(lastAssistant.content);
+    if (!lastAssistant) return;
+    try {
+      await navigator.clipboard.writeText(lastAssistant.content);
       toast({ title: "Copied!", description: "Cover letter copied to clipboard." });
+    } catch {
+      toast({ title: "Couldn't copy — select and copy manually" });
     }
   };
 

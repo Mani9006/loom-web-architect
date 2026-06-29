@@ -224,11 +224,12 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
             </div>
             <div>
               <Label htmlFor="mc-resume">Master resume (optional, can pick later)</Label>
-              <Select value={resumeId || ""} onValueChange={setResumeId}>
+              <Select value={resumeId || "__none__"} onValueChange={(v) => setResumeId(v === "__none__" ? "" : v)}>
                 <SelectTrigger id="mc-resume">
                   <SelectValue placeholder="Choose a resume" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__">None (pick later)</SelectItem>
                   {resumes.map((r) => (
                     <SelectItem key={r.id} value={r.id}>
                       {r.title || "(untitled)"}

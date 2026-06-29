@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -26,13 +26,18 @@ interface MCSession {
 
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // URL ?tab= param takes priority (e.g. the "View tailored resume" link
+    // from BoardTab navigates here with ?tab=resumes). Falls back to
+    // sessionStorage so switching apps/tabs doesn't reset to "discover".
+    const urlTab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
+    const validTabs = ["discover", "resumes", "board", "stats"];
+    if (urlTab && validTabs.includes(urlTab)) return urlTab;
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -45,6 +50,9 @@ export default function SessionPage() {
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+  // Tracks whether we've ever successfully loaded the session so transient
+  // reload errors don't bounce the user back to /my-collection.
+  const hadSuccessfulLoad = useRef(false);
 
   useEffect(() => {
     try {
@@ -52,12 +60,17 @@ export default function SessionPage() {
     } catch {
       // sessionStorage can throw in private mode — non-fatal
     }
+    // Clear the URL ?tab= param once we've committed it to state so the URL
+    // stays clean and back-navigation isn't confused.
+    if (searchParams.get("tab")) {
+      setSearchParams((prev) => { prev.delete("tab"); return prev; }, { replace: true });
+    }
   }, [tab]);
 
   useEffect(() => {
     if (!sessionId) return;
+    hadSuccessfulLoad.current = false;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -74,7 +87,7 @@ export default function SessionPage() {
       if (error) {
         // eslint-disable-next-line no-console
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!hadSuccessfulLoad.current) {
           toast({
             title: "Couldn't load session",
             description: error.message,
@@ -85,13 +98,13 @@ export default function SessionPage() {
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
+        if (!hadSuccessfulLoad.current) {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
         return;
       }
-      hadInitialLoad = true;
+      hadSuccessfulLoad.current = true;
       setSession(data);
       setLoading(false);
     })();

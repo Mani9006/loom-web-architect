@@ -673,11 +673,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             <RefreshCw className="w-3.5 h-3.5 mr-1" /> Start over
           </Button>
         )}
-        <Button size="sm" onClick={() => runSearch(conversation)} disabled={busy}>
+        <Button size="sm" onClick={() => !busy && runSearch(conversation)} disabled={busy}>
           {busy ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              {progress === "queued" ? "Queued on your Mac…" : progress === "running" ? "AI is searching…" : "Working…"}
+              {progress === "queued" ? "Queued…" : progress === "running" ? "AI is searching…" : "Working…"}
             </>
           ) : (
             <>
@@ -760,7 +760,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           question or two first.
         </p>
         <div className="flex items-center justify-center gap-2 flex-wrap">
-          <Button onClick={() => runSearch([])} disabled={busy}>
+          <Button onClick={() => !busy && runSearch([])} disabled={busy}>
             <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI
           </Button>
           <Button variant="outline" onClick={() => setAddOpen(true)}>

@@ -124,11 +124,15 @@ export default function AIToolbox() {
     }
   };
 
-  const copyResult = () => {
-    navigator.clipboard.writeText(result);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    toast({ title: "Copied!", description: "Content copied to clipboard" });
+  const copyResult = async () => {
+    try {
+      await navigator.clipboard.writeText(result);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({ title: "Copied!", description: "Content copied to clipboard" });
+    } catch {
+      toast({ title: "Couldn't copy — select and copy manually", variant: "destructive" });
+    }
   };
 
   return (

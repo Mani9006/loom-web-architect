@@ -43,6 +43,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -130,8 +131,8 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-7 w-7">
-                  <MoreVertical className="w-4 h-4" />
+                <Button size="icon" variant="ghost" className="h-7 w-7" disabled={downloadingId === r.id}>
+                  {downloadingId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <MoreVertical className="w-4 h-4" />}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -146,10 +147,18 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
                 <DropdownMenuItem onClick={() => downloadAsMarkdown(r)}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .md
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsPdf(r, toast)}>
+                <DropdownMenuItem onClick={async () => {
+                  setDownloadingId(r.id);
+                  await downloadAsPdf(r, toast);
+                  setDownloadingId(null);
+                }} disabled={!!downloadingId}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .pdf
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadAsDocx(r, toast)}>
+                <DropdownMenuItem onClick={async () => {
+                  setDownloadingId(r.id);
+                  await downloadAsDocx(r, toast);
+                  setDownloadingId(null);
+                }} disabled={!!downloadingId}>
                   <Download className="w-3.5 h-3.5 mr-2" /> Download .docx
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => deleteResume(r.id)} className="text-destructive">

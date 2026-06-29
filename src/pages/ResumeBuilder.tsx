@@ -530,7 +530,7 @@ export default function ResumeBuilder() {
   };
 
   // ── Copy resume as plain text ───────────────────────────────────────
-  const copyAsPlainText = () => {
+  const copyAsPlainText = async () => {
     const lines: string[] = [];
     if (data.header.name) lines.push(data.header.name);
     if (data.header.title) lines.push(data.header.title);
@@ -552,9 +552,13 @@ export default function ResumeBuilder() {
       lines.push("", "SKILLS");
       Object.entries(data.skills).forEach(([k, v]) => { if (v.length > 0) lines.push(`${getSkillCategoryLabel(k)}: ${v.join(", ")}`); });
     }
-    navigator.clipboard.writeText(lines.join("\n"));
-    setCopiedField("resume");
-    setTimeout(() => setCopiedField(null), 2000);
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopiedField("resume");
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      setCopiedField(null);
+    }
   };
 
   // ── Data mutation helpers ──────────────────────────────────────────────
