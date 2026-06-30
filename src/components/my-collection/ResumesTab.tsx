@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,13 +36,14 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+export default function ResumesTab({ sessionId, highlightResumeId }: { sessionId: string; highlightResumeId?: string }) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const highlightedRef = useRef<HTMLDivElement | null>(null);
 
   async function load() {
     setLoading(true);
@@ -62,6 +63,17 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     load();
   }, [sessionId]);
+
+  // Auto-open the highlighted resume once it's loaded.
+  useEffect(() => {
+    if (!highlightResumeId || loading) return;
+    const target = resumes.find((r) => r.id === highlightResumeId);
+    if (target) {
+      setEditing(target);
+      // Scroll the card into view after the next paint.
+      requestAnimationFrame(() => highlightedRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    }
+  }, [highlightResumeId, loading, resumes]);
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
@@ -114,7 +126,11 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
     <>
       <div className="space-y-2">
         {resumes.map((r) => (
-          <Card key={r.id} className="p-3 flex items-center gap-3">
+          <Card
+            key={r.id}
+            ref={r.id === highlightResumeId ? highlightedRef : undefined}
+            className={`p-3 flex items-center gap-3 ${r.id === highlightResumeId ? "ring-2 ring-primary/50" : ""}`}
+          >
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{r.name}</div>

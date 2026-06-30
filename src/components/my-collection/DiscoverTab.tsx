@@ -863,7 +863,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         sessionId={sessionId}
-        onCreated={() => setAddOpen(false)}
+        onCreated={() => {
+          setAddOpen(false);
+          toast({ title: "Added to board", description: "Switch to the Board tab to see it." });
+        }}
       />
     </div>
   );

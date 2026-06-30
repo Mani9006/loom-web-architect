@@ -29,6 +29,7 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
   { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-gray-100 text-gray-500" },
 ];
 
 type TrackedStatus =
@@ -296,11 +297,11 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData?.user) {
       await (supabase as any).from("mc_status_history").insert({
         tracked_job_id: jobId,
-        user_id: user.id,
+        user_id: authData.user.id,
         status_from: previousStatus,
         status_to: status,
         source: "manual",

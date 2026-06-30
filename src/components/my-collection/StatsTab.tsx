@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, FileText, Star, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -131,12 +131,15 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && counts.total > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center gap-1.5 mb-4 text-sm font-medium">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            Pipeline funnel
+          </div>
+          <PipelineFunnel counts={counts} />
+        </Card>
+      )}
     </div>
   );
 }
@@ -158,5 +161,42 @@ function StatCard({
       </div>
       <div className="text-2xl font-semibold">{value}</div>
     </Card>
+  );
+}
+
+const FUNNEL_STAGES: { key: keyof StatusCounts; label: string; color: string }[] = [
+  { key: "total", label: "On board", color: "bg-slate-400" },
+  { key: "applied", label: "Applied", color: "bg-indigo-400" },
+  { key: "interview", label: "Interviews", color: "bg-amber-400" },
+  { key: "offer", label: "Offers", color: "bg-emerald-400" },
+];
+
+function PipelineFunnel({ counts }: { counts: StatusCounts }) {
+  const max = counts.total || 1;
+  return (
+    <div className="space-y-2">
+      {FUNNEL_STAGES.map((stage) => {
+        const val = counts[stage.key] as number;
+        const pct = Math.round((val / max) * 100);
+        const convRate =
+          stage.key !== "total" && counts.total > 0
+            ? `${pct}% of board`
+            : null;
+        return (
+          <div key={stage.key} className="flex items-center gap-3">
+            <div className="w-24 text-right text-[11px] text-muted-foreground shrink-0">{stage.label}</div>
+            <div className="flex-1 h-5 bg-muted rounded-full overflow-hidden">
+              <div
+                className={`h-full ${stage.color} rounded-full transition-all duration-500`}
+                style={{ width: `${Math.max(pct, val > 0 ? 3 : 0)}%` }}
+              />
+            </div>
+            <div className="w-20 text-[11px] text-muted-foreground shrink-0">
+              {val} {convRate && <span className="opacity-60">({convRate})</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
