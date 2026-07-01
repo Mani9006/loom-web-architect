@@ -79,8 +79,11 @@ export default function MyCollectionPage() {
         };
       }
       setStatsMap(map);
-    } catch {
-      // Non-critical — cards just show "—" if this fails.
+    } catch (e) {
+      // Non-critical — cards just show "—" if this fails. Still log so a
+      // systemic issue (e.g. a broken RLS policy) doesn't go unnoticed.
+      // eslint-disable-next-line no-console
+      console.error("[MyCollection] loadStats failed:", e);
     }
   }
 

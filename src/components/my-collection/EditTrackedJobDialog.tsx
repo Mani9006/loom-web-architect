@@ -93,20 +93,23 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
 
   async function deleteJob() {
     if (!job) return;
-    if (!confirm(`Delete this card from the board?\n\n${job.company} · ${job.job_title}\n\nThis can't be undone.`)) {
+    if (!confirm(`Move this card to trash?\n\n${job.company} · ${job.job_title}\n\nYou can restore it from the Trash dialog.`)) {
       return;
     }
     setSaving(true);
+    // Soft-delete (matches BoardTab's trash-can button on the same table) so
+    // this stays recoverable from the Trash dialog instead of being gone
+    // forever the moment someone clicks Delete from the Edit sheet.
     const { error } = await (supabase as any)
       .from("mc_tracked_jobs")
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq("id", job.id);
     setSaving(false);
     if (error) {
       toast({ title: "Couldn't delete", description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Card removed" });
+    toast({ title: "Moved to trash" });
     onDeleted(job.id);
   }
 
