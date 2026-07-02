@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,12 +27,17 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // A tab in the URL (e.g. links from the Board's "View tailored resume")
+    // always wins so deep links land on the right tab.
+    const fromUrl = searchParams.get("tab");
+    if (fromUrl) return fromUrl;
+    // Otherwise restore the active tab on remount (tab switches, browser
+    // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -41,6 +46,7 @@ export default function SessionPage() {
       return "discover";
     }
   });
+  const focusResumeId = searchParams.get("resume");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
@@ -163,7 +169,7 @@ export default function SessionPage() {
           <DiscoverTab sessionId={session.id} session={session} />
         </TabsContent>
         <TabsContent value="resumes" className="mt-6">
-          <ResumesTab sessionId={session.id} />
+          <ResumesTab sessionId={session.id} focusResumeId={tab === "resumes" ? focusResumeId : null} />
         </TabsContent>
         <TabsContent value="board" className="mt-6">
           <BoardTab sessionId={session.id} key={boardReloadKey} />

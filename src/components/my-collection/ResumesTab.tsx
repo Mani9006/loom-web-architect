@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,13 +36,23 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+export default function ResumesTab({
+  sessionId,
+  focusResumeId,
+}: {
+  sessionId: string;
+  /** When set (e.g. via ?tab=resumes&resume=... from the Board), opens that
+   *  resume's editor automatically once it's loaded. */
+  focusResumeId?: string | null;
+}) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const focusedOnceRef = useRef(false);
 
   async function load() {
     setLoading(true);
@@ -62,6 +72,19 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     load();
   }, [sessionId]);
+
+  // Auto-open the resume the user was linked to (e.g. from the Board's
+  // "View tailored resume" button) once it's loaded, then flash-highlight it.
+  useEffect(() => {
+    if (!focusResumeId || loading || focusedOnceRef.current) return;
+    const match = resumes.find((r) => r.id === focusResumeId);
+    if (!match) return;
+    focusedOnceRef.current = true;
+    setEditing(match);
+    setFocusedId(focusResumeId);
+    const timer = setTimeout(() => setFocusedId(null), 2500);
+    return () => clearTimeout(timer);
+  }, [focusResumeId, loading, resumes]);
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
@@ -114,7 +137,12 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
     <>
       <div className="space-y-2">
         {resumes.map((r) => (
-          <Card key={r.id} className="p-3 flex items-center gap-3">
+          <Card
+            key={r.id}
+            className={`p-3 flex items-center gap-3 transition-colors ${
+              focusedId === r.id ? "border-primary ring-1 ring-primary/40" : ""
+            }`}
+          >
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{r.name}</div>
@@ -204,34 +232,156 @@ function downloadAsMarkdown(r: TailoredResume) {
   URL.revokeObjectURL(url);
 }
 
-async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
+// ── Markdown helpers shared by the PDF/DOCX exporters ──────────────────
+// Tailored resumes are plain markdown (see the tailor prompt in BoardTab /
+// DiscoverTab), so we only need to handle the subset the AI actually
+// produces: #/##/### headings, "- " bullets, and **bold** inline spans.
+
+type MdLine =
+  | { type: "h1" | "h2" | "h3"; text: string }
+  | { type: "bullet"; text: string }
+  | { type: "blank"; text: "" }
+  | { type: "text"; text: string };
+
+function parseMarkdownLines(md: string): MdLine[] {
+  return md.split("\n").map((raw): MdLine => {
+    const line = raw.trimEnd();
+    if (!line.trim()) return { type: "blank", text: "" };
+    if (line.startsWith("### ")) return { type: "h3", text: line.slice(4) };
+    if (line.startsWith("## ")) return { type: "h2", text: line.slice(3) };
+    if (line.startsWith("# ")) return { type: "h1", text: line.slice(2) };
+    if (/^[-*]\s+/.test(line)) return { type: "bullet", text: line.replace(/^[-*]\s+/, "") };
+    return { type: "text", text: line.trim() };
   });
-  if (error || !data?.url) {
-    toast({
-      title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
-      variant: "destructive",
-    });
-    return;
-  }
-  window.open(data.url, "_blank");
 }
 
-async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+/** Splits "**bold** plain **more bold**" into alternating plain/bold runs. */
+function splitBoldRuns(text: string): { text: string; bold: boolean }[] {
+  return text
+    .split(/(\*\*[^*]+\*\*)/g)
+    .filter(Boolean)
+    .map((p) =>
+      p.startsWith("**") && p.endsWith("**")
+        ? { text: p.slice(2, -2), bold: true }
+        : { text: p, bold: false }
+    );
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function markdownToHtml(md: string): string {
+  const inline = (text: string) =>
+    splitBoldRuns(text)
+      .map((r) => (r.bold ? `<strong>${escapeHtml(r.text)}</strong>` : escapeHtml(r.text)))
+      .join("");
+
+  const html: string[] = [];
+  let inList = false;
+  const closeList = () => {
+    if (inList) {
+      html.push("</ul>");
+      inList = false;
+    }
+  };
+
+  for (const line of parseMarkdownLines(md)) {
+    if (line.type === "blank") {
+      closeList();
+      continue;
+    }
+    if (line.type === "h1") {
+      closeList();
+      html.push(`<h1 style="font-size:20px;margin:0 0 4px;">${inline(line.text)}</h1>`);
+      continue;
+    }
+    if (line.type === "h2") {
+      closeList();
+      html.push(
+        `<h2 style="font-size:14px;margin:14px 0 4px;border-bottom:1px solid #ccc;padding-bottom:2px;">${inline(line.text)}</h2>`
+      );
+      continue;
+    }
+    if (line.type === "h3") {
+      closeList();
+      html.push(`<h3 style="font-size:12px;margin:8px 0 2px;">${inline(line.text)}</h3>`);
+      continue;
+    }
+    if (line.type === "bullet") {
+      if (!inList) {
+        html.push('<ul style="margin:2px 0 6px;padding-left:18px;">');
+        inList = true;
+      }
+      html.push(`<li style="margin:1px 0;">${inline(line.text)}</li>`);
+      continue;
+    }
+    closeList();
+    html.push(`<p style="margin:2px 0;">${inline(line.text)}</p>`);
+  }
+  closeList();
+  return html.join("\n");
+}
+
+/**
+ * Renders the tailored resume's markdown to a PDF entirely in the browser
+ * (html2pdf.js — already a project dependency) and downloads it. There is
+ * no server-side renderer for My Collection resumes: they're stored as
+ * markdown (cv_md), not the Resume Builder's structured ResumeJSON, so we
+ * can't reuse that hook's PDF path directly.
+ */
+async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
+  try {
+    const html2pdf = (await import("html2pdf.js")).default;
+    const container = document.createElement("div");
+    container.style.cssText =
+      "padding:36px;font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1a1a1a;line-height:1.45;";
+    container.innerHTML = markdownToHtml(r.cv_md);
+    await html2pdf()
+      .set({
+        margin: 10,
+        filename: `${r.name || "resume"}.pdf`,
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "letter", orientation: "portrait" },
+      })
+      .from(container)
+      .save();
+  } catch (e) {
     toast({
-      title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      title: "PDF export failed",
+      description: e instanceof Error ? e.message : "Couldn't generate the PDF in your browser.",
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
+}
+
+/** Same idea as downloadAsPdf but via the `docx` package, client-side. */
+async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
+  try {
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
+    const { saveAs } = await import("file-saver");
+
+    const children = parseMarkdownLines(r.cv_md).map((line) => {
+      if (line.type === "blank") return new Paragraph({ text: "" });
+      const runs = splitBoldRuns(line.text).map((run) => new TextRun({ text: run.text, bold: run.bold }));
+      if (line.type === "h1") return new Paragraph({ heading: HeadingLevel.TITLE, children: runs });
+      if (line.type === "h2")
+        return new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 200 }, children: runs });
+      if (line.type === "h3") return new Paragraph({ heading: HeadingLevel.HEADING_3, children: runs });
+      if (line.type === "bullet") return new Paragraph({ bullet: { level: 0 }, children: runs });
+      return new Paragraph({ children: runs });
+    });
+
+    const doc = new Document({ sections: [{ children }] });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, `${r.name || "resume"}.docx`);
+  } catch (e) {
+    toast({
+      title: "DOCX export failed",
+      description: e instanceof Error ? e.message : "Couldn't generate the DOCX in your browser.",
+      variant: "destructive",
+    });
+  }
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────
