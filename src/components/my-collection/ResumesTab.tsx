@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { downloadMarkdownAsDocx, downloadMarkdownAsPdf } from "@/lib/mc-markdown-export";
 
 interface TailoredResume {
   id: string;
@@ -36,13 +37,21 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+export default function ResumesTab({
+  sessionId,
+  focusResumeId,
+}: {
+  sessionId: string;
+  /** Resume id to open automatically once loaded (e.g. deep-linked from the Board). */
+  focusResumeId?: string;
+}) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [autoOpenedId, setAutoOpenedId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -62,6 +71,16 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     load();
   }, [sessionId]);
+
+  // Auto-open the requested resume once it shows up in the loaded list.
+  useEffect(() => {
+    if (!focusResumeId || autoOpenedId === focusResumeId) return;
+    const match = resumes.find((r) => r.id === focusResumeId);
+    if (match) {
+      setEditing(match);
+      setAutoOpenedId(focusResumeId);
+    }
+  }, [focusResumeId, resumes, autoOpenedId]);
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
@@ -205,33 +224,27 @@ function downloadAsMarkdown(r: TailoredResume) {
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
+  try {
+    await downloadMarkdownAsPdf(r.cv_md, r.name);
+  } catch (e) {
     toast({
       title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : String(e),
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    await downloadMarkdownAsDocx(r.cv_md, r.name);
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : String(e),
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────

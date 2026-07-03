@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,10 +27,15 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
+    // A link can request a specific tab (e.g. "View tailored resume" from the
+    // Board links to ?tab=resumes) — that takes priority over the restored tab.
+    const requested = searchParams.get("tab");
+    if (requested) return requested;
     // Restore the active tab on remount (tab switches, browser back/forward)
     // so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
@@ -41,6 +46,8 @@ export default function SessionPage() {
       return "discover";
     }
   });
+  // ?resume=<id> from the same links — tells ResumesTab which resume to open.
+  const focusResumeId = searchParams.get("resume") ?? undefined;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
@@ -163,7 +170,7 @@ export default function SessionPage() {
           <DiscoverTab sessionId={session.id} session={session} />
         </TabsContent>
         <TabsContent value="resumes" className="mt-6">
-          <ResumesTab sessionId={session.id} />
+          <ResumesTab sessionId={session.id} focusResumeId={focusResumeId} />
         </TabsContent>
         <TabsContent value="board" className="mt-6">
           <BoardTab sessionId={session.id} key={boardReloadKey} />
