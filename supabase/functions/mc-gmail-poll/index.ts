@@ -7,7 +7,13 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
@@ -28,17 +34,67 @@ interface ClassifiedEmail {
   next_action?: string;
 }
 
-serve(async () => {
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // The cron job invokes this with no body and the service role key, so it's
+  // allowed to sweep every enabled connection. A signed-in user hitting
+  // "Check now" from a session's Gmail card passes session_id instead — in
+  // that case we must verify they own the session before touching anyone's
+  // inbox, and scope the poll to just that one connection.
+  let sessionId: string | null = null;
+  try {
+    const body = await req.json();
+    sessionId = typeof body?.session_id === "string" ? body.session_id : null;
+  } catch {
+    // No/invalid JSON body — treat as the unscoped cron trigger.
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
 
-  // 1. Find all enabled connections to poll
-  const { data: connections, error } = await supabase
-    .from("mc_gmail_connections")
-    .select("*")
-    .eq("enabled", true);
+  let connectionsQuery = supabase.from("mc_gmail_connections").select("*").eq("enabled", true);
+
+  if (sessionId) {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    const callerClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: userErr } = await callerClient.auth.getUser();
+    if (userErr || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    // RLS-scoped read confirms this user actually owns the session before we
+    // let the service-role client touch it below.
+    const { data: owned } = await callerClient
+      .from("mc_gmail_connections")
+      .select("id")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    if (!owned) {
+      return new Response(JSON.stringify({ error: "Session not found or not yours" }), {
+        status: 403,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    connectionsQuery = connectionsQuery.eq("session_id", sessionId);
+  }
+
+  const { data: connections, error } = await connectionsQuery;
 
   if (error || !connections) {
-    return new Response(JSON.stringify({ error: error?.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: error?.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "content-type": "application/json" },
+    });
   }
 
   const results = [];
@@ -55,7 +111,7 @@ serve(async () => {
   }
 
   return new Response(JSON.stringify({ polled: results.length, results }), {
-    headers: { "content-type": "application/json" },
+    headers: { ...corsHeaders, "content-type": "application/json" },
   });
 });
 

@@ -204,34 +204,84 @@ function downloadAsMarkdown(r: TailoredResume) {
   URL.revokeObjectURL(url);
 }
 
+// Tailored resumes are stored as plain markdown (cv_md) — there is no
+// server-side renderer for them, so PDF/DOCX export happens client-side,
+// the same way Cover Letters export (see CoverLetterActions.tsx).
+
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
+  try {
+    const html2pdf = (await import("html2pdf.js")).default;
+
+    // Build the PDF source via safe DOM APIs (textContent, not innerHTML) so
+    // AI-generated resume content can never be interpreted as markup.
+    const container = document.createElement("div");
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText =
+      "font-family: 'Georgia', serif; padding: 32px; max-width: 800px; margin: 0 auto; line-height: 1.5;";
+    const contentDiv = document.createElement("div");
+    contentDiv.style.cssText = "font-size: 11px; color: #1a1a1a; white-space: pre-wrap;";
+    contentDiv.textContent = r.cv_md;
+    wrapper.appendChild(contentDiv);
+    container.appendChild(wrapper);
+
+    await html2pdf()
+      .set({
+        margin: [15, 15, 15, 15] as [number, number, number, number],
+        filename: `${r.name.replace(/[^a-z0-9]/gi, "_")}.pdf`,
+        image: { type: "jpeg" as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm" as const, format: "letter" as const, orientation: "portrait" as const },
+      })
+      .from(container)
+      .save();
+
+    toast({ title: "PDF downloaded" });
+  } catch (e) {
     toast({
       title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : String(e),
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
+    const { saveAs } = await import("file-saver");
+
+    // Lightweight markdown → docx: headings, bullets and bold lines are
+    // recognized; everything else is a plain paragraph. Good enough for the
+    // tailor output, which is itself simple headed/bulleted markdown.
+    const paragraphs = r.cv_md.split("\n").map((line) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("## ")) {
+        return new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text: trimmed.slice(3) })] });
+      }
+      if (trimmed.startsWith("# ")) {
+        return new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: trimmed.slice(2) })] });
+      }
+      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        return new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: trimmed.slice(2) })] });
+      }
+      if (trimmed.startsWith("**") && trimmed.endsWith("**") && trimmed.length > 4) {
+        return new Paragraph({ children: [new TextRun({ text: trimmed.slice(2, -2), bold: true })] });
+      }
+      return new Paragraph({ children: [new TextRun({ text: line })] });
+    });
+
+    const doc = new Document({ sections: [{ children: paragraphs }] });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, `${r.name.replace(/[^a-z0-9]/gi, "_")}.docx`);
+
+    toast({ title: "DOCX downloaded" });
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : String(e),
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────
