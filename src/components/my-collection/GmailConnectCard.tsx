@@ -21,9 +21,8 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const { data } = await (supabase as any)
-      
-.from("mc_gmail_connections")
+    const { data } = await supabase
+      .from("mc_gmail_connections")
       .select("id,gmail_email,enabled,last_polled_at,token_expires_at")
       .eq("session_id", sessionId)
       .maybeSingle();
@@ -38,7 +37,7 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
   async function connect() {
     setBusy(true);
     try {
-      const { data, error } = await (supabase as any).functions.invoke("mc-gmail-connect", {
+      const { data, error } = await supabase.functions.invoke("mc-gmail-connect", {
         body: { session_id: sessionId },
       });
       if (error) throw error;
@@ -56,14 +55,14 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
   async function disconnect() {
     if (!conn) return;
     if (!confirm("Disconnect Gmail from this session? Auto-status updates from email will stop.")) return;
-    await (supabase as any).from("mc_gmail_connections").delete().eq("id", conn.id);
+    await supabase.from("mc_gmail_connections").delete().eq("id", conn.id);
     setConn(null);
   }
 
   async function pollNow() {
     setBusy(true);
     try {
-      const { data, error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+      const { data, error } = await supabase.functions.invoke("mc-gmail-poll", {});
       if (error) throw error;
       toast({ title: "Inbox checked", description: `${data?.results?.length ?? 0} sessions polled` });
       await load();

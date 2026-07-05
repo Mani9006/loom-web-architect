@@ -82,7 +82,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     //   2. the user's most recently updated resume (fallback so users don't
     //      have to pre-configure anything)
     //   3. nothing — tell them to create one in Resume Builder
-    const { data: sessRow } = await (supabase as any)
+    const { data: sessRow } = await supabase
       .from("mc_sessions")
       .select("master_resume_id")
       .eq("id", sessionId)
@@ -95,7 +95,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     // summary, experience, education, ...), not a single content field — so we
     // SELECT * and stitch them with resumeRowToMarkdown.
     if (sessRow?.master_resume_id) {
-      const { data: res } = await (supabase as any)
+      const { data: res } = await supabase
         .from("resumes")
         .select("*")
         .eq("id", sessRow.master_resume_id)
@@ -105,7 +105,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
     // Tier 2: latest resume from the user's account.
     if (!masterMd) {
-      const { data: latest } = await (supabase as any)
+      const { data: latest } = await supabase
         .from("resumes")
         .select("*")
         .order("updated_at", { ascending: false })
@@ -172,7 +172,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       void aiJobId;
 
       const { data: userData } = await supabase.auth.getUser();
-      const { data: tailoredRow, error: insertErr } = await (supabase as any)
+      const { data: tailoredRow, error: insertErr } = await supabase
         .from("mc_tailored_resumes")
         .insert({
           user_id: userData?.user?.id,
@@ -186,7 +186,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       if (insertErr || !tailoredRow) {
         throw new Error(insertErr?.message || "Couldn't save tailored resume");
       }
-      await (supabase as any)
+      await supabase
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailoredRow.id })
         .eq("id", job.id);
@@ -207,7 +207,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     setLoading(true);
     // Filter out soft-deleted cards (deleted_at IS NULL). The Trash dialog
     // surfaces deleted_at IS NOT NULL rows separately.
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_tracked_jobs")
       .select("*")
       .eq("session_id", sessionId)
@@ -229,7 +229,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     setSelected((cur) => (cur && cur.id === job.id ? null : cur));
 
     const deletedAt = new Date().toISOString();
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tracked_jobs")
       .update({ deleted_at: deletedAt })
       .eq("id", job.id);
@@ -249,7 +249,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         <ToastAction
           altText="Undo"
           onClick={async () => {
-            const { error: undoErr } = await (supabase as any)
+            const { error: undoErr } = await supabase
               .from("mc_tracked_jobs")
               .update({ deleted_at: null })
               .eq("id", job.id);
@@ -287,7 +287,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
     setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...updates } as TrackedJob) : cur));
 
-    const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
+    const { error } = await supabase.from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
       // Roll back the optimistic update on failure.
       setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
@@ -298,7 +298,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      await (supabase as any).from("mc_status_history").insert({
+      await supabase.from("mc_status_history").insert({
         tracked_job_id: jobId,
         user_id: user.id,
         status_from: previousStatus,

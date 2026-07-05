@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -74,12 +74,11 @@ function clearDraft(sessionId: string) {
  */
 export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreated }: Props) {
   const { toast } = useToast();
-  const initial = useRef<Draft>(readDraft(sessionId));
-  const [company, setCompany] = useState<string>(initial.current.company);
-  const [jobTitle, setJobTitle] = useState<string>(initial.current.jobTitle);
-  const [location, setLocation] = useState<string>(initial.current.location);
-  const [applyUrl, setApplyUrl] = useState<string>(initial.current.applyUrl);
-  const [jdMd, setJdMd] = useState<string>(initial.current.jdMd);
+  const [company, setCompany] = useState<string>("");
+  const [jobTitle, setJobTitle] = useState<string>("");
+  const [location, setLocation] = useState<string>("");
+  const [applyUrl, setApplyUrl] = useState<string>("");
+  const [jdMd, setJdMd] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
   // Persist draft on every change. sessionStorage is sync and tiny — no cost.
@@ -126,7 +125,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       return;
     }
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_tracked_jobs")
       .insert({
         user_id: userData.user.id,

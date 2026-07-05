@@ -78,7 +78,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       jd_md: jdMd.trim() || null,
       notes: notes.trim() || null,
     };
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tracked_jobs")
       .update(updates)
       .eq("id", job.id);
@@ -97,7 +97,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       return;
     }
     setSaving(true);
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tracked_jobs")
       .delete()
       .eq("id", job.id);

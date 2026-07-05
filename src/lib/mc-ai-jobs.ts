@@ -8,6 +8,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
 export type JobKind =
   | "tailor"
@@ -96,12 +98,12 @@ export async function enqueueJob(args: EnqueueArgs): Promise<EnqueueResult> {
     // Haiku/Sonnet per the task-kind map (no Opus, ever).
     model: args.model ?? defaultModelFor(args.kind),
     prompt: args.prompt,
-    input: args.input ?? null,
+    input: (args.input ?? null) as Json,
     priority: args.priority ?? 5,
     status: "queued" as const,
   };
 
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("mc_ai_jobs")
     .insert(payload)
     .select("id")
@@ -145,7 +147,9 @@ export async function waitForJob(
       if (pollHandle) clearInterval(pollHandle);
       try {
         channel.unsubscribe();
-      } catch {}
+      } catch {
+        /* channel may already be closed — nothing to clean up */
+      }
       if (err) reject(err);
       else if (job) resolve(job);
       else reject(new Error("Job vanished"));
@@ -161,7 +165,7 @@ export async function waitForJob(
           table: "mc_ai_jobs",
           filter: `id=eq.${jobId}`,
         },
-        (payload: any) => {
+        (payload: RealtimePostgresChangesPayload<AIJob>) => {
           const row = payload.new as AIJob;
           opts.onProgress?.(row.status);
           if (row.status === "done") finish(row);
@@ -184,13 +188,15 @@ export async function waitForJob(
         if (row.status === "done") finish(row);
         else if (row.status === "failed") finish(null, new Error(row.error || "Job failed"));
         else if (row.status === "canceled") finish(null, new Error("Job canceled"));
-      } catch {}
+      } catch (err) {
+        console.warn("[mc-ai-jobs] poll failed, will retry:", err);
+      }
     }, 4000);
   });
 }
 
 async function fetchJob(jobId: string): Promise<AIJob | null> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("mc_ai_jobs")
     .select("*")
     .eq("id", jobId)
@@ -309,7 +315,7 @@ export async function isWorkerOnline(userId: string): Promise<{
   lastSeen: string | null;
   hostname: string | null;
 }> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("mc_worker_heartbeats")
     .select("last_seen,hostname")
     .eq("user_id", userId)

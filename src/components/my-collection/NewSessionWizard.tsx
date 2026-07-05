@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -82,16 +82,16 @@ function clearDraft() {
 
 export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   const { toast } = useToast();
-  const initial = useRef<Draft>(readDraft());
-  const [step, setStep] = useState<number>(initial.current.step);
-  const [name, setName] = useState<string>(initial.current.name);
+  const [initial] = useState<Draft>(() => readDraft());
+  const [step, setStep] = useState<number>(initial.step);
+  const [name, setName] = useState<string>(initial.name);
   const [resumes, setResumes] = useState<Resume[]>([]);
-  const [resumeId, setResumeId] = useState<string>(initial.current.resumeId);
-  const [targetRolesText, setTargetRolesText] = useState<string>(initial.current.targetRolesText);
-  const [locationsText, setLocationsText] = useState<string>(initial.current.locationsText);
-  const [remoteOnly, setRemoteOnly] = useState<boolean>(initial.current.remoteOnly);
-  const [compTarget, setCompTarget] = useState<string>(initial.current.compTarget);
-  const [visa, setVisa] = useState<string>(initial.current.visa);
+  const [resumeId, setResumeId] = useState<string>(initial.resumeId);
+  const [targetRolesText, setTargetRolesText] = useState<string>(initial.targetRolesText);
+  const [locationsText, setLocationsText] = useState<string>(initial.locationsText);
+  const [remoteOnly, setRemoteOnly] = useState<boolean>(initial.remoteOnly);
+  const [compTarget, setCompTarget] = useState<string>(initial.compTarget);
+  const [visa, setVisa] = useState<string>(initial.visa);
   const [submitting, setSubmitting] = useState(false);
 
   // Load resumes whenever the dialog opens. We do NOT reset form state here —
@@ -179,7 +179,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       visa_status: visa,
     };
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_sessions")
       .insert({
         user_id: userData.user.id,
