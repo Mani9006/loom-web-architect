@@ -63,7 +63,21 @@ async function pollOne(supabase: any, conn: any) {
   // Refresh access token if expired
   let accessToken = conn.access_token;
   if (new Date(conn.token_expires_at).getTime() < Date.now() + 60000) {
-    accessToken = await refreshAccessToken(conn.refresh_token);
+    const refreshed = await refreshAccessToken(conn.refresh_token);
+    if (!refreshed) {
+      // The refresh token is dead (revoked/expired) — disable the connection
+      // instead of leaving token_expires_at bumped with a stale access_token.
+      // Previously this branch fell through and still wrote a fresh
+      // token_expires_at unconditionally, so every future poll saw a
+      // "not-yet-expired" connection and never retried the refresh — the
+      // integration silently stopped working with no user-visible signal.
+      await supabase
+        .from("mc_gmail_connections")
+        .update({ enabled: false })
+        .eq("id", conn.id);
+      return { processed: 0, auto_moved: 0, error: "token_refresh_failed" };
+    }
+    accessToken = refreshed;
     await supabase
       .from("mc_gmail_connections")
       .update({
@@ -73,11 +87,14 @@ async function pollOne(supabase: any, conn: any) {
       .eq("id", conn.id);
   }
 
-  // Fetch tracked jobs for this session — we'll match emails to them
+  // Fetch tracked jobs for this session — we'll match emails to them.
+  // Exclude soft-deleted (trashed) cards so an auto-status email can't
+  // silently resurrect / re-target a card the user already threw away.
   const { data: trackedJobs } = await supabase
     .from("mc_tracked_jobs")
     .select("id,company,job_title,status")
-    .eq("session_id", conn.session_id);
+    .eq("session_id", conn.session_id)
+    .is("deleted_at", null);
 
   // Fetch new email IDs from Gmail
   const sinceTs = conn.last_polled_at ? Math.floor(new Date(conn.last_polled_at).getTime() / 1000) : 0;
@@ -107,10 +124,16 @@ async function pollOne(supabase: any, conn: any) {
     const snippet = msg.snippet ?? "";
     const bodyText = extractBody(msg.payload) || snippet;
 
-    // Skip if we've already processed this message
+    // Skip if we've already processed this message for THIS session. Gmail
+    // message IDs are only unique within a mailbox, but the same mailbox can
+    // be connected to multiple sessions — scoping by session_id (matching the
+    // mc_inbound_emails_session_message_key constraint) stops a message
+    // already recorded for one session from being skipped as a false
+    // duplicate when polling a different session against the same inbox.
     const { data: existing } = await supabase
       .from("mc_inbound_emails")
       .select("id")
+      .eq("session_id", conn.session_id)
       .eq("message_id", m.id)
       .maybeSingle();
     if (existing) continue;
@@ -176,7 +199,7 @@ async function pollOne(supabase: any, conn: any) {
   return { processed, auto_moved };
 }
 
-async function refreshAccessToken(refresh_token: string): Promise<string> {
+async function refreshAccessToken(refresh_token: string): Promise<string | null> {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -187,8 +210,9 @@ async function refreshAccessToken(refresh_token: string): Promise<string> {
       grant_type: "refresh_token",
     }),
   });
+  if (!res.ok) return null;
   const j = await res.json();
-  return j.access_token;
+  return j.access_token ?? null;
 }
 
 function extractBody(part: any): string {

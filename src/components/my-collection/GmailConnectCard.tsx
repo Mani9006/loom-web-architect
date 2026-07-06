@@ -56,7 +56,16 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
   async function disconnect() {
     if (!conn) return;
     if (!confirm("Disconnect Gmail from this session? Auto-status updates from email will stop.")) return;
-    await (supabase as any).from("mc_gmail_connections").delete().eq("id", conn.id);
+    setBusy(true);
+    const { error } = await (supabase as any).from("mc_gmail_connections").delete().eq("id", conn.id);
+    setBusy(false);
+    if (error) {
+      // Don't clear local state on a failed delete — the connection still
+      // exists server-side and mc-gmail-poll keeps reading the inbox even
+      // though the UI would otherwise claim "Not connected".
+      toast({ title: "Couldn't disconnect", description: error.message, variant: "destructive" });
+      return;
+    }
     setConn(null);
   }
 
@@ -87,9 +96,13 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <h4 className="font-medium text-sm">Gmail integration</h4>
-            {conn ? (
+            {conn?.enabled ? (
               <Badge className="bg-green-100 text-green-800 border-green-300 text-[10px]">
                 <CheckCircle2 className="w-3 h-3 mr-1" /> Connected
+              </Badge>
+            ) : conn ? (
+              <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">
+                <AlertCircle className="w-3 h-3 mr-1" /> Needs reconnect
               </Badge>
             ) : (
               <Badge variant="outline" className="text-[10px]">
@@ -97,7 +110,13 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
               </Badge>
             )}
           </div>
-          {conn ? (
+          {conn && !conn.enabled && (
+            <p className="text-xs text-muted-foreground">
+              Gmail access expired or was revoked, so auto-status updates from email have stopped. Reconnect to
+              resume them.
+            </p>
+          )}
+          {conn?.enabled ? (
             <>
               <p className="text-xs text-muted-foreground">
                 Connected as <strong>{conn.gmail_email}</strong>. The agent reads incoming emails about your
@@ -118,6 +137,10 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
                 </Button>
               </div>
             </>
+          ) : conn ? (
+            <Button size="sm" onClick={connect} disabled={busy} className="mt-3">
+              Reconnect Gmail
+            </Button>
           ) : (
             <>
               <p className="text-xs text-muted-foreground">

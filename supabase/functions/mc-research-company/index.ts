@@ -101,18 +101,27 @@ Keep total length under 600 words. If you don't know something, say so — don't
 
     if (!research_md) throw new Error("Empty response from Gemini");
 
+    // Upsert, not insert: mc_company_research has a UNIQUE(session_id, company_slug)
+    // constraint, so two concurrent requests for the same job (double-click, two
+    // open tabs) would otherwise race — the second insert violates the
+    // constraint and surfaces as a hard "research failed" error even though
+    // valid research was already generated and cached by the first request.
     const { data: row, error } = await supabase
       .from("mc_company_research")
-      .insert({
-        user_id: user.id,
-        session_id,
-        company_slug,
-        company_name,
-        research_md,
-        model: GEMINI_MODEL,
-        tokens_in,
-        tokens_out,
-      })
+      .upsert(
+        {
+          user_id: user.id,
+          session_id,
+          company_slug,
+          company_name,
+          research_md,
+          model: GEMINI_MODEL,
+          tokens_in,
+          tokens_out,
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        { onConflict: "session_id,company_slug" },
+      )
       .select()
       .single();
     if (error) throw error;

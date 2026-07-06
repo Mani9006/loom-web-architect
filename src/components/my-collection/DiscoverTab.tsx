@@ -127,6 +127,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
 
   // Mirror state to sessionStorage on every change.
   useEffect(() => {
@@ -466,28 +467,42 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) {
-      toast({ title: "Not signed in", variant: "destructive" });
-      return;
+    const key = `${job.company}::${job.title}`;
+    // Guard against a fast double-click/tap firing two inserts before
+    // `isSaved` (derived from savedTitles) flips true — without this, each
+    // click before the first insert resolves creates its own duplicate card.
+    if (savedTitles.has(key) || savingKeys.has(key)) return;
+    setSavingKeys((s) => new Set(s).add(key));
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) {
+        toast({ title: "Not signed in", variant: "destructive" });
+        return;
+      }
+      const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
+        user_id: userData.user.id,
+        session_id: sessionId,
+        scanned_job_id: null,
+        job_title: job.title,
+        company: job.company,
+        location: job.location ?? null,
+        apply_url: job.apply_url ?? null,
+        jd_md: job.summary ?? null,
+        status: "saved",
+      });
+      if (error) {
+        toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
+        return;
+      }
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
+    } finally {
+      setSavingKeys((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
     }
-    const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
-      user_id: userData.user.id,
-      session_id: sessionId,
-      scanned_job_id: null,
-      job_title: job.title,
-      company: job.company,
-      location: job.location ?? null,
-      apply_url: job.apply_url ?? null,
-      jd_md: job.summary ?? null,
-      status: "saved",
-    });
-    if (error) {
-      toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
-      return;
-    }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
-    toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
   /**
@@ -830,11 +845,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || tailoringKey === key || savingKeys.has(key)}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
-                    {isSaved ? "Saved" : "Save only"}
+                    {isSaved ? "Saved" : savingKeys.has(key) ? "Saving…" : "Save only"}
                   </Button>
                   {job.apply_url && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">

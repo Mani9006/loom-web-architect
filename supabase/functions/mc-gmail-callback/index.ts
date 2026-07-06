@@ -8,29 +8,41 @@ const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 const REDIRECT_URI = Deno.env.get("GOOGLE_REDIRECT_URI")!;
 const APP_BASE_URL = Deno.env.get("APP_BASE_URL")!; // e.g. https://resumepreps.io
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// OAuth state tokens expire after 10 minutes — plenty of time for a user to
+// complete the Google consent screen, short enough to bound replay risk if a
+// state value ever leaked before being consumed.
+const STATE_TTL_MS = 10 * 60 * 1000;
 
 serve(async (req) => {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
-  const stateRaw = url.searchParams.get("state");
+  const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
 
   if (error) {
     return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=${encodeURIComponent(error)}`, 302);
   }
-  if (!code || !stateRaw) {
+  if (!code || !state) {
     return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=missing_params`, 302);
   }
 
-  let session_id: string;
-  let jwt: string;
-  try {
-    const decoded = JSON.parse(atob(stateRaw));
-    session_id = decoded.session_id;
-    jwt = decoded.jwt;
-  } catch {
+  // Resolve the single-use state token minted by mc-gmail-connect back to
+  // (user_id, session_id), then delete it so it can never be replayed.
+  const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, SUPABASE_SERVICE_ROLE_KEY);
+  const { data: stateRow } = await serviceClient
+    .from("mc_oauth_state")
+    .select("user_id,session_id,created_at")
+    .eq("state", state)
+    .maybeSingle();
+  if (stateRow) {
+    await serviceClient.from("mc_oauth_state").delete().eq("state", state);
+  }
+  if (!stateRow || Date.now() - new Date(stateRow.created_at).getTime() > STATE_TTL_MS) {
     return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=bad_state`, 302);
   }
+  const { user_id, session_id } = stateRow;
 
   // 1. Exchange code for tokens
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -59,23 +71,15 @@ serve(async (req) => {
   });
   const profile = await profileRes.json();
 
-  // 3. Persist via Supabase as the authenticated user
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: `Bearer ${jwt}` } } }
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=not_authenticated`, 302);
-  }
-
+  // 3. Persist using the service-role client — the state token already
+  // proved this request belongs to user_id, so we no longer need (or want)
+  // a live user JWT in hand for this.
   const expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
-  const { error: dbError } = await supabase
+  const { error: dbError } = await serviceClient
     .from("mc_gmail_connections")
     .upsert({
-      user_id: user.id,
+      user_id,
       session_id,
       gmail_email: profile.email,
       access_token: tokens.access_token,

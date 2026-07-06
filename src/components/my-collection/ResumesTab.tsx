@@ -250,6 +250,7 @@ function CanvasEditor({
   const [cv, setCv] = useState(resume.cv_md);
   const [saving, setSaving] = useState(false);
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [selectedLineStart, setSelectedLineStart] = useState<number | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
@@ -291,8 +292,10 @@ function CanvasEditor({
   }
 
   function applySuggestion(text: string) {
-    if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    if (!selectedLine || selectedLineStart == null) return;
+    const start = selectedLineStart;
+    const end = start + selectedLine.length;
+    setCv((c) => c.slice(0, start) + text + c.slice(end));
     setSelectedLine(text);
     setAiSuggestions([]);
   }
@@ -333,6 +336,7 @@ function CanvasEditor({
               onChange={(e) => {
                 setCv(e.target.value);
                 setSelectedLine(null);
+                setSelectedLineStart(null);
               }}
               onSelect={(e) => {
                 const el = e.currentTarget;
@@ -342,8 +346,18 @@ function CanvasEditor({
                 const lineStart = text.lastIndexOf("\n", start - 1) + 1;
                 const lineEndOff = cv.indexOf("\n", start);
                 const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
-                const line = cv.slice(lineStart, lineEnd).trim();
-                if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
+                const raw = cv.slice(lineStart, lineEnd);
+                const line = raw.trim();
+                // Track the trimmed line's own offset (not just its containing
+                // range) so applySuggestion replaces the exact clicked
+                // occurrence — cv.replace(selectedLine, ...) would silently
+                // rewrite the FIRST matching line in the document instead when
+                // the same bullet text appears more than once.
+                const lineOffsetStart = lineStart + (raw.length - raw.trimStart().length);
+                if (line.length > 5 && (line !== selectedLine || lineOffsetStart !== selectedLineStart)) {
+                  setSelectedLine(line);
+                  setSelectedLineStart(lineOffsetStart);
+                }
               }}
               className="font-mono text-xs flex-1 resize-none"
             />
