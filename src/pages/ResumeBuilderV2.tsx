@@ -93,20 +93,35 @@ export default function ResumeBuilderV2() {
   const [openSections, setOpenSections] = useState<string[]>(["header", "summary", "experience"]);
   const [aiOpen, setAiOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState<"preview" | "json">("preview");
+  // Whether an initial load/reset has happened at least once — gates autosave
+  // so it never fires against not-yet-loaded default state.
   const initialLoadDone = useRef(false);
+  // Which resumeId is currently reflected in the store, or null for "new
+  // resume". Without tracking this per-id (the old code just used a single
+  // "have we ever loaded" boolean that latched true forever), navigating
+  // from resume A's editor URL to resume B's — without a remount — would
+  // skip reloading entirely: the store keeps showing A's content while
+  // `resumeId` is B, and the autosave effect below then saves A's content
+  // into B's row, silently destroying it.
+  const loadedResumeIdRef = useRef<string | null>(null);
 
   // ─── load ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
-    if (initialLoadDone.current) return;
 
     if (!resumeId) {
+      if (initialLoadDone.current && loadedResumeIdRef.current === null) return;
+      loadedResumeIdRef.current = null;
+      initialLoadDone.current = true;
       reset();
       setResumeName("Untitled resume");
-      initialLoadDone.current = true;
       return;
     }
 
+    if (loadedResumeIdRef.current === resumeId) return;
+
+    let cancelled = false;
+    loadedResumeIdRef.current = resumeId;
     initialLoadDone.current = true;
     setStatus("loading");
     (async () => {
@@ -116,6 +131,7 @@ export default function ResumeBuilderV2() {
         .eq("id", resumeId)
         .eq("user_id", user.id)
         .maybeSingle();
+      if (cancelled) return;
       if (error || !data) {
         toast.error(error?.message ?? "Resume not found");
         setStatus("error", error?.message ?? "not found");
@@ -127,6 +143,9 @@ export default function ResumeBuilderV2() {
       setResumeName(data.title ?? "Untitled resume");
       setStatus("idle");
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [resumeId, user, setResume, setStatus, setResumeId, reset]);
 
   // ─── save (debounced autosave) ─────────────────────────────────────────
@@ -150,6 +169,10 @@ export default function ResumeBuilderV2() {
         toast.error(`Save failed: ${error?.message ?? "unknown"}`);
         return;
       }
+      // Mark this id as already loaded before the URL updates, so the load
+      // effect's resumeId-change reaction doesn't immediately re-fetch and
+      // clobber whatever the user has typed since this save kicked off.
+      loadedResumeIdRef.current = data.id;
       setResumeId(data.id);
       navigate(`/resume-builder/v2/${data.id}`, { replace: true });
       setStatus("saved");

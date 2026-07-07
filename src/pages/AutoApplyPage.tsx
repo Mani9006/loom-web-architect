@@ -71,7 +71,7 @@ interface MatchedJob {
 
 // ─── Component ───
 export default function AutoApplyPage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const { isPremium, loading: subLoading } = useSubscription();
 
@@ -516,7 +516,7 @@ export default function AutoApplyPage() {
 
   // Owner + admin bypass: always open for the account owner so we can test
   // Auto-Apply end-to-end without a paid subscription.
-  const isOwnerOrAdmin = isOwnerEmail(user?.email) || (user as { isAdmin?: boolean } | null)?.isAdmin;
+  const isOwnerOrAdmin = isOwnerEmail(user?.email) || isAdmin;
 
   // Premium gate for Auto Apply
   if (!subLoading && !isPremium && !isOwnerOrAdmin) {

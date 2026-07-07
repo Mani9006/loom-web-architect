@@ -246,8 +246,15 @@ export default function ResumeBuilder() {
 
   // ── Load resume by ID from URL ──────────────────────────────────────────
   useEffect(() => {
+    // Guards against a race when resumeId changes while a previous load is
+    // still in flight (component stays mounted, only the route param
+    // changes): without this, an older fetch resolving after a newer one
+    // can clobber the newer resume's data, and the stale currentResumeId
+    // it sets then causes the next autosave to overwrite the WRONG resume.
+    let cancelled = false;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
+      if (cancelled) return;
       if (!user) { setIsLoaded(true); return; }
 
       // If no resumeId in URL, redirect to projects listing
@@ -259,6 +266,8 @@ export default function ResumeBuilder() {
       const { data: resume, error } = await supabase
         .from("resumes" as any).select("*")
         .eq("id", resumeId).eq("user_id", user.id).single();
+
+      if (cancelled) return;
 
       if (error || !resume) {
         // Resume not found or doesn't belong to user
@@ -284,6 +293,7 @@ export default function ResumeBuilder() {
         languages: Array.isArray(r.languages) ? r.languages : [],
         volunteer: Array.isArray(r.volunteer) ? r.volunteer : [],
         awards: Array.isArray(r.awards) ? r.awards : [],
+        customSections: Array.isArray(r.custom_sections) ? r.custom_sections : [],
         section_order: savedOrder,
       });
       // Restore activeSections order from saved section_order
@@ -304,6 +314,9 @@ export default function ResumeBuilder() {
       }
       setIsLoaded(true);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [resumeId]);
 
   // ── Auto-save (debounced 2s) ───────────────────────────────────────────
@@ -319,6 +332,8 @@ export default function ResumeBuilder() {
         experience: resumeJson.experience as any, education: resumeJson.education as any,
         skills: resumeJson.skills as any, projects: resumeJson.projects as any,
         certifications: resumeJson.certifications as any, languages: resumeJson.languages as any,
+        volunteer: resumeJson.volunteer as any, awards: resumeJson.awards as any,
+        custom_sections: resumeJson.customSections as any,
         section_order: resumeJson.section_order as any,
         template: selectedTemplate,
       };
@@ -329,9 +344,15 @@ export default function ResumeBuilder() {
         if (newResume) setCurrentResumeId((newResume as any).id);
       }
       setLastSaved(new Date());
-    } catch {}
+    } catch {
+      toast({
+        title: "Couldn't save",
+        description: "Your latest changes may not be saved. Check your connection and try again.",
+        variant: "destructive",
+      });
+    }
     setIsSaving(false);
-  }, [currentResumeId, selectedTemplate]);
+  }, [currentResumeId, selectedTemplate, toast]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -800,7 +821,7 @@ export default function ResumeBuilder() {
   const handleDownloadPDF = () => exportToPDF(previewData, fileName);
   const handleDownloadWord = () => exportToWord(previewData, fileName);
   const handleDownloadText = () => exportToText(previewData, fileName);
-  const handlePrintView = () => { localStorage.setItem("printResumeData", JSON.stringify(data)); window.open("/print-resume", "_blank"); };
+  const handlePrintView = () => { localStorage.setItem("printResumeData", JSON.stringify(previewData)); window.open("/print-resume", "_blank"); };
 
   if (!isLoaded) return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 

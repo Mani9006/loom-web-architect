@@ -231,6 +231,9 @@ export default function JobTracker() {
       .eq("id", jobId);
 
     if (error) {
+      // Roll back the optimistic move — otherwise the board shows a status
+      // the database never actually recorded.
+      setJobs((prev) => prev.map((j) => (j.id === jobId && current ? { ...j, status: current.status } : j)));
       toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
       return;
     }
@@ -238,6 +241,7 @@ export default function JobTracker() {
   };
 
   const deleteJob = async (jobId: string) => {
+    const removed = jobs.find((j) => j.id === jobId);
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
 
     const { error } = await supabase
@@ -246,6 +250,9 @@ export default function JobTracker() {
       .eq("id", jobId);
 
     if (error) {
+      // Roll back — the row is still in the database, so don't leave the
+      // card missing from the board for the rest of the session.
+      if (removed) setJobs((prev) => [...prev, removed]);
       toast({ title: "Error", description: "Failed to delete job", variant: "destructive" });
       return;
     }
@@ -254,16 +261,24 @@ export default function JobTracker() {
 
   const deleteSavedJobDetail = async (savedJob: SavedJobDetail) => {
     // Remove from saved_jobs
-    await supabase.from("saved_jobs").delete().eq("id", savedJob.id);
+    const { error: savedError } = await supabase.from("saved_jobs").delete().eq("id", savedJob.id);
+    if (savedError) {
+      toast({ title: "Error", description: "Failed to remove saved job", variant: "destructive" });
+      return;
+    }
     // Also remove matching tracked_job if status is "Saved"
     if (userId) {
-      await supabase
+      const { error: trackedError } = await supabase
         .from("tracked_jobs")
         .delete()
         .eq("user_id", userId)
         .eq("title", savedJob.job_title)
         .eq("company", savedJob.company)
         .eq("status", "Saved");
+      if (trackedError) {
+        toast({ title: "Error", description: "Failed to remove tracked job", variant: "destructive" });
+        return;
+      }
     }
     setSavedJobDetails((prev) => prev.filter((j) => j.id !== savedJob.id));
     setJobs((prev) => prev.filter((j) => !(j.title === savedJob.job_title && j.company === savedJob.company && j.status === "Saved")));

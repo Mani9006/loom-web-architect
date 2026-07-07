@@ -31,7 +31,7 @@ export default function Analytics() {
         supabase.from("tracked_jobs").select("id, status, created_at").eq("user_id", user.id),
         supabase.from("conversations").select("id, chat_mode, created_at").eq("user_id", user.id),
         supabase.from("cover_letters").select("id, created_at").eq("user_id", user.id),
-        supabase.from("resumes").select("skills").eq("user_id", user.id).limit(1),
+        supabase.from("resumes").select("skills").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(1),
       ]);
 
       const jobs = jobsRes.data || [];

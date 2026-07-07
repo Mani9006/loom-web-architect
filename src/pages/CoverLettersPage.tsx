@@ -22,8 +22,12 @@ export default function CoverLettersPage() {
   const [copied, setCopied] = useState(false);
 
   const generate = async () => {
-    if (!jobDescription.trim()) {
-      toast({ title: "Required", description: "Please enter a job description", variant: "destructive" });
+    if (!jobDescription.trim() || !jobTitle.trim() || !resumeText.trim()) {
+      toast({
+        title: "Required",
+        description: "Please fill in the job description, job title, and your profile.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -140,7 +144,7 @@ export default function CoverLettersPage() {
           />
         </div>
 
-        <Button onClick={generate} disabled={loading || !jobDescription.trim()} className="w-full gap-2">
+        <Button onClick={generate} disabled={loading || !jobDescription.trim() || !jobTitle.trim() || !resumeText.trim()} className="w-full gap-2">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
           Generate Cover Letter
         </Button>
