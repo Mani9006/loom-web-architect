@@ -208,19 +208,28 @@ serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceKey);
 
-    const body = await req.json().catch(() => ({}));
-    const userId = body.user_id;
-    const limit = body.limit || 100;
-    const minScore = body.min_score || 20;
-
-    if (!userId) {
-      return new Response(JSON.stringify({ error: "user_id required" }), {
-        status: 400,
+    // Verify the bearer token and derive the caller's identity from it —
+    // never trust a client-supplied user_id for a service-role query, or
+    // any caller could read/overwrite another user's job matches.
+    const authClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false },
+    });
+    const { data: authData, error: authError } = await authClient.auth.getUser();
+    if (authError || !authData?.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const supabase = createClient(supabaseUrl, serviceKey);
+
+    const body = await req.json().catch(() => ({}));
+    const userId = authData.user.id;
+    const limit = body.limit || 100;
+    const minScore = body.min_score || 20;
 
     // Get user profile
     const { data: profileData, error: profileError } = await supabase

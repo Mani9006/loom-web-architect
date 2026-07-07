@@ -444,7 +444,7 @@ async function handleAuthHook(payload: any): Promise<Response> {
 
 // ── Direct Email Endpoint ─────────────────────────────────────────────
 
-async function handleDirectEmail(body: any): Promise<Response> {
+async function handleDirectEmail(req: Request, body: any): Promise<Response> {
   const { type, to, data = {} } = body;
 
   if (!to || !type) {
@@ -452,6 +452,40 @@ async function handleDirectEmail(body: any): Promise<Response> {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
+
+  // This endpoint has no built-in caller restriction otherwise, which would
+  // let anyone POST here to send attacker-controlled mail (esp. "marketing",
+  // which accepts a freeform subject/body/CTA) from our trusted domain to
+  // any address. Two callers are legitimate:
+  //  1. Server-to-server (e.g. stripe-webhook) authenticating with the
+  //     service-role key.
+  //  2. A signed-in user emailing themselves (every real call site in
+  //     src/lib/email.ts sends to the current user's own address).
+  // "welcome" is the one exception: it fires right after signUp(), before
+  // email confirmation, when the client may not have a user session yet —
+  // it's low-risk (fixed template, no attacker-controlled links) so it's
+  // allowed through unauthenticated rather than breaking onboarding.
+  const authHeader = req.headers.get("Authorization") || "";
+  const bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const isServiceCall = !!serviceKey && bearer === serviceKey;
+
+  if (!isServiceCall && type !== "welcome") {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    const authClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false },
+    });
+    const { data: authData, error: authError } = await authClient.auth.getUser();
+    const callerEmail = authData?.user?.email?.toLowerCase();
+    if (authError || !callerEmail || callerEmail !== String(to).toLowerCase()) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
   }
 
   let emailContent: { subject: string; html: string };
@@ -529,7 +563,7 @@ serve(async (req) => {
     }
 
     // Otherwise, it's a direct API call
-    return await handleDirectEmail(body);
+    return await handleDirectEmail(req, body);
   } catch (err) {
     console.error("send-email error:", err);
     return new Response(JSON.stringify({ error: String(err) }), {

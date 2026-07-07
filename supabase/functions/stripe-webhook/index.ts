@@ -7,6 +7,61 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Tolerance window for the signed timestamp, matching Stripe's own default,
+// to reject replayed webhook bodies even if a valid signature ever leaked.
+const TOLERANCE_SECONDS = 5 * 60;
+
+/**
+ * Verifies a Stripe webhook signature per Stripe's documented scheme:
+ * header is `t=<timestamp>,v1=<hex hmac>[,v0=...]`; the signed payload is
+ * `${timestamp}.${rawBody}`, HMAC-SHA256'd with the webhook signing secret.
+ * Without this, anyone who knows (or guesses) this endpoint's URL can POST
+ * an arbitrary "checkout.session.completed" event and grant themselves a
+ * free active subscription — this check is what makes that impossible.
+ */
+async function verifyStripeSignature(
+  rawBody: string,
+  sigHeader: string | null,
+  secret: string,
+): Promise<boolean> {
+  if (!sigHeader) return false;
+
+  const parts = Object.fromEntries(
+    sigHeader.split(",").map((kv) => {
+      const idx = kv.indexOf("=");
+      return [kv.slice(0, idx), kv.slice(idx + 1)];
+    }),
+  );
+  const timestamp = parts["t"];
+  const signature = parts["v1"];
+  if (!timestamp || !signature) return false;
+
+  const timestampSeconds = Number(timestamp);
+  if (!Number.isFinite(timestampSeconds)) return false;
+  if (Math.abs(Date.now() / 1000 - timestampSeconds) > TOLERANCE_SECONDS) return false;
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signedPayload = `${timestamp}.${rawBody}`;
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedPayload));
+  const expectedHex = Array.from(new Uint8Array(mac))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  // Constant-time comparison to avoid leaking the signature via timing.
+  if (expectedHex.length !== signature.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expectedHex.length; i++) {
+    diff |= expectedHex.charCodeAt(i) ^ signature.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 // ── Email helper ─────────────────────────────────────────────────────
 async function sendEmailNotification(
   supabaseUrl: string,
@@ -46,7 +101,23 @@ serve(async (req: Request) => {
     const sig = req.headers.get("stripe-signature");
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
-    // For now, parse the event directly (in production, verify signature)
+    if (!webhookSecret) {
+      console.error("[StripeWebhook] STRIPE_WEBHOOK_SECRET is not configured — refusing request");
+      return new Response(JSON.stringify({ error: "Webhook not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const verified = await verifyStripeSignature(body, sig, webhookSecret);
+    if (!verified) {
+      console.error("[StripeWebhook] Signature verification failed");
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const event = JSON.parse(body);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;

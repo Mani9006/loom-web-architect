@@ -393,6 +393,25 @@ serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, serviceKey);
 
+    // Search itself is allowed anonymously, but user_id gates writes/reads
+    // against user_seen_jobs (a real user's row). A client-supplied user_id
+    // must never be trusted on its own — verify it against the caller's own
+    // bearer token, or treat the request as anonymous.
+    let verifiedUserId: string | null = null;
+    const authHeader = req.headers.get("Authorization");
+    if (user_id && authHeader?.startsWith("Bearer ")) {
+      const authClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false },
+      });
+      const { data: authData } = await authClient.auth.getUser();
+      if (authData?.user?.id === user_id) {
+        verifiedUserId = user_id;
+      } else {
+        console.warn(`[SEARCH] user_id in body didn't match authenticated caller — treating as anonymous`);
+      }
+    }
+
     const searchQuery = query || "software engineer";
     const cstInfo = getCSTNow();
     console.log(`[SEARCH] ===== NEW REQUEST =====`);
@@ -466,12 +485,12 @@ serve(async (req) => {
 
         // Filter out jobs already seen by this user
         let resultJobs = dateFilteredJobs;
-        if (user_id) {
+        if (verifiedUserId) {
           const fingerprints = resultJobs.map((j: any) => j.job_fingerprint);
           const { data: seenJobs } = await sb
             .from("user_seen_jobs")
             .select("job_fingerprint")
-            .eq("user_id", user_id)
+            .eq("user_id", verifiedUserId)
             .in("job_fingerprint", fingerprints);
 
           const seenCount = (seenJobs || []).length;
@@ -482,7 +501,7 @@ serve(async (req) => {
           // Mark these jobs as seen
           if (resultJobs.length > 0) {
             const seenInserts = resultJobs.map((j: any) => ({
-              user_id,
+              user_id: verifiedUserId,
               job_fingerprint: j.job_fingerprint,
             }));
             await sb
@@ -790,9 +809,9 @@ ${sourceInstruction}
       );
 
       // Mark jobs as seen by user
-      if (user_id && normalizedJobs.length > 0) {
+      if (verifiedUserId && normalizedJobs.length > 0) {
         const seenInserts = normalizedJobs.map((j: any) => ({
-          user_id,
+          user_id: verifiedUserId,
           job_fingerprint: jobFingerprint({ title: j.title, company: j.company, location: j.location }),
         }));
         await sb
