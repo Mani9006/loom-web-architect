@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,13 +36,22 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+export default function ResumesTab({
+  sessionId,
+  highlightResumeId,
+}: {
+  sessionId: string;
+  /** Opens this resume's editor as soon as it loads — used by deep links
+   *  like BoardTab's "View tailored resume" (?tab=resumes&resume=<id>). */
+  highlightResumeId?: string | null;
+}) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const appliedHighlight = useRef<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -62,6 +71,17 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     load();
   }, [sessionId]);
+
+  // Deep-link support: open the requested resume's editor once it's loaded.
+  useEffect(() => {
+    if (!highlightResumeId || loading) return;
+    if (appliedHighlight.current === highlightResumeId) return;
+    const match = resumes.find((r) => r.id === highlightResumeId);
+    if (match) {
+      appliedHighlight.current = highlightResumeId;
+      setEditing(match);
+    }
+  }, [highlightResumeId, loading, resumes]);
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
