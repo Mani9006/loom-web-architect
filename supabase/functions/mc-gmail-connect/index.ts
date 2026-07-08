@@ -4,12 +4,16 @@
 // After user authorizes, Google redirects to mc-gmail-callback.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SUPABASE_SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const REDIRECT_URI = Deno.env.get("GOOGLE_REDIRECT_URI")!; // e.g. https://<your-domain>/api/mc-gmail-callback
 const SCOPES = [
@@ -29,9 +33,52 @@ serve(async (req) => {
       });
     }
 
-    // The state param carries session_id + user JWT so the callback can verify ownership
-    const auth = req.headers.get("authorization") ?? "";
-    const state = btoa(JSON.stringify({ session_id, jwt: auth.replace("Bearer ", "") }));
+    // Identify the caller from their own JWT. We deliberately do NOT ship
+    // this JWT anywhere past this point — it never leaves this function.
+    const authHeader = req.headers.get("authorization") ?? "";
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Not signed in" }), {
+        status: 401,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+
+    // Confirm the caller owns this session before minting a nonce for it.
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
+    const { data: session } = await admin
+      .from("mc_sessions")
+      .select("id")
+      .eq("id", session_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!session) {
+      return new Response(JSON.stringify({ error: "Session not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+
+    // The OAuth `state` param round-trips through Google's servers and ends
+    // up in browser history / access logs / Referer headers, so it must
+    // never carry a live credential. Instead it carries a random, single-use
+    // nonce that maps to (user_id, session_id) server-side and expires in 10
+    // minutes — the callback resolves identity from this row, not from state.
+    const nonce = crypto.randomUUID();
+    const { error: insertErr } = await admin.from("mc_gmail_oauth_states").insert({
+      nonce,
+      user_id: user.id,
+      session_id,
+    });
+    if (insertErr) {
+      return new Response(JSON.stringify({ error: insertErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
 
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
@@ -40,7 +87,7 @@ serve(async (req) => {
       scope: SCOPES,
       access_type: "offline",
       prompt: "consent",
-      state,
+      state: nonce,
     });
 
     const auth_url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;

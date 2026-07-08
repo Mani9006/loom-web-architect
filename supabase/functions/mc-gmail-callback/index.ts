@@ -22,15 +22,31 @@ serve(async (req) => {
     return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=missing_params`, 302);
   }
 
-  let session_id: string;
-  let jwt: string;
-  try {
-    const decoded = JSON.parse(atob(stateRaw));
-    session_id = decoded.session_id;
-    jwt = decoded.jwt;
-  } catch {
+  // `state` is a random single-use nonce minted by mc-gmail-connect — never
+  // a credential. Resolve it server-side to find out who this callback is
+  // for and confirm it hasn't expired or been used already.
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  const { data: oauthState } = await admin
+    .from("mc_gmail_oauth_states")
+    .select("user_id,session_id,expires_at")
+    .eq("nonce", stateRaw)
+    .maybeSingle();
+
+  // Single-use: delete immediately whether or not it's valid so a replayed
+  // callback URL can never be used twice.
+  if (oauthState) {
+    await admin.from("mc_gmail_oauth_states").delete().eq("nonce", stateRaw);
+  }
+
+  if (!oauthState || new Date(oauthState.expires_at).getTime() < Date.now()) {
     return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=bad_state`, 302);
   }
+
+  const { user_id, session_id } = oauthState;
 
   // 1. Exchange code for tokens
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -59,23 +75,15 @@ serve(async (req) => {
   });
   const profile = await profileRes.json();
 
-  // 3. Persist via Supabase as the authenticated user
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: `Bearer ${jwt}` } } }
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=not_authenticated`, 302);
-  }
-
+  // 3. Persist. Identity comes from the nonce row resolved above (backed by
+  // RLS-checked ownership at mint time in mc-gmail-connect), so this can
+  // safely use the service-role client instead of round-tripping a JWT.
   const expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
-  const { error: dbError } = await supabase
+  const { error: dbError } = await admin
     .from("mc_gmail_connections")
     .upsert({
-      user_id: user.id,
+      user_id,
       session_id,
       gmail_email: profile.email,
       access_token: tokens.access_token,

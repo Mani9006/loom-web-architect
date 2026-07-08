@@ -1,6 +1,11 @@
 // supabase/functions/mc-gmail-poll/index.ts
-// Cron-triggered: every 15 minutes, polls all enabled mc_gmail_connections,
-// fetches new emails since last_polled_at, classifies each with Haiku 4.5,
+// Two callers:
+//   1. pg_cron, every 15 minutes, authenticated with the service-role key —
+//      polls every enabled mc_gmail_connections row.
+//   2. The "Check now" button in GmailConnectCard, authenticated with the
+//      clicking user's own JWT — must poll ONLY that user's own session,
+//      never anyone else's inbox.
+// Fetches new emails since last_polled_at, classifies each with Haiku 4.5,
 // matches to mc_tracked_jobs by company name, writes mc_inbound_emails,
 // auto-updates kanban status if confidence high enough.
 
@@ -8,10 +13,16 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const STATUS_MAP: Record<string, string> = {
   confirmation: "viewed",
@@ -28,17 +39,71 @@ interface ClassifiedEmail {
   next_action?: string;
 }
 
-serve(async () => {
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
 
-  // 1. Find all enabled connections to poll
-  const { data: connections, error } = await supabase
-    .from("mc_gmail_connections")
-    .select("*")
-    .eq("enabled", true);
+  const authHeader = req.headers.get("authorization") ?? "";
+  const bearer = authHeader.replace(/^Bearer\s+/i, "");
+  const isTrustedCron = bearer.length > 0 && bearer === SUPABASE_SERVICE_ROLE;
 
-  if (error || !connections) {
-    return new Response(JSON.stringify({ error: error?.message }), { status: 500 });
+  let body: { session_id?: string } = {};
+  try {
+    body = await req.json();
+  } catch {
+    // No/empty body — fine for the cron sweep, but a user-triggered call
+    // without a session_id is rejected below.
+  }
+
+  let connections: any[];
+
+  if (isTrustedCron && !body.session_id) {
+    // 1a. pg_cron sweep — every enabled connection, system-wide.
+    const { data, error } = await supabase
+      .from("mc_gmail_connections")
+      .select("*")
+      .eq("enabled", true);
+    if (error) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    connections = data ?? [];
+  } else {
+    // 1b. User-triggered "Check now" — verify the caller and scope strictly
+    // to their own session's connection. Never touch other users' inboxes.
+    if (!body.session_id) {
+      return new Response(JSON.stringify({ error: "session_id required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Not signed in" }), {
+        status: 401,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    const { data: conn, error } = await supabase
+      .from("mc_gmail_connections")
+      .select("*")
+      .eq("session_id", body.session_id)
+      .eq("user_id", user.id)
+      .eq("enabled", true)
+      .maybeSingle();
+    if (error) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    connections = conn ? [conn] : [];
   }
 
   const results = [];
@@ -55,7 +120,7 @@ serve(async () => {
   }
 
   return new Response(JSON.stringify({ polled: results.length, results }), {
-    headers: { "content-type": "application/json" },
+    headers: { ...corsHeaders, "content-type": "application/json" },
   });
 });
 
@@ -73,11 +138,14 @@ async function pollOne(supabase: any, conn: any) {
       .eq("id", conn.id);
   }
 
-  // Fetch tracked jobs for this session — we'll match emails to them
+  // Fetch tracked jobs for this session — we'll match emails to them.
+  // Exclude soft-deleted (trashed) cards so a stale email can't silently
+  // resurrect/mutate a card the user already removed from the board.
   const { data: trackedJobs } = await supabase
     .from("mc_tracked_jobs")
     .select("id,company,job_title,status")
-    .eq("session_id", conn.session_id);
+    .eq("session_id", conn.session_id)
+    .is("deleted_at", null);
 
   // Fetch new email IDs from Gmail
   const sinceTs = conn.last_polled_at ? Math.floor(new Date(conn.last_polled_at).getTime() / 1000) : 0;
