@@ -292,7 +292,11 @@ function CanvasEditor({
 
   function applySuggestion(text: string) {
     if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    // Use a replacer function, not a replacement string — a plain string
+    // replacement interprets "$&", "$$", "$'" etc. specially, which
+    // corrupts resume text whenever a suggestion contains a dollar amount
+    // (revenue, comp, savings — all common in resume bullets).
+    setCv((c) => c.replace(selectedLine, () => text));
     setSelectedLine(text);
     setAiSuggestions([]);
   }

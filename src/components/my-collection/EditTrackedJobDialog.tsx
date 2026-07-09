@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -40,24 +40,18 @@ interface Props {
  */
 export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDeleted }: Props) {
   const { toast } = useToast();
-  const [company, setCompany] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
-  const [location, setLocation] = useState("");
-  const [applyUrl, setApplyUrl] = useState("");
-  const [jdMd, setJdMd] = useState("");
-  const [notes, setNotes] = useState("");
+  // Initialized straight from the job prop. The parent remounts this
+  // component (via `key={job?.id}`) whenever a different card is opened,
+  // so there's no need to sync props->state in an effect — that pattern
+  // rendered the *previous* job's fields for one frame before the effect
+  // caught up.
+  const [company, setCompany] = useState(job?.company ?? "");
+  const [jobTitle, setJobTitle] = useState(job?.job_title ?? "");
+  const [location, setLocation] = useState(job?.location ?? "");
+  const [applyUrl, setApplyUrl] = useState(job?.apply_url ?? "");
+  const [jdMd, setJdMd] = useState(job?.jd_md ?? "");
+  const [notes, setNotes] = useState(job?.notes ?? "");
   const [saving, setSaving] = useState(false);
-
-  // Sync local form state with whichever job was opened.
-  useEffect(() => {
-    if (!job) return;
-    setCompany(job.company ?? "");
-    setJobTitle(job.job_title ?? "");
-    setLocation(job.location ?? "");
-    setApplyUrl(job.apply_url ?? "");
-    setJdMd(job.jd_md ?? "");
-    setNotes(job.notes ?? "");
-  }, [job]);
 
   async function save() {
     if (!job) return;
