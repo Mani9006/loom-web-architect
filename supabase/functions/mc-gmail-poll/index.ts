@@ -1,6 +1,12 @@
 // supabase/functions/mc-gmail-poll/index.ts
-// Cron-triggered: every 15 minutes, polls all enabled mc_gmail_connections,
-// fetches new emails since last_polled_at, classifies each with Haiku 4.5,
+// Two ways to trigger this:
+//   1. Cron (no body / no auth) — polls every enabled mc_gmail_connections
+//      row across all users, using the service role.
+//   2. On-demand from the "Check now" button in GmailConnectCard, which
+//      sends { session_id } with the caller's JWT. This path is scoped to
+//      ONLY that caller's own connection — it must never let one signed-in
+//      user trigger a poll of another user's mailbox.
+// Fetches new emails since last_polled_at, classifies each with Haiku 4.5,
 // matches to mc_tracked_jobs by company name, writes mc_inbound_emails,
 // auto-updates kanban status if confidence high enough.
 
@@ -8,10 +14,16 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const STATUS_MAP: Record<string, string> = {
   confirmation: "viewed",
@@ -28,17 +40,74 @@ interface ClassifiedEmail {
   next_action?: string;
 }
 
-serve(async () => {
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  let session_id: string | undefined;
+  try {
+    const body = await req.json();
+    session_id = body?.session_id || undefined;
+  } catch {
+    // No/empty body — cron-style full sweep.
+  }
+
+  if (session_id) {
+    // On-demand poll for a single session, run as the authenticated caller
+    // so RLS confines it to a connection they actually own.
+    const authHeader = req.headers.get("authorization") ?? "";
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { authorization: authHeader } },
+    });
+    const {
+      data: { user },
+    } = await userClient.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Not authenticated" }), {
+        status: 401,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+
+    const { data: conn, error: connErr } = await userClient
+      .from("mc_gmail_connections")
+      .select("*")
+      .eq("session_id", session_id)
+      .eq("enabled", true)
+      .maybeSingle();
+
+    if (connErr || !conn) {
+      return new Response(
+        JSON.stringify({ error: connErr?.message ?? "No Gmail connection for this session" }),
+        { status: 404, headers: { ...corsHeaders, "content-type": "application/json" } },
+      );
+    }
+
+    try {
+      const r = await pollOne(userClient, conn);
+      return new Response(JSON.stringify({ polled: 1, results: [{ session_id, ...r }] }), {
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
+        { status: 500, headers: { ...corsHeaders, "content-type": "application/json" } },
+      );
+    }
+  }
+
+  // Cron sweep — every enabled connection across every user.
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
 
-  // 1. Find all enabled connections to poll
   const { data: connections, error } = await supabase
     .from("mc_gmail_connections")
     .select("*")
     .eq("enabled", true);
 
   if (error || !connections) {
-    return new Response(JSON.stringify({ error: error?.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: error?.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "content-type": "application/json" },
+    });
   }
 
   const results = [];
@@ -55,7 +124,7 @@ serve(async () => {
   }
 
   return new Response(JSON.stringify({ polled: results.length, results }), {
-    headers: { "content-type": "application/json" },
+    headers: { ...corsHeaders, "content-type": "application/json" },
   });
 });
 

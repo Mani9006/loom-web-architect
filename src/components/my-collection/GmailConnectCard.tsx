@@ -63,9 +63,11 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
   async function pollNow() {
     setBusy(true);
     try {
-      const { data, error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+      const { data, error } = await (supabase as any).functions.invoke("mc-gmail-poll", {
+        body: { session_id: sessionId },
+      });
       if (error) throw error;
-      toast({ title: "Inbox checked", description: `${data?.results?.length ?? 0} sessions polled` });
+      toast({ title: "Inbox checked", description: `${data?.results?.[0]?.processed ?? 0} new emails found` });
       await load();
     } catch (e) {
       toast({
