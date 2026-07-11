@@ -323,13 +323,18 @@ export default function ResumeBuilder() {
         template: selectedTemplate,
       };
       if (currentResumeId) {
-        await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
+        const { error } = await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
+        if (error) throw error;
       } else {
-        const { data: newResume } = await supabase.from("resumes" as any).insert(payload).select("id").single();
+        const { data: newResume, error } = await supabase.from("resumes" as any).insert(payload).select("id").single();
+        if (error) throw error;
         if (newResume) setCurrentResumeId((newResume as any).id);
       }
       setLastSaved(new Date());
-    } catch {}
+    } catch (error) {
+      console.error("Failed to save resume:", error);
+      toast({ title: "Save failed", description: "Your latest changes couldn't be saved. Check your connection and try again.", variant: "destructive" });
+    }
     setIsSaving(false);
   }, [currentResumeId, selectedTemplate]);
 
