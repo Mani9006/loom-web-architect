@@ -58,7 +58,18 @@ export function useSpeechRecognition({
   const [transcript, setTranscript] = useState("");
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
-  const isSupported = typeof window !== "undefined" && 
+  // Keep the latest callbacks in refs so the setup effect below doesn't need
+  // them as dependencies — callers frequently pass inline arrow functions,
+  // which would otherwise get a new identity every render and tear down/
+  // recreate the SpeechRecognition instance (killing the mic) mid-session.
+  const onResultRef = useRef(onResult);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onResultRef.current = onResult;
+    onErrorRef.current = onError;
+  });
+
+  const isSupported = typeof window !== "undefined" &&
     ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
   useEffect(() => {
@@ -96,23 +107,23 @@ export function useSpeechRecognition({
       const currentTranscript = finalTranscript || interimTranscript;
       setTranscript(currentTranscript);
 
-      if (finalTranscript && onResult) {
-        onResult(finalTranscript);
+      if (finalTranscript && onResultRef.current) {
+        onResultRef.current(finalTranscript);
       }
     };
 
     recognition.onerror = (event) => {
       console.error("Speech recognition error:", event.error);
       setIsListening(false);
-      if (onError) {
-        onError(event.error);
+      if (onErrorRef.current) {
+        onErrorRef.current(event.error);
       }
     };
 
     return () => {
       recognition.stop();
     };
-  }, [isSupported, continuous, language, onResult, onError]);
+  }, [isSupported, continuous, language]);
 
   const startListening = useCallback(() => {
     if (!recognitionRef.current || isListening) return;

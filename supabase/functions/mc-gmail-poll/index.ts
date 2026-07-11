@@ -1,6 +1,12 @@
 // supabase/functions/mc-gmail-poll/index.ts
-// Cron-triggered: every 15 minutes, polls all enabled mc_gmail_connections,
-// fetches new emails since last_polled_at, classifies each with Haiku 4.5,
+// Two ways in:
+//   1. User-triggered "Check now" — body includes { session_id }, caller's own
+//      JWT is used to verify they own the connection for that session, and
+//      only that one connection is polled.
+//   2. Cron sweep — no session_id, requires the MC_POLL_CRON_SECRET shared
+//      secret header so an arbitrary authenticated user can't trigger a
+//      platform-wide poll (and its Gmail/Anthropic API costs) via the button.
+// Fetches new emails since last_polled_at, classifies each with Haiku 4.5,
 // matches to mc_tracked_jobs by company name, writes mc_inbound_emails,
 // auto-updates kanban status if confidence high enough.
 
@@ -8,10 +14,17 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+const CRON_SECRET = Deno.env.get("MC_POLL_CRON_SECRET");
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const STATUS_MAP: Record<string, string> = {
   confirmation: "viewed",
@@ -28,17 +41,69 @@ interface ClassifiedEmail {
   next_action?: string;
 }
 
-serve(async () => {
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
 
-  // 1. Find all enabled connections to poll
-  const { data: connections, error } = await supabase
-    .from("mc_gmail_connections")
-    .select("*")
-    .eq("enabled", true);
+  let session_id: string | undefined;
+  try {
+    const body = await req.json();
+    session_id = body?.session_id;
+  } catch {
+    // no/invalid body — treated as a cron sweep request
+  }
 
-  if (error || !connections) {
-    return new Response(JSON.stringify({ error: error?.message }), { status: 500 });
+  let connections;
+  if (session_id) {
+    // User-triggered "Check now": verify the caller owns this session's
+    // connection via their own JWT (RLS-scoped), then poll only that one.
+    const authHeader = req.headers.get("authorization") ?? "";
+    const callerClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: owned, error: ownErr } = await callerClient
+      .from("mc_gmail_connections")
+      .select("id")
+      .eq("session_id", session_id)
+      .eq("enabled", true)
+      .maybeSingle();
+    if (ownErr || !owned) {
+      return new Response(JSON.stringify({ error: "not_found_or_forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    const { data, error } = await supabase
+      .from("mc_gmail_connections")
+      .select("*")
+      .eq("id", owned.id);
+    if (error || !data) {
+      return new Response(JSON.stringify({ error: error?.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    connections = data;
+  } else {
+    // Cron sweep across every enabled connection — requires the shared secret.
+    if (!CRON_SECRET || req.headers.get("x-mc-poll-secret") !== CRON_SECRET) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    const { data, error } = await supabase
+      .from("mc_gmail_connections")
+      .select("*")
+      .eq("enabled", true);
+    if (error || !data) {
+      return new Response(JSON.stringify({ error: error?.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    connections = data;
   }
 
   const results = [];
@@ -55,7 +120,7 @@ serve(async () => {
   }
 
   return new Response(JSON.stringify({ polled: results.length, results }), {
-    headers: { "content-type": "application/json" },
+    headers: { ...corsHeaders, "content-type": "application/json" },
   });
 });
 

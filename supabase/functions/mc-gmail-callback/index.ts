@@ -70,6 +70,19 @@ serve(async (req) => {
     return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=not_authenticated`, 302);
   }
 
+  // Verify the session in `state` actually belongs to this authenticated
+  // user before wiring a Gmail connection to it — otherwise a forged
+  // `state` param pointing at someone else's session_id would let an
+  // attacker connect their own Gmail to a victim's job board.
+  const { data: ownedSession } = await supabase
+    .from("mc_sessions")
+    .select("id")
+    .eq("id", session_id)
+    .maybeSingle();
+  if (!ownedSession) {
+    return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=session_mismatch`, 302);
+  }
+
   const expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
   const { error: dbError } = await supabase

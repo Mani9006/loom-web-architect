@@ -460,7 +460,7 @@ export default function AutoApplyPage() {
     setApplyingJobId(job.id);
     try {
       // Record the application
-      await supabase.from("job_applications").upsert({
+      const { error } = await supabase.from("job_applications").upsert({
         user_id: user.id,
         job_id: job.id,
         title: job.title,
@@ -468,6 +468,7 @@ export default function AutoApplyPage() {
         status: "applied",
         applied_at: new Date().toISOString(),
       } as any, { onConflict: "user_id,job_id" });
+      if (error) throw error;
 
       // Move job from available to applied
       setMatchedJobs((prev) => prev.filter((j) => j.id !== job.id));

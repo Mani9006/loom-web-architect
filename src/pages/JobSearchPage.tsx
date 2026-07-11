@@ -243,7 +243,7 @@ export default function JobSearchPage() {
 
   const cancelSearch = useCallback(() => {
     if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+      abortControllerRef.current.abort("user-cancel");
       abortControllerRef.current = null;
     }
     if (progressIntervalRef.current) {

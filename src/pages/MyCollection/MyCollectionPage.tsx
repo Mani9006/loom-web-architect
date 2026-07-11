@@ -63,16 +63,17 @@ export default function MyCollectionPage() {
     try {
       const { data } = await (supabase as any)
         .from("mc_tracked_jobs")
-        .select("session_id,status")
+        .select("session_id,status,applied_at")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
-      const rows: { session_id: string; status: string }[] = data ?? [];
+      const rows: { session_id: string; status: string; applied_at: string | null }[] = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
         const jobRows = rows.filter((r) => r.session_id === sid);
         map[sid] = {
           discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
+          // Ever applied, not just currently sitting in the Applied column.
+          applied: jobRows.filter((r) => r.applied_at != null).length,
           interviews:
             jobRows.filter((r) => r.status === "interview").length +
             jobRows.filter((r) => r.status === "take_home").length,
