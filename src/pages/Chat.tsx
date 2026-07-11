@@ -1687,8 +1687,16 @@ ${experienceSummary}
     });
 
     // Delete messages first, then conversation
-    await supabase.from("messages").delete().eq("conversation_id", id);
-    await supabase.from("conversations").delete().eq("id", id);
+    const { error: msgsErr } = await supabase.from("messages").delete().eq("conversation_id", id);
+    const { error: convErr } = await supabase.from("conversations").delete().eq("id", id);
+    if (msgsErr || convErr) {
+      toast({
+        title: "Couldn't delete conversation",
+        description: msgsErr?.message ?? convErr?.message,
+        variant: "destructive",
+      });
+      return;
+    }
     await fetchConversations();
 
     if (currentConversation?.id === id) {
@@ -1727,17 +1735,28 @@ ${experienceSummary}
   };
 
   const handleClearAllConversations = async () => {
+    const total = conversations.length;
     // Delete all messages first
+    let failures = 0;
     for (const conv of conversations) {
-      await supabase.from("messages").delete().eq("conversation_id", conv.id);
+      const { error } = await supabase.from("messages").delete().eq("conversation_id", conv.id);
+      if (error) failures++;
     }
     // Delete all conversations
-    await supabase.from("conversations").delete().eq("user_id", user?.id);
+    const { error: convErr } = await supabase.from("conversations").delete().eq("user_id", user?.id);
     await fetchConversations();
     navigate("/chat");
+    if (failures > 0 || convErr) {
+      toast({
+        title: "Some conversations couldn't be cleared",
+        description: convErr?.message ?? `${failures} of ${total} failed to delete`,
+        variant: "destructive",
+      });
+      return;
+    }
     toast({
       title: "All conversations cleared",
-      description: `${conversations.length} conversations deleted`,
+      description: `${total} conversations deleted`,
     });
   };
 
