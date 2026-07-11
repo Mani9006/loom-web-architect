@@ -40,18 +40,26 @@ export default function Documents() {
     if (!user) return;
 
     // Fetch cover letters
-    const { data: cls } = await supabase
+    const { data: cls, error: clsErr } = await supabase
       .from("cover_letters")
       .select("id, title, created_at, job_title")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
     // Fetch user documents
-    const { data: docs } = await supabase
+    const { data: docs, error: docsErr } = await supabase
       .from("user_documents" as any)
       .select("id, file_name, file_type, category, file_size, storage_path, created_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
+
+    if (clsErr || docsErr) {
+      toast({
+        title: "Couldn't load documents",
+        description: clsErr?.message ?? docsErr?.message,
+        variant: "destructive",
+      });
+    }
 
     const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 
@@ -84,21 +92,32 @@ export default function Documents() {
 
   const handleDownload = async (doc: Document) => {
     if (!doc.storagePath) return;
-    const { data } = await supabase.storage
+    const { data, error } = await supabase.storage
       .from("documents")
       .createSignedUrl(doc.storagePath, 60);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+    if (error || !data?.signedUrl) {
+      toast({ title: "Couldn't download", description: error?.message ?? "File not found", variant: "destructive" });
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
   };
 
   const handleDelete = async (doc: Document) => {
-    if (doc.source === "user_document") {
-      if (doc.storagePath) {
-        await supabase.storage.from("documents").remove([doc.storagePath]);
+    if (doc.source !== "user_document") return;
+    if (doc.storagePath) {
+      const { error: storageErr } = await supabase.storage.from("documents").remove([doc.storagePath]);
+      if (storageErr) {
+        toast({ title: "Couldn't delete", description: storageErr.message, variant: "destructive" });
+        return;
       }
-      await supabase.from("user_documents" as any).delete().eq("id", doc.id);
-      toast({ title: "Document deleted", description: `"${doc.title}" has been removed.` });
-      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
     }
+    const { error } = await supabase.from("user_documents" as any).delete().eq("id", doc.id);
+    if (error) {
+      toast({ title: "Couldn't delete", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Document deleted", description: `"${doc.title}" has been removed.` });
+    setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
   };
 
   const filtered = documents.filter((d) => d.title.toLowerCase().includes(search.toLowerCase()));
