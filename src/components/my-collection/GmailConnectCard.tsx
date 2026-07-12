@@ -22,8 +22,7 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
 
   async function load() {
     const { data } = await (supabase as any)
-      
-.from("mc_gmail_connections")
+      .from("mc_gmail_connections")
       .select("id,gmail_email,enabled,last_polled_at,token_expires_at")
       .eq("session_id", sessionId)
       .maybeSingle();

@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { exportMarkdownToDocx, exportMarkdownToPdf } from "@/lib/mc-resume-export";
 
 interface TailoredResume {
   id: string;
@@ -204,34 +205,28 @@ function downloadAsMarkdown(r: TailoredResume) {
   URL.revokeObjectURL(url);
 }
 
-async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
+function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
+  try {
+    exportMarkdownToPdf(r.name, r.cv_md);
+  } catch (e) {
     toast({
       title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : String(e),
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    await exportMarkdownToDocx(r.name, r.cv_md);
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : String(e),
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────
