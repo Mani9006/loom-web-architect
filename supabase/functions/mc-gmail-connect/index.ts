@@ -4,6 +4,7 @@
 // After user authorizes, Google redirects to mc-gmail-callback.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,9 +30,51 @@ serve(async (req) => {
       });
     }
 
-    // The state param carries session_id + user JWT so the callback can verify ownership
+    // Authenticate the caller and confirm they own this session before we
+    // hand out an OAuth URL for it — session_id is otherwise just a UUID
+    // an attacker could guess/observe and attach their own Gmail to.
     const auth = req.headers.get("authorization") ?? "";
-    const state = btoa(JSON.stringify({ session_id, jwt: auth.replace("Bearer ", "") }));
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: auth } } }
+    );
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      return new Response(JSON.stringify({ error: "Not authenticated" }), {
+        status: 401,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+
+    const { data: session, error: sessionErr } = await supabase
+      .from("mc_sessions")
+      .select("id")
+      .eq("id", session_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (sessionErr || !session) {
+      return new Response(JSON.stringify({ error: "Session not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+
+    // The state param is an opaque one-time token, not the user's JWT — it
+    // never leaves our own database, so it's safe to round-trip through
+    // Google's redirect (browser history, Referer headers, proxy logs).
+    const { data: stateRow, error: stateErr } = await supabase
+      .from("mc_gmail_oauth_state")
+      .insert({ user_id: user.id, session_id })
+      .select("token")
+      .single();
+    if (stateErr || !stateRow) {
+      return new Response(JSON.stringify({ error: stateErr?.message ?? "Could not start OAuth flow" }), {
+        status: 500,
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+    const state = stateRow.token as string;
 
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,

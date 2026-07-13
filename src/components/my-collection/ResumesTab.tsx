@@ -204,34 +204,78 @@ function downloadAsMarkdown(r: TailoredResume) {
   URL.revokeObjectURL(url);
 }
 
+// PDF/DOCX export renders `cv_md` client-side — there is no server-side
+// renderer for tailored resumes (the previous implementation called a
+// "mc-render-resume" edge function that doesn't exist, so these buttons
+// always failed). Markdown is rendered as safe plain text/paragraphs,
+// mirroring the same lightweight approach used for cover letter export.
+
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
+  try {
+    const html2pdf = (await import("html2pdf.js")).default;
+
+    const container = document.createElement("div");
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = "font-family: 'Helvetica', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.5;";
+
+    for (const rawLine of r.cv_md.split("\n")) {
+      const line = rawLine.trim();
+      const el = document.createElement(
+        line.startsWith("# ") ? "h1" : line.startsWith("## ") ? "h2" : line.startsWith("### ") ? "h3" : "p"
+      );
+      const text = line.replace(/^#{1,3}\s+/, "").replace(/\*\*/g, "");
+      if (el.tagName === "H1") el.style.cssText = "font-size: 20px; margin: 16px 0 6px;";
+      else if (el.tagName === "H2") el.style.cssText = "font-size: 15px; margin: 14px 0 4px; border-bottom: 1px solid #ccc; padding-bottom: 2px;";
+      else if (el.tagName === "H3") el.style.cssText = "font-size: 13px; font-weight: bold; margin: 10px 0 2px;";
+      else el.style.cssText = "font-size: 11px; margin: 2px 0; white-space: pre-wrap;";
+      el.textContent = text; // Safe — textContent, no HTML parsing of user content
+      wrapper.appendChild(el);
+    }
+    container.appendChild(wrapper);
+
+    await html2pdf()
+      .set({
+        margin: [15, 15, 15, 15] as [number, number, number, number],
+        filename: `${r.name.replace(/[^a-z0-9]/gi, "_")}.pdf`,
+        image: { type: "jpeg" as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm" as const, format: "letter" as const, orientation: "portrait" as const },
+      })
+      .from(container)
+      .save();
+  } catch (e) {
     toast({
       title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : "Please refresh and try again.",
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
+    const { saveAs } = await import("file-saver");
+
+    const children = r.cv_md.split("\n").map((rawLine) => {
+      const line = rawLine.trim();
+      const text = line.replace(/^#{1,3}\s+/, "").replace(/\*\*/g, "");
+      if (line.startsWith("# ")) return new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text, bold: true })] });
+      if (line.startsWith("## ")) return new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text, bold: true })] });
+      if (line.startsWith("### ")) return new Paragraph({ children: [new TextRun({ text, bold: true })] });
+      return new Paragraph({ children: [new TextRun({ text })] });
+    });
+
+    const doc = new Document({ sections: [{ children }] });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, `${r.name.replace(/[^a-z0-9]/gi, "_")}.docx`);
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : "Please refresh and try again.",
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────

@@ -73,11 +73,14 @@ async function pollOne(supabase: any, conn: any) {
       .eq("id", conn.id);
   }
 
-  // Fetch tracked jobs for this session — we'll match emails to them
+  // Fetch tracked jobs for this session — we'll match emails to them.
+  // Exclude trashed cards so an incoming email can't silently move a job
+  // the user has already deleted.
   const { data: trackedJobs } = await supabase
     .from("mc_tracked_jobs")
     .select("id,company,job_title,status")
-    .eq("session_id", conn.session_id);
+    .eq("session_id", conn.session_id)
+    .is("deleted_at", null);
 
   // Fetch new email IDs from Gmail
   const sinceTs = conn.last_polled_at ? Math.floor(new Date(conn.last_polled_at).getTime() / 1000) : 0;

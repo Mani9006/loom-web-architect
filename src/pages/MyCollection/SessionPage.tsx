@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -28,6 +28,7 @@ export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
@@ -57,7 +58,6 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await (supabase as any)
@@ -67,31 +67,22 @@ export default function SessionPage() {
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
       if (error) {
         // eslint-disable-next-line no-console
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          toast({
-            title: "Couldn't load session",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
+        console.error("[SessionPage] load failed:", error.message);
+        toast({
+          title: "Couldn't load session",
+          description: error.message,
+          variant: "destructive",
+        });
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
         return;
       }
-      hadInitialLoad = true;
       setSession(data);
       setLoading(false);
     })();
@@ -100,10 +91,28 @@ export default function SessionPage() {
     };
     // Intentionally only re-run when sessionId changes. navigate/toast are
     // unstable references that, if included, would cause this effect to
-    // re-fire on every render — which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // re-fire on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  // Surface feedback from the Gmail OAuth redirect (mc-gmail-callback lands
+  // back here with ?gmail_connected=1 or ?gmail_error=...) and strip the
+  // param so it doesn't re-fire on refresh/back-navigation.
+  useEffect(() => {
+    const connected = searchParams.get("gmail_connected");
+    const gmailError = searchParams.get("gmail_error");
+    if (!connected && !gmailError) return;
+    if (connected) {
+      toast({ title: "Gmail connected", description: "We'll auto-update this board as replies come in." });
+    } else if (gmailError) {
+      toast({ title: "Gmail connection failed", description: gmailError, variant: "destructive" });
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("gmail_connected");
+    next.delete("gmail_error");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   if (loading || !session) {
     return (

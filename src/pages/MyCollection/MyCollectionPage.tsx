@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,17 @@ export default function MyCollectionPage() {
   const [showArchived, setShowArchived] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const gmailError = searchParams.get("gmail_error");
+    if (!gmailError) return;
+    toast({ title: "Gmail connection failed", description: gmailError, variant: "destructive" });
+    const next = new URLSearchParams(searchParams);
+    next.delete("gmail_error");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   async function loadSessions() {
     setLoading(true);
