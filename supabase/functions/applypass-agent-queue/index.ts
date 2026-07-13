@@ -37,6 +37,38 @@ function workerAuthorized(req: Request, body: Record<string, unknown>): boolean 
   return Boolean(actual) && actual === expected;
 }
 
+// career-ops-submit enqueues a task here and optimistically sets the linked
+// draft_applications row to "queued" — but nothing previously synced the
+// result back, so the UI (ApplicationReviewPage) showed "Queued for
+// auto-submit…" forever even after the worker had already completed or
+// failed the task. Mirror the terminal outcome onto the draft.
+async function syncDraftApplicationStatus(
+  serviceClient: ReturnType<typeof createClient>,
+  task: Record<string, unknown> | null,
+  status: "submitted" | "failed",
+  errorMessage?: string,
+): Promise<void> {
+  if (!task || task.task_type !== "career_ops_submit") return;
+  const payload = (task.payload ?? {}) as Record<string, unknown>;
+  const draftId = typeof payload.draft_application_id === "string" ? payload.draft_application_id : null;
+  if (!draftId) return;
+
+  const updates: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+  if (status === "submitted") {
+    updates.submitted_at = new Date().toISOString();
+    updates.error_message = null;
+  } else {
+    updates.error_message = (errorMessage ?? "Auto-submit failed").slice(0, 1500);
+  }
+
+  const { error } = await serviceClient
+    .from("draft_applications")
+    .update(updates)
+    .eq("id", draftId)
+    .eq("status", "queued"); // don't clobber a status the user already changed manually
+  if (error) console.error("[applypass-agent-queue] draft_applications sync failed:", error.message);
+}
+
 function createServiceClient() {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -116,7 +148,7 @@ serve(async (req: Request) => {
           })
           .eq("id", taskId)
           .in("status", ["running", "pending"])
-          .select("id,status,completed_at,updated_at")
+          .select("id,status,completed_at,updated_at,task_type,payload")
           .single();
 
         if (error) throw error;
@@ -127,6 +159,8 @@ serve(async (req: Request) => {
             p_entry: body.log,
           });
         }
+
+        await syncDraftApplicationStatus(serviceClient, data, "submitted");
 
         return jsonResponse({ ok: true, task: data });
       }
@@ -146,7 +180,7 @@ serve(async (req: Request) => {
           })
           .eq("id", taskId)
           .in("status", ["running", "pending"])
-          .select("id,status,error_message,completed_at,updated_at")
+          .select("id,status,error_message,completed_at,updated_at,task_type,payload")
           .single();
 
         if (error) throw error;
@@ -157,6 +191,8 @@ serve(async (req: Request) => {
             p_entry: body.log,
           });
         }
+
+        await syncDraftApplicationStatus(serviceClient, data, "failed", errorMessage);
 
         return jsonResponse({ ok: true, task: data });
       }

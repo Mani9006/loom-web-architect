@@ -66,6 +66,8 @@ interface MatchedJob {
   description: string;
   match_score: number;
   match_reasons: any;
+  apply_url?: string | null;
+  source?: string | null;
   applied?: boolean;
 }
 
@@ -418,6 +420,8 @@ export default function AutoApplyPage() {
             description: m.jobs.description || "",
             match_score: m.match_score,
             match_reasons: m.match_reasons,
+            apply_url: m.jobs.apply_url ?? null,
+            source: m.jobs.source ?? null,
             applied: false,
           }));
         setMatchedJobs(mapped);
@@ -455,11 +459,38 @@ export default function AutoApplyPage() {
   };
 
   // ─── Auto Apply ───
+  // Actually queues the job for the applypass browser worker (same
+  // pipeline used by JobApplyButton's Auto-Apply). The previous version of
+  // this function never submitted anything anywhere — it just wrote a
+  // "applied" row and told the user their application was sent, which was
+  // false: no employer or portal was ever contacted.
   const handleAutoApply = async (job: MatchedJob) => {
     if (!user) return;
     setApplyingJobId(job.id);
     try {
-      // Record the application
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/applypass-agent-queue`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token || anonKey}` },
+          body: JSON.stringify({
+            action: "enqueue",
+            user_id: user.id,
+            jobs: [{ title: job.title, company: job.company, apply_url: job.apply_url, source: job.source }],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody?.error || `Queue request failed (${response.status})`);
+      }
+
+      // Record the application now that it's actually queued for submission
       await supabase.from("job_applications").upsert({
         user_id: user.id,
         job_id: job.id,
@@ -473,10 +504,14 @@ export default function AutoApplyPage() {
       setMatchedJobs((prev) => prev.filter((j) => j.id !== job.id));
       setAppliedJobs((prev) => [{ ...job, applied: true }, ...prev]);
 
-      toast({ title: "Application submitted!", description: `Applied to ${job.title} at ${job.company}` });
+      toast({ title: "Auto-Apply queued!", description: `${job.title} at ${job.company} has been queued for submission.` });
     } catch (err) {
       console.error("Apply error:", err);
-      toast({ title: "Application failed", variant: "destructive" });
+      toast({
+        title: "Auto-Apply failed",
+        description: err instanceof Error ? err.message : "Could not queue this application. Try again.",
+        variant: "destructive",
+      });
     } finally {
       setApplyingJobId(null);
     }

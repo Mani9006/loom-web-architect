@@ -80,6 +80,27 @@ export default function ApplicationReviewPage() {
     })();
   }, [id, user, navigate]);
 
+  // While queued for auto-submit, poll for the worker's result (completed →
+  // "submitted", failed → "failed") so the page doesn't get stuck showing
+  // "Queued for auto-submit…" forever after the worker has already finished.
+  useEffect(() => {
+    if (!draft || draft.status !== "queued" || !user) return;
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from("draft_applications")
+        .select("status, submitted_at, error_message")
+        .eq("id", draft.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (data && data.status !== "queued") {
+        setDraft((cur) => (cur ? { ...cur, status: data.status as Draft["status"], submitted_at: data.submitted_at } : cur));
+        if (data.status === "submitted") toast.success("Auto-submit completed!");
+        else if (data.status === "failed") toast.error(data.error_message || "Auto-submit failed.");
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [draft, user]);
+
   const queueAutoSubmit = async () => {
     if (!draft) return;
     setQueueingSubmit(true);
