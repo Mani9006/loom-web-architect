@@ -43,8 +43,23 @@ serve(async (req: Request) => {
     // Check for Stripe key
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
 
+    // Test-mode bypass (grants a subscription without payment) must be
+    // explicitly opted into. Previously this triggered whenever
+    // STRIPE_SECRET_KEY was merely unset — including by accident in a
+    // misconfigured production deploy — silently handing out free Premium
+    // to anyone who hit "Upgrade".
+    const allowTestCheckout = Deno.env.get("ALLOW_TEST_CHECKOUT") === "true";
+
     if (!stripeKey) {
-      // No Stripe configured yet - create subscription record directly for testing
+      if (!allowTestCheckout) {
+        console.error("[create-checkout] STRIPE_SECRET_KEY is not configured and ALLOW_TEST_CHECKOUT is not set — refusing to grant a subscription");
+        return new Response(
+          JSON.stringify({ error: "Checkout is not available right now. Please try again later." }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // No Stripe configured, and test mode explicitly enabled — create
+      // subscription record directly for local/staging testing.
       const adminClient = createClient(supabaseUrl, serviceKey);
 
       await adminClient.from("subscription_plans").upsert({

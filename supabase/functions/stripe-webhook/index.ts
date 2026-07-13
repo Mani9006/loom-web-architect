@@ -36,6 +36,52 @@ async function getUserEmail(supabase: any, userId: string): Promise<string | nul
   return data?.user?.email || null;
 }
 
+// ── Stripe signature verification ───────────────────────────────────────
+// Implements the same scheme as Stripe's official SDKs (constructEvent):
+// https://stripe.com/docs/webhooks/signatures#verify-manually
+//   Stripe-Signature: t=<timestamp>,v1=<hmac-sha256 hex of "t.<payload>">
+// Verified manually via Web Crypto (available in Deno) so we don't need to
+// pull in the full Stripe SDK for one HMAC check.
+const MAX_TOLERANCE_SECONDS = 5 * 60;
+
+async function verifyStripeSignature(payload: string, sigHeader: string, secret: string): Promise<boolean> {
+  const parts = Object.fromEntries(
+    sigHeader.split(",").map((p) => {
+      const [k, v] = p.split("=");
+      return [k, v];
+    })
+  );
+  const timestamp = parts.t;
+  const v1 = parts.v1;
+  if (!timestamp || !v1) return false;
+
+  // Reject stale signatures (replay-attack window)
+  const age = Math.abs(Date.now() / 1000 - Number(timestamp));
+  if (!Number.isFinite(age) || age > MAX_TOLERANCE_SECONDS) return false;
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signatureBytes = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`${timestamp}.${payload}`)
+  );
+  const expected = Array.from(new Uint8Array(signatureBytes))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  // Constant-time comparison
+  if (expected.length !== v1.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ v1.charCodeAt(i);
+  return diff === 0;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -46,7 +92,21 @@ serve(async (req: Request) => {
     const sig = req.headers.get("stripe-signature");
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
-    // For now, parse the event directly (in production, verify signature)
+    if (!webhookSecret) {
+      console.error("[StripeWebhook] STRIPE_WEBHOOK_SECRET is not configured — rejecting request");
+      return new Response(JSON.stringify({ error: "Webhook not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!sig || !(await verifyStripeSignature(body, sig, webhookSecret))) {
+      console.error("[StripeWebhook] Signature verification failed — rejecting request");
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const event = JSON.parse(body);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;

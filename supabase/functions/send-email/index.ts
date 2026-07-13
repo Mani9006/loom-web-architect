@@ -47,6 +47,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Escapes free-text fields that get interpolated into email HTML templates.
+// Without this, anyone who can trigger a direct email (see auth check below)
+// could inject markup/links into transactional emails sent from the app's
+// trusted domain.
+function escapeHtml(input: string): string {
+  return String(input)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // ── Email Templates ─────────────────────────────────────────────────────
 
 const BRAND = {
@@ -224,16 +237,18 @@ function emailChangeEmail(token: string, newEmail: string, redirectUrl: string):
 }
 
 function accountChangeEmail(changeType: string, details: string): { subject: string; html: string } {
+  const safeChangeType = escapeHtml(changeType);
+  const safeDetails = escapeHtml(details);
   return {
-    subject: `Account ${changeType} notification — ${BRAND.name}`,
+    subject: `Account ${safeChangeType} notification — ${BRAND.name}`,
     html: baseLayout("Account Change", `
       <h2 style="margin:0 0 16px;color:#18181b;font-size:22px;font-weight:700;">Account Update</h2>
       <p style="color:#3f3f46;font-size:15px;line-height:1.6;margin:0 0 16px;">
         A change was made to your ${BRAND.name} account:
       </p>
       <div style="padding:16px;background:#fef3c7;border-radius:8px;border-left:4px solid #f59e0b;margin:0 0 24px;">
-        <p style="margin:0;color:#92400e;font-size:14px;font-weight:600;">${changeType}</p>
-        <p style="margin:8px 0 0;color:#78350f;font-size:14px;">${details}</p>
+        <p style="margin:0;color:#92400e;font-size:14px;font-weight:600;">${safeChangeType}</p>
+        <p style="margin:8px 0 0;color:#78350f;font-size:14px;">${safeDetails}</p>
       </div>
       <p style="color:#71717a;font-size:13px;margin:0;">
         If you didn't make this change, please <a href="mailto:${BRAND.supportEmail}" style="color:${BRAND.color};">contact support</a> immediately.
@@ -310,14 +325,19 @@ function billingReceiptEmail(
 }
 
 function marketingEmail(subject: string, heading: string, body: string, ctaText?: string, ctaUrl?: string): { subject: string; html: string } {
+  const safeHeading = escapeHtml(heading);
+  const safeBody = escapeHtml(body).replace(/\n/g, "<br>");
+  const safeCtaText = ctaText ? escapeHtml(ctaText) : ctaText;
+  // ctaUrl is used as an href attribute, not text — only allow http(s) links.
+  const safeCtaUrl = ctaUrl && /^https?:\/\//i.test(ctaUrl) ? ctaUrl : undefined;
   return {
     subject,
-    html: baseLayout(heading, `
-      <h2 style="margin:0 0 16px;color:#18181b;font-size:22px;font-weight:700;">${heading}</h2>
+    html: baseLayout(safeHeading, `
+      <h2 style="margin:0 0 16px;color:#18181b;font-size:22px;font-weight:700;">${safeHeading}</h2>
       <div style="color:#3f3f46;font-size:15px;line-height:1.7;margin:0 0 24px;">
-        ${body}
+        ${safeBody}
       </div>
-      ${ctaText && ctaUrl ? buttonHtml(ctaText, ctaUrl) : ""}
+      ${safeCtaText && safeCtaUrl ? buttonHtml(safeCtaText, safeCtaUrl) : ""}
       <p style="color:#a1a1aa;font-size:11px;text-align:center;margin:16px 0 0;">
         You're receiving this because you signed up for ${BRAND.name}.
         <a href="${BRAND.siteUrl}/settings" style="color:#6366f1;">Unsubscribe</a>
@@ -443,8 +463,15 @@ async function handleAuthHook(payload: any): Promise<Response> {
 }
 
 // ── Direct Email Endpoint ─────────────────────────────────────────────
-
-async function handleDirectEmail(body: any): Promise<Response> {
+// Two ways to call this authorized:
+//   1. Server-to-server: Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+//      (used by other edge functions, e.g. stripe-webhook)
+//   2. A signed-in user's session, sending only to their own verified
+//      email address.
+// Previously this endpoint had no auth check at all — any unauthenticated
+// caller could send arbitrary "marketing"/"account-change"/etc. emails
+// from the app's trusted sending domain to any recipient.
+async function handleDirectEmail(body: any, authHeader: string | null): Promise<Response> {
   const { type, to, data = {} } = body;
 
   if (!to || !type) {
@@ -452,6 +479,31 @@ async function handleDirectEmail(body: any): Promise<Response> {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
+
+  const bearer = authHeader?.replace(/^Bearer\s+/i, "") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const isServiceRoleCall = !!serviceKey && bearer === serviceKey;
+
+  if (!isServiceRoleCall) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader ?? "" } },
+    });
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user?.email) {
+      return new Response(JSON.stringify({ error: "Not authenticated" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (user.email.toLowerCase() !== String(to).toLowerCase()) {
+      return new Response(JSON.stringify({ error: "Can only send transactional email to your own address" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
   }
 
   let emailContent: { subject: string; html: string };
@@ -529,7 +581,7 @@ serve(async (req) => {
     }
 
     // Otherwise, it's a direct API call
-    return await handleDirectEmail(body);
+    return await handleDirectEmail(body, req.headers.get("authorization"));
   } catch (err) {
     console.error("send-email error:", err);
     return new Response(JSON.stringify({ error: String(err) }), {
