@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { exportMarkdownToPdf, exportMarkdownToDocx } from "@/lib/markdown-document-export";
 
 interface TailoredResume {
   id: string;
@@ -194,44 +195,45 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
   );
 }
 
+// Job titles/company names can contain "/" (e.g. "AC/DC"), which browsers
+// interpret as a path separator in a download filename — strip anything
+// that isn't safe across OSes.
+function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\:*?"<>|]+/g, "-").trim() || "resume";
+}
+
 function downloadAsMarkdown(r: TailoredResume) {
   const blob = new Blob([r.cv_md], { type: "text/markdown" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  a.download = `${sanitizeFileName(r.name)}.md`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
+  try {
+    await exportMarkdownToPdf(r.cv_md, sanitizeFileName(r.name));
+  } catch (e) {
     toast({
       title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : "Couldn't generate the PDF.",
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    await exportMarkdownToDocx(r.cv_md, sanitizeFileName(r.name));
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : "Couldn't generate the DOCX.",
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────

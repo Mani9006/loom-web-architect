@@ -225,6 +225,9 @@ export default function ResumeBuilder() {
   const [selectedTemplate, setSelectedTemplate] = useState("professional");
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  // Tracks the last autosave error message so a persistent failure (e.g.
+  // offline) doesn't re-toast on every 2s debounce tick.
+  const lastSaveErrorRef = useRef<string | null>(null);
 
   // ── ATS Score (live, memoized) ──────────────────────────────────────────
   const atsScore = useMemo(() => calculateATSScore(data), [data]);
@@ -322,14 +325,35 @@ export default function ResumeBuilder() {
         section_order: resumeJson.section_order as any,
         template: selectedTemplate,
       };
+      let saveError: { message: string } | null = null;
       if (currentResumeId) {
-        await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
+        const { error } = await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
+        saveError = error;
       } else {
-        const { data: newResume } = await supabase.from("resumes" as any).insert(payload).select("id").single();
+        const { data: newResume, error } = await supabase.from("resumes" as any).insert(payload).select("id").single();
+        saveError = error;
         if (newResume) setCurrentResumeId((newResume as any).id);
       }
-      setLastSaved(new Date());
-    } catch {}
+      if (saveError) {
+        if (lastSaveErrorRef.current !== saveError.message) {
+          lastSaveErrorRef.current = saveError.message;
+          toast({
+            title: "Couldn't save your resume",
+            description: saveError.message,
+            variant: "destructive",
+          });
+        }
+      } else {
+        lastSaveErrorRef.current = null;
+        setLastSaved(new Date());
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Network error — check your connection.";
+      if (lastSaveErrorRef.current !== msg) {
+        lastSaveErrorRef.current = msg;
+        toast({ title: "Couldn't save your resume", description: msg, variant: "destructive" });
+      }
+    }
     setIsSaving(false);
   }, [currentResumeId, selectedTemplate]);
 

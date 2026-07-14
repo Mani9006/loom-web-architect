@@ -56,8 +56,15 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
   async function disconnect() {
     if (!conn) return;
     if (!confirm("Disconnect Gmail from this session? Auto-status updates from email will stop.")) return;
-    await (supabase as any).from("mc_gmail_connections").delete().eq("id", conn.id);
+    setBusy(true);
+    const { error } = await (supabase as any).from("mc_gmail_connections").delete().eq("id", conn.id);
+    setBusy(false);
+    if (error) {
+      toast({ title: "Couldn't disconnect", description: error.message, variant: "destructive" });
+      return;
+    }
     setConn(null);
+    toast({ title: "Gmail disconnected" });
   }
 
   async function pollNow() {

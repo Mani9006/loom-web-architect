@@ -223,6 +223,7 @@ export default function JobTracker() {
 
   const moveJob = async (jobId: string, newStatus: string) => {
     const current = jobs.find((j) => j.id === jobId);
+    const previousStatus = current?.status;
     setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j)));
 
     const { error } = await supabase
@@ -231,6 +232,9 @@ export default function JobTracker() {
       .eq("id", jobId);
 
     if (error) {
+      // Roll back the optimistic move — otherwise the card stays on the
+      // wrong column even though the DB never recorded the change.
+      setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: previousStatus ?? j.status } : j)));
       toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
       return;
     }
@@ -238,6 +242,7 @@ export default function JobTracker() {
   };
 
   const deleteJob = async (jobId: string) => {
+    const removed = jobs.find((j) => j.id === jobId);
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
 
     const { error } = await supabase
@@ -246,6 +251,9 @@ export default function JobTracker() {
       .eq("id", jobId);
 
     if (error) {
+      // Roll back — the card would otherwise stay gone from the board even
+      // though it's still in the database.
+      if (removed) setJobs((prev) => [removed, ...prev]);
       toast({ title: "Error", description: "Failed to delete job", variant: "destructive" });
       return;
     }

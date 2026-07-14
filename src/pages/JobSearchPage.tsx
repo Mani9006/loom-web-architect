@@ -120,9 +120,11 @@ export default function JobSearchPage() {
   const [savedJobKeys, setSavedJobKeys] = useState<Set<string>>(new Set());
   const [savingJobs, setSavingJobs] = useState<Set<string>>(new Set());
 
-  // Helper to make a unique key for a job
-  const jobKey = (job: SearchJob) =>
-    `${job.title}:::${job.company}:::${job.location}`.toLowerCase();
+  // Helper to make a unique key for a job. tracked_jobs has no location
+  // column, and toggleSaveJob's unsave/save paths already identify a job by
+  // title+company alone (see the .eq() matches below) — so the key must
+  // match that, or a saved job with a location shows as "not saved".
+  const jobKey = (job: SearchJob) => `${job.title}:::${job.company}`.toLowerCase();
 
   // Load user's saved jobs on mount (from tracked_jobs which powers the Applications page)
   useEffect(() => {
@@ -134,7 +136,7 @@ export default function JobSearchPage() {
       .then(({ data }) => {
         if (data) {
           const keys = new Set(
-            data.map((j: any) => `${j.title}:::${j.company}:::`.toLowerCase())
+            data.map((j: any) => `${j.title}:::${j.company}`.toLowerCase())
           );
           setSavedJobKeys(keys);
         }
@@ -142,13 +144,13 @@ export default function JobSearchPage() {
     // Also load from saved_jobs for full-detail match
     supabase
       .from("saved_jobs")
-      .select("job_title, company, location")
+      .select("job_title, company")
       .eq("user_id", user.id)
       .then(({ data }) => {
         if (data) {
           setSavedJobKeys((prev) => {
             const next = new Set(prev);
-            data.forEach((j: any) => next.add(`${j.job_title}:::${j.company}:::${j.location || ""}`.toLowerCase()));
+            data.forEach((j: any) => next.add(`${j.job_title}:::${j.company}`.toLowerCase()));
             return next;
           });
         }
