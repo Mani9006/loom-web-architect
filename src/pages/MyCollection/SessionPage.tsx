@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +30,12 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
+  // Persists across re-fetches for the same sessionId so a transient error
+  // (token refresh on tab focus, network blip) after a successful load
+  // doesn't wipe the page — see the effect below.
+  const hadInitialLoad = useRef(false);
   const [tab, setTab] = useState<string>(() => {
     // Restore the active tab on remount (tab switches, browser back/forward)
     // so a tab-app switch doesn't reset the user to "discover".
@@ -55,11 +61,15 @@ export default function SessionPage() {
   }, [tab]);
 
   useEffect(() => {
+    hadInitialLoad.current = false;
+  }, [sessionId]);
+
+  useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       const { data, error } = await (supabase as any)
         .from("mc_sessions")
         .select("*")
@@ -74,9 +84,11 @@ export default function SessionPage() {
       if (error) {
         // eslint-disable-next-line no-console
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!hadInitialLoad.current) {
+          setLoadError(error.message);
+        } else {
           toast({
-            title: "Couldn't load session",
+            title: "Couldn't refresh session",
             description: error.message,
             variant: "destructive",
           });
@@ -85,25 +97,42 @@ export default function SessionPage() {
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
+        if (!hadInitialLoad.current) {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
+        setLoading(false);
         return;
       }
-      hadInitialLoad = true;
+      hadInitialLoad.current = true;
       setSession(data);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render — which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // Intentionally only re-run when sessionId changes (or a manual retry).
+    // navigate/toast are unstable references that, if included, would cause
+    // this effect to re-fire on every render — which on tab focus produces
+    // a flash and can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, retryNonce]);
+
+  if (loadError) {
+    return (
+      <div className="container max-w-7xl mx-auto py-16 px-4 md:px-8 text-center space-y-4">
+        <p className="text-sm text-muted-foreground">Couldn't load this session: {loadError}</p>
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setRetryNonce((n) => n + 1)}>
+            Retry
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/my-collection">Back to My Collection</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
