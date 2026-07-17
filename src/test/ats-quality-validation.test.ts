@@ -388,7 +388,7 @@ const EXPECTED_BASELINES: Record<string, BaselineMetrics> = {
 // ─── Test Suite ─────────────────────────────────────────────────────────────
 
 describe("ATS Quality Validation (KAN-21)", () => {
-  let testResults: Array<{
+  const testResults: Array<{
     industry: string;
     resume: string;
     score: number;
