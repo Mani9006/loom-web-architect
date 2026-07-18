@@ -85,7 +85,7 @@ async function upsertUser(account) {
   }
 
   const { error: profileError } = await sb.from("profiles").upsert(
-    { user_id: userId, full_name: account.fullName, onboarding_completed: false },
+    { user_id: userId, full_name: account.fullName, onboarding_completed: true },
     { onConflict: "user_id" },
   );
   if (profileError) throw new Error(`profile ${account.email}: ${profileError.message}`);
@@ -98,19 +98,17 @@ async function upsertUser(account) {
     if (roleError) throw new Error(`role ${account.email}: ${roleError.message}`);
   }
 
-  if (account.plan !== "free") {
-    const { error: accessError } = await sb.from("user_access_controls").upsert(
-      {
-        user_id: userId,
-        account_status: "active",
-        subscription_plan: "pro",
-        purchase_state: "manual",
-        ai_features_enabled: true,
-      },
-      { onConflict: "user_id" },
-    );
-    if (accessError) throw new Error(`access ${account.email}: ${accessError.message}`);
-  }
+  const { error: accessError } = await sb.from("user_access_controls").upsert(
+    {
+      user_id: userId,
+      account_status: "active",
+      subscription_plan: account.plan,
+      purchase_state: "manual",
+      ai_features_enabled: account.plan !== "free",
+    },
+    { onConflict: "user_id" },
+  );
+  if (accessError) throw new Error(`access ${account.email}: ${accessError.message}`);
 
   return userId;
 }
