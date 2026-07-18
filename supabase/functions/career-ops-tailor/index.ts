@@ -128,18 +128,56 @@ function renderMarkdown(t: TailorPayload["tailored_resume"], name: string): stri
 }
 
 function normalizeSkills(value: unknown): Record<string, string[]> {
-  if (Array.isArray(value)) {
-    const tools = value.map((item: any) => typeof item === "string" ? item : item?.name).filter(Boolean);
-    return tools.length > 0 ? { tools } : {};
+  const order = ["programming_languages", "ai_ml", "data_engineering", "cloud_devops", "databases", "frameworks_apis", "analytics_bi", "testing_observability", "delivery_methods", "tools_platforms"];
+  const result = Object.fromEntries(order.map((key) => [key, [] as string[]])) as Record<string, string[]>;
+  const seen = new Set<string>();
+  const entries = Array.isArray(value)
+    ? [["tools", value] as const]
+    : value && typeof value === "object"
+      ? Object.entries(value as Record<string, unknown>).map(([key, items]) => [key, Array.isArray(items) ? items : [items]] as const)
+      : [];
+  for (const [sourceCategory, items] of entries) {
+    for (const rawItem of items) {
+      for (const part of String(rawItem ?? "").split(/[,;|\n\r•·]+/)) {
+        const item = part.replace(/^[\s\-–—:]+|[\s\-–—:.]+$/g, "").replace(/\s+/g, " ").trim();
+        const identity = item.toLowerCase().replace(/[^a-z0-9+#./]+/g, "");
+        if (!isConcreteSkill(item) || !identity || seen.has(identity)) continue;
+        result[classifySkill(item, sourceCategory)].push(item);
+        seen.add(identity);
+      }
+    }
   }
-  if (!value || typeof value !== "object") return {};
-  const result: Record<string, string[]> = {};
-  for (const [key, items] of Object.entries(value as Record<string, unknown>)) {
-    if (!Array.isArray(items)) continue;
-    const clean = items.map(String).map((item) => item.trim()).filter(Boolean);
-    if (clean.length > 0) result[key] = [...new Set(clean)];
-  }
-  return result;
+  return Object.fromEntries(order.flatMap((key) => result[key].length ? [[key, result[key]]] : []));
+}
+
+function isConcreteSkill(value: string): boolean {
+  const words = value.split(/\s+/).filter(Boolean);
+  if (!value || value.length > 64 || words.length > 7) return false;
+  if (/^(?:skills|technical skills|core skills|tools|technologies|communication|leadership|teamwork|problem solving|deployment readiness reviews)$/i.test(value)) return false;
+  if (words.length > 3 && /\b(?:built|developed|designed|implemented|managed|led|delivered|collaborated|reviewed|ensured|improved|created)\b/i.test(value)) return false;
+  return true;
+}
+
+function classifySkill(skill: string, sourceCategory: string): string {
+  if (/^(?:python|r|java|javascript|typescript|c|c\+\+|c#|go|golang|rust|scala|kotlin|swift|ruby|php|matlab|bash|shell|powershell|vba|sql|html|css)$/i.test(skill)) return "programming_languages";
+  if (/\b(?:ai|machine learning|deep learning|generative ai|llm|rag|nlp|computer vision|pytorch|tensorflow|keras|scikit|xgboost|transformers?|bert|spacy|hugging face|langchain|langgraph|llamaindex|openai|anthropic|gemini|embeddings?|vector search|prompt engineering|fine[- ]?tuning|guardrails?|feature engineering|mlflow)\b/i.test(skill)) return "ai_ml";
+  if (/\b(?:etl|elt|data engineering|data pipeline|data lake|lakehouse|data warehouse|airflow|dagster|prefect|spark|hadoop|kafka|flink|dbt|databricks|snowflake|redshift|bigquery|workflow orchestration)\b/i.test(skill)) return "data_engineering";
+  if (/\b(?:aws|azure|gcp|google cloud|docker|kubernetes|helm|terraform|ansible|jenkins|github actions|gitlab ci|ci\/cd|devops|mlops|serverless|containerization)\b/i.test(skill)) return "cloud_devops";
+  if (/\b(?:postgres|mysql|oracle|sql server|sqlite|mongodb|dynamodb|cassandra|redis|neo4j|elasticsearch|opensearch|pinecone|weaviate|milvus|chroma|qdrant|database|nosql)\b/i.test(skill)) return "databases";
+  if (/\b(?:react|angular|vue|next\.?js|node\.?js|express|spring|fastapi|flask|django|\.net|graphql|grpc|rest(?:ful)? apis?|microservices|state management|redux|streamlit|android|ios|flutter)\b/i.test(skill)) return "frameworks_apis";
+  if (/\b(?:power bi|tableau|looker|qlik|excel|pandas|numpy|scipy|matplotlib|seaborn|plotly|statistics|a\/b testing|analytics|business intelligence|data visualization|forecasting)\b/i.test(skill)) return "analytics_bi";
+  if (/\b(?:testing|test coverage|unit tests?|integration tests?|pytest|junit|jest|cypress|selenium|playwright|postman|observability|monitoring|prometheus|grafana|datadog|splunk)\b/i.test(skill)) return "testing_observability";
+  if (/\b(?:agile|scrum|kanban|sdlc|jira|confluence|acceptance criteria|requirements analysis|project management|stakeholder management)\b/i.test(skill)) return "delivery_methods";
+  const source = sourceCategory.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  if (/ai|machine|deep_learning|data_science|gen|nlp|statistical/.test(source)) return "ai_ml";
+  if (/data_engineering|etl|big_data/.test(source)) return "data_engineering";
+  if (/cloud|devops|mlops/.test(source)) return "cloud_devops";
+  if (/database|storage/.test(source)) return "databases";
+  if (/framework|web|mobile|api/.test(source)) return "frameworks_apis";
+  if (/visual|analytics|bi/.test(source)) return "analytics_bi";
+  if (/test|observ/.test(source)) return "testing_observability";
+  if (/project|method|soft/.test(source)) return "delivery_methods";
+  return "tools_platforms";
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -240,7 +278,7 @@ serve(async (req) => {
       .eq("id", body.evaluation_id).maybeSingle();
     if (!ev) throw new HttpError(404, "evaluation not found");
     if (ev.user_id !== user.id) throw new HttpError(403, "forbidden");
-    if (ev.score_version !== "career-fit-v1") {
+    if (ev.score_version !== "career-fit-v2") {
       throw new HttpError(409, "job must be rescored with the current career-fit gate before tailoring");
     }
     // Autopilot respects the user's saved limits. A user-initiated Apply is
@@ -248,6 +286,17 @@ serve(async (req) => {
     // preferences must never make a public job inaccessible.
     if (!ev.eligible && !body.allow_outside_preferences) {
       throw new HttpError(412, "job is outside the saved autopilot preferences");
+    }
+
+    const { data: existingDraft } = await svc.from("draft_applications")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("evaluation_id", body.evaluation_id)
+      .maybeSingle();
+    // Preparing is idempotent. Returning the existing application packet keeps
+    // repeat clicks from creating a new resume for every attempt.
+    if (existingDraft?.tailored_resume_id && ["ready", "queued", "submitted"].includes(existingDraft.status)) {
+      return jsonResponse({ draft: existingDraft, reused: true });
     }
 
     await enforceDailyCap(svc, user.id, "tailor", isPro);
@@ -293,11 +342,24 @@ serve(async (req) => {
     const tailoredExperience = mergeExperience(payload.tailored_resume.experience, sourceExperience);
     const tailoredProjects = mergeProjects(payload.tailored_resume.projects, sourceProjects);
     const tailoredSkills = constrainSkills(payload.tailored_resume.skills, baseResume.skills);
-    const childTitle = `${baseResume.title || "Resume"} — ${companyName} ${job.title}`.slice(0, 120);
-    const { data: child, error: childErr } = await svc.from("resumes").insert({
+    const childTitle = `${companyName} — ${job.title} · application resume`.slice(0, 120);
+    const sourcePersonalInfo = asRecord(baseResume.personal_info);
+    const sourceExtras = asRecord(sourcePersonalInfo._v2_extras);
+    const childPayload = {
       user_id: user.id,
       title: childTitle,
-      personal_info: baseResume.personal_info,
+      personal_info: {
+        ...sourcePersonalInfo,
+        _v2_extras: {
+          ...sourceExtras,
+          document_role: "application_snapshot",
+          source_resume_id: baseResume.id,
+          evaluation_id: body.evaluation_id,
+          scanned_job_id: job.id,
+          job_title: job.title,
+          company: companyName,
+        },
+      },
       summary: payload.tailored_resume.summary,
       experience: tailoredExperience,
       education: baseResume.education || [],
@@ -307,7 +369,11 @@ serve(async (req) => {
       languages: baseResume.languages || [],
       template: baseResume.template || "default",
       section_order: baseResume.section_order || null,
-    }).select("id").single();
+    };
+    const childResult = existingDraft?.tailored_resume_id
+      ? await svc.from("resumes").update(childPayload).eq("id", existingDraft.tailored_resume_id).eq("user_id", user.id).select("id").single()
+      : await svc.from("resumes").insert(childPayload).select("id").single();
+    const { data: child, error: childErr } = childResult;
     if (childErr) throw new HttpError(500, `save tailored resume: ${childErr.message}`);
 
     const name = (baseResume as any).personal_info?.fullName || (baseResume as any).personal_info?.name || "Candidate";

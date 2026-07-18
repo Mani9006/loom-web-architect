@@ -98,11 +98,20 @@ serve(async (req) => {
       }
 
       let status = "ready";
+      let queueNotice: string | null = null;
       if (body.queue_if_supported && portal.supported && portal.type === "greenhouse") {
-        const submitResult = await callAsUser("career-ops-submit", authorization, {
-          draft_application_id: draft.id,
-        });
-        status = asRecord(submitResult.task).status === "pending" ? "queued" : "ready";
+        try {
+          const submitResult = await callAsUser("career-ops-submit", authorization, {
+            draft_application_id: draft.id,
+          });
+          status = asRecord(submitResult.task).status === "pending" ? "queued" : "ready";
+        } catch (error) {
+          // A portal/policy/entitlement failure must not discard the tailored
+          // packet that was already created successfully. The review screen can
+          // explain the next safe action without exposing provider internals.
+          console.error("career-ops-one-click queue", error);
+          queueNotice = "The application packet is ready for review, but automatic submission is not available for this job or current policy.";
+        }
       }
 
       return jsonResponse({
@@ -113,6 +122,7 @@ serve(async (req) => {
         ats_score: atsScore,
         direct_apply_url: applyUrl,
         needs_user_action: status !== "queued",
+        queue_notice: queueNotice,
       });
     } catch (error) {
       console.error("career-ops-one-click workflow", error);

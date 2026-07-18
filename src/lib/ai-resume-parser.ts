@@ -4,11 +4,8 @@
  * Extracted from ResumeBuilder.tsx to be reusable across the app.
  */
 
-import {
-  normalizeSkillCategory,
-  type ResumeParseQuality,
-  type SkillsObject,
-} from "@/types/resume";
+import type { ResumeParseQuality, SkillsObject } from "@/types/resume";
+import { mergeResumeSkills, normalizeResumeSkills } from "@/lib/resume-skills";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -366,33 +363,7 @@ function safeArray(value: unknown): any[] {
  * @returns Normalized SkillsObject with deduplicated categories and skills
  */
 export function normalizeAndDeduplicateSkills(rawSkills: Record<string, string[]>): SkillsObject {
-  const merged: SkillsObject = {};
-  const seenGlobally = new Set<string>();
-
-  for (const [rawKey, skills] of Object.entries(rawSkills)) {
-    if (!Array.isArray(skills) || skills.length === 0) continue;
-
-    const canonicalKey = normalizeSkillCategory(rawKey);
-
-    if (!merged[canonicalKey]) {
-      merged[canonicalKey] = [];
-    }
-
-    // A skill should appear once in the document. Cross-category duplicates make
-    // the preview noisy and inflate keyword-based scoring without adding evidence.
-    for (const skill of skills) {
-      const trimmed = cleanScalar(skill);
-      const identity = trimmed.toLocaleLowerCase();
-      if (trimmed && !seenGlobally.has(identity)) {
-        merged[canonicalKey].push(trimmed);
-        seenGlobally.add(identity);
-      }
-    }
-
-    if (merged[canonicalKey].length === 0) delete merged[canonicalKey];
-  }
-
-  return merged;
+  return normalizeResumeSkills(rawSkills);
 }
 
 /**
@@ -407,27 +378,7 @@ export function mergeAndDeduplicateSkills(
   existing: Record<string, string[]>,
   incoming: Record<string, string[]>,
 ): SkillsObject {
-  // First normalize both inputs separately, then merge
-  const combined: Record<string, string[]> = {};
-
-  // Add existing skills first (normalize their keys)
-  for (const [key, skills] of Object.entries(existing)) {
-    if (!Array.isArray(skills)) continue;
-    const canonical = normalizeSkillCategory(key);
-    if (!combined[canonical]) combined[canonical] = [];
-    combined[canonical].push(...skills);
-  }
-
-  // Add incoming skills (normalize their keys)
-  for (const [key, skills] of Object.entries(incoming)) {
-    if (!Array.isArray(skills)) continue;
-    const canonical = normalizeSkillCategory(key);
-    if (!combined[canonical]) combined[canonical] = [];
-    combined[canonical].push(...skills);
-  }
-
-  // Now deduplicate within each category
-  return normalizeAndDeduplicateSkills(combined);
+  return mergeResumeSkills(existing, incoming);
 }
 
 // ── Map AI parsed data to Supabase resume payload ────────────────────────────

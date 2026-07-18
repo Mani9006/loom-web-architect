@@ -65,6 +65,7 @@ import { AiTailorPanel } from "@/components/resume-v2/AiTailorPanel";
 import { createEmptyResumeJSON } from "@/types/resume";
 import type { ResumeJSON, ResumeParseQuality } from "@/types/resume";
 import { useResumeExport } from "@/hooks/use-resume-export";
+import { normalizeResumeSkills } from "@/lib/resume-skills";
 
 // ─── Section registry ──────────────────────────────────────────────────────
 
@@ -104,6 +105,7 @@ export default function ResumeBuilderV2() {
   const [parseQuality, setParseQuality] = useState<ResumeParseQuality | null>(null);
   const [importFormatMode, setImportFormatMode] = useState<"ats_recommended" | "preserve_source">("ats_recommended");
   const [sourceDocumentId, setSourceDocumentId] = useState<string | null>(null);
+  const [storedExtras, setStoredExtras] = useState<Record<string, unknown>>({ document_role: "master" });
   const initialLoadDone = useRef(false);
   const { exportToPDF, exportToWord, exportToJSON, isExporting } = useResumeExport();
 
@@ -115,6 +117,7 @@ export default function ResumeBuilderV2() {
     if (!resumeId) {
       reset();
       setResumeName("Untitled resume");
+      setStoredExtras({ document_role: "master" });
       initialLoadDone.current = true;
       return;
     }
@@ -146,6 +149,7 @@ export default function ResumeBuilderV2() {
         ? personal._v2_extras as Record<string, unknown>
         : {};
       setImportFormatMode(extras.import_format_mode === "preserve_source" ? "preserve_source" : "ats_recommended");
+      setStoredExtras(extras);
       setSourceDocumentId(typeof rawData.source_document_id === "string" ? rawData.source_document_id : null);
       setStatus("idle");
     })();
@@ -155,7 +159,7 @@ export default function ResumeBuilderV2() {
   const save = useCallback(async () => {
     if (!user) return;
     setStatus("saving");
-    const payload = resumeJSONToRow(resume, resumeName, user.id, importFormatMode, sourceDocumentId);
+    const payload = resumeJSONToRow(resume, resumeName, user.id, importFormatMode, sourceDocumentId, storedExtras);
     const table = supabase.from("resumes") as ReturnType<typeof supabase.from>;
     if (resumeId) {
       const { error } = await table.update(payload as never).eq("id", resumeId).eq("user_id", user.id);
@@ -176,7 +180,7 @@ export default function ResumeBuilderV2() {
       navigate(`/resume-builder/v2/${data.id}`, { replace: true });
       setStatus("saved");
     }
-  }, [resume, resumeName, resumeId, user, setStatus, setResumeId, navigate, importFormatMode, sourceDocumentId]);
+  }, [resume, resumeName, resumeId, user, setStatus, setResumeId, navigate, importFormatMode, sourceDocumentId, storedExtras]);
 
   useEffect(() => {
     if (!initialLoadDone.current || !user) return;
@@ -190,7 +194,11 @@ export default function ResumeBuilderV2() {
 
     const sourceTitle = resumeName.trim() || "Untitled resume";
     const tailoredTitle = `${sourceTitle.replace(/\s+— tailored$/i, "")} — tailored`;
-    const payload = resumeJSONToRow(tailored, tailoredTitle, user.id, "ats_recommended", null);
+    const tailoredExtras = {
+      document_role: "tailored_draft",
+      source_resume_id: resumeId ?? null,
+    };
+    const payload = resumeJSONToRow(tailored, tailoredTitle, user.id, "ats_recommended", null, tailoredExtras);
     const table = supabase.from("resumes") as ReturnType<typeof supabase.from>;
     const { data, error } = await table.insert(payload as never).select("id").maybeSingle();
     if (error || !data) {
@@ -200,9 +208,10 @@ export default function ResumeBuilderV2() {
     setResume(tailored);
     setResumeId(data.id);
     setResumeName(tailoredTitle);
+    setStoredExtras(tailoredExtras);
     setStatus("saved");
     navigate(`/resume-builder/v2/${data.id}`, { replace: true });
-  }, [navigate, resumeName, setResume, setResumeId, setStatus, user]);
+  }, [navigate, resumeId, resumeName, setResume, setResumeId, setStatus, user]);
 
   // ─── render ────────────────────────────────────────────────────────────
   return (
@@ -663,7 +672,7 @@ function rowToResumeJSON(row: ResumeRow): ResumeJSON {
     experience: arr(row.experience) ?? empty.experience,
     education: arr(row.education) ?? empty.education,
     certifications: arr(row.certifications) ?? [],
-    skills: (row.skills as Record<string, string[]>) ?? {},
+    skills: normalizeResumeSkills(row.skills),
     projects: arr(row.projects) ?? [],
     languages: arr(row.languages) ?? undefined,
     volunteer: arr(row.volunteer) ?? arr(extras.volunteer) ?? undefined,
@@ -679,6 +688,7 @@ function resumeJSONToRow(
   userId: string,
   importFormatMode: "ats_recommended" | "preserve_source",
   sourceDocumentId: string | null,
+  extras: Record<string, unknown>,
 ) {
   return {
     user_id: userId,
@@ -690,13 +700,13 @@ function resumeJSONToRow(
       email: r.header.email,
       phone: r.header.phone,
       linkedin: r.header.linkedin,
-      _v2_extras: { import_format_mode: importFormatMode },
+      _v2_extras: { ...extras, import_format_mode: importFormatMode },
     },
     summary: r.summary,
     experience: r.experience,
     education: r.education,
     certifications: r.certifications,
-    skills: r.skills,
+    skills: normalizeResumeSkills(r.skills),
     projects: r.projects,
     languages: r.languages ?? [],
     volunteer: r.volunteer ?? [],

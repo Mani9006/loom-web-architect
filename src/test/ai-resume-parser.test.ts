@@ -103,8 +103,8 @@ describe("ai-resume-parser utilities", () => {
           cloud_mlops: ["aws", "Kubernetes"],
         }),
       ).toEqual({
-        nlp: ["spaCy", "BERT", "Transformers"],
-        cloud_mlops: ["AWS", "GCP", "Kubernetes"],
+        ai_ml: ["spaCy", "BERT", "Transformers"],
+        cloud_devops: ["AWS", "GCP", "Kubernetes"],
       });
     });
 
@@ -116,7 +116,7 @@ describe("ai-resume-parser utilities", () => {
         ),
       ).toEqual({
         programming_languages: ["TypeScript", "Python", "Go"],
-        machine_learning: ["PyTorch", "scikit-learn"],
+        ai_ml: ["PyTorch", "scikit-learn"],
       });
     });
   });
@@ -198,8 +198,8 @@ describe("ai-resume-parser utilities", () => {
           },
         ],
         skills: {
-          nlp: ["BERT"],
-          cloud_mlops: ["AWS"],
+          ai_ml: ["BERT"],
+          cloud_devops: ["AWS"],
         },
         projects: [
           {

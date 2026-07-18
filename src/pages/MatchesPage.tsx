@@ -86,6 +86,8 @@ export default function MatchesPage() {
   const [evaluations, setEvaluations] = useState<Record<string, Evaluation>>({});
   const [prefs, setPrefs] = useState<UserPrefs | null>(null);
   const [filter, setFilter] = useState<"recommended" | "strong" | "autopilot">("recommended");
+  const [locationMode, setLocationMode] = useState<"all" | "remote" | "hybrid" | "onsite">("all");
+  const [matchSearch, setMatchSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [evaluating, setEvaluating] = useState<string | null>(null);
   const [preparing, setPreparing] = useState<string | null>(null);
@@ -178,9 +180,21 @@ export default function MatchesPage() {
       .filter((row): row is { job: ScannedJob; evaluation: Evaluation } => Boolean(row.evaluation) && careerFitScore(row.evaluation) >= 50);
     if (filter === "strong") rows = rows.filter((row) => careerFitScore(row.evaluation) >= 80);
     if (filter === "autopilot") rows = rows.filter((row) => row.evaluation.eligible && careerFitScore(row.evaluation) >= (prefs?.auto_apply_min_fit_score ?? 82));
+    if (locationMode !== "all") {
+      rows = rows.filter(({ job }) => {
+        const location = `${job.location ?? ""} ${job.remote_policy ?? ""}`.toLowerCase();
+        if (locationMode === "remote") return /\bremote\b/.test(location);
+        if (locationMode === "hybrid") return /\bhybrid\b/.test(location);
+        return /\bon[- ]?site\b|\bonsite\b/.test(location) || !/\bremote\b|\bhybrid\b/.test(location);
+      });
+    }
+    const query = matchSearch.trim().toLowerCase();
+    if (query) {
+      rows = rows.filter(({ job }) => `${job.title} ${job.company.name} ${job.location ?? ""} ${job.department ?? ""}`.toLowerCase().includes(query));
+    }
     rows.sort((a, b) => (b.evaluation ? careerFitScore(b.evaluation) : -1) - (a.evaluation ? careerFitScore(a.evaluation) : -1));
     return rows;
-  }, [jobs, evaluations, filter, prefs]);
+  }, [jobs, evaluations, filter, locationMode, matchSearch, prefs]);
 
   const stats = useMemo(() => {
     const scored = Object.values(evaluations);
@@ -311,12 +325,43 @@ export default function MatchesPage() {
         </div>
       </motion.div>
 
+      <div className="-mt-6 flex flex-col gap-3 rounded-xl border border-border bg-background/50 p-4 lg:flex-row lg:items-center">
+        <input
+          value={matchSearch}
+          onChange={(event) => setMatchSearch(event.target.value)}
+          placeholder="Filter matches by role, company, or city"
+          className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-[12.5px] outline-none focus:border-foreground/30"
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {(["all", "remote", "hybrid", "onsite"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setLocationMode(mode)}
+              className={cn(
+                "h-9 rounded-md px-3 text-[12px] font-medium capitalize transition-colors",
+                locationMode === mode ? "bg-foreground text-background" : "border border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {mode === "all" ? "All locations" : mode === "onsite" ? "On-site" : mode}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/career-ops/preferences")}
+          className="h-9 rounded-md border border-border px-3 text-[12px] font-medium text-foreground hover:bg-muted"
+        >
+          Customize match rules
+        </button>
+      </div>
+
       {/* Table */}
       {filtered.length === 0 ? (
         <div className="glass-card p-12 text-center">
-          <p className="text-[16px] font-semibold text-foreground">No current role clears the 50% evidence threshold.</p>
+          <p className="text-[16px] font-semibold text-foreground">No match fits the current view.</p>
           <p className="text-[13px] text-muted-foreground mt-2">
-            Confirm the parsed client history and total experience, adjust only genuine constraints, or wait for the next direct-employer scan.
+            Clear the local filters, customize your genuine location and work-mode preferences, or use General Job Search for broader exploration.
           </p>
         </div>
       ) : (
@@ -425,10 +470,10 @@ export default function MatchesPage() {
           Direct-employer sources refresh hourly · manual applications are available for every match shown
         </p>
         <button
-          onClick={() => navigate("/career-ops/preferences")}
+          onClick={() => navigate("/job-search")}
           className="hover:text-foreground transition-colors"
         >
-          Tune preferences →
+          Open General Job Search →
         </button>
       </div>
     </div>

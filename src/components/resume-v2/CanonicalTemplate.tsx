@@ -17,6 +17,7 @@
 import { forwardRef, Fragment } from "react";
 import type { ResumeJSON, ResumeSectionId } from "@/types/resume";
 import { DEFAULT_SECTION_ORDER, getSkillCategoryLabel } from "@/types/resume";
+import { normalizeResumeSkills } from "@/lib/resume-skills";
 
 interface Props {
   data: ResumeJSON;
@@ -308,7 +309,7 @@ function Education({ items }: { items: ResumeJSON["education"] }) {
 // ─── Skills ────────────────────────────────────────────────────────────────
 
 function Skills({ skills }: { skills: ResumeJSON["skills"] }) {
-  const entries = Object.entries(skills ?? {}).flatMap(([cat, v]) => {
+  const entries = Object.entries(normalizeResumeSkills(skills)).flatMap(([cat, v]) => {
     const list = safeStrArr(v).filter((s) => s.trim());
     return list.length ? [[cat, list] as const] : [];
   });

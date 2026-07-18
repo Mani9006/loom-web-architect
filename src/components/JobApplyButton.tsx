@@ -126,19 +126,19 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
         });
         if (result.draft_id) navigate(`/applications/${result.draft_id}`);
       } else {
-        const failure = await response.json().catch(() => ({}));
+        await response.json().catch(() => ({}));
         toast({
           title: "Application could not be prepared",
           description: response.status === 412
             ? "Add or finish your source resume, then try again."
-            : failure.error || "Try again in a moment or open the application directly.",
+            : "Try again in a moment. You can still open the employer application directly.",
           variant: "destructive",
         });
       }
     } catch {
       toast({
-        title: "Auto-Apply error",
-        description: "Something went wrong. Try manual apply instead.",
+        title: "Application could not be prepared",
+        description: "Try again in a moment. You can still open the employer application directly.",
         variant: "destructive",
       });
     } finally {
@@ -148,10 +148,20 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
 
   if (actionComplete) {
     return (
-      <Button variant="outline" size={variant === "compact" ? "sm" : "default"} disabled className="gap-2">
-        <CheckCircle2 className="w-4 h-4 text-green-500" />
-        {actionComplete === "queued" ? "Queued" : actionComplete === "prepared" ? "Packet ready" : "Application opened"}
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline" className="h-9 gap-2 px-3 font-medium">
+          <CheckCircle2 className="w-4 h-4 text-green-600" />
+          {actionComplete === "queued" ? "Queued" : actionComplete === "prepared" ? "Packet ready" : "Application opened"}
+        </Badge>
+        <Button
+          variant="outline"
+          size={variant === "compact" ? "sm" : "default"}
+          className="gap-2"
+          onClick={() => window.open(resolved.url, "_blank", "noopener,noreferrer")}
+        >
+          Open application again <ExternalLink className="w-3.5 h-3.5" />
+        </Button>
+      </div>
     );
   }
 

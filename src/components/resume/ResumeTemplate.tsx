@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER, type ResumeSectionId } from "@/types/resume";
 import { getTemplate } from "@/config/resume-templates";
+import { normalizeResumeSkills } from "@/lib/resume-skills";
 
 interface ResumeTemplateProps {
   data: ResumeJSON;
@@ -151,7 +152,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
     return () => observer.disconnect();
   }, [data]);
 
-  const skillCategories = Object.entries(data.skills)
+  const skillCategories = Object.entries(normalizeResumeSkills(data.skills))
     .filter(([_, skills]) => skills.length > 0)
     .map(([key, skills]) => ({
       category: getSkillCategoryLabel(key),

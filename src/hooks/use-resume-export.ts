@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- docx and jsPDF expose partially typed dynamic render objects */
 import { useCallback, useState } from "react";
 import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER } from "@/types/resume";
+import { normalizeResumeForOutput, normalizeResumeSkills } from "@/lib/resume-skills";
 import { toast } from "sonner";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -398,7 +399,7 @@ class PDFResumeRenderer {
   }
 
   private renderSkills(skills: ResumeJSON["skills"]) {
-    const cats = Object.entries(skills)
+    const cats = Object.entries(normalizeResumeSkills(skills))
       .filter(([_, s]) => s.length > 0)
       .map(([key, s]) => ({
         label: getSkillCategoryLabel(key),
@@ -780,7 +781,7 @@ export function generatePlainText(data: ResumeJSON): string {
   };
 
   const renderSkills = () => {
-    const cats = Object.entries(data.skills).filter(([_, s]) => s.length > 0).map(([key, s]) => ({ label: getSkillCategoryLabel(key), skills: s }));
+    const cats = Object.entries(normalizeResumeSkills(data.skills)).filter(([_, s]) => s.length > 0).map(([key, s]) => ({ label: getSkillCategoryLabel(key), skills: s }));
     if (cats.length === 0) return;
     addSectionHeading("Technical Skills");
     cats.forEach((cat) => lines.push(`${cat.label}: ${cat.skills.join(", ")}`));
@@ -886,6 +887,7 @@ export function useResumeExport() {
   const exportToPDF = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
+      data = normalizeResumeForOutput(data);
       const renderer = new PDFResumeRenderer();
       const doc = await renderer.render(data);
       const failedSections: string[] = (doc as any).__failedSections || [];
@@ -925,6 +927,7 @@ export function useResumeExport() {
   const exportToWord = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
+      data = normalizeResumeForOutput(data);
       validateResumeForExport(data);
       const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ExternalHyperlink } = await import("docx");
       const { saveAs } = await import("file-saver");
@@ -1046,7 +1049,7 @@ export function useResumeExport() {
       };
 
       const renderWordSkills = (): any[] => {
-        const cats = Object.entries(data.skills).filter(([_, skills]) => skills.length > 0).map(([key, skills]) => ({ category: getSkillCategoryLabel(key), skills }));
+        const cats = Object.entries(normalizeResumeSkills(data.skills)).filter(([_, skills]) => skills.length > 0).map(([key, skills]) => ({ category: getSkillCategoryLabel(key), skills }));
         if (cats.length === 0) return [];
         const paragraphs: any[] = [sectionHeading("Technical Skills")];
         cats.forEach((sc) => { paragraphs.push(new Paragraph({ spacing: { before: 40 }, children: [new TextRun({ text: `${sc.category}: `, bold: true, size: 20, font: "Calibri" }), new TextRun({ text: sc.skills.join(", "), size: 20, font: "Calibri" })] })); });
@@ -1182,6 +1185,7 @@ export function useResumeExport() {
   const exportToText = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
+      data = normalizeResumeForOutput(data);
       const textContent = generatePlainText(data);
       const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -1205,6 +1209,7 @@ export function useResumeExport() {
   const exportToJSON = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
+      data = normalizeResumeForOutput(data);
       validateResumeForExport(data);
       const content = JSON.stringify(data, null, 2);
       const roundTrip = JSON.parse(content) as ResumeJSON;

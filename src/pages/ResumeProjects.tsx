@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { TerminalLoader, TerminalText } from "@/components/Terminal";
+import { normalizeResumeSkills } from "@/lib/resume-skills";
 
 type ResumeSource = "scratch" | "upload" | "existing";
 type ImportFormatMode = "ats_recommended" | "preserve_source";
@@ -73,7 +74,7 @@ function mapRowToResumeJSON(r: ResumeRow): ResumeJSON {
     experience: Array.isArray(r.experience) ? r.experience : [],
     education: Array.isArray(r.education) ? r.education : [],
     certifications: Array.isArray(r.certifications) ? r.certifications : [],
-    skills: r.skills && typeof r.skills === "object" && !Array.isArray(r.skills) ? r.skills : {},
+    skills: normalizeResumeSkills(r.skills),
     projects: Array.isArray(r.projects) ? r.projects : [],
     languages: Array.isArray(r.languages) ? r.languages : [],
     volunteer: [],
@@ -107,14 +108,29 @@ export default function ResumeProjects() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data, error } = await supabase
-      .from("resumes" as any)
-      .select("*")
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false });
+    const [{ data, error }, { data: applicationDrafts }] = await Promise.all([
+      supabase
+        .from("resumes" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false }),
+      supabase
+        .from("draft_applications")
+        .select("tailored_resume_id")
+        .eq("user_id", user.id),
+    ]);
 
     if (!error && data) {
-      setResumes(data as any as ResumeRow[]);
+      const applicationResumeIds = new Set(
+        (applicationDrafts || []).flatMap(({ tailored_resume_id }) => tailored_resume_id ? [tailored_resume_id] : []),
+      );
+      const masters = (data as any as ResumeRow[]).filter((resume) => {
+        const role = resume.personal_info?._v2_extras?.document_role;
+        return role !== "application_snapshot"
+          && !applicationResumeIds.has(resume.id)
+          && !/—\s*tailored$/i.test(resume.title || "");
+      });
+      setResumes(masters);
     }
     const { data: profile } = await supabase
       .from("profiles")
@@ -185,7 +201,11 @@ export default function ResumeProjects() {
       payload = {
         user_id: user.id,
         title: newResumeName.trim(),
-        personal_info: { ...emptyResume.header, title: newResumeRole.trim() } as any,
+        personal_info: {
+          ...emptyResume.header,
+          title: newResumeRole.trim(),
+          _v2_extras: { document_role: "master", import_format_mode: "ats_recommended" },
+        } as any,
         summary: "",
         experience: [] as any,
         education: [] as any,
@@ -269,7 +289,7 @@ export default function ResumeProjects() {
           personal_info: {
             ...mapped.personal_info,
             title: newResumeRole.trim() || mapped.personal_info.title,
-            _v2_extras: { import_format_mode: importFormatMode },
+            _v2_extras: { document_role: "master", import_format_mode: importFormatMode },
           } as any,
           summary: mapped.summary,
           experience: mapped.experience as any,
@@ -473,7 +493,7 @@ export default function ResumeProjects() {
           className="text-rp-ink-2 max-w-2xl"
           style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "16px", lineHeight: 1.6 }}
         >
-          Every draft, tailored variant, and saved version. Click one to edit, or start a new one and the AI tailor turns any job description into a matching application.
+          Your source and master résumés only. Job-specific versions stay attached to Applications, so small edits never clutter this library.
         </p>
 
         {/* One resume workflow, rather than separate products in the sidebar. */}

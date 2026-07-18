@@ -116,7 +116,7 @@ async function listUnpreparedEvaluations(
     .select("id,scanned_job_id,fit_score,scanned_jobs(title,company:scan_companies(api_type))")
     .eq("user_id", userId)
     .eq("eligible", true)
-    .eq("score_version", "career-fit-v1")
+    .eq("score_version", "career-fit-v2")
     .gte("fit_score", minFitScore)
     .order("fit_score", { ascending: false })
     .limit(30);

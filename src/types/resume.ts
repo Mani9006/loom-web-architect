@@ -279,6 +279,14 @@ export const createEmptyResumeJSON = (): ResumeJSON => ({
 
 // Skill category display names for UI
 export const SKILL_CATEGORY_LABELS: Record<string, string> = {
+  ai_ml: "AI & Machine Learning",
+  data_engineering: "Data Engineering",
+  cloud_devops: "Cloud & DevOps",
+  frameworks_apis: "Frameworks & APIs",
+  analytics_bi: "Analytics & BI",
+  testing_observability: "Testing & Observability",
+  delivery_methods: "Delivery & Methods",
+  tools_platforms: "Tools & Platforms",
   generative_ai: "Generative AI",
   nlp: "NLP",
   machine_learning: "Machine Learning",

@@ -4,6 +4,7 @@
  * Each editor is a controlled form that reads from + writes to the Zustand
  * store. No prop drilling — components subscribe to the slice they care about.
  */
+import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Plus, Trash2, GripVertical } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useResumeStore } from "@/lib/resume-store";
-import { SKILL_CATEGORY_LABELS } from "@/types/resume";
+import { CANONICAL_SKILL_CATEGORIES, normalizeResumeSkills } from "@/lib/resume-skills";
 import type {
   ExperienceEntry,
   EducationEntry,
@@ -278,10 +279,11 @@ export function SkillsEditor() {
   const { skills, setSkills } = useResumeStore(
     useShallow((s) => ({ skills: s.resume.skills, setSkills: s.setSkills })),
   );
+  const [newCategory, setNewCategory] = useState("");
 
   const updCategory = (cat: string, value: string) => {
     const list = value.split(",").map((v) => v.trim()).filter(Boolean);
-    setSkills({ ...skills, [cat]: list });
+    setSkills(normalizeResumeSkills({ ...skills, [cat]: list }));
   };
   const removeCategory = (cat: string) => {
     const next = { ...skills };
@@ -289,23 +291,31 @@ export function SkillsEditor() {
     setSkills(next);
   };
   const addCategory = () => {
-    const cat = prompt("New skill category key (e.g. 'machine_learning'):")?.trim();
+    const cat = newCategory;
     if (!cat) return;
     if (skills[cat]) return;
     setSkills({ ...skills, [cat]: [] });
+    setNewCategory("");
   };
 
-  const cats = Object.keys(skills);
+  const cats = CANONICAL_SKILL_CATEGORIES.map(({ key }) => key).filter((key) => skills[key]?.length);
+  const available = CANONICAL_SKILL_CATEGORIES.filter(({ key }) => !skills[key]);
 
   return (
     <div className="space-y-3">
+      <div className="rounded-md border border-rp-rule bg-rp-paper/40 p-3 text-xs leading-relaxed text-rp-ink-2">
+        Each skill is stored once in a consistent ATS-readable category. Phrases that are responsibilities rather than skills are removed automatically.
+      </div>
       {cats.length === 0 && (
         <p className="text-sm text-muted-foreground">No skill categories yet. Add one to get started.</p>
       )}
       {cats.map((cat) => (
         <div key={cat} className="border rounded-md p-3">
           <div className="flex items-center justify-between mb-1.5">
-            <Label className="text-sm font-semibold">{SKILL_CATEGORY_LABELS[cat] ?? cat}</Label>
+            <Label className="text-sm font-semibold">
+              {CANONICAL_SKILL_CATEGORIES.find(({ key }) => key === cat)?.label ?? cat}
+              <span className="ml-2 text-xs font-normal text-muted-foreground">{skills[cat].length} skills</span>
+            </Label>
             <Button variant="ghost" size="icon" onClick={() => removeCategory(cat)}>
               <Trash2 className="size-3.5" />
             </Button>
@@ -317,9 +327,22 @@ export function SkillsEditor() {
           />
         </div>
       ))}
-      <Button variant="outline" size="sm" onClick={addCategory}>
-        <Plus className="size-4 mr-1" /> Add category
-      </Button>
+      {available.length > 0 && (
+        <div className="flex gap-2">
+          <select
+            value={newCategory}
+            onChange={(event) => setNewCategory(event.target.value)}
+            className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+            aria-label="Skill category"
+          >
+            <option value="">Choose a category</option>
+            {available.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          <Button variant="outline" size="sm" onClick={addCategory} disabled={!newCategory}>
+            <Plus className="size-4 mr-1" /> Add
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
