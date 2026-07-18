@@ -22,6 +22,26 @@ const PLAN_CATALOG = {
 
 type CheckoutPlan = keyof typeof PLAN_CATALOG;
 
+function checkoutReturnOrigin(req: Request): string {
+  const fallback = Deno.env.get("APP_URL") || "https://resumepreps.com";
+  const requested = req.headers.get("origin");
+  try {
+    if (requested) {
+      const url = new URL(requested);
+      const host = url.hostname.toLocaleLowerCase();
+      const trusted = host === "resumepreps.com" ||
+        host === "www.resumepreps.com" ||
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        (host.startsWith("loom-web-architect-") && host.endsWith(".vercel.app"));
+      if (trusted && ["https:", "http:"].includes(url.protocol)) return url.origin;
+    }
+    return new URL(fallback).origin;
+  } catch {
+    return "https://resumepreps.com";
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -99,13 +119,14 @@ serve(async (req: Request) => {
       return new Response(
         JSON.stringify({
           success: true,
-          message: "Subscription activated (Stripe not configured - test mode)",
+          message: "Subscription activated for this test workspace",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Stripe is configured - create real checkout session
+    const returnOrigin = checkoutReturnOrigin(req);
     const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",
       headers: {
@@ -121,8 +142,8 @@ serve(async (req: Request) => {
         "line_items[0][price_data][unit_amount]": plan.amount,
         "line_items[0][price_data][recurring][interval]": "month",
         "line_items[0][quantity]": "1",
-        "success_url": `${req.headers.get("origin") || "https://resumepreps.com"}/job-search?checkout=success`,
-        "cancel_url": `${req.headers.get("origin") || "https://resumepreps.com"}/pricing?checkout=canceled`,
+        "success_url": `${returnOrigin}/job-search?checkout=success`,
+        "cancel_url": `${returnOrigin}/pricing?checkout=canceled`,
         "metadata[user_id]": user.id,
         "metadata[plan_type]": planType,
       }),
@@ -145,7 +166,7 @@ serve(async (req: Request) => {
   } catch (error) {
     console.error("Checkout error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "Checkout is temporarily unavailable" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
