@@ -752,10 +752,11 @@ export default function ResumeBuilder() {
         if (cleaned) setData((prev) => ({ ...prev, summary: cleaned }));
       } else if (sectionName === "Experience") {
         const parsed = parseAIResponse(result);
-        if (parsed && Array.isArray(parsed)) {
+        const experienceList = parsed && Array.isArray(parsed.experience) ? parsed.experience : null;
+        if (experienceList) {
           setData((prev) => ({
             ...prev,
-            experience: parsed.map((e: any, idx: number) => ({
+            experience: experienceList.map((e: any, idx: number) => ({
               id: prev.experience[idx]?.id || crypto.randomUUID(),
               role: e.role || prev.experience[idx]?.role || "",
               company_or_client: e.company_or_client || prev.experience[idx]?.company_or_client || "",

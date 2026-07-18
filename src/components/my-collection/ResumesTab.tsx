@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { exportMarkdownResumeToDocx, exportMarkdownResumeToPdf } from "@/lib/markdown-resume-export";
 
 interface TailoredResume {
   id: string;
@@ -205,33 +206,27 @@ function downloadAsMarkdown(r: TailoredResume) {
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
-  if (error || !data?.url) {
+  try {
+    await exportMarkdownResumeToPdf(r.name, r.cv_md);
+  } catch (e) {
     toast({
       title: "PDF export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : String(e),
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    await exportMarkdownResumeToDocx(r.name, r.cv_md);
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : String(e),
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────
@@ -250,6 +245,7 @@ function CanvasEditor({
   const [cv, setCv] = useState(resume.cv_md);
   const [saving, setSaving] = useState(false);
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [selectedRange, setSelectedRange] = useState<{ start: number; end: number } | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
@@ -292,7 +288,15 @@ function CanvasEditor({
 
   function applySuggestion(text: string) {
     if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    if (selectedRange) {
+      const { start, end } = selectedRange;
+      setCv((c) => c.slice(0, start) + text + c.slice(end));
+      setSelectedRange({ start, end: start + text.length });
+    } else {
+      // No tracked position (shouldn't normally happen) — fall back to the
+      // old substring replace rather than silently doing nothing.
+      setCv((c) => c.replace(selectedLine, text));
+    }
     setSelectedLine(text);
     setAiSuggestions([]);
   }
@@ -333,6 +337,7 @@ function CanvasEditor({
               onChange={(e) => {
                 setCv(e.target.value);
                 setSelectedLine(null);
+                setSelectedRange(null);
               }}
               onSelect={(e) => {
                 const el = e.currentTarget;
@@ -343,7 +348,10 @@ function CanvasEditor({
                 const lineEndOff = cv.indexOf("\n", start);
                 const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
                 const line = cv.slice(lineStart, lineEnd).trim();
-                if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
+                if (line.length > 5 && line !== selectedLine) {
+                  setSelectedLine(line);
+                  setSelectedRange({ start: lineStart, end: lineEnd });
+                }
               }}
               className="font-mono text-xs flex-1 resize-none"
             />

@@ -889,7 +889,7 @@ CRITICAL RULES:
 8. Maintain the original meaning and scope of each bullet point
 9. Do NOT add "resulting in X% improvement" or "saving $X" unless those numbers exist in the original
 
-Return ONLY a JSON array of experience objects with "role", "company_or_client", and "bullets" fields. Preserve the same number of roles and similar bullet counts.`;
+Return ONLY a JSON object of the shape {"experience": [...]} — an "experience" key holding an array of experience objects with "role", "company_or_client", and "bullets" fields. Preserve the same number of roles and similar bullet counts.`;
 
     case "Skills":
       return `You are an ATS-optimization expert. The skills section has these issues.

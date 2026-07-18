@@ -57,9 +57,13 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
-    (async () => {
-      setLoading(true);
+
+    // Supabase can surface a transient error (token refresh in flight,
+    // network blip) on the initial fetch. Retry once before treating it as
+    // a real failure so the user isn't bounced out of their session over
+    // a hiccup.
+    async function fetchSession(isRetry: boolean) {
+      if (!isRetry) setLoading(true);
       const { data, error } = await (supabase as any)
         .from("mc_sessions")
         .select("*")
@@ -67,34 +71,32 @@ export default function SessionPage() {
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
       if (error) {
-        // eslint-disable-next-line no-console
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          toast({
-            title: "Couldn't load session",
-            description: error.message,
-            variant: "destructive",
-          });
+        if (!isRetry) {
+          setTimeout(() => {
+            if (!cancelled) fetchSession(true);
+          }, 1000);
+          return;
         }
+        console.error("[SessionPage] reload failed:", error.message);
+        toast({
+          title: "Couldn't load session",
+          description: error.message,
+          variant: "destructive",
+        });
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
         return;
       }
-      hadInitialLoad = true;
       setSession(data);
       setLoading(false);
-    })();
+    }
+
+    fetchSession(false);
     return () => {
       cancelled = true;
     };
