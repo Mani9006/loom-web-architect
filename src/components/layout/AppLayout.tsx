@@ -20,7 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   Home, FileText, Search, Target, Mic, Mail, Wand2,
   MessageCircle, Folder, Zap, Columns3, Sparkles, TrendingUp, Map,
-  ShieldCheck, Crown, LogOut, Settings,
+  ShieldCheck, Crown, LogOut, Settings, SlidersHorizontal,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
   Bell, HelpCircle,
   FolderOpen, ArrowUpRight } from "lucide-react";
@@ -60,6 +60,7 @@ const mainNav: NavItem[] = [
 const pinnedNav: NavItem[] = [
   { label: "AI Toolbox", icon: Wand2, path: "/ai-toolbox" },
   { label: "Documents", icon: Folder, path: "/documents" },
+  { label: "Career Controls", icon: SlidersHorizontal, path: "/career-ops/preferences", badge: "NEW" },
   { label: "Auto Apply", icon: Zap, path: "/auto-apply", badge: "PRO" },
   { label: "Analytics", icon: TrendingUp, path: "/analytics" },
 ];

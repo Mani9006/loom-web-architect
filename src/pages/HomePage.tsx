@@ -24,6 +24,7 @@ import {
   Sparkles,
   Columns3,
   Quote,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -70,6 +71,7 @@ const quickActions: Array<{ label: string; desc: string; icon: React.ElementType
   { label: "ATS Checker",     desc: "Score against a JD",        icon: Target,      path: "/ats-checker" },
   { label: "Job Search",      desc: "Company career pages",      icon: Search,      path: "/job-search" },
   { label: "Matches",         desc: "Pre-scored open roles",     icon: Sparkles,    path: "/matches" },
+  { label: "Career Controls", desc: "Fit rules & review policy", icon: SlidersHorizontal, path: "/career-ops/preferences" },
   { label: "Cover Letters",   desc: "One per application",       icon: Mail,        path: "/cover-letters" },
   { label: "Interview Prep",  desc: "STAR drills with AI",       icon: Mic,         path: "/interview-prep" },
 ];
