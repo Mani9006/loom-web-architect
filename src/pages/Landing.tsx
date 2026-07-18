@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
 import {
-  FileText, Search, Target, Mail, Mic, Wand2, Sparkles, Columns3,
+  FileText, Search, Target, Mail, Bot, Wand2, Sparkles, Columns3,
   ArrowRight, Check, Moon, Sun,
 } from "lucide-react";
 import { BILLING_PLANS, formatPlanPrice } from "@/lib/billing-plans";
@@ -17,18 +17,18 @@ const fadeUp = {
 const features = [
   { icon: FileText, accent: "from-indigo-500 to-indigo-600", title: "Resume Builder", desc: "Draft, edit, and export ATS-clean résumés with live scoring as you type." },
   { icon: Target,   accent: "from-emerald-500 to-emerald-600", title: "ATS Checker", desc: "Structured 6-dimension scoring: formatting, keywords, experience, skills, education, impact." },
-  { icon: Search,   accent: "from-violet-500 to-violet-600", title: "Smart Job Search", desc: "Aggregated postings from Greenhouse, Ashby, Lever, LinkedIn, and the big boards." },
-  { icon: Sparkles, accent: "from-amber-500 to-orange-500", title: "Matches", desc: "Hourly-refreshed shortlist scored against your résumé — tiered A to F." },
+  { icon: Search,   accent: "from-violet-500 to-violet-600", title: "Company-direct Job Search", desc: "Fresh roles from employer career pages, with canonical application links and no aggregator detours." },
+  { icon: Sparkles, accent: "from-amber-500 to-orange-500", title: "Matches", desc: "Hourly-refreshed roles scored 0–100 against your complete résumé story and saved rules." },
   { icon: Mail,     accent: "from-rose-500 to-pink-500", title: "Cover Letters", desc: "Tailored per posting in seconds. Evidence-led, never breathless." },
-  { icon: Mic,      accent: "from-sky-500 to-cyan-500", title: "Interview Prep", desc: "Voice-driven rehearsal with STAR scoring and delivery coaching." },
+  { icon: Bot,      accent: "from-sky-500 to-cyan-500", title: "Application Agent", desc: "Prepare tailored packets, review every claim, and queue only supported applications under your policy." },
   { icon: Wand2,    accent: "from-purple-500 to-fuchsia-500", title: "AI Toolbox", desc: "Brand statement, LinkedIn optimizer, elevator pitch — six specialists in one panel." },
   { icon: Columns3, accent: "from-slate-700 to-slate-900", title: "Pipeline Tracker", desc: "One board from Saved to Offer. No spreadsheets, no stray tabs." },
 ];
 
-const proofs = [
-  { quote: "I stopped spreadsheet-ing my applications and started closing them.", name: "Sarah Chen", role: "SWE \u2192 Google" },
-  { quote: "The voice rehearsals were uncannily realistic. I walked in already warmed up.", name: "Michael Torres", role: "PM \u2192 Meta" },
-  { quote: "Tailored eight cover letters in twenty minutes. Every one read like me.", name: "Priya Sharma", role: "DS \u2192 Amazon" },
+const trustPoints = [
+  { title: "Your source stays intact", body: "Every job-specific résumé is a separate version. The résumé you uploaded is never silently overwritten." },
+  { title: "No invented evidence", body: "Tailoring may reframe demonstrated experience, but unsupported skills, employers, dates, metrics, and credentials stay out." },
+  { title: "Applied means submitted", body: "Prepared, queued, submitted, failed, and skipped are distinct states. Only a verified portal outcome counts as submitted." },
 ];
 
 export default function Landing() {
@@ -47,7 +47,7 @@ export default function Landing() {
       }
       el.setAttribute("content", content);
     };
-    set("description", "Build ATS-optimized résumés, surface matched jobs, tailor cover letters, rehearse interviews with voice AI, and track everything in one workspace.");
+    set("description", "Build ATS-clean résumés, find company-direct jobs, rank evidence-based matches, prepare tailored application packets, and track verified outcomes in one workspace.");
     set("og:title", "ResumePreps \u2014 AI career platform");
     set("og:type", "website");
     set("og:url", window.location.origin);
@@ -104,12 +104,12 @@ export default function Landing() {
 
           <motion.h1 initial="hidden" animate="visible" variants={fadeUp} custom={1}
             className="text-[44px] sm:text-[64px] lg:text-[76px] font-bold tracking-tight leading-[1.02] text-foreground max-w-[22ch] mx-auto">
-            Land the job, not just the interview.
+            Turn your job search into a reliable system.
           </motion.h1>
 
           <motion.p initial="hidden" animate="visible" variants={fadeUp} custom={2}
             className="mt-6 max-w-[52ch] mx-auto text-[15px] sm:text-[17px] text-muted-foreground leading-relaxed">
-            ResumePreps writes the résumé, surfaces the matches, tailors the cover letter, rehearses the interview, and tracks the pipeline \u2014 in one workspace, with one subscription.
+            ResumePreps preserves your source résumé, surfaces evidence-based matches, prepares truthful job-specific packets, and tracks every outcome in one workspace.
           </motion.p>
 
           <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={3}
@@ -138,7 +138,7 @@ export default function Landing() {
       <section className="pb-20">
         <div className="max-w-[1100px] mx-auto px-6">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[["50K+", "Résumés optimized"], ["3\u00d7", "More callbacks"], ["85%", "Land jobs faster"], ["< 5 min", "Per application"]].map(([v, l], i) => (
+            {[["6", "ATS dimensions"], ["0–100", "Career-fit evidence"], ["Hourly", "Direct-job refresh"], ["Review", "Before submit by default"]].map(([v, l], i) => (
               <motion.div key={l} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
                 className="rounded-xl border border-border bg-card p-5 text-center">
                 <div className="text-[28px] font-bold tabular-nums tracking-tight text-foreground">{v}</div>
@@ -201,17 +201,14 @@ export default function Landing() {
 
       <section id="proof" className="py-20 bg-muted/30 border-y border-border">
         <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-[12px] font-medium text-muted-foreground mb-2">What candidates say</p>
-          <h2 className="text-[32px] sm:text-[40px] font-bold tracking-tight text-foreground leading-[1.1] mb-12">Loved by serious candidates.</h2>
+          <p className="text-[12px] font-medium text-muted-foreground mb-2">Trust contract</p>
+          <h2 className="text-[32px] sm:text-[40px] font-bold tracking-tight text-foreground leading-[1.1] mb-12">Automation without false claims.</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {proofs.map((p, i) => (
-              <motion.figure key={p.name} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i} className="glass-card p-6">
-                <p className="text-[14px] text-foreground leading-relaxed">\u201c{p.quote}\u201d</p>
-                <figcaption className="mt-6 pt-5 border-t border-border">
-                  <p className="text-[13px] font-semibold text-foreground">{p.name}</p>
-                  <p className="text-[11.5px] text-muted-foreground mt-0.5">{p.role}</p>
-                </figcaption>
-              </motion.figure>
+            {trustPoints.map((point, i) => (
+              <motion.article key={point.title} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i} className="glass-card p-6">
+                <p className="text-[13px] font-semibold text-foreground">{point.title}</p>
+                <p className="mt-3 text-[13px] text-muted-foreground leading-relaxed">{point.body}</p>
+              </motion.article>
             ))}
           </div>
         </div>
@@ -254,7 +251,7 @@ export default function Landing() {
       <section className="py-24">
         <div className="max-w-[900px] mx-auto px-6 text-center">
           <h2 className="text-[36px] sm:text-[52px] font-bold tracking-tight text-foreground leading-[1.05]">Your best work, submitted on purpose.</h2>
-          <p className="mt-4 text-[15px] text-muted-foreground max-w-[52ch] mx-auto">Join thousands turning their search into a system.</p>
+          <p className="mt-4 text-[15px] text-muted-foreground max-w-[52ch] mx-auto">Start with one source résumé. Keep every match, tailored packet, portal action, and outcome connected.</p>
           <button onClick={() => navigate("/auth?mode=signup")}
             className="mt-8 h-11 px-6 rounded-md text-[13.5px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors inline-flex items-center gap-2">
             Start free <ArrowRight className="w-4 h-4" strokeWidth={2} />

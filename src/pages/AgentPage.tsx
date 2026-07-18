@@ -26,6 +26,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { toast } from "sonner";
 
 type ReviewMode = "always" | "low_confidence" | "eligible_only";
@@ -283,7 +284,11 @@ export default function AgentPage() {
 
     if (error) {
       void captureIncident(new Error(error.message), { source: "manual", operation: "agent_controls_save" });
-      toast.error(`Could not save Agent controls: ${error.message}`);
+      const safeError = toUserFacingError(error, {
+        operation: "agent_controls_save",
+        defaultMessage: "Your existing Agent policy is unchanged. Try saving again in a moment.",
+      });
+      toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
       return;
     }
     setControls(normalized);

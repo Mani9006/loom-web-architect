@@ -42,7 +42,7 @@ export const BILLING_PLANS: BillingPlan[] = [
       "100 fit evaluations / month",
       "30 tailored application packets / month",
       "Resume versions, ATS checks, and answer memory",
-      "Cover letters and interview preparation",
+      "Cover letters, ATS evidence, and reusable answer memory",
     ],
     cta: "Choose Pro",
     popular: true,

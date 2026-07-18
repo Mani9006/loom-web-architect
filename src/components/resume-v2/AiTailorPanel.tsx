@@ -22,6 +22,7 @@ import { calculateATSScore } from "@/lib/ats-scorer";
 import { TerminalLoader } from "@/components/Terminal";
 import type { ResumeJSON } from "@/types/resume";
 import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 
 export function AiTailorPanel({
   onCreateTailoredVersion,
@@ -61,9 +62,12 @@ export function AiTailorPanel({
       await onCreateTailoredVersion(data.tailored);
       toast.success("Tailored version created. Your source resume is unchanged.");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Tailor failed";
       void captureIncident(e, { source: "manual", operation: "resume_tailor" });
-      toast.error(msg);
+      const safeError = toUserFacingError(e, {
+        operation: "resume_tailor",
+        defaultMessage: "Your source résumé is unchanged. Review the job description and try again.",
+      });
+      toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
     } finally {
       setBusy(false);
     }

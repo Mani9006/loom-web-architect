@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BILLING_PLANS, formatPlanPrice, type BillingPlanId } from "@/lib/billing-plans";
+import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 
 export default function PricingPage() {
   const { user } = useAuth();
@@ -51,17 +53,19 @@ export default function PricingPage() {
           toast({ title: "Subscription activated", description: `Welcome to ResumePreps ${planType === "pro" ? "Pro" : "Autopilot"}.` });
         }
       } else {
-        const err = await response.json();
-        toast({
-          title: "Upgrade unavailable",
-          description: err.error || err.message || "Stripe integration coming soon. Contact support for early access.",
-          variant: "destructive",
-        });
+        const detail = await response.text();
+        throw new Error(`Checkout request failed (${response.status}): ${detail.slice(0, 300)}`);
       }
-    } catch {
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: "checkout_start" });
+      const safeError = toUserFacingError(error, {
+        operation: "checkout_start",
+        defaultMessage: "Checkout is temporarily unavailable. Your current plan is unchanged; try again later.",
+      });
       toast({
-        title: "Coming Soon",
-        description: "Payment integration is being set up. Contact support for early paid access.",
+        title: safeError.title,
+        description: withSupportReference(safeError),
+        variant: "destructive",
       });
     } finally {
       setLoadingPlan(null);
