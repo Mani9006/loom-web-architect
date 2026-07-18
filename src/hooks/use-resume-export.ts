@@ -280,8 +280,13 @@ class PDFResumeRenderer {
     }
     if (currentLine.length > 0) wordLines.push(currentLine);
 
+    // Keep a bullet together whenever it fits on a page. Checking line by line
+    // produced orphaned continuations at the very top of the next PDF page,
+    // which looked broken and removed the bullet marker from its continuation.
+    const bulletHeight = wordLines.length * lineH + ptToIn(SP.bulletAfter);
+    this.ensureSpace(bulletHeight);
+
     for (let i = 0; i < wordLines.length; i++) {
-      this.ensureSpace(lineH);
       const drawY = this.y + lineH;
 
       // Draw bullet marker on the first line only
@@ -1052,7 +1057,16 @@ export function useResumeExport() {
         const cats = Object.entries(normalizeResumeSkills(data.skills)).filter(([_, skills]) => skills.length > 0).map(([key, skills]) => ({ category: getSkillCategoryLabel(key), skills }));
         if (cats.length === 0) return [];
         const paragraphs: any[] = [sectionHeading("Technical Skills")];
-        cats.forEach((sc) => { paragraphs.push(new Paragraph({ spacing: { before: 40 }, children: [new TextRun({ text: `${sc.category}: `, bold: true, size: 20, font: "Calibri" }), new TextRun({ text: sc.skills.join(", "), size: 20, font: "Calibri" })] })); });
+        cats.forEach((sc) => {
+          paragraphs.push(new Paragraph({
+            spacing: { before: 40, after: 40, line: 276 },
+            keepLines: true,
+            children: [
+              new TextRun({ text: `${sc.category}: `, bold: true, size: 20, font: "Calibri" }),
+              new TextRun({ text: sc.skills.join(", "), size: 20, font: "Calibri" }),
+            ],
+          }));
+        });
         return paragraphs;
       };
 
@@ -1147,6 +1161,10 @@ export function useResumeExport() {
           {
             properties: {
               page: {
+                size: {
+                  width: 12240, // US Letter, 8.5 inches
+                  height: 15840, // US Letter, 11 inches
+                },
                 margin: {
                   top: 720,  // 0.5 inch (720 twips)
                   right: 864, // 0.6 inch (matching PDF/template)

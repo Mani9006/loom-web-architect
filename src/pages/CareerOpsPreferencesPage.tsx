@@ -304,7 +304,7 @@ export default function CareerOpsPreferencesPage() {
         />
         <ChoiceChips
           label="Seniority"
-          hint="A role outside these levels is blocked, even if its keywords look similar."
+          hint="A role outside these levels is held from Autopilot, even if its keywords look similar."
           values={prefs.seniority_levels}
           onChange={(seniority_levels) => setPrefs({ ...prefs, seniority_levels })}
           choices={[
@@ -494,7 +494,7 @@ export default function CareerOpsPreferencesPage() {
 
         <div className="pt-4 border-t border-foreground/10">
           <p className="text-[13px] font-semibold text-foreground mb-1">Review policy</p>
-          <p className="text-[12px] text-muted-foreground mb-3">Controls the last human checkpoint; blocked jobs can never submit.</p>
+          <p className="text-[12px] text-muted-foreground mb-3">Controls the last human checkpoint; roles outside your rules are never submitted.</p>
           <ChoiceChips
             label=""
             hint=""

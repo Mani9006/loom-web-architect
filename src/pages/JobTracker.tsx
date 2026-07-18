@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { trackProductEvent } from "@/lib/product-analytics";
 import { JobApplyButton } from "@/components/JobApplyButton";
+import { JobDescription } from "@/components/JobDescription";
 
 interface Job {
   id: string;
@@ -139,9 +140,7 @@ function JobDetailPanel({
             <div className="border-t pt-4">
               <h4 className="font-semibold text-sm mb-2">About the Job</h4>
               {job.description ? (
-                <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">
-                  {job.description}
-                </div>
+                <JobDescription value={job.description} />
               ) : (
                 <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
                   <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />

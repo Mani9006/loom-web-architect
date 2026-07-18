@@ -235,7 +235,7 @@ export default function HomePage() {
     if (topMatches.length > 0) {
       return {
         eyebrow: "Today · Apply",
-        headline: `A ${topMatches[0].tier || ""} match for you at ${topMatches[0].company}.`,
+        headline: `A ${topMatches[0].score}% match for you at ${topMatches[0].company}.`,
         body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title} — ${topMatches[0].score}% career fit before the ATS check.`,
         cta: "Tailor and review",
         href: "/matches",

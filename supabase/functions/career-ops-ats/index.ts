@@ -145,6 +145,7 @@ function computeKeywordScore(resumeText: string, keywords: string[]): {
   score: number; matched: string[]; missing: string[];
 } {
   const normalizedResume = normalizeForMatch(resumeText);
+  const paddedResume = ` ${normalizedResume} `;
   const resumeTokens = new Set(normalizedResume.split(" ").filter(Boolean));
   const matched: string[] = [];
   const missing: string[] = [];
@@ -152,7 +153,7 @@ function computeKeywordScore(resumeText: string, keywords: string[]): {
   for (const k of keywords) {
     const needle = normalizeForMatch(k);
     if (!needle) continue;
-    if (normalizedResume.includes(needle)) {
+    if (paddedResume.includes(` ${needle} `)) {
       matched.push(k);
       earned += 1;
       continue;

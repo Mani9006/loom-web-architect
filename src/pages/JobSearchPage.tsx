@@ -27,6 +27,8 @@ import { JobApplyButton } from "@/components/JobApplyButton";
 import { JOB_ROLES } from "@/data/job-roles";
 import { captureIncident } from "@/lib/incidents";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
+import { JobDescription } from "@/components/JobDescription";
+import { cleanJobDescription, safeMatchText } from "@/lib/job-description";
 
 interface SearchJob {
   id: string;
@@ -71,51 +73,6 @@ const QUICK_ROLES = [
   "Cybersecurity Analyst",
 ];
 
-function cleanJobDescription(raw: unknown): string {
-  if (typeof raw !== "string") return "";
-  let value = raw.trim();
-  if (!value) return "";
-
-  // Some feeds double-encode the description or wrap it in a JSON field.
-  if ((value.startsWith('"') && value.endsWith('"')) || value.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(value);
-      value = typeof parsed === "string"
-        ? parsed
-        : String(parsed?.description ?? parsed?.content ?? parsed?.text ?? value);
-    } catch {
-      // Keep the original and continue with safe text normalization.
-    }
-  }
-
-  value = value
-    .replace(/\\r\\n|\\n|\\r/g, "\n")
-    .replace(/<\s*br\s*\/?>/gi, "\n")
-    .replace(/<\s*\/p\s*>/gi, "\n\n")
-    .replace(/<\s*\/li\s*>/gi, "\n")
-    .replace(/<\s*li[^>]*>/gi, "• ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;|&#34;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return value.slice(0, 40_000);
-}
-
-function safeMatchText(raw: unknown): string {
-  return cleanJobDescription(raw)
-    .replace(/blocked by a hard preference:?/gi, "Autopilot review needed:")
-    .replace(/\bblocked\b/gi, "held for review");
-}
-
 function displayJobDate(value: string): string {
   if (!value) return "";
   if (/today|yesterday|ago|recent/i.test(value)) return value;
@@ -127,30 +84,6 @@ function displayJobDate(value: string): string {
   if (days < 7) return `Posted ${days} days ago`;
   if (days < 35) return `Posted ${Math.floor(days / 7)} weeks ago`;
   return `Posted ${parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
-}
-
-function JobDescription({ value }: { value: string }) {
-  const clean = cleanJobDescription(value);
-  if (!clean) return null;
-  const lines = clean.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  return (
-    <div className="space-y-2.5 text-sm leading-6 text-foreground/80">
-      {lines.map((line, index) => {
-        const bullet = line.match(/^(?:[•·▪◦*-]|\d+[.)])\s*(.+)$/);
-        if (bullet) {
-          return (
-            <div key={`${index}-${line.slice(0, 16)}`} className="flex items-start gap-2.5 pl-1">
-              <span aria-hidden="true" className="mt-[0.65rem] size-1 shrink-0 rounded-full bg-foreground/50" />
-              <p>{bullet[1]}</p>
-            </div>
-          );
-        }
-        const heading = line.length <= 72 && (/^[A-Z][A-Za-z0-9 &/+-]+:$/.test(line) || /^[A-Z0-9 &/+-]{4,}$/.test(line));
-        if (heading) return <h4 key={`${index}-${line}`} className="pt-2 text-sm font-semibold text-foreground">{line.replace(/:$/, "")}</h4>;
-        return <p key={`${index}-${line.slice(0, 16)}`}>{line}</p>;
-      })}
-    </div>
-  );
 }
 
 export default function JobSearchPage() {

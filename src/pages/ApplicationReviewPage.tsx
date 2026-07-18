@@ -18,6 +18,7 @@ interface Draft {
   submitted_at: string | null;
   evaluation: {
     score: number;
+    fit_score: number | null;
     tier: string;
     summary: string | null;
     scanned_job: {
@@ -104,7 +105,7 @@ export default function ApplicationReviewPage() {
       const { data, error } = await supabase
         .from("draft_applications")
         .select(`id, evaluation_id, tailored_resume_id, tailored_cv_md, answers, status, submitted_at,
-          evaluation:job_evaluations(score, tier, summary,
+          evaluation:job_evaluations(score, fit_score, tier, summary,
             scanned_job:scanned_jobs(id, title, apply_url, company:scan_companies(name))
           )`)
         .eq("id", id)
@@ -236,12 +237,15 @@ export default function ApplicationReviewPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn(
-              "inline-flex items-center justify-center w-12 h-12 rounded-full text-[14px] font-bold tabular-nums",
-              draft.evaluation.tier === "A" ? "bg-foreground/10 text-foreground" : "bg-muted text-muted-foreground",
-            )}>
-              {Number(draft.evaluation.score).toFixed(1)}
-            </span>
+            <div className="text-center" aria-label={`${Math.round(draft.evaluation.fit_score ?? draft.evaluation.score * 20)} percent career fit`}>
+              <span className={cn(
+                "inline-flex items-center justify-center w-12 h-12 rounded-full text-[13px] font-bold tabular-nums",
+                draft.evaluation.tier === "A" ? "bg-foreground/10 text-foreground" : "bg-muted text-muted-foreground",
+              )}>
+                {Math.round(draft.evaluation.fit_score ?? draft.evaluation.score * 20)}%
+              </span>
+              <span className="mt-1 block text-[10px] font-medium text-muted-foreground">career fit</span>
+            </div>
             {draft.status === "submitted" ? (
               <span className="h-9 px-3 inline-flex items-center rounded-md text-[12px] text-muted-foreground border border-border">
                 Submitted {new Date(draft.submitted_at!).toLocaleDateString()}
