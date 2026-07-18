@@ -50,6 +50,21 @@ describe("career fit gate", () => {
     expect(fit.hardFilters.join(" ")).toMatch(/director|experience/i);
   });
 
+  it("blocks principal and staff titles when the resume has no staff-level evidence", () => {
+    const candidate = buildCandidateCareerProfile(fourYearResume, {
+      target_roles: ["Software Engineer"],
+      max_stretch_years: 2,
+    });
+    const fit = evaluateCareerFit(candidate, {
+      title: "Principal Software Engineer, Distributed Systems",
+      location: "United States",
+      description: "Own distributed systems built with TypeScript and AWS.",
+    });
+
+    expect(fit.eligible).toBe(false);
+    expect(fit.hardFilters.join(" ")).toMatch(/staff-level role is not credible/i);
+  });
+
   it("scores an evidence-backed role highly and exposes dimension evidence", () => {
     const candidate = buildCandidateCareerProfile(fourYearResume, {
       target_roles: ["Frontend Engineer", "Software Engineer"],

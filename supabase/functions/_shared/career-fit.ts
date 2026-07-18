@@ -456,7 +456,21 @@ function applySeniorityGate(
   if (requiredYears !== null && requiredYears - candidate.yearsExperience > stretch) {
     filters.push(`Experience gap exceeds the allowed ${stretch}-year stretch.`);
   }
-  if (candidate.yearsExperience < 7 && ["director", "executive"].includes(jobSeniority)) {
+  const demonstratedTitles = [candidate.currentTitle, ...candidate.roleHistory.map((role) => role.title)].join(" ");
+  const demonstratesStaffLevel = /\b(staff|principal|architect)\b/i.test(demonstratedTitles);
+  const demonstratesManagement = /\b(manager|management|director|head|vice president|vp|chief)\b/i.test(demonstratedTitles);
+  const demonstratesDirectorLevel = /\b(director|head|vice president|vp|chief)\b/i.test(demonstratedTitles);
+  const demonstratesExecutiveLevel = /\b(vice president|vp|chief|c[etof]o)\b/i.test(demonstratedTitles);
+  if (jobSeniority === "staff" && candidate.yearsExperience < 6 && !demonstratesStaffLevel) {
+    filters.push(`Staff-level role is not credible for a ${candidate.yearsExperience.toFixed(1)}-year resume without demonstrated staff, principal, or architect experience.`);
+  }
+  if (jobSeniority === "manager" && candidate.yearsExperience < 5 && !demonstratesManagement) {
+    filters.push(`Manager role is not credible for a ${candidate.yearsExperience.toFixed(1)}-year resume without demonstrated management experience.`);
+  }
+  if (jobSeniority === "director" && candidate.yearsExperience < 8 && !demonstratesDirectorLevel) {
+    filters.push(`${display(jobSeniority)} role is not credible for a ${candidate.yearsExperience.toFixed(1)}-year resume without explicit evidence.`);
+  }
+  if (jobSeniority === "executive" && candidate.yearsExperience < 10 && !demonstratesExecutiveLevel) {
     filters.push(`${display(jobSeniority)} role is not credible for a ${candidate.yearsExperience.toFixed(1)}-year resume without explicit evidence.`);
   }
 }
