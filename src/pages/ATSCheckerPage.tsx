@@ -357,6 +357,7 @@ export default function ATSCheckerPage() {
               )}
 
               <Textarea
+                aria-label="Résumé text"
                 placeholder="Or paste your resume content here..."
                 value={resumeText}
                 onChange={(e) => { setResumeText(e.target.value); setUploadedFileName(null); }}
@@ -376,6 +377,7 @@ export default function ATSCheckerPage() {
                 Paste the job posting to get keyword match analysis and tailored recommendations
               </p>
               <Textarea
+                aria-label="Target job description"
                 placeholder="Paste the target job description here..."
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}

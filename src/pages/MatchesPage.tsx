@@ -370,6 +370,7 @@ export default function MatchesPage() {
 
       <div className="-mt-6 flex flex-col gap-3 rounded-xl border border-border bg-background/50 p-4 lg:flex-row lg:items-center">
         <input
+          aria-label="Filter job matches"
           value={matchSearch}
           onChange={(event) => setMatchSearch(event.target.value)}
           placeholder="Filter matches by role, company, or city"

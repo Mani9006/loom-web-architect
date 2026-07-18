@@ -86,6 +86,7 @@ export function AiTailorPanel({
 
       <div className="p-4 space-y-3">
         <Textarea
+          aria-label="Target job description"
           rows={8}
           placeholder="Paste the full job description here..."
           value={jobDescription}

@@ -367,6 +367,7 @@ function TopBar({
       </Button>
       <div className="h-5 w-px bg-rp-rule mx-1" />
       <Input
+        aria-label="Résumé name"
         value={resumeName}
         onChange={(e) => onRename(e.target.value)}
         className="max-w-xs h-8 border-0 shadow-none px-2 focus-visible:ring-1 focus-visible:ring-zinc-300 text-sm font-medium"
@@ -419,6 +420,8 @@ function ViewToggle({
   return (
     <div className="inline-flex items-center rounded-md bg-rp-paper p-0.5 text-xs">
       <button
+        type="button"
+        aria-pressed={value === "preview"}
         onClick={() => onChange("preview")}
         className={`px-2.5 py-1 rounded-[5px] flex items-center gap-1 transition-colors ${
           value === "preview"
@@ -429,6 +432,8 @@ function ViewToggle({
         <Eye className="size-3" /> Preview
       </button>
       <button
+        type="button"
+        aria-pressed={value === "json"}
         onClick={() => onChange("json")}
         className={`px-2.5 py-1 rounded-[5px] flex items-center gap-1 transition-colors ${
           value === "json"

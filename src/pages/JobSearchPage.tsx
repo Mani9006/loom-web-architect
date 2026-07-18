@@ -758,6 +758,7 @@ export default function JobSearchPage() {
             <div className="relative flex-1">
               <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
               <Input
+                aria-label="Job title, role, or keywords"
                 placeholder="Job title, role, or keywords..."
                 className="pl-10 h-10"
                 value={query}
@@ -796,6 +797,7 @@ export default function JobSearchPage() {
 
             <div className="flex-1 sm:max-w-[200px]">
               <LocationAutocomplete
+                ariaLabel="Job location"
                 value={location}
                 onChange={setLocation}
                 placeholder="City, State or Remote"

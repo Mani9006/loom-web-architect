@@ -4,7 +4,7 @@
  * Each editor is a controlled form that reads from + writes to the Zustand
  * store. No prop drilling — components subscribe to the slice they care about.
  */
-import { useState } from "react";
+import { cloneElement, isValidElement, useId, useState, type ReactElement } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Plus, Trash2, GripVertical } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -178,6 +178,7 @@ function ExperienceCard({
         {e.bullets.map((b, i) => (
           <div key={i} className="flex gap-2">
             <Textarea
+              aria-label={`Bullet ${i + 1}${e.role ? ` for ${e.role}` : ""}`}
               rows={2}
               value={b}
               onChange={(e) => updBullet(i, e.target.value)}
@@ -336,6 +337,7 @@ export function SkillsEditor() {
             </Button>
           </div>
           <Input
+            aria-label={`${CANONICAL_SKILL_CATEGORIES.find(({ key }) => key === cat)?.label ?? cat} skills`}
             value={skills[cat].join(", ")}
             onChange={(e) => updCategory(cat, e.target.value)}
             placeholder="Python, PyTorch, JAX, ..."
@@ -494,11 +496,28 @@ function Field({
   children: React.ReactNode;
   className?: string;
 }) {
+  const generatedControlId = useId();
+  const generatedHintId = useId();
+  type LabeledControlProps = { id?: string; "aria-describedby"?: string };
+  const childProps = isValidElement(children)
+    ? (children as ReactElement<LabeledControlProps>).props
+    : null;
+  const controlId = childProps?.id ?? generatedControlId;
+  const describedBy = [childProps?.["aria-describedby"], hint ? generatedHintId : null]
+    .filter(Boolean)
+    .join(" ") || undefined;
+  const control = isValidElement(children)
+    ? cloneElement(children as ReactElement<LabeledControlProps>, {
+      id: controlId,
+      "aria-describedby": describedBy,
+    })
+    : children;
+
   return (
     <div className={`space-y-1 ${className}`}>
-      <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
-      {children}
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      <Label htmlFor={controlId} className="text-xs font-medium text-muted-foreground">{label}</Label>
+      {control}
+      {hint && <p id={generatedHintId} className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }

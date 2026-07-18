@@ -111,6 +111,7 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
       </div>
       <div className="flex gap-2">
         <input
+          aria-label={label}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
@@ -120,6 +121,7 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
         <button
           type="button"
           onClick={add}
+          aria-label={`Add ${label.toLowerCase()}`}
           className="h-10 px-4 rounded-full text-[12px] font-medium border border-foreground/15 text-foreground hover:bg-foreground/5 transition-colors"
         >
           Add
@@ -244,6 +246,7 @@ export default function CareerOpsPreferencesPage() {
           </div>
           <div className="relative">
             <input
+              aria-label="Confirmed total experience in years"
               type="number"
               min={0}
               max={50}
@@ -333,6 +336,7 @@ export default function CareerOpsPreferencesPage() {
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">Work authorization</p>
             <input
+              aria-label="Work authorization"
               value={prefs.work_authorization ?? ""}
               onChange={(e) => setPrefs({ ...prefs, work_authorization: e.target.value || null })}
               placeholder="US citizen, H-1B, OPT…"
@@ -342,6 +346,7 @@ export default function CareerOpsPreferencesPage() {
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">Maximum experience stretch</p>
             <input
+              aria-label="Maximum experience stretch in years"
               type="number"
               min="0"
               max="10"
@@ -357,6 +362,7 @@ export default function CareerOpsPreferencesPage() {
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">Minimum job experience level</p>
             <input
+              aria-label="Minimum job experience in years"
               type="number"
               min="0"
               max="40"
@@ -370,6 +376,7 @@ export default function CareerOpsPreferencesPage() {
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">Maximum job experience level</p>
             <input
+              aria-label="Maximum job experience in years"
               type="number"
               min="0"
               max="40"
@@ -394,6 +401,7 @@ export default function CareerOpsPreferencesPage() {
               prefs.requires_sponsorship ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle sponsorship requirement"
+            aria-pressed={prefs.requires_sponsorship}
           >
             <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.requires_sponsorship ? "translate-x-5" : "translate-x-0")} />
           </button>
@@ -402,6 +410,7 @@ export default function CareerOpsPreferencesPage() {
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">Comp min (USD)</p>
             <input
+              aria-label="Minimum compensation in US dollars"
               type="number"
               value={prefs.comp_target_usd_min ?? ""}
               onChange={(e) => setPrefs({ ...prefs, comp_target_usd_min: e.target.value ? Number(e.target.value) : null })}
@@ -412,6 +421,7 @@ export default function CareerOpsPreferencesPage() {
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">Comp max (USD)</p>
             <input
+              aria-label="Maximum compensation in US dollars"
               type="number"
               value={prefs.comp_target_usd_max ?? ""}
               onChange={(e) => setPrefs({ ...prefs, comp_target_usd_max: e.target.value ? Number(e.target.value) : null })}
@@ -433,6 +443,7 @@ export default function CareerOpsPreferencesPage() {
               prefs.require_salary_disclosure ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle salary disclosure requirement"
+            aria-pressed={prefs.require_salary_disclosure}
           >
             <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.require_salary_disclosure ? "translate-x-5" : "translate-x-0")} />
           </button>
@@ -460,6 +471,7 @@ export default function CareerOpsPreferencesPage() {
               prefs.auto_apply_enabled ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle auto-apply"
+            aria-pressed={prefs.auto_apply_enabled}
           >
             <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.auto_apply_enabled ? "translate-x-5" : "translate-x-0")} />
           </button>
@@ -470,6 +482,7 @@ export default function CareerOpsPreferencesPage() {
             <p className="text-[13px] font-semibold text-foreground mb-1">Minimum career fit</p>
             <p className="text-[12px] text-muted-foreground mb-2">0–100 evidence-based gate. Your non-negotiable rules still win.</p>
             <input
+              aria-label="Minimum career fit score"
               type="number"
               min="0"
               max="100"
@@ -482,6 +495,7 @@ export default function CareerOpsPreferencesPage() {
             <p className="text-[13px] font-semibold text-foreground mb-1">Daily submit cap</p>
             <p className="text-[12px] text-muted-foreground mb-2">Hard limit to protect your applicant reputation.</p>
             <input
+              aria-label="Daily submission cap"
               type="number"
               min="0"
               max="50"
@@ -562,6 +576,7 @@ export default function CareerOpsPreferencesPage() {
               prefs.agent_enabled ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle auto-pilot"
+            aria-pressed={prefs.agent_enabled}
           >
             <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.agent_enabled ? "translate-x-5" : "translate-x-0")} />
           </button>
@@ -571,6 +586,7 @@ export default function CareerOpsPreferencesPage() {
           <p className="text-[13px] font-semibold text-foreground mb-1">Daily action budget</p>
           <p className="text-[12px] text-muted-foreground mb-2">Hard cap on how many score + prepare actions the agent can take in 24 hours.</p>
           <input
+            aria-label="Daily Agent action budget"
             type="number"
             min="0"
             max="100"
