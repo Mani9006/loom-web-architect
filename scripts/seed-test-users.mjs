@@ -40,6 +40,7 @@ const accountSpecs = ENVIRONMENT === "production"
   : [
       { kind: "free", fullName: `${title(ENVIRONMENT)} QA Free`, role: "user", plan: "free" },
       { kind: "pro", fullName: `${title(ENVIRONMENT)} QA Pro`, role: "user", plan: "pro" },
+      { kind: "autopilot", fullName: `${title(ENVIRONMENT)} QA Autopilot`, role: "user", plan: "autopilot" },
       { kind: "admin", fullName: `${title(ENVIRONMENT)} QA Admin`, role: "admin", plan: "pro" },
     ];
 
@@ -97,7 +98,7 @@ async function upsertUser(account) {
     if (roleError) throw new Error(`role ${account.email}: ${roleError.message}`);
   }
 
-  if (account.plan === "pro") {
+  if (account.plan !== "free") {
     const { error: accessError } = await sb.from("user_access_controls").upsert(
       {
         user_id: userId,

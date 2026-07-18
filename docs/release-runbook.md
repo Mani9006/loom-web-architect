@@ -59,7 +59,7 @@ SUPABASE_SERVICE_ROLE_KEY=SECRET \
 node scripts/seed-test-users.mjs
 ```
 
-This creates free, pro, and admin QA personas.
+This creates free, pro, Autopilot, and admin QA personas.
 
 Production:
 
