@@ -4,9 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
 import {
   FileText, Search, Target, Mail, Mic, Wand2, Sparkles, Columns3,
-  ArrowRight, Check,
+  ArrowRight, Check, Moon, Sun,
 } from "lucide-react";
 import { BILLING_PLANS, formatPlanPrice } from "@/lib/billing-plans";
+import { useTheme } from "@/hooks/use-theme";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
@@ -32,6 +33,7 @@ const proofs = [
 
 export default function Landing() {
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
@@ -69,6 +71,14 @@ export default function Landing() {
             ))}
           </div>
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={toggleTheme}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
             {isLoggedIn ? (
               <button onClick={() => navigate("/home")} className="h-9 px-4 rounded-md text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors inline-flex items-center gap-1.5">
                 Dashboard <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />

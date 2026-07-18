@@ -34,7 +34,7 @@ export const BILLING_PLANS: BillingPlan[] = [
   {
     id: "pro",
     name: "Pro",
-    price: 19,
+    price: 39,
     period: "/month",
     description: "For a focused search with strong materials for every priority role.",
     features: [
@@ -50,7 +50,7 @@ export const BILLING_PLANS: BillingPlan[] = [
   {
     id: "autopilot",
     name: "Autopilot",
-    price: 59,
+    price: 99,
     period: "/month",
     description: "A supervised application queue with explicit limits and receipts.",
     features: [

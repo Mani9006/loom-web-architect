@@ -200,9 +200,9 @@ Do not keep the current isolated `$120/month` Auto Apply paywall as the primary 
 
 | Tier | Initial hypothesis | Included value |
 |---|---:|---|
-| Free | $0 | Canonical profile, job search, explainable matches, tracker, browser-assisted autofill, 3 tailored applications/month |
-| Career Pro | $19/month | 100 tailored review-ready applications/month, resume versions, inbox classification, interview packs, follow-up drafts |
-| Autopilot | $39/month | 300 approved applications/month, continuous monitoring, verified receipts, priority adapters, networking assistant |
+| Free | $0 | Canonical profile, job search, explainable matches, tracker, manual portal apply, 3 tailored application packets/month |
+| Career Pro | $39/month | 30 tailored application packets and 100 fit evaluations/month, resume versions, ATS checks, interview packs, follow-up drafts |
+| Autopilot | $99/month | Everything in Pro plus 100 supported-portal submissions/month, review controls, verified receipts, and priority adapters |
 
 These are experiment prices, not promises. Daily safety limits should remain even on paid plans. Measure retained subscribers, interview rate, verified submissions, support cost, and AI/automation cost per subscriber before changing quotas. Never sell “unlimited applications” until reliability, employer-platform rules, and abuse controls are proven.
 

@@ -15,6 +15,7 @@ import {
   User, Moon, Sun, MessageSquare, ExternalLink,
   History, LayoutDashboard, Trash2, Sparkles,
 } from "lucide-react";
+import { useTheme } from "@/hooks/use-theme";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -23,38 +24,27 @@ interface SettingsDialogProps {
   conversationCount?: number;
 }
 
-export function SettingsDialog({ 
-  open, onOpenChange, onClearAllConversations, conversationCount = 0,
-}: SettingsDialogProps) {
-  const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window !== "undefined") return document.documentElement.classList.contains("dark");
-    return false;
-  });
-  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
-
-  const toggleDarkMode = (enabled: boolean) => {
-    setDarkMode(enabled);
-    if (enabled) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
-  };
-
-  const handleNavigation = (path: string) => { onOpenChange(false); navigate(path); };
-  const handleClearAll = () => { setClearConfirmOpen(false); onOpenChange(false); onClearAllConversations?.(); };
-
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
     <div className="space-y-1">
       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-2">{title}</h3>
       {children}
     </div>
   );
+}
 
-  const NavButton = ({ icon: Icon, label, onClick, destructive }: { icon: any; label: string; onClick: () => void; destructive?: boolean }) => (
+function SettingsNavButton({
+  icon: Icon,
+  label,
+  onClick,
+  destructive,
+}: {
+  icon: React.ElementType;
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+}) {
+  return (
     <Button
       variant="ghost"
       className={`w-full justify-start gap-3 h-11 font-medium ${destructive ? "text-destructive hover:text-destructive hover:bg-destructive/10" : ""}`}
@@ -64,6 +54,22 @@ export function SettingsDialog({
       <span>{label}</span>
     </Button>
   );
+}
+
+export function SettingsDialog({
+  open, onOpenChange, onClearAllConversations, conversationCount = 0,
+}: SettingsDialogProps) {
+  const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
+  const darkMode = theme === "dark";
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+
+  const toggleDarkMode = (enabled: boolean) => {
+    setTheme(enabled ? "dark" : "light");
+  };
+
+  const handleNavigation = (path: string) => { onOpenChange(false); navigate(path); };
+  const handleClearAll = () => { setClearConfirmOpen(false); onOpenChange(false); onClearAllConversations?.(); };
 
   return (
     <>
@@ -77,14 +83,14 @@ export function SettingsDialog({
           </DialogHeader>
 
           <div className="space-y-5 py-2">
-            <Section title="Account">
-              <NavButton icon={User} label="Profile Settings" onClick={() => handleNavigation("/profile")} />
-              <NavButton icon={LayoutDashboard} label="Dashboard" onClick={() => handleNavigation("/dashboard")} />
-            </Section>
+            <SettingsSection title="Account">
+              <SettingsNavButton icon={User} label="Profile Settings" onClick={() => handleNavigation("/profile")} />
+              <SettingsNavButton icon={LayoutDashboard} label="Dashboard" onClick={() => handleNavigation("/dashboard")} />
+            </SettingsSection>
 
             <Separator />
 
-            <Section title="Appearance">
+            <SettingsSection title="Appearance">
               <div className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-accent transition-colors">
                 <div className="flex items-center gap-3">
                   {darkMode ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
@@ -92,12 +98,12 @@ export function SettingsDialog({
                 </div>
                 <Switch id="dark-mode" checked={darkMode} onCheckedChange={toggleDarkMode} />
               </div>
-            </Section>
+            </SettingsSection>
 
             <Separator />
 
-            <Section title="Chat">
-              <NavButton icon={History} label="View Chat History" onClick={() => handleNavigation("/chat")} />
+            <SettingsSection title="Chat">
+              <SettingsNavButton icon={History} label="View Chat History" onClick={() => handleNavigation("/chat")} />
               {onClearAllConversations && conversationCount > 0 && (
                 <Button
                   variant="ghost"
@@ -111,11 +117,11 @@ export function SettingsDialog({
                   </span>
                 </Button>
               )}
-            </Section>
+            </SettingsSection>
 
             <Separator />
 
-            <Section title="Help & Support">
+            <SettingsSection title="Help & Support">
               <Button variant="ghost" className="w-full justify-start gap-3 h-11 font-medium" asChild>
                 <a href="mailto:support@resumepreps.com" target="_blank" rel="noopener noreferrer">
                   <MessageSquare className="w-4 h-4" />
@@ -123,7 +129,7 @@ export function SettingsDialog({
                   <ExternalLink className="w-3.5 h-3.5 ml-auto text-muted-foreground" />
                 </a>
               </Button>
-            </Section>
+            </SettingsSection>
           </div>
         </DialogContent>
       </Dialog>

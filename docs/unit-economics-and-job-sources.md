@@ -103,7 +103,7 @@ Do not advertise “unlimited.” Every paid plan needs a visible monthly meter 
 - manual portal apply
 - no managed cloud browser
 
-### Pro — $19/month
+### Pro — $39/month
 
 - 100 fit evaluations/month
 - 30 tailored application packets/month
@@ -114,17 +114,17 @@ Worst-case per account at 10 paid customers:
 
 | Cost | Amount |
 | --- | ---: |
-| Stripe Payments + Billing | $0.98 |
+| Stripe Payments + Billing | $1.70 |
 | 30 complete packets | $1.34 |
 | 100 fit evaluations | $0.26 |
 | cached job-data/email/storage allowance | $0.55 |
 | allocated Vercel + Supabase base at only 10 customers | $4.50 |
-| **Total COGS** | **$7.63** |
-| **Gross margin** | **59.8%** |
+| **Total COGS** | **$8.35** |
+| **Gross margin** | **78.6%** |
 
-At 25+ paid customers the allocated base falls and the margin improves. The $19 plan must not include cloud auto-submit; otherwise proxy-heavy worst cases can break the margin.
+At 25+ paid customers the allocated base falls and the margin improves. The Pro plan does not include cloud auto-submit; keeping that workload in Autopilot protects the margin and makes the tiers understandable.
 
-### Autopilot — $59/month or $49/month paid annually
+### Autopilot — $99/month
 
 - everything in Pro
 - 100 successful supported-portal submissions/month
@@ -138,17 +138,17 @@ Worst-case monthly account at 25 paid customers:
 
 | Cost | Amount |
 | --- | ---: |
-| Stripe Payments + Billing on $59 | $2.42 |
+| Stripe Payments + Billing on $99 | $3.86 |
 | 100 complete application packets | $4.45 |
 | browser time with retry reserve | $1.20 |
 | 500 MB managed proxy allowance | $6.00 |
 | email, job-data, and storage allowance | $1.50 |
 | CAPTCHA/retry anomaly reserve | $2.00 |
 | allocated $65 launch platform base at 25 customers | $2.60 |
-| **Total COGS** | **$20.17** |
-| **Gross margin** | **65.8%** |
+| **Total COGS** | **$21.61** |
+| **Gross margin** | **78.2%** |
 
-At the $49 annual-equivalent price the same defined worst case is about 58.8% gross margin. This leaves some room for refunds but not for human application review. A human-supervised service must be a separate $199+ concierge tier or a paid add-on.
+At $99 the defined worst case is about 78.2% gross margin, leaving roughly 28 percentage points above the 50% floor for refunds, support, and vendor-price changes. Human application review is still outside this tier and should be a separate $199+ concierge offer or paid add-on.
 
 ## Current cost leaks to fix before billing
 

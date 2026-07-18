@@ -2,7 +2,7 @@
  * App shell — editorial redesign.
  *
  * Aesthetic: think a printed broadsheet that happens to be interactive.
- *   - Paper-colored sidebar (#FAFAF7) with hairline rule, not a card.
+ *   - Paper sidebar with hairline rules in light and dark themes.
  *   - Wordmark in EB Garamond, headline-weight, italic-leaning.
  *   - Nav items as a typographic list (not buttons / pills) — active
  *     state is a left ink rule + heavier weight, not a filled background.
@@ -11,8 +11,7 @@
  *   - Header crumb in mono small caps; page title space is intentionally
  *     restrained — we let the page below own the display typography.
  *
- * Nothing functional changed from the previous version — same nav, same
- * dropdowns, same mobile drawer, same EnvBanner mount. Just visual.
+ * The shell follows one clear journey: find, match, apply, then prepare.
  */
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
@@ -21,7 +20,7 @@ import {
   Home, FileText, Search, Mic, Columns3, Sparkles, Map,
   ShieldCheck, Crown, LogOut, Settings,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
-  Bell, HelpCircle,
+  HelpCircle, Sun, Moon, BookOpen, MessageSquare, CreditCard,
   ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -35,6 +34,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { isOwnerEmail } from "@/lib/admin";
 import AnuChat from "@/components/AnuChat";
+import { useTheme } from "@/hooks/use-theme";
+import { useSubscription } from "@/components/SubscriptionGate";
 
 interface NavItem {
   label: string;
@@ -78,8 +79,10 @@ export default function AppLayout() {
   const location = useLocation();
   const isMobile = useIsMobile();
   const { user, signOut, isAdmin } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const { plan, hasAutoApply, loading: subscriptionLoading } = useSubscription();
   const [displayName, setDisplayName] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem("sidebar") !== "collapsed");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anuOpen, setAnuOpen] = useState(false);
 
@@ -88,6 +91,10 @@ export default function AppLayout() {
     supabase.from("profiles").select("full_name").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { setDisplayName(data?.full_name || user.email?.split("@")[0] || "User"); });
   }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem("sidebar", sidebarOpen ? "expanded" : "collapsed");
+  }, [sidebarOpen]);
 
   const handleSignOut = async () => { await signOut(); navigate("/auth"); };
   const handleNavigate = (path: string) => { navigate(path); if (isMobile) setMobileOpen(false); };
@@ -106,6 +113,10 @@ export default function AppLayout() {
   const showText = isMobile || sidebarOpen;
   const hasAdminAccess = isOwnerEmail(user.email) || isAdmin;
   const visibleOwnerTools = hasAdminAccess ? ownerOnlyTools : [];
+  const planLabel = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
+  const primaryAction = hasAutoApply
+    ? { label: "Review queue", path: "/auto-apply" }
+    : { label: "Find jobs", path: "/job-search" };
 
   const allNav = [...mainNav, ...visibleOwnerTools];
   const current = allNav.find((n) => isActive(n.path));
@@ -121,11 +132,11 @@ export default function AppLayout() {
         onClick={(e) => handleLinkClick(e, item.path)}
         title={!showText ? item.label : undefined}
         className={cn(
-          "group relative flex items-center gap-3 h-8 pr-2 transition-colors no-underline",
-          showText ? "pl-4" : "px-2 justify-center",
+          "group relative flex items-center gap-3 h-10 transition-colors no-underline rounded-md",
+          showText ? "mx-2 px-3" : "mx-2 px-2 justify-center",
           active
-            ? "text-rp-ink"
-            : "text-rp-ink/55 hover:text-rp-ink",
+            ? "bg-rp-paper-2 text-rp-ink"
+            : "text-rp-ink/60 hover:bg-rp-paper-2/60 hover:text-rp-ink",
         )}
       >
         {/* Active rule — a thin vertical ink mark instead of a filled background */}
@@ -133,8 +144,8 @@ export default function AppLayout() {
           <span
             aria-hidden
             className={cn(
-              "absolute left-0 top-1.5 bottom-1.5 w-px transition-colors",
-              active ? "bg-rp-ink" : "bg-transparent group-hover:bg-rp-ink/20",
+              "absolute left-0 top-2 bottom-2 w-0.5 rounded-full transition-colors",
+              active ? "bg-rp-accent" : "bg-transparent",
             )}
           />
         )}
@@ -172,11 +183,11 @@ export default function AppLayout() {
       className={cn(
         "flex flex-col shrink-0 h-full transition-[width] duration-200 border-r border-rp-rule",
         "bg-rp-paper",
-        isMobile ? "w-[268px]" : sidebarOpen ? "w-[228px]" : "w-[60px]",
+        isMobile ? "w-[280px]" : sidebarOpen ? "w-[240px]" : "w-[64px]",
       )}
     >
       {/* Brand row */}
-      <div className={cn("h-[60px] flex items-center", showText ? "px-4" : "px-2 justify-center")}>
+      <div className={cn("h-16 flex items-center", showText ? "px-4" : "px-2 justify-center")}>
         <a
           href="/home"
           onClick={(e) => handleLinkClick(e, "/home")}
@@ -216,7 +227,8 @@ export default function AppLayout() {
 
       <div className="h-px bg-rp-rule mx-4" />
 
-      <nav className="flex-1 overflow-y-auto py-3">
+      <nav className="flex-1 overflow-y-auto py-2">
+        {showText && <SectionLabel>Your workflow</SectionLabel>}
         {mainNav.map((i) => <NavButton key={i.path} item={i} />)}
 
         {visibleOwnerTools.length > 0 && (
@@ -227,8 +239,8 @@ export default function AppLayout() {
         )}
       </nav>
 
-      {/* Editorial "tear-out" upgrade card — only for non-Pro, non-owner */}
-      {showText && !hasAdminAccess && (
+      {/* Compact upgrade prompt only for free accounts. */}
+      {showText && !hasAdminAccess && !subscriptionLoading && plan === "free" && (
         <div className="px-3 pb-3">
           <button
             onClick={() => navigate("/pricing")}
@@ -252,7 +264,7 @@ export default function AppLayout() {
                 letterSpacing: "-0.01em",
               }}
             >
-              Apply at the speed of the market.
+              Let ResumePreps do the repetitive work.
             </div>
             <div
               className="text-[11px] text-rp-ink/55 mt-1.5 leading-snug"
@@ -273,43 +285,11 @@ export default function AppLayout() {
         </div>
       )}
 
-      <div className="border-t border-rp-rule h-[40px] flex items-center px-4">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className={cn(
-                "flex items-center gap-2 text-[11.5px] text-rp-ink/55 hover:text-rp-ink transition-colors",
-                !showText && "mx-auto",
-              )}
-              style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
-            >
-              <Settings className="w-3.5 h-3.5" strokeWidth={1.6} />
-              {showText && <span>Account</span>}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" className="w-56 rounded-md p-1.5">
-            <div className="px-3 py-2.5">
-              <p className="text-[13px] font-semibold text-foreground leading-tight">{displayName}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{user.email}</p>
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer rounded-md gap-2">
-              <UserIcon className="w-4 h-4" /> Profile
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate("/career-ops/preferences")} className="cursor-pointer rounded-md gap-2">
-              <Settings className="w-4 h-4" /> Preferences
-            </DropdownMenuItem>
-            {hasAdminAccess && (
-              <DropdownMenuItem onClick={() => navigate("/admin")} className="cursor-pointer rounded-md gap-2">
-                <Crown className="w-4 h-4" /> Admin Portal
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer rounded-md gap-2 text-destructive focus:text-destructive">
-              <LogOut className="w-4 h-4" /> Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <div className={cn("border-t border-rp-rule h-12 flex items-center", showText ? "px-4" : "justify-center")}>
+        <span className="inline-flex items-center gap-2 text-[11px] text-rp-ink/55" style={{ fontFamily: '"Inter", system-ui, sans-serif' }}>
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+          {showText ? `${planLabel} plan · ready` : <span className="sr-only">{planLabel} plan ready</span>}
+        </span>
       </div>
     </aside>
   );
@@ -326,7 +306,7 @@ export default function AppLayout() {
       {!isMobile && sidebarContent}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-[56px] flex items-center gap-3 px-5 border-b border-rp-rule bg-rp-canvas shrink-0">
+        <header className="h-16 flex items-center gap-3 px-4 sm:px-5 border-b border-rp-rule bg-rp-canvas/95 backdrop-blur-sm shrink-0">
           {isMobile ? (
             <button onClick={() => setMobileOpen(true)} className="p-1.5 text-rp-ink/55 hover:text-rp-ink">
               <Menu className="w-[18px] h-[18px]" strokeWidth={1.6} />
@@ -352,20 +332,13 @@ export default function AppLayout() {
 
           <div className="flex items-center gap-1">
             <a
-              href="/feedback"
-              onClick={(e) => handleLinkClick(e, "/feedback")}
-              className="hidden sm:inline-flex items-center h-7 px-2.5 text-[11.5px] text-rp-ink/55 hover:text-rp-ink transition-colors no-underline"
+              href={primaryAction.path}
+              onClick={(e) => handleLinkClick(e, primaryAction.path)}
+              className="hidden md:inline-flex items-center gap-1.5 h-8 px-3 mr-1 rounded-md bg-rp-ink text-rp-canvas hover:opacity-85 transition-opacity no-underline text-[11.5px] font-medium"
               style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
             >
-              Feedback
-            </a>
-            <a
-              href="/docs"
-              onClick={(e) => handleLinkClick(e, "/docs")}
-              className="hidden sm:inline-flex items-center h-7 px-2.5 text-[11.5px] text-rp-ink/55 hover:text-rp-ink transition-colors no-underline"
-              style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
-            >
-              Docs
+              {hasAutoApply ? <Sparkles className="w-3.5 h-3.5" /> : <Search className="w-3.5 h-3.5" />}
+              {primaryAction.label}
             </a>
             <button
               onClick={() => setAnuOpen((v) => !v)}
@@ -381,26 +354,14 @@ export default function AppLayout() {
               <HelpCircle className="w-3.5 h-3.5" strokeWidth={1.6} />
               Ask
             </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="inline-flex items-center justify-center w-7 h-7 text-rp-ink/55 hover:text-rp-ink transition-colors">
-                  <Bell className="w-[14px] h-[14px]" strokeWidth={1.6} />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72 rounded-md p-1.5">
-                <div className="px-3 py-2.5">
-                  <p className="text-[13px] font-semibold text-foreground">Notifications</p>
-                  <p className="text-[11.5px] text-muted-foreground mt-0.5">You're all caught up.</p>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate("/matches")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
-                  Check today's matches
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate("/job-tracker")} className="cursor-pointer rounded-md gap-2 text-[12.5px]">
-                  Open pipeline
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <button
+              onClick={toggleTheme}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-md text-rp-ink/55 hover:bg-rp-paper-2 hover:text-rp-ink transition-colors"
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" strokeWidth={1.6} /> : <Moon className="w-4 h-4" strokeWidth={1.6} />}
+            </button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -424,6 +385,15 @@ export default function AppLayout() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate("/career-ops/preferences")} className="cursor-pointer rounded-md gap-2">
                   <Settings className="w-4 h-4" /> Preferences
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/pricing")} className="cursor-pointer rounded-md gap-2">
+                  <CreditCard className="w-4 h-4" /> Plan & billing
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/docs")} className="cursor-pointer rounded-md gap-2">
+                  <BookOpen className="w-4 h-4" /> Help & docs
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/feedback")} className="cursor-pointer rounded-md gap-2">
+                  <MessageSquare className="w-4 h-4" /> Send feedback
                 </DropdownMenuItem>
                 {hasAdminAccess && (
                   <DropdownMenuItem onClick={() => navigate("/admin")} className="cursor-pointer rounded-md gap-2">

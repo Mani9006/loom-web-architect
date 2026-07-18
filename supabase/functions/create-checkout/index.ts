@@ -11,12 +11,12 @@ const PLAN_CATALOG = {
   pro: {
     name: "ResumePreps Pro",
     description: "30 tailored application packets and 100 fit evaluations per month",
-    amount: "1900",
+    amount: "3900",
   },
   autopilot: {
     name: "ResumePreps Autopilot",
     description: "100 supported-portal submissions with review and status receipts per month",
-    amount: "5900",
+    amount: "9900",
   },
 } as const;
 

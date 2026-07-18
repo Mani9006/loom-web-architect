@@ -557,7 +557,7 @@ export default function AutoApplyPage() {
                 <Link to="/pricing" className="flex-1">
                   <Button className="w-full bg-amber-600 hover:bg-amber-700 text-white" size="lg">
                     <Crown className="w-4 h-4 mr-2" />
-                    Choose Autopilot — $59/mo
+                    Choose Autopilot — $99/mo
                   </Button>
                 </Link>
               </div>

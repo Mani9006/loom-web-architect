@@ -8,8 +8,8 @@ const corsHeaders = {
 };
 
 const PLAN_LABELS: Record<string, string> = {
-  pro: "Pro ($19/mo)",
-  autopilot: "Autopilot ($59/mo)",
+  pro: "Pro ($39/mo)",
+  autopilot: "Autopilot ($99/mo)",
   premium: "Legacy Premium",
 };
 
