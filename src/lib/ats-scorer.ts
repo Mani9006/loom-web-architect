@@ -104,7 +104,7 @@ function scoreHeader(data: ResumeJSON): ATSSectionScore {
       issues.push({ id: "h-name-case", section: "Contact Info", severity: "warning", title: "Name is ALL CAPS", description: "Some ATS parsers (Taleo, Workday) misread ALL CAPS names. Use Title Case instead.", fix: "Convert name to Title Case" });
       score -= 1; // Penalty
     }
-    if (/[<>{}[\]\\\/|@#$%^&*()+=~`]/.test(data.header.name)) {
+    if (data.header.name.split("").some((character) => "<>{}[]\\/|@#$%^&*()+=~`".includes(character))) {
       issues.push({ id: "h-name-chars", section: "Contact Info", severity: "warning", title: "Special characters in name", description: "Special characters may corrupt your name in ATS databases." });
       score -= 1;
     }

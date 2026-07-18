@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck -- legacy cross-industry fixtures predate required stable section ids.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { calculateATSScore, matchJobDescriptionKeywords } from "@/lib/ats-scorer";
 import type { ResumeJSON } from "@/types/resume";
@@ -388,7 +388,7 @@ const EXPECTED_BASELINES: Record<string, BaselineMetrics> = {
 // ─── Test Suite ─────────────────────────────────────────────────────────────
 
 describe("ATS Quality Validation (KAN-21)", () => {
-  let testResults: Array<{
+  const testResults: Array<{
     industry: string;
     resume: string;
     score: number;

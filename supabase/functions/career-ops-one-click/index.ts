@@ -159,7 +159,12 @@ function detectPortal(value: string): { type: "greenhouse" | "ashby" | "lever"; 
 }
 
 function clean(value: unknown, max: number): string {
-  return typeof value === "string" ? value.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "";
+  return typeof value === "string"
+    ? Array.from(value, (character) => {
+      const code = character.charCodeAt(0);
+      return code <= 31 || code === 127 ? " " : character;
+    }).join("").replace(/\s+/g, " ").trim().slice(0, max)
+    : "";
 }
 
 function safeUrl(value: unknown): string {

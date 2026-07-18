@@ -174,7 +174,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         setActiveJobHistory([]);
         // Don't toast on transient mount-time failures; the user might not
         // have triggered this run themselves (page was just rehydrated).
-        // eslint-disable-next-line no-console
+
         console.warn("[Discover] couldn't reattach to previous search:", e);
       } finally {
         if (!cancelled) {
@@ -328,13 +328,13 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     if (!parsed && result) {
       const fence = result.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
       if (fence) {
-        try { parsed = JSON.parse(fence[1].trim()); } catch {}
+        try { parsed = JSON.parse(fence[1].trim()); } catch { /* Try the broader object match below. */ }
       }
     }
     if (!parsed && result) {
       const objMatch = result.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
       if (objMatch) {
-        try { parsed = JSON.parse(objMatch[0]); } catch {}
+        try { parsed = JSON.parse(objMatch[0]); } catch { /* A user-safe parse error is handled below. */ }
       }
     }
 
@@ -621,7 +621,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         .update({ tailored_resume_id: tailored.id })
         .eq("id", trackedJobId);
       if (linkErr) {
-        // eslint-disable-next-line no-console
+
         console.error("Couldn't link tailored resume to card:", linkErr.message);
       }
 

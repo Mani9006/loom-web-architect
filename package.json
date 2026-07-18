@@ -23,7 +23,7 @@
     "security:audit": "bash scripts/security-audit.sh",
     "hq:loop": "bash scripts/hq-control-loop.sh",
     "hq:loop:dry": "bash scripts/hq-control-loop.sh --dry-run",
-    "hq:gate": "npm run type-check && npm run test && npm run build",
+    "hq:gate": "npm run type-check && npm run lint && npm run test && npm run build",
     "type-check": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "lint": "eslint .",
     "preview": "vite preview",

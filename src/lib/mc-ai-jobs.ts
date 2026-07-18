@@ -145,7 +145,7 @@ export async function waitForJob(
       if (pollHandle) clearInterval(pollHandle);
       try {
         channel.unsubscribe();
-      } catch {}
+      } catch { /* Realtime cleanup is best-effort. */ }
       if (err) reject(err);
       else if (job) resolve(job);
       else reject(new Error("Job vanished"));
@@ -184,7 +184,7 @@ export async function waitForJob(
         if (row.status === "done") finish(row);
         else if (row.status === "failed") finish(null, new Error(row.error || "Job failed"));
         else if (row.status === "canceled") finish(null, new Error("Job canceled"));
-      } catch {}
+      } catch { /* The next polling cycle can recover from a transient read. */ }
     }, 4000);
   });
 }
