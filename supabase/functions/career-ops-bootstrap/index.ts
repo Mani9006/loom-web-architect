@@ -8,6 +8,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   buildCandidateCareerProfile,
   evaluateCareerFit,
+  isRoleFamilyCompatible,
   type CandidatePreferences,
 } from "../_shared/career-fit.ts";
 import {
@@ -98,10 +99,16 @@ serve(async (req) => {
         ...reviewedAdjacentRoles,
       ],
     );
+    const groundedRoleTerms = normalizeTerms([
+      ...(prefs.target_roles ?? []),
+      candidate.currentTitle,
+      ...candidate.roleHistory.map((role) => role.title),
+    ]);
     const negatives = normalizeTerms(rawPrefs.negative_keywords ?? []);
 
     const allCandidates = ((metadata ?? []) as unknown as JobMetadata[])
       .filter((job) => !negatives.some((term) => job.title.toLowerCase().includes(term)))
+      .filter((job) => isRoleFamilyCompatible(job.title, groundedRoleTerms))
       .map((job) => ({ job, relevance: titleRelevance(job.title, targets) }))
       .sort((a, b) => b.relevance - a.relevance || b.job.last_seen_at.localeCompare(a.job.last_seen_at));
 
@@ -312,6 +319,7 @@ function reviewRoleTerms(value: unknown, key = "name"): string[] {
     return typeof term === "string" && term.trim() ? [term.trim()] : [];
   });
 }
+
 
 function tierFor(score: number, eligible: boolean): "A" | "B" | "C" | "D" | "F" {
   if (!eligible) return "F";

@@ -113,6 +113,17 @@ const ROLE_STOP_WORDS = new Set([
   "principal", "senior", "sr", "staff", "director", "head", "specialist", "the",
 ]);
 
+const PROTECTED_ROLE_FAMILIES: RegExp[] = [
+  /\b(account executive|sales representative|sales manager|business development|customer success)\b/i,
+  /\b(marketing|growth marketer|content strategist|social media)\b/i,
+  /\b(product designer|ux designer|ui designer|graphic designer|visual designer)\b/i,
+  /\b(recruiter|talent acquisition|human resources|people operations)\b/i,
+  /\b(attorney|lawyer|legal counsel|paralegal)\b/i,
+  /\b(nurse|physician|pharmacist|therapist|clinical practitioner)\b/i,
+  /\b(accountant|controller|auditor|treasury analyst)\b/i,
+  /\b(android engineer|ios engineer|mobile developer)\b/i,
+];
+
 const COUNTRY_ALIASES: Record<string, string[]> = {
   "united states": ["united states", "usa", "u.s.", "us only", "new york", "california", "texas", "chicago", "seattle", "boston", "austin", "dallas", "san francisco"],
   canada: ["canada", "canadian", "toronto", "vancouver", "montreal"],
@@ -261,6 +272,12 @@ export function calculateExperienceYears(experience: Array<Record<string, unknow
   }
   const months = merged.reduce((sum, [start, end]) => sum + (end - start + 1), 0);
   return Math.round((months / 12) * 10) / 10;
+}
+
+export function isRoleFamilyCompatible(jobTitle: string, groundedRoleTerms: string[]): boolean {
+  const protectedFamily = PROTECTED_ROLE_FAMILIES.find((pattern) => pattern.test(jobTitle));
+  if (!protectedFamily) return true;
+  return groundedRoleTerms.some((term) => protectedFamily.test(term));
 }
 
 function scoreRole(candidate: CandidateCareerProfile, job: JobForFit): FitDimension {

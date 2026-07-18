@@ -3,6 +3,7 @@ import {
   buildCandidateCareerProfile,
   calculateExperienceYears,
   evaluateCareerFit,
+  isRoleFamilyCompatible,
 } from "../../supabase/functions/_shared/career-fit";
 
 const fourYearResume = {
@@ -193,5 +194,16 @@ describe("career fit gate", () => {
     expect(fit.inferred.country).toBe("united kingdom");
     expect(fit.eligible).toBe(false);
     expect(fit.hardFilters.join(" ")).toMatch(/outside selected countries/i);
+  });
+
+  it("does not let generic AI skills authorize an unsupported sales career switch", () => {
+    expect(isRoleFamilyCompatible(
+      "Account Executive, AI Sales",
+      ["Senior AI Engineer", "Data Scientist", "Machine Learning Engineer"],
+    )).toBe(false);
+    expect(isRoleFamilyCompatible(
+      "Account Executive, AI Sales",
+      ["Sales Engineer", "Account Executive"],
+    )).toBe(true);
   });
 });
