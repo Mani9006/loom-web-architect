@@ -40,6 +40,7 @@ import {
 import { formatDistanceToNow, format } from "date-fns";
 import { TerminalLoader, TerminalText } from "@/components/Terminal";
 import { normalizeResumeSkills } from "@/lib/resume-skills";
+import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
 
 type ResumeSource = "scratch" | "upload" | "existing";
 type ImportFormatMode = "ats_recommended" | "preserve_source";
@@ -370,18 +371,47 @@ export default function ResumeProjects() {
       return;
     }
 
+    const createdResumeId = (newResume as unknown as { id: string }).id;
     if (resumeSource !== "scratch") {
-      const importedId = (newResume as unknown as { id: string }).id;
+      const importedId = createdResumeId;
       const { error: primaryError } = await supabase
         .from("profiles")
         .update({ primary_resume_id: importedId } as never)
         .eq("user_id", user.id);
       if (!primaryError) setPrimaryResumeId(importedId);
+
+      // One upload should be enough. Fill reusable application defaults from
+      // verified resume fields and start the personalized feed in the
+      // background while the user reviews the editor.
+      void (async () => {
+        try {
+          await hydrateApplicationProfileFromResume({
+            userId: user.id,
+            resumeId: importedId,
+            resume: payload as Record<string, unknown>,
+            accountEmail: user.email,
+          });
+          await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+          const parsePassed = payload.parse_quality?.status === "passed";
+          if (parsePassed) {
+            const { error: reviewError } = await supabase.functions.invoke("career-profile-review", {
+              body: { resume_id: importedId },
+            });
+            if (!reviewError) await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+          }
+        } catch (backgroundError) {
+          void captureIncident(backgroundError, { source: "manual", operation: "resume_workspace_autofill" }, "warning");
+        }
+      })();
+      toast({
+        title: "Your workspace is being prepared",
+        description: "We filled reusable profile details from the resume and started finding matching roles. You can review the resume while this finishes.",
+      });
     }
 
     setCreateOpen(false);
     resetCreateDialog();
-    navigate(`/resume-builder/${(newResume as any).id}`);
+    navigate(`/resume-builder/${createdResumeId}`);
   };
 
   const handleSetPrimaryResume = async (resumeId: string) => {

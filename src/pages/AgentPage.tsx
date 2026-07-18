@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -12,6 +12,7 @@ import {
   FileText,
   Layers3,
   Lock,
+  Mail,
   Radar,
   RefreshCcw,
   Send,
@@ -27,6 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { captureIncident } from "@/lib/incidents";
+import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { toast } from "sonner";
 
@@ -79,6 +81,8 @@ interface ResumeSummary {
   id: string;
   title: string;
   updated_at: string;
+  personal_info: unknown;
+  experience: unknown;
 }
 
 interface AgentRun {
@@ -87,6 +91,12 @@ interface AgentRun {
   summary: string | null;
   started_at: string;
   completed_at: string | null;
+}
+
+interface GmailConnection {
+  gmail_email: string;
+  enabled: boolean;
+  last_polled_at: string | null;
 }
 
 interface LooseQueryResult {
@@ -146,17 +156,21 @@ export default function AgentPage() {
   const [resume, setResume] = useState<ResumeSummary | null>(null);
   const [draftStatuses, setDraftStatuses] = useState<string[]>([]);
   const [lastRun, setLastRun] = useState<AgentRun | null>(null);
+  const [gmailConnection, setGmailConnection] = useState<GmailConnection | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [batchPreparing, setBatchPreparing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [matchSetup, setMatchSetup] = useState<"idle" | "building" | "complete" | "error">("idle");
+  const automaticMatchAttempt = useRef(false);
+  const automaticProfilePromise = useRef<Promise<unknown> | null>(null);
 
   const loadWorkspace = useCallback(async (showSpinner = false) => {
     if (!user) return;
     if (showSpinner) setRefreshing(true);
 
-    const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes] = await Promise.all([
+    const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes] = await Promise.all([
       supabase
         .from("user_job_prefs")
         .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,daily_apply_cap,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
@@ -177,7 +191,7 @@ export default function AgentPage() {
         .maybeSingle(),
       supabase
         .from("resumes")
-        .select("id,title,updated_at")
+        .select("id,title,updated_at,personal_info,experience")
         .eq("user_id", user.id)
         .order("updated_at", { ascending: false })
         .limit(1)
@@ -193,9 +207,17 @@ export default function AgentPage() {
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from("mc_gmail_connections")
+        .select("gmail_email,enabled,last_polled_at")
+        .eq("user_id", user.id)
+        .eq("enabled", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
-    const loadError = [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes]
+    const loadError = [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes]
       .map((result) => result.error)
       .find(Boolean);
     if (loadError) {
@@ -218,15 +240,13 @@ export default function AgentPage() {
     setResume((resumeRes.data as ResumeSummary | null) ?? null);
     setDraftStatuses((draftsRes.data || []).map((row) => row.status));
     setLastRun((runsRes.data as AgentRun | null) ?? null);
+    setGmailConnection((gmailRes.data as GmailConnection | null) ?? null);
     setLoading(false);
     setRefreshing(false);
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
-    // The async loader updates only after network promises settle; the rule
-    // cannot infer that boundary from the callback.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadWorkspace();
 
     const channel = supabase
@@ -244,6 +264,59 @@ export default function AgentPage() {
       void supabase.removeChannel(channel);
     };
   }, [loadWorkspace, user]);
+
+  useEffect(() => {
+    if (!user || loading || !resume || automaticProfilePromise.current) return;
+
+    automaticProfilePromise.current = hydrateApplicationProfileFromResume({
+      userId: user.id,
+      resumeId: resume.id,
+      resume: {
+        title: resume.title,
+        personal_info: resume.personal_info,
+        experience: resume.experience,
+      },
+      accountEmail: user.email,
+    }).catch((error) => {
+      void captureIncident(error, { source: "manual", operation: "application_profile_from_existing_resume" }, "warning");
+    });
+  }, [loading, resume, user]);
+
+  useEffect(() => {
+    if (!user || loading || !resume || matches.length > 0 || automaticMatchAttempt.current) return;
+    automaticMatchAttempt.current = true;
+    setMatchSetup("building");
+
+    void (async () => {
+      try {
+        if (automaticProfilePromise.current) await automaticProfilePromise.current;
+        const firstPass = await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+        if (firstPass.error) throw firstPass.error;
+
+        // Paid accounts get one cached, low-cost evidence review when the
+        // deterministic pass finds nothing. It reviews the resume once, then
+        // the deterministic matcher reuses the result across jobs.
+        if (Number(firstPass.data?.evaluated || 0) === 0 && plan !== "free") {
+          const review = await supabase.functions.invoke("career-profile-review", { body: { resume_id: resume.id } });
+          if (!review.error) await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+        }
+
+        const { data, error } = await supabase
+          .from("job_evaluations")
+          .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
+          .eq("user_id", user.id)
+          .gte("fit_score", 50)
+          .order("fit_score", { ascending: false })
+          .limit(5);
+        if (error) throw error;
+        setMatches((data || []) as unknown as MatchRow[]);
+        setMatchSetup("complete");
+      } catch (error) {
+        void captureIncident(error, { source: "manual", operation: "agent_automatic_match_setup" }, "warning");
+        setMatchSetup("error");
+      }
+    })();
+  }, [loading, matches.length, matchSetup, plan, resume, user]);
 
   const counts = useMemo(() => {
     const value = { prepared: 0, queued: 0, submitted: 0, failed: 0, skipped: 0 };
@@ -547,10 +620,28 @@ export default function AgentPage() {
             </div>
             {matches.length === 0 ? (
               <div className="p-8 text-center">
-                <BriefcaseBusiness className="mx-auto h-8 w-8 text-rp-ink-3" />
-                <p className="mt-3 text-sm font-semibold text-rp-ink">No personalized matches yet</p>
-                <p className="mt-1 text-xs text-rp-ink-2">Finish your source resume and target profile, then refresh this workspace.</p>
-                <Button className="mt-4" size="sm" onClick={() => navigate("/job-search")}>Browse jobs</Button>
+                {matchSetup === "building" ? <RefreshCcw className="mx-auto h-8 w-8 animate-spin text-rp-accent" /> : <BriefcaseBusiness className="mx-auto h-8 w-8 text-rp-ink-3" />}
+                <p className="mt-3 text-sm font-semibold text-rp-ink">
+                  {!resume ? "Add one source résumé" : matchSetup === "building" ? "Building your personalized feed" : matchSetup === "error" ? "Match refresh needs another try" : "No strong current matches yet"}
+                </p>
+                <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-rp-ink-2">
+                  {!resume
+                    ? "Upload once. ResumePreps will extract your experience, roles, skills, location, and reusable application details automatically."
+                    : matchSetup === "building"
+                      ? "We are reading your complete career history, comparing it with fresh company-direct roles, and keeping only jobs above 50% career fit. You can leave this page while it finishes."
+                      : matchSetup === "error"
+                        ? "Your résumé is safe. Retry the match feed without uploading or entering the same information again."
+                        : "We checked the current feed and did not find a role above 50% career fit. Broaden preferences or search directly—your résumé details remain filled in."}
+                </p>
+                <div className="mt-4 flex justify-center gap-2">
+                  {!resume ? (
+                    <Button size="sm" onClick={() => navigate("/resume-builder")}>Upload résumé</Button>
+                  ) : matchSetup === "error" ? (
+                    <Button size="sm" onClick={() => { automaticMatchAttempt.current = false; setMatchSetup("idle"); void loadWorkspace(true); }}>Retry matches</Button>
+                  ) : matchSetup !== "building" ? (
+                    <><Button size="sm" onClick={() => navigate("/career-ops/preferences")}>Broaden preferences</Button><Button variant="outline" size="sm" onClick={() => navigate("/job-search")}>Search jobs</Button></>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <div className="divide-y divide-rp-rule">
@@ -660,6 +751,31 @@ export default function AgentPage() {
 
           <section className="border border-rp-rule bg-rp-canvas p-5">
             <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-rp-accent" />
+              <h2 className="text-sm font-semibold text-rp-ink">Application verification</h2>
+            </div>
+            {gmailConnection ? (
+              <>
+                <div className="mt-4 flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-rp-ink">Inbox connected</p>
+                    <p className="mt-1 truncate text-xs text-rp-ink-2">{gmailConnection.gmail_email}</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">The Agent can privately retrieve a job portal's short-lived code, use it once, clear it, and continue. Mailbox passwords are never available to ResumePreps.</p>
+                <Button className="mt-4 w-full" variant="outline" size="sm" onClick={() => navigate("/inbox")}>Open application inbox</Button>
+              </>
+            ) : (
+              <>
+                <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">Connect Gmail once so the Agent can handle application confirmations and verification codes without copy-and-paste.</p>
+                <Button className="mt-4 w-full" size="sm" onClick={() => navigate("/inbox")}>Connect Gmail</Button>
+              </>
+            )}
+          </section>
+
+          <section className="border border-rp-rule bg-rp-canvas p-5">
+            <div className="flex items-center gap-2">
               <Clock3 className="h-4 w-4 text-rp-accent" />
               <h2 className="text-sm font-semibold text-rp-ink">Last Agent run</h2>
             </div>
@@ -675,7 +791,7 @@ export default function AgentPage() {
                 <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">{lastRun.summary || "No summary was recorded."}</p>
               </>
             ) : (
-              <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">No runs yet. Enable the Agent after setting your target roles and resume.</p>
+              <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">No runs yet. Your latest résumé now supplies the first role targets automatically; you can refine them any time.</p>
             )}
           </section>
 

@@ -23,7 +23,7 @@ serve(async (req) => {
   const providerError = requestUrl.searchParams.get("error");
 
   if (providerError) {
-    return safeRedirect(appBaseUrl, "/my-collection", { inbox: "cancelled" });
+    return safeRedirect(appBaseUrl, "/inbox", { inbox: "cancelled" });
   }
 
   const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID") || "";
@@ -35,12 +35,12 @@ serve(async (req) => {
 
   if (!code || !stateRaw || !googleClientId || !googleClientSecret || !redirectUri ||
       !encryptionKey || !supabaseUrl || !serviceKey) {
-    return safeRedirect(appBaseUrl, "/my-collection", { inbox: "unavailable" });
+    return safeRedirect(appBaseUrl, "/inbox", { inbox: "unavailable" });
   }
 
   const state = await verifySignedState<OAuthState>(stateRaw, encryptionKey);
   if (!state?.session_id || !state?.user_id || !state?.nonce) {
-    return safeRedirect(appBaseUrl, "/my-collection", { inbox: "invalid_link" });
+    return safeRedirect(appBaseUrl, "/inbox", { inbox: "invalid_link" });
   }
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
@@ -50,7 +50,7 @@ serve(async (req) => {
     .eq("id", state.session_id)
     .eq("user_id", state.user_id)
     .maybeSingle();
-  if (!session) return safeRedirect(appBaseUrl, "/my-collection", { inbox: "invalid_link" });
+  if (!session) return safeRedirect(appBaseUrl, "/inbox", { inbox: "invalid_link" });
 
   try {
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
@@ -107,9 +107,9 @@ serve(async (req) => {
       throw new Error("token_store_failed");
     }
 
-    return safeRedirect(appBaseUrl, `/my-collection/${state.session_id}`, { inbox: "connected" });
+    return safeRedirect(appBaseUrl, "/inbox", { inbox: "connected" });
   } catch (error) {
     console.error("mc-gmail-callback", error);
-    return safeRedirect(appBaseUrl, `/my-collection/${state.session_id}`, { inbox: "connect_failed" });
+    return safeRedirect(appBaseUrl, "/inbox", { inbox: "connect_failed" });
   }
 });

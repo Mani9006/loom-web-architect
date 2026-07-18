@@ -163,6 +163,78 @@ async function enqueueSubmit(userId: string, draftId: string) {
   };
 
   const queuedAt = new Date().toISOString();
+  let trackedJobId: string | null = null;
+
+  // Keep Agent submissions in the same application workspace that powers
+  // Gmail matching. This lets verification mail and later status updates map
+  // to the exact job without scanning unrelated personal messages.
+  const { data: gmailConnection } = await svc
+    .from("mc_gmail_connections")
+    .select("session_id")
+    .eq("user_id", userId)
+    .eq("enabled", true)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  let applicationSession: { id: string } | null = gmailConnection?.session_id
+    ? { id: gmailConnection.session_id }
+    : null;
+  if (!applicationSession) {
+    const { data: latestSession } = await svc
+      .from("mc_sessions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    applicationSession = latestSession;
+  }
+  if (!applicationSession) {
+    const { data: createdSession } = await svc
+      .from("mc_sessions")
+      .insert({
+        user_id: userId,
+        name: "Application Agent",
+        master_resume_id: draft.tailored_resume_id,
+      })
+      .select("id,status")
+      .single();
+    applicationSession = createdSession;
+  }
+
+  if (applicationSession?.id) {
+    const { data: existingTracked } = await svc
+      .from("mc_tracked_jobs")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("scanned_job_id", job.id)
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existingTracked?.id) {
+      trackedJobId = existingTracked.id;
+      await svc.from("mc_tracked_jobs").update({
+        session_id: applicationSession.id,
+        status: ["discovered", "saved"].includes(existingTracked.status) ? "saved" : existingTracked.status,
+        apply_url: job.apply_url,
+        tailored_resume_id: draft.tailored_resume_id,
+      }).eq("id", existingTracked.id);
+    } else {
+      const { data: createdTracked } = await svc.from("mc_tracked_jobs").insert({
+        user_id: userId,
+        session_id: applicationSession.id,
+        scanned_job_id: job.id,
+        job_title: job.title,
+        company: company.name,
+        apply_url: job.apply_url,
+        tailored_resume_id: draft.tailored_resume_id,
+        status: "saved",
+      }).select("id").single();
+      trackedJobId = createdTracked?.id || null;
+    }
+  }
 
   // Enqueue
   const payload = {
@@ -171,6 +243,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
       title: job.title,
       company: company.name,
       url: job.apply_url,
+      trackedJobId,
       approvalReceipt: {
         approved: true,
         reviewedAt: queuedAt,
@@ -194,6 +267,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
     draft_application_id: draft.id,
     tailored_resume_id: draft.tailored_resume_id,
     evaluation_id: draft.evaluation_id,
+    tracked_job_id: trackedJobId,
     // Answers are passed through to the worker; worker maps them into
     // Greenhouse's question schema at submit time.
     answers: draft.answers,

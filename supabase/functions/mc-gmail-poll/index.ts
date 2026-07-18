@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { decryptSecret, encryptSecret } from "../_shared/oauth-crypto.ts";
+import { extractVerificationCode } from "../_shared/verification-code.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,7 +46,10 @@ serve(async (req) => {
   const token = authorization.replace(/^Bearer\s+/i, "");
   const isWorker = Boolean(token) && token === serviceKey;
   let userId: string | null = null;
-  if (!isWorker) {
+  if (isWorker) {
+    const body = await req.json().catch(() => ({}));
+    userId = typeof body?.user_id === "string" && body.user_id.trim() ? body.user_id.trim() : null;
+  } else {
     const authClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false },
@@ -271,11 +275,6 @@ function normalizeBody(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 12_000);
-}
-
-function extractVerificationCode(value: string): string | null {
-  const match = value.match(/(?:verification|security|one[- ]?time|otp|access)\s*(?:code|password|pin)?\s*(?:is|:|-)?\s*([A-Z0-9]{4,8})\b/i);
-  return match?.[1] || null;
 }
 
 function deterministicClassification(text: string): ClassifiedEmail | null {

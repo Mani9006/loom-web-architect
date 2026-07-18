@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- inbox verification fields are deployed ahead of generated client types */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Check, CheckCheck, Clipboard, Inbox, MailOpen, RefreshCw, Search, ShieldCheck } from "lucide-react";
@@ -57,6 +57,8 @@ export default function InboxPage() {
   const [supportsReadState, setSupportsReadState] = useState(true);
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
   const [query, setQuery] = useState("");
+  const [loadedAt, setLoadedAt] = useState(0);
+  const automaticWorkspaceAttempt = useRef(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -81,7 +83,19 @@ export default function InboxPage() {
       })) as InboxMessage[];
     } else setSupportsReadState(true);
     setMessages(messageRows || []);
-    setSessionId(sessionResult.data?.id || null);
+    setLoadedAt(Date.now());
+    let activeSessionId = sessionResult.data?.id || null;
+    if (!activeSessionId && !sessionResult.error && !automaticWorkspaceAttempt.current) {
+      automaticWorkspaceAttempt.current = true;
+      setCreating(true);
+      const { data: created } = await supabase.from("mc_sessions")
+        .insert({ user_id: user.id, name: "Application Agent" })
+        .select("id")
+        .single();
+      activeSessionId = created?.id || null;
+      setCreating(false);
+    }
+    setSessionId(activeSessionId);
   }, [user]);
 
   useEffect(() => {
@@ -145,8 +159,8 @@ export default function InboxPage() {
         {sessionId ? <GmailConnectCard sessionId={sessionId} /> : (
           <Card className="p-5">
             <p className="text-sm font-semibold">Connect your application email</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Create a private application workspace, then connect Gmail with read-only permission.</p>
-            <Button className="mt-4" size="sm" onClick={createWorkspace} disabled={creating}>{creating ? "Creating…" : "Set up inbox"}</Button>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Your private application workspace is prepared automatically. Gmail still requires your one-time consent.</p>
+            <Button className="mt-4" size="sm" onClick={createWorkspace} disabled={creating}>{creating ? "Preparing…" : "Retry setup"}</Button>
           </Card>
         )}
         <Card className="p-5">
@@ -172,7 +186,7 @@ export default function InboxPage() {
         {loading ? <div className="space-y-3 p-4">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-28" />)}</div> : visible.length === 0 ? (
           <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><Inbox className="h-9 w-9 text-rp-ink-3" /><p className="mt-3 text-sm font-semibold">No matching application messages</p><p className="mt-1 max-w-md text-xs text-rp-ink-2">Connect Gmail and check your inbox. Only messages related to applications are shown here.</p></div>
         ) : <div className="divide-y divide-rp-rule">{visible.map((message) => {
-          const codeActive = Boolean(message.verification_code && (!message.verification_code_expires_at || new Date(message.verification_code_expires_at).getTime() > Date.now()));
+          const codeActive = Boolean(message.verification_code && (!message.verification_code_expires_at || new Date(message.verification_code_expires_at).getTime() > loadedAt));
           return <article key={message.id} className={`grid gap-3 p-4 sm:grid-cols-[28px_minmax(0,1fr)_auto] ${message.is_read ? "" : "bg-primary/[0.035]"}`}>
             <button disabled={!supportsReadState} className="mt-0.5 h-7 w-7 rounded-full text-muted-foreground hover:bg-muted disabled:opacity-40" onClick={() => markRead(message.id, !message.is_read)} aria-label={message.is_read ? "Mark unread" : "Mark read"}>{message.is_read ? <MailOpen className="mx-auto h-4 w-4" /> : <Check className="mx-auto h-4 w-4" />}</button>
             <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{message.subject || "Application update"}</p>{message.classification && <Badge variant="secondary">{labels[message.classification] || "Update"}</Badge>}</div><p className="mt-0.5 truncate text-xs text-muted-foreground">{message.from_email}</p>{message.classification_summary && <p className="mt-2 text-sm">{message.classification_summary}</p>}{message.body_preview && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}{message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}{codeActive && <div className="mt-3 inline-flex items-center gap-3 border border-primary/20 bg-primary/5 px-3 py-2"><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Verification code</p><p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p></div><Button variant="outline" size="sm" onClick={async () => { await navigator.clipboard.writeText(message.verification_code!); toast({ title: "Verification code copied" }); }}><Clipboard className="mr-1.5 h-3.5 w-3.5" />Copy</Button></div>}</div>

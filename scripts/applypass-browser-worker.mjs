@@ -72,6 +72,11 @@ async function failTask(taskId, errorMessage, result, log) {
   return await queueCall({ action: "fail", taskId, errorMessage, result, log });
 }
 
+async function requestVerificationCode(taskId, jobId) {
+  const response = await queueCall({ action: "verification-code", taskId, jobId });
+  return response?.available && typeof response?.code === "string" ? response.code : null;
+}
+
 async function maybeScreenshot(page, taskId, jobId) {
   if (!SCREENSHOT_DIR) return null;
   const safeTask = String(taskId || "task").replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -222,6 +227,65 @@ async function fillCommonFields(page, profile = {}, answerMemory = {}) {
   });
 }
 
+async function findVerificationField(page) {
+  return await page.evaluate(() => {
+    const candidates = Array.from(document.querySelectorAll("input"));
+    for (let index = 0; index < candidates.length; index += 1) {
+      const input = candidates[index];
+      const id = input.getAttribute("id") || "";
+      const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
+      const metadata = [
+        input.getAttribute("name") || "",
+        id,
+        input.getAttribute("placeholder") || "",
+        input.getAttribute("aria-label") || "",
+        input.getAttribute("autocomplete") || "",
+        label,
+        input.closest("label")?.textContent || "",
+      ].join(" ").toLowerCase();
+      const rect = input.getBoundingClientRect();
+      const visible = rect.width > 0 && rect.height > 0 && !input.disabled && !input.readOnly;
+      if (visible && /(one[- ]?time|verification|security|authentication|passcode|\botp\b)/i.test(metadata)) {
+        return { index };
+      }
+    }
+    return null;
+  });
+}
+
+async function fillVerificationCode(page, fieldIndex, code) {
+  const inputs = page.locator("input");
+  const input = inputs.nth(fieldIndex);
+  await input.fill(code);
+  await input.dispatchEvent("change");
+}
+
+async function handleApplicationVerification(page, taskId, jobId) {
+  const field = await findVerificationField(page);
+  if (!field) return { requested: false, completed: false };
+
+  // The worker stays active only while this application is waiting for a
+  // code. The code is consumed server-side after one successful retrieval.
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const code = await requestVerificationCode(taskId, jobId);
+    if (code) {
+      await fillVerificationCode(page, field.index, code);
+      return { requested: true, completed: true };
+    }
+    if (attempt > 0 && attempt % 3 === 0) {
+      await heartbeat(taskId, {
+        level: "info",
+        workerId: WORKER_ID,
+        at: nowIso(),
+        message: "Waiting for application email verification",
+        jobId,
+      });
+    }
+    await sleep(5000);
+  }
+  return { requested: true, completed: false };
+}
+
 async function downloadResumeFile(payload) {
   const url = String(payload?.resumeFileUrl || "").trim();
   if (!url.startsWith("https://")) return { directory: null, filePath: null };
@@ -346,6 +410,7 @@ async function processJob(browser, taskId, job, payload, resumeFilePath) {
     submitButton: null,
     submitted: false,
     resumeUploaded: false,
+    verificationHandled: false,
     screenshotPath: null,
     error: null,
     durationMs: 0,
@@ -372,6 +437,9 @@ async function processJob(browser, taskId, job, payload, resumeFilePath) {
     const upload = await uploadResume(page, resumeFilePath);
     result.resumeUploaded = upload.uploaded > 0;
 
+    const verification = await handleApplicationVerification(page, taskId, result.jobId);
+    result.verificationHandled = verification.completed;
+
     const submitButton = await detectSubmitButton(page);
     result.submitButton = submitButton?.label || null;
 
@@ -379,7 +447,7 @@ async function processJob(browser, taskId, job, payload, resumeFilePath) {
     const approved = approval?.approved === true && typeof approval?.reviewedAt === "string";
 
     const readiness = await inspectReadiness(page);
-    const blocked = upload.requiredMissing || readiness.incompleteRequired > 0;
+    const blocked = upload.requiredMissing || readiness.incompleteRequired > 0 || (verification.requested && !verification.completed);
 
     if (submitButton && AUTO_SUBMIT && approved && !blocked) {
       const previousUrl = page.url();
@@ -396,6 +464,8 @@ async function processJob(browser, taskId, job, payload, resumeFilePath) {
       if (blocked) {
         result.error = upload.requiredMissing
           ? "A required attachment is missing; submission was not attempted."
+          : verification.requested && !verification.completed
+            ? "Email verification is required. Connect the application inbox or request a new code, then retry."
           : `${readiness.incompleteRequired} required field(s) still need review; submission was not attempted.`;
       }
     }

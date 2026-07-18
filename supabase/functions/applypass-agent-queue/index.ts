@@ -16,6 +16,7 @@ type QueueAction =
   | "cancel"
   | "claim-next"
   | "heartbeat"
+  | "verification-code"
   | "complete"
   | "fail";
 
@@ -66,6 +67,7 @@ async function syncCareerDraft(
   if (!taskContext || taskContext.task_type !== "career_ops_submit") return;
   const payload = asRecord(taskContext.payload);
   const draftId = typeof payload.draft_application_id === "string" ? payload.draft_application_id : "";
+  const trackedJobId = typeof payload.tracked_job_id === "string" ? payload.tracked_job_id : "";
   const userId = typeof taskContext.user_id === "string" ? taskContext.user_id : "";
   if (!draftId || !userId) return;
 
@@ -88,6 +90,20 @@ async function syncCareerDraft(
     submitted_at: submitted ? new Date().toISOString() : null,
     error_message: submitted ? null : typeof firstIssue === "string" ? firstIssue.slice(0, 1500) : null,
   }).eq("id", draftId).eq("user_id", userId);
+
+  if (submitted && trackedJobId) {
+    await serviceClient.from("mc_tracked_jobs").update({
+      status: "applied",
+      applied_at: new Date().toISOString(),
+    }).eq("id", trackedJobId).eq("user_id", userId);
+    await serviceClient.from("mc_status_history").insert({
+      tracked_job_id: trackedJobId,
+      user_id: userId,
+      status_from: "saved",
+      status_to: "applied",
+      source: "auto_apply",
+    });
+  }
 }
 
 serve(async (req: Request) => {
@@ -99,7 +115,7 @@ serve(async (req: Request) => {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const action = String(body?.action || "enqueue") as QueueAction;
 
-    const workerActions = new Set<QueueAction>(["claim-next", "heartbeat", "complete", "fail"]);
+    const workerActions = new Set<QueueAction>(["claim-next", "heartbeat", "verification-code", "complete", "fail"]);
     if (workerActions.has(action)) {
       if (!workerAuthorized(req, body)) {
         return jsonResponse({ error: "Unauthorized worker action." }, 401);
@@ -124,6 +140,64 @@ serve(async (req: Request) => {
       const taskId = String(body?.taskId || "").trim();
       if (!taskId) {
         return jsonResponse({ error: "taskId is required" }, 400);
+      }
+
+      if (action === "verification-code") {
+        const jobId = String(body?.jobId || "").trim();
+        if (!jobId) return jsonResponse({ error: "jobId is required" }, 400);
+
+        const { data: task } = await serviceClient
+          .from("applypass_tasks")
+          .select("id,user_id,payload,status")
+          .eq("id", taskId)
+          .in("status", ["pending", "running"])
+          .maybeSingle();
+        if (!task) return jsonResponse({ error: "Active task not found" }, 404);
+
+        const taskPayload = asRecord(task.payload);
+        const taskJobs = Array.isArray(taskPayload.jobs) ? taskPayload.jobs.map(asRecord) : [];
+        const taskJob = taskJobs.find((job) => String(job.id || "") === jobId);
+        if (!taskJob) return jsonResponse({ error: "Job does not belong to this task" }, 403);
+
+        // Poll through the server-side Gmail connection. OAuth tokens never
+        // enter the worker payload, browser context, logs, or frontend.
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+        const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+        if (supabaseUrl && serviceRole) {
+          await fetch(`${supabaseUrl}/functions/v1/mc-gmail-poll`, {
+            method: "POST",
+            headers: {
+              apikey: serviceRole,
+              authorization: `Bearer ${serviceRole}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ user_id: task.user_id }),
+          }).catch(() => null);
+        }
+
+        const trackedJobId = String(taskJob.trackedJobId || taskPayload.tracked_job_id || "").trim();
+        if (!trackedJobId) return jsonResponse({ ok: true, available: false });
+        let codeQuery = serviceClient
+          .from("mc_inbound_emails")
+          .select("id,verification_code,verification_code_expires_at")
+          .eq("user_id", task.user_id)
+          .not("verification_code", "is", null)
+          .gt("verification_code_expires_at", new Date().toISOString())
+          .order("received_at", { ascending: false })
+          .limit(1);
+        codeQuery = codeQuery.eq("tracked_job_id", trackedJobId);
+        const { data: codeRows } = await codeQuery;
+        const codeRow = codeRows?.[0];
+        if (!codeRow?.verification_code) return jsonResponse({ ok: true, available: false });
+
+        await serviceClient.from("mc_inbound_emails").update({
+          verification_code: null,
+          verification_code_expires_at: null,
+          verification_code_used_at: new Date().toISOString(),
+          is_read: true,
+        }).eq("id", codeRow.id);
+
+        return jsonResponse({ ok: true, available: true, code: codeRow.verification_code });
       }
 
       if (action === "heartbeat") {
