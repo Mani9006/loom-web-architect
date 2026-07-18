@@ -134,7 +134,7 @@ interface KeywordPayload {
   suggestions: Array<{ priority: "high" | "medium" | "low"; action: string }>;
 }
 
-const KW_SYSTEM = `You are an ATS keyword extractor. You get a job description. Return the 15 most important terms a résumé should demonstrate to pass ATS screening AND human review. Mix hard skills, tools, domains, and seniority indicators. No fluff words.
+const KW_SYSTEM = `You are an ATS keyword extractor. You get a job description. Return the 15 most important terms a résumé should demonstrate to pass ATS screening AND human review. Mix hard skills, tools, domains, and seniority indicators. Use standard 1-4 word ATS phrases. Split bundled requirements into separate terms instead of returning a long sentence or slash-separated list. No fluff words.
 
 Then propose 5 crisp suggestions to close the gap, prioritised high/medium/low.
 
@@ -144,21 +144,41 @@ Return ONLY JSON:
 function computeKeywordScore(resumeText: string, keywords: string[]): {
   score: number; matched: string[]; missing: string[];
 } {
-  const lower = resumeText.toLowerCase();
+  const normalizedResume = normalizeForMatch(resumeText);
+  const resumeTokens = new Set(normalizedResume.split(" ").filter(Boolean));
   const matched: string[] = [];
   const missing: string[] = [];
+  let earned = 0;
   for (const k of keywords) {
-    const needle = k.toLowerCase().trim();
+    const needle = normalizeForMatch(k);
     if (!needle) continue;
-    if (lower.includes(needle)) matched.push(k);
+    if (normalizedResume.includes(needle)) {
+      matched.push(k);
+      earned += 1;
+      continue;
+    }
+    const tokens = needle.split(" ").filter((token) => token.length > 1 && !ATS_STOP_WORDS.has(token));
+    const coverage = tokens.length > 0
+      ? tokens.filter((token) => resumeTokens.has(token)).length / tokens.length
+      : 0;
+    earned += coverage;
+    if (coverage >= 0.7) matched.push(k);
     else missing.push(k);
   }
-  const score = keywords.length ? Math.round((matched.length / keywords.length) * 100) : 0;
+  const score = keywords.length ? Math.round((earned / keywords.length) * 100) : 0;
   return { score, matched, missing };
+}
+
+const ATS_STOP_WORDS = new Set(["and", "the", "for", "with", "from", "into", "using", "such", "including", "end", "full", "large", "scale"]);
+
+function normalizeForMatch(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function resumeToPlainText(r: any): string {
   const parts: string[] = [];
+  const personal = r.personal_info && typeof r.personal_info === "object" ? r.personal_info : {};
+  parts.push(`${personal.fullName ?? personal.name ?? ""} ${personal.title ?? ""} ${personal.location ?? ""}`);
   if (r.summary || r.personal_info?.summary) parts.push(r.summary || r.personal_info.summary);
   if (Array.isArray(r.experience)) for (const x of r.experience) {
     parts.push(`${x.role ?? x.title ?? ""} ${x.company_or_client ?? x.company ?? ""}`);
