@@ -290,8 +290,8 @@ export default function AppLayout() {
 
       <div className={cn("border-t border-rp-rule h-12 flex items-center", showText ? "px-4" : "justify-center")}>
         <span className="inline-flex items-center gap-2 text-[11px] text-rp-ink/55" style={{ fontFamily: '"Inter", system-ui, sans-serif' }}>
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-          {showText ? `${planLabel} plan · ready` : <span className="sr-only">{planLabel} plan ready</span>}
+          <span className="h-1.5 w-1.5 rounded-full bg-rp-accent" aria-hidden />
+          {showText ? `${planLabel} plan` : <span className="sr-only">{planLabel} plan</span>}
         </span>
       </div>
     </aside>
