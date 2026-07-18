@@ -1,4 +1,4 @@
-const SECTION_HEADING = /\b(About the role|The role|Responsibilities|What you(?:'|’)ll do|What we(?:'|’)re looking for|Minimum qualifications|Preferred qualifications|Qualifications|Requirements|Skills|Experience|Benefits|Compensation)\s*(?=:|[•▪◦])/gi;
+const SECTION_HEADING = /\b(About the role|The role|Responsibilities|What you(?:'|’)ll do|What we(?:'|’)re looking for|Minimum qualifications|Required qualifications|Preferred qualifications|Qualifications|Requirements|Skills|Experience|Benefits|Compensation)\s*:?[ \t]*(?=[•▪◦])/gi;
 
 function dedupeRepeatedSentences(value: string): string {
   const seen = new Set<string>();

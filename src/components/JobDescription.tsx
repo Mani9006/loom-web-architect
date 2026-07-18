@@ -18,7 +18,8 @@ export function JobDescription({ value, empty }: { value: string; empty?: ReactN
             </div>
           );
         }
-        const heading = line.length <= 72 && (/^[A-Z][A-Za-z0-9 &/+-]+:$/.test(line) || /^[A-Z0-9 &/+-]{4,}$/.test(line));
+        const knownHeading = /^(?:About the role|The role|Responsibilities|What you(?:'|’)ll do|What we(?:'|’)re looking for|Minimum qualifications|Required qualifications|Preferred qualifications|Qualifications|Requirements|Skills|Experience|Benefits|Compensation):?$/i.test(line);
+        const heading = line.length <= 72 && (knownHeading || /^[A-Z][A-Za-z0-9 &/+-]+:$/.test(line) || /^[A-Z0-9 &/+-]{4,}$/.test(line));
         if (heading) {
           return <h4 key={`${index}-${line}`} className="pt-2 text-sm font-semibold text-foreground">{line.replace(/:$/, "")}</h4>;
         }

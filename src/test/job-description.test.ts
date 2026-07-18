@@ -5,10 +5,12 @@ import { cleanJobDescription, jobDescriptionPreview, safeMatchText } from "@/lib
 describe("job description normalization", () => {
   it("deduplicates repeated source intros and structures inline bullets", () => {
     const intro = "Reddit is a community of communities. It is built on shared interests and trust.";
-    const result = cleanJobDescription(`${intro} ${intro} Responsibilities • Build reliable metrics • Partner with product teams`);
+    const result = cleanJobDescription(`${intro} ${intro} Responsibilities: • Build reliable metrics • Partner with product teams Required Qualifications: • Five years of experience`);
 
     expect(result.match(/Reddit is a community of communities/g)).toHaveLength(1);
     expect(result).toContain("Responsibilities\n• Build reliable metrics\n• Partner with product teams");
+    expect(result).toContain("Required Qualifications\n• Five years of experience");
+    expect(result).not.toContain("\n:\n");
   });
 
   it("creates a bounded card preview at a word boundary", () => {
