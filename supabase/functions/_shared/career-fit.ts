@@ -452,6 +452,9 @@ function applySeniorityGate(
   if (jobSeniority !== "unknown" && allowed.length > 0 && !allowed.includes(jobSeniority)) {
     filters.push(`${display(jobSeniority)} roles are outside selected seniority levels.`);
   }
+  if (["intern", "entry"].includes(jobSeniority) && candidate.yearsExperience > 2.5 && !allowed.includes(jobSeniority)) {
+    filters.push(`${display(jobSeniority)} role is not credible for a ${candidate.yearsExperience.toFixed(1)}-year resume unless that level is selected explicitly.`);
+  }
   const stretch = candidate.preferences.max_stretch_years ?? 2;
   if (requiredYears !== null && requiredYears - candidate.yearsExperience > stretch) {
     filters.push(`Experience gap exceeds the allowed ${stretch}-year stretch.`);

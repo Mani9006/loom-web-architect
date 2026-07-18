@@ -65,6 +65,20 @@ describe("career fit gate", () => {
     expect(fit.hardFilters.join(" ")).toMatch(/staff-level role is not credible/i);
   });
 
+  it("does not recommend new-grad roles to an experienced candidate unless explicitly selected", () => {
+    const candidate = buildCandidateCareerProfile(fourYearResume, {
+      target_roles: ["Software Engineer"],
+    });
+    const fit = evaluateCareerFit(candidate, {
+      title: "Software Engineer, New Grad - Infrastructure",
+      location: "United States",
+      description: "A new graduate role building services with TypeScript and AWS.",
+    });
+
+    expect(fit.eligible).toBe(false);
+    expect(fit.hardFilters.join(" ")).toMatch(/entry role is not credible/i);
+  });
+
   it("scores an evidence-backed role highly and exposes dimension evidence", () => {
     const candidate = buildCandidateCareerProfile(fourYearResume, {
       target_roles: ["Frontend Engineer", "Software Engineer"],
