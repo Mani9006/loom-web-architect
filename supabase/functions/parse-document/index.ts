@@ -11,9 +11,62 @@ const corsHeaders = {
 
 // Dynamic import for mammoth to avoid deployment issues
 async function parseDOCX(arrayBuffer: ArrayBuffer): Promise<string> {
-  const mammoth = await import("https://esm.sh/mammoth@1.6.0");
-  const result = await mammoth.default.extractRawText({ arrayBuffer });
-  return result.value;
+  try {
+    const mammoth = await import("https://esm.sh/mammoth@1.6.0");
+    const result = await mammoth.default.extractRawText({ arrayBuffer });
+    if (result.value?.trim()) return result.value;
+  } catch (error) {
+    console.error("Mammoth DOCX extraction failed, using XML fallback:", error);
+  }
+
+  return parseDOCXFromXml(arrayBuffer);
+}
+
+async function parseDOCXFromXml(arrayBuffer: ArrayBuffer): Promise<string> {
+  const JSZip = (await import("https://esm.sh/jszip@3.10.1")).default;
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const documentParts = [
+    "word/document.xml",
+    ...Object.keys(zip.files)
+      .filter((name) => /^word\/(header|footer|footnotes|endnotes)\d*\.xml$/i.test(name))
+      .sort(),
+  ];
+
+  const sections: string[] = [];
+  for (const partName of documentParts) {
+    const part = zip.file(partName);
+    if (!part) continue;
+    const xml = await part.async("text");
+    const text = extractDocxXmlText(xml);
+    if (text) sections.push(text);
+  }
+
+  return sections.join("\n\n").trim();
+}
+
+function extractDocxXmlText(xml: string): string {
+  const paragraphs = xml.match(/<w:p\b[\s\S]*?<\/w:p>/g) ?? [xml];
+  return paragraphs
+    .map((paragraph) =>
+      paragraph
+        .replace(/<w:tab\b[^>]*\/>/g, " ")
+        .replace(/<w:(?:br|cr)\b[^>]*\/>/g, "\n")
+        .match(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)
+        ?.map((textNode) => decodeXmlEntities(textNode.replace(/^<w:t\b[^>]*>|<\/w:t>$/g, "")))
+        .join("") ?? ""
+    )
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
