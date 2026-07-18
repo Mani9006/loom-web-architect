@@ -95,6 +95,7 @@ export default function ApplicationReviewPage() {
   const [loading, setLoading] = useState(true);
   const [markingSubmitted, setMarkingSubmitted] = useState(false);
   const [queueingSubmit, setQueueingSubmit] = useState(false);
+  const [refreshingPacket, setRefreshingPacket] = useState(false);
   const [ats, setAts] = useState<AtsScore | null>(null);
 
   useEffect(() => {
@@ -178,6 +179,30 @@ export default function ApplicationReviewPage() {
     }
   };
 
+  const refreshPacket = async () => {
+    if (!draft) return;
+    setRefreshingPacket(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
+        body: { evaluation_id: draft.evaluation_id, allow_outside_preferences: true, force: true },
+      });
+      if (error || !data?.draft?.tailored_resume_id) throw error ?? new Error("resume_missing");
+      const { error: atsError } = await supabase.functions.invoke("career-ops-ats", {
+        body: {
+          resume_id: data.draft.tailored_resume_id,
+          scanned_job_id: draft.evaluation.scanned_job.id,
+        },
+      });
+      if (atsError) throw atsError;
+      toast.success("Tailored résumé, answers, and ATS score refreshed from the current master résumé.");
+      window.location.reload();
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: "application_packet_refresh" });
+      toast.error("This application packet could not be refreshed. Try again in a moment.");
+      setRefreshingPacket(false);
+    }
+  };
+
   if (loading || !draft) {
     return (
       <div className="px-6 lg:px-12 py-12 max-w-[1280px] mx-auto">
@@ -227,6 +252,14 @@ export default function ApplicationReviewPage() {
               </span>
             ) : (
               <>
+                <button
+                  onClick={refreshPacket}
+                  disabled={refreshingPacket}
+                  className="h-9 px-3.5 inline-flex items-center rounded-md text-[13px] text-foreground border border-border hover:bg-muted transition-colors disabled:opacity-50"
+                  title="Rebuild this job-specific résumé and ATS score from the current master"
+                >
+                  {refreshingPacket ? "Refreshing…" : "Refresh packet"}
+                </button>
                 <a
                   href={job.apply_url}
                   target="_blank"

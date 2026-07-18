@@ -335,6 +335,7 @@ serve(async (req) => {
       evaluation_id?: string;
       user_id?: string;
       allow_outside_preferences?: boolean;
+      force?: boolean;
     };
     const user = await getAuthedUserOrService(req, body.user_id);
     if (!body.evaluation_id) throw new HttpError(400, "evaluation_id required");
@@ -365,7 +366,14 @@ serve(async (req) => {
       .maybeSingle();
     // Preparing is idempotent. Returning the existing application packet keeps
     // repeat clicks from creating a new resume for every attempt.
-    if (existingDraft?.tailored_resume_id && ["ready", "queued", "submitted"].includes(existingDraft.status)) {
+    if (existingDraft?.tailored_resume_id && ["queued", "submitted"].includes(existingDraft.status)) {
+      const answers = safeApplicationAnswers(existingDraft.answers, workAuthorization);
+      if (JSON.stringify(answers) !== JSON.stringify(existingDraft.answers)) {
+        await svc.from("draft_applications").update({ answers }).eq("id", existingDraft.id);
+      }
+      return jsonResponse({ draft: { ...existingDraft, answers }, reused: true });
+    }
+    if (existingDraft?.tailored_resume_id && existingDraft.status === "ready" && !body.force) {
       const answers = safeApplicationAnswers(existingDraft.answers, workAuthorization);
       if (JSON.stringify(answers) !== JSON.stringify(existingDraft.answers)) {
         await svc.from("draft_applications").update({ answers }).eq("id", existingDraft.id);
