@@ -55,6 +55,7 @@ const SYSTEM_PROMPT = `You are a senior résumé editor and application coach. G
 
 Rules:
 - Never fabricate experience the resume doesn't support.
+- Never infer work authorization, visa status, citizenship, or availability from a location, school, or employer. A deterministic profile-data guard will finalize that answer.
 - Preserve every source experience entry, employer, role, date, location, and ID in its original order. You may reorder bullets, but do not delete facts.
 - Preserve project IDs. For skills, return only a job-relevant subset of skills the source already demonstrates; never add a skill. The source résumé remains unchanged.
 - Keep each answer <120 words; 2-4 sentences.
@@ -200,6 +201,37 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function safeApplicationAnswers(value: unknown, workAuthorization: string): Array<{ question: string; answer: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const answer = asRecord(item);
+    const question = asString(answer.question);
+    if (!question) return [];
+    if (/work authorization|when can you start|start date/i.test(question)) {
+      return [{
+        question,
+        answer: workAuthorization
+          ? `My saved work-authorization status is ${workAuthorization}. I can confirm documentation and an accurate start date directly with the recruiter.`
+          : "I can confirm my work-authorization status, documentation, and accurate start date directly with the recruiter. I do not want to infer or overstate those details in an automated answer.",
+      }];
+    }
+    return [{ question, answer: asString(answer.answer) }];
+  }).filter(({ answer }) => answer.length > 0);
+}
+
+async function loadWorkAuthorization(svc: ReturnType<typeof serviceClient>, userId: string): Promise<string> {
+  const { data: profile } = await svc.from("profiles")
+    .select("work_authorization,job_preferences")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const stored = asRecord(asRecord(asRecord(profile?.job_preferences).applypass).profile);
+  return asString(profile?.work_authorization) || asString(stored.workAuthorization);
+}
+
 function cleanBullets(value: unknown, fallback: unknown): string[] {
   const clean = Array.isArray(value)
     ? value.map(String).map((item) => item.trim()).filter(Boolean)
@@ -309,6 +341,7 @@ serve(async (req) => {
 
     const svc = serviceClient();
     const { isPro } = await enforceAccountActive(svc, user.id);
+    const workAuthorization = await loadWorkAuthorization(svc, user.id);
 
     const { data: ev } = await svc.from("job_evaluations")
       .select("id,user_id,scanned_job_id,keyword_matches,gaps,resume_id,eligible,hard_filters,score_version")
@@ -333,7 +366,11 @@ serve(async (req) => {
     // Preparing is idempotent. Returning the existing application packet keeps
     // repeat clicks from creating a new resume for every attempt.
     if (existingDraft?.tailored_resume_id && ["ready", "queued", "submitted"].includes(existingDraft.status)) {
-      return jsonResponse({ draft: existingDraft, reused: true });
+      const answers = safeApplicationAnswers(existingDraft.answers, workAuthorization);
+      if (JSON.stringify(answers) !== JSON.stringify(existingDraft.answers)) {
+        await svc.from("draft_applications").update({ answers }).eq("id", existingDraft.id);
+      }
+      return jsonResponse({ draft: { ...existingDraft, answers }, reused: true });
     }
 
     await enforceDailyCap(svc, user.id, "tailor", isPro);
@@ -387,6 +424,7 @@ serve(async (req) => {
       title: childTitle,
       personal_info: {
         ...sourcePersonalInfo,
+        title: job.title,
         _v2_extras: {
           ...sourceExtras,
           document_role: "application_snapshot",
@@ -426,7 +464,10 @@ serve(async (req) => {
       evaluation_id: body.evaluation_id,
       tailored_resume_id: (child as any).id,
       tailored_cv_md,
-      answers: [...payload.answers, { question: "Cover note", answer: payload.cover_note }],
+      answers: [
+        ...safeApplicationAnswers(payload.answers, workAuthorization),
+        { question: "Cover note", answer: payload.cover_note },
+      ],
       status: "ready",
     }, { onConflict: "user_id,evaluation_id" }).select().single();
     if (draftErr) throw new HttpError(500, `save draft: ${draftErr.message}`);
