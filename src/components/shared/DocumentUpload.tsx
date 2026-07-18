@@ -16,6 +16,9 @@ interface ProgressState {
   pageCount?: number;
 }
 
+const MAX_FILE_SIZE_MB = 20;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
 interface DocumentUploadProps {
   onTextExtracted: (text: string, fileName: string) => void;
   isLoading?: boolean;
@@ -47,16 +50,18 @@ export function DocumentUpload({
   const [isParsing, setIsParsing] = useState(false);
   const [progressState, setProgressState] = useState<ProgressState | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   const validateFile = useCallback((file: File): boolean => {
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const message = `This file is ${formatFileSize(file.size)}. Upload a resume under ${MAX_FILE_SIZE_MB} MB, or export a smaller PDF and try again.`;
+      setUploadError(message);
       toast({
         title: "File too large",
-        description: "Please upload a file smaller than 10MB",
+        description: message,
         variant: "destructive",
       });
       return false;
@@ -65,9 +70,11 @@ export function DocumentUpload({
     // Validate file type
     const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
     if (!VALID_EXTENSIONS.includes(fileExt)) {
+      const message = "Use a PDF, DOCX, TXT, Markdown, PNG, JPG, JPEG, or WebP file.";
+      setUploadError(message);
       toast({
         title: "Invalid file type",
-        description: "Please upload a PDF, Word document, text file, or image",
+        description: message,
         variant: "destructive",
       });
       return false;
@@ -77,7 +84,15 @@ export function DocumentUpload({
   }, [toast]);
 
   const processFile = useCallback(async (file: File) => {
-    if (!validateFile(file)) return;
+    setUploadError(null);
+    setUploadedFile(null);
+    setProgressState(null);
+    if (!validateFile(file)) {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
 
     setIsUploading(true);
     let uploadedPath: string | null = null;
@@ -292,7 +307,9 @@ export function DocumentUpload({
           ? "The file could not be uploaded. Check the file and try again."
           : "The file could not be read reliably. Try a text-based PDF or DOCX file.",
       });
-      toast({ title: safeError.title, description: withSupportReference(safeError), variant: "destructive" });
+      const safeMessage = withSupportReference(safeError);
+      setUploadError(safeMessage);
+      toast({ title: safeError.title, description: safeMessage, variant: "destructive" });
       setUploadedFile(null);
     } finally {
       setIsUploading(false);
@@ -395,19 +412,34 @@ export function DocumentUpload({
           <>
             <CheckCircle className="w-8 h-8 text-green-500" />
             <p className="text-sm font-medium">{uploadedFile.name}</p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleClear();
-              }}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X className="w-4 h-4 mr-1" />
-              Remove
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="h-8 gap-1"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Replace file
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClear();
+                }}
+                className="h-8 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5 mr-1" />
+                Remove
+              </Button>
+            </div>
           </>
         ) : (
           <>
@@ -431,6 +463,12 @@ export function DocumentUpload({
         />
       </div>
 
+      {uploadError && !isProcessing && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {uploadError}
+        </div>
+      )}
+
       {/* Progress indicator for OCR processing */}
       {isParsing && progressState && (
         <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
@@ -448,8 +486,13 @@ export function DocumentUpload({
       )}
 
       <p className="text-xs text-muted-foreground text-center">
-        Supports: PDF (including multi-page scanned), Word (.docx), Text files, Images (PNG, JPG) - Max 10MB
+        Supports PDF, DOCX, TXT, Markdown, PNG, JPG, JPEG, and WebP files up to {MAX_FILE_SIZE_MB} MB.
       </p>
     </div>
   );
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

@@ -16,6 +16,111 @@ async function parseDOCX(arrayBuffer: ArrayBuffer): Promise<string> {
   return result.value;
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+function extractOpenAIOutputText(data: unknown): string {
+  const response = data as {
+    output_text?: unknown;
+    output?: Array<{ content?: Array<{ text?: unknown }> }>;
+  };
+  if (typeof response.output_text === "string") return response.output_text;
+  const parts: string[] = [];
+  for (const item of response.output ?? []) {
+    for (const content of item?.content ?? []) {
+      if (typeof content?.text === "string") parts.push(content.text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+async function extractWithOpenAIFileInput(
+  base64: string,
+  fileName: string,
+  mimeType: string,
+  controller?: ReadableStreamDefaultController,
+): Promise<string | null> {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) {
+    console.log("OpenAI OCR fallback unavailable - OPENAI_API_KEY missing");
+    return null;
+  }
+
+  const model = Deno.env.get("OPENAI_MODEL_DOCUMENT_OCR") || "gpt-4.1-mini";
+  const isPdf = mimeType === "application/pdf";
+
+  if (controller) {
+    sendSSE(controller, {
+      type: "progress",
+      stage: "vision_extraction",
+      message: "Reading scanned resume text...",
+      progress: 72,
+    });
+  }
+
+  try {
+    const filePart = isPdf
+      ? {
+          type: "input_file",
+          filename: fileName,
+          file_data: `data:${mimeType};base64,${base64}`,
+          detail: "low",
+        }
+      : {
+          type: "input_image",
+          image_url: `data:${mimeType};base64,${base64}`,
+          detail: "high",
+        };
+
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        instructions:
+          "Extract resume text exactly from the attached document. Preserve names, headings, dates, employers, roles, bullets, skills, education, certifications, and contact details. Do not summarize, rewrite, infer, or add commentary. Return plain text only.",
+        input: [
+          {
+            role: "user",
+            content: [
+              filePart,
+              {
+                type: "input_text",
+                text: "Extract all readable resume text in natural top-to-bottom order. Return only the extracted text.",
+              },
+            ],
+          },
+        ],
+        max_output_tokens: 12000,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("OpenAI document extraction error:", response.status, errorText.slice(0, 500));
+      return null;
+    }
+
+    const data = await response.json();
+    const text = extractOpenAIOutputText(data);
+    console.log("OpenAI document extraction length:", text.length);
+    return text || null;
+  } catch (error) {
+    console.error("OpenAI document extraction exception:", error);
+    return null;
+  }
+}
+
 // Extract text from PDF using unpdf (handles compressed/FlateDecode streams properly)
 async function extractTextFromPDFWithUnpdf(uint8Array: Uint8Array): Promise<string> {
   try {
@@ -368,9 +473,7 @@ serve(async (req: Request) => {
                   progress: 10
                 });
                 
-                const base64 = btoa(
-                  uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
-                );
+                const base64 = bytesToBase64(uint8Array);
                 
                 const ocrResult = await ocrWithOCRSpace(base64, fileName, "application/pdf", pageCount, controller);
                 
@@ -380,10 +483,13 @@ serve(async (req: Request) => {
                   sendSSE(controller, { 
                     type: "progress", 
                     stage: "ocr_failed",
-                    message: "OCR unavailable, using basic text extraction",
-                    progress: 80
+                    message: "Trying document vision extraction...",
+                    progress: 70
                   });
-                  // Keep whatever text we extracted
+                  const aiText = await extractWithOpenAIFileInput(base64, fileName, "application/pdf", controller);
+                  if (aiText && aiText.length > extractedText.length) {
+                    extractedText = aiText;
+                  }
                 }
               } else {
                 sendSSE(controller, { 
@@ -396,9 +502,7 @@ serve(async (req: Request) => {
             } else if (fileName.endsWith(".png") || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") || fileName.endsWith(".webp")) {
               const arrayBuffer = await fileData.arrayBuffer();
               const uint8Array = new Uint8Array(arrayBuffer);
-              const base64 = btoa(
-                uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
-              );
+              const base64 = bytesToBase64(uint8Array);
               
               const mimeType = fileName.endsWith(".png") ? "image/png" : 
                               fileName.endsWith(".webp") ? "image/webp" : "image/jpeg";
@@ -408,12 +512,17 @@ serve(async (req: Request) => {
               if (ocrResult) {
                 extractedText = ocrResult;
               } else {
-                sendSSE(controller, { 
-                  type: "error", 
-                  error: "OCR service not available. Please paste your resume content directly."
-                });
-                controller.close();
-                return;
+                const aiText = await extractWithOpenAIFileInput(base64, fileName, mimeType, controller);
+                if (aiText) {
+                  extractedText = aiText;
+                } else {
+                  sendSSE(controller, {
+                    type: "error",
+                    error: "This file could not be read. Try a text-based PDF, DOCX, or paste the resume text directly."
+                  });
+                  controller.close();
+                  return;
+                }
               }
             } else if (fileName.endsWith(".docx")) {
               sendSSE(controller, { 
@@ -449,6 +558,15 @@ serve(async (req: Request) => {
               .replace(/\n{3,}/g, "\n\n")       // collapse 3+ newlines to 2
               .replace(/^ +| +$/gm, "")         // trim leading/trailing spaces per line
               .trim();
+
+            if (!extractedText || extractedText.length < 20) {
+              sendSSE(controller, {
+                type: "error",
+                error: "This file did not contain enough readable resume text. Try a text-based PDF, DOCX, or paste the resume text directly.",
+              });
+              controller.close();
+              return;
+            }
 
             sendSSE(controller, { 
               type: "progress", 
@@ -510,30 +628,24 @@ serve(async (req: Request) => {
           
           // Check if OCR is available
           const OCRSPACE_API_KEY = Deno.env.get("OCRSPACE_API_KEY");
+          const base64 = bytesToBase64(uint8Array);
           if (!OCRSPACE_API_KEY) {
-            console.log("OCRSPACE_API_KEY not configured, returning partial text");
-            if (extractedText.length > 0) {
-              // Return what we have if there's any text at all
-              console.log("Returning basic extracted text instead");
-            } else {
-              return new Response(JSON.stringify({ 
-                error: "This PDF requires OCR (scanned document), but OCR service is not configured. Please paste your resume content directly or use a text-based PDF." 
-              }), {
-                status: 400,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-              });
+            console.log("OCRSPACE_API_KEY not configured, trying OpenAI file extraction");
+            const aiText = await extractWithOpenAIFileInput(base64, fileName, "application/pdf");
+            if (aiText && aiText.length > extractedText.length) {
+              extractedText = aiText;
             }
           } else {
-            const base64 = btoa(
-              uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
-            );
-            
             try {
               const ocrResult = await ocrWithOCRSpace(base64, fileName, "application/pdf", pageCount);
               if (ocrResult && ocrResult.length > extractedText.length) {
                 extractedText = ocrResult;
               } else if (!ocrResult) {
-                console.log("OCR returned no results, keeping basic extraction");
+                console.log("OCR returned no results, trying OpenAI file extraction");
+                const aiText = await extractWithOpenAIFileInput(base64, fileName, "application/pdf");
+                if (aiText && aiText.length > extractedText.length) {
+                  extractedText = aiText;
+                }
               }
             } catch (ocrError) {
               console.error("OCR failed:", ocrError);
@@ -586,9 +698,7 @@ serve(async (req: Request) => {
       try {
         const arrayBuffer = await fileData.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
-        const base64 = btoa(
-          uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
-        );
+        const base64 = bytesToBase64(uint8Array);
         
         const mimeType = fileName.endsWith(".png") ? "image/png" : 
                         fileName.endsWith(".webp") ? "image/webp" : "image/jpeg";
@@ -601,13 +711,18 @@ serve(async (req: Request) => {
           extractedText = ocrResult;
           console.log("Image OCR completed, text length:", extractedText.length);
         } else {
-          console.log("OCR not available for image");
-          return new Response(JSON.stringify({ 
-            error: "OCR service not configured. Please paste your resume content directly." 
-          }), {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+          console.log("OCR not available for image, trying OpenAI vision extraction");
+          const aiText = await extractWithOpenAIFileInput(base64, fileName, mimeType);
+          if (aiText) {
+            extractedText = aiText;
+          } else {
+            return new Response(JSON.stringify({
+              error: "This image could not be read. Please paste your resume content directly or upload a text-based PDF/DOCX."
+            }), {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
         }
       } catch (imgError) {
         console.error("Image OCR error:", imgError);
