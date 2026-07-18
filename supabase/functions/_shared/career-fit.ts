@@ -413,11 +413,21 @@ function applyAuthorizationGate(prefs: CandidatePreferences, combined: string, f
 }
 
 function applyEmploymentTypeGate(prefs: CandidatePreferences, employmentType: string | null | undefined, filters: string[]) {
-  const allowed = normalizedList(prefs.employment_types);
-  const actual = normalize(employmentType ?? "").replace(/\s+/g, "_");
-  if (allowed.length > 0 && actual && !allowed.some((item) => actual.includes(item.replace(/\s+/g, "_")))) {
+  const allowed = unique((prefs.employment_types ?? []).map(canonicalEmploymentType).filter(Boolean));
+  const actual = canonicalEmploymentType(employmentType ?? "");
+  if (allowed.length > 0 && actual && !allowed.includes(actual)) {
     filters.push(`${employmentType} is outside selected employment types.`);
   }
+}
+
+function canonicalEmploymentType(value: string): string {
+  const normalized = normalize(value).replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  const compact = normalized.replace(/_/g, "");
+  if (["fulltime", "permanent", "regular"].includes(compact)) return "full_time";
+  if (["parttime"].includes(compact)) return "part_time";
+  if (["contract", "contractor", "temporary", "temp"].includes(compact)) return "contract";
+  if (["intern", "internship"].includes(compact)) return "internship";
+  return normalized;
 }
 
 function applySalaryGate(

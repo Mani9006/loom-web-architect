@@ -110,8 +110,8 @@ const DEFAULT_CONTROLS: AgentControls = {
   auto_apply_enabled: false,
   review_mode: "always",
   auto_apply_min_fit_score: 82,
-  daily_apply_cap: 5,
-  agent_max_actions_per_day: 20,
+  daily_apply_cap: 10,
+  agent_max_actions_per_day: 60,
   agent_actions_today: 0,
   last_agent_run_at: null,
 };
@@ -163,7 +163,6 @@ export default function AgentPage() {
         .from("job_evaluations")
         .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
         .eq("user_id", user.id)
-        .eq("eligible", true)
         .order("fit_score", { ascending: false })
         .limit(5),
       migratedTables
@@ -244,12 +243,13 @@ export default function AgentPage() {
   }, [loadWorkspace, user]);
 
   const counts = useMemo(() => {
-    const value = { prepared: 0, queued: 0, submitted: 0, failed: 0 };
+    const value = { prepared: 0, queued: 0, submitted: 0, failed: 0, skipped: 0 };
     for (const status of draftStatuses) {
       if (["draft", "ready"].includes(status)) value.prepared += 1;
       else if (status === "queued") value.queued += 1;
       else if (status === "submitted") value.submitted += 1;
       else if (status === "failed") value.failed += 1;
+      else if (status === "skipped") value.skipped += 1;
     }
     return value;
   }, [draftStatuses]);
@@ -267,8 +267,8 @@ export default function AgentPage() {
       auto_apply_enabled: true,
       review_mode: controls.review_mode === "eligible_only" ? "eligible_only" : "always",
       auto_apply_min_fit_score: Math.min(100, Math.max(60, controls.auto_apply_min_fit_score)),
-      daily_apply_cap: Math.min(20, Math.max(1, controls.daily_apply_cap)),
-      agent_max_actions_per_day: Math.min(60, Math.max(5, controls.agent_max_actions_per_day)),
+      daily_apply_cap: Math.min(25, Math.max(1, controls.daily_apply_cap)),
+      agent_max_actions_per_day: Math.min(120, Math.max(10, controls.agent_max_actions_per_day)),
     };
     const { error } = await supabase.from("user_job_prefs").upsert({
       user_id: user.id,
@@ -311,15 +311,15 @@ export default function AgentPage() {
       <PageHeader
         title="Agent."
         status={`${planName.toLowerCase()} · ${agentStatus}`}
-        description="A supervised career operator that watches for strong matches, prepares truthful job-specific materials, checks ATS fit, and queues only the submissions your policy allows."
+        description="Your continuous application workspace: fresh matches, truthful job-specific resumes, ATS checks, queued submissions, and clear outcomes in one place."
       />
 
       <section className="mt-7 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Agent workspace status">
         {[
-          { label: "Eligible matches", value: matches.length, icon: Radar, note: plan === "free" ? "manual feed" : "live account feed" },
+          { label: "New matches", value: matches.length, icon: Radar, note: plan === "free" ? "personalized feed" : "refreshed hourly" },
           { label: "Latest ATS", value: latestAts ? `${Math.round(latestAts.overall)}%` : "—", icon: FileCheck2, note: latestAts ? "exact resume check" : "run first check" },
           { label: "Review ready", value: counts.prepared, icon: ShieldCheck, note: `${counts.queued} queued` },
-          { label: "Submitted", value: counts.submitted, icon: Send, note: counts.failed > 0 ? `${counts.failed} need attention` : "receipts only" },
+          { label: "Submitted", value: counts.submitted, icon: Send, note: counts.failed + counts.skipped > 0 ? `${counts.failed + counts.skipped} need attention` : "verified receipts" },
         ].map((item) => (
           <div key={item.label} className="bg-rp-canvas p-4 min-h-28">
             <div className="flex items-center justify-between">
@@ -342,7 +342,7 @@ export default function AgentPage() {
                   <h2 className="text-lg font-semibold text-rp-ink">Career Agent controls</h2>
                 </div>
                 <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2 max-w-2xl">
-                  The agent runs hourly only for Autopilot accounts. It applies hard filters first, uses your newest resume as evidence, and keeps unsupported portals in review/manual status.
+                  Autopilot checks fresh company-direct roles every hour, ranks the complete resume story and skills, then prepares or queues applications according to the policy below.
                 </p>
               </div>
               <button
@@ -350,15 +350,15 @@ export default function AgentPage() {
                 disabled={!hasAutoApply}
                 onClick={() => setControls((current) => ({ ...current, agent_enabled: !current.agent_enabled }))}
                 className={cn(
-                  "relative h-8 w-14 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                  "relative h-8 w-14 shrink-0 overflow-hidden rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   controls.agent_enabled && hasAutoApply ? "bg-rp-accent" : "bg-rp-paper-2",
                 )}
                 aria-label="Toggle Career Agent"
                 aria-pressed={controls.agent_enabled}
               >
                 <span className={cn(
-                  "absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-transform",
-                  controls.agent_enabled && hasAutoApply ? "translate-x-7" : "translate-x-1",
+                  "absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform duration-200 ease-out",
+                  controls.agent_enabled && hasAutoApply ? "translate-x-6" : "translate-x-0",
                 )} />
               </button>
             </div>
@@ -401,8 +401,8 @@ export default function AgentPage() {
                     )}
                   >
                     <Send className="h-4 w-4 text-rp-accent" />
-                    <p className="mt-3 text-sm font-semibold text-rp-ink">Queue eligible automatically</p>
-                    <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Queue only eligible Greenhouse jobs above your fit threshold. The worker submits only after attachments and required fields pass; otherwise it returns the draft for review.</p>
+                    <p className="mt-3 text-sm font-semibold text-rp-ink">Apply strong matches automatically</p>
+                    <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Prepare and queue supported jobs above your fit threshold. Missing answers, sensitive questions, and portal challenges move to Needs attention instead of being guessed.</p>
                   </button>
                 </div>
               </div>
@@ -424,7 +424,7 @@ export default function AgentPage() {
                   <input
                     type="number"
                     min="1"
-                    max="20"
+                    max="25"
                     value={controls.daily_apply_cap}
                     onChange={(event) => setControls((current) => ({ ...current, daily_apply_cap: Number(event.target.value) }))}
                     className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
@@ -434,8 +434,8 @@ export default function AgentPage() {
                   <span className="text-xs font-semibold text-rp-ink">Daily agent actions</span>
                   <input
                     type="number"
-                    min="5"
-                    max="60"
+                    min="10"
+                    max="120"
                     value={controls.agent_max_actions_per_day}
                     onChange={(event) => setControls((current) => ({ ...current, agent_max_actions_per_day: Number(event.target.value) }))}
                     className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
@@ -445,7 +445,7 @@ export default function AgentPage() {
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rp-rule pt-5">
                 <p className="text-xs text-rp-ink-2">
-                  {controls.agent_actions_today}/{controls.agent_max_actions_per_day} actions used today · 100 supported submissions/month hard cap
+                  {controls.agent_actions_today}/{controls.agent_max_actions_per_day} workflow steps today · up to 100 verified submissions per month
                 </p>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => navigate("/career-ops/preferences")}>
@@ -467,7 +467,7 @@ export default function AgentPage() {
                   <h2 className="text-base font-semibold text-rp-ink">Matches for you</h2>
                   {plan !== "free" && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>}
                 </div>
-                <p className="mt-1 text-xs text-rp-ink-2">New evaluations appear here while this page is open; Autopilot also checks hourly.</p>
+                <p className="mt-1 text-xs text-rp-ink-2">Autopilot refreshes this feed hourly, even when you are signed out.</p>
               </div>
               <button
                 onClick={() => void loadWorkspace(true)}
@@ -480,8 +480,8 @@ export default function AgentPage() {
             {matches.length === 0 ? (
               <div className="p-8 text-center">
                 <BriefcaseBusiness className="mx-auto h-8 w-8 text-rp-ink-3" />
-                <p className="mt-3 text-sm font-semibold text-rp-ink">No eligible scored matches yet</p>
-                <p className="mt-1 text-xs text-rp-ink-2">Set target roles and evaluate jobs to build this feed.</p>
+                <p className="mt-3 text-sm font-semibold text-rp-ink">No personalized matches yet</p>
+                <p className="mt-1 text-xs text-rp-ink-2">Finish your source resume and target profile, then refresh this workspace.</p>
                 <Button className="mt-4" size="sm" onClick={() => navigate("/job-search")}>Browse jobs</Button>
               </div>
             ) : (
@@ -495,14 +495,20 @@ export default function AgentPage() {
                       onClick={() => navigate("/matches")}
                       className="grid w-full grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-4 p-4 text-left hover:bg-rp-paper transition-colors"
                     >
-                      <div className={cn("text-2xl font-semibold tabular-nums", scoreTone(score))}>{score}</div>
+                      <div>
+                        <div className={cn("text-xl font-semibold tabular-nums", scoreTone(score))}>{score}%</div>
+                        <p className="mt-0.5 text-[9px] uppercase tracking-wide text-rp-ink-3">
+                          {score >= 80 ? "Strong" : score >= 60 ? "Possible" : "Low"}
+                        </p>
+                      </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-rp-ink">{match.scanned_job?.title ?? "Job match"}</p>
                         <p className="mt-0.5 truncate text-xs text-rp-ink-2">{company}{match.scanned_job?.location ? ` · ${match.scanned_job.location}` : ""}</p>
                         {match.summary && <p className="mt-1 line-clamp-1 text-xs text-rp-ink-2">{match.summary}</p>}
+                        <Progress value={score} className="mt-2 h-1.5" aria-label={`${score}% career fit`} />
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">Tier {match.tier}</span>
+                        <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">Career fit</span>
                         <p className="mt-1 text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(match.evaluated_at), { addSuffix: true })}</p>
                       </div>
                     </button>

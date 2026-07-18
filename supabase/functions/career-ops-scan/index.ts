@@ -113,9 +113,9 @@ async function fetchAshby(ident: string): Promise<Posting[]> {
     location: j.location || j.locationName || null,
     department: j.department || j.team || null,
     employment_type: j.employmentType || null,
-    remote_policy: j.isRemote ? "Remote" : j.shouldDisplayCompensationOnJobPostings ? null : null,
+    remote_policy: j.workplaceType || (j.isRemote ? "Remote" : null),
     compensation_text: j.compensation?.compensationTierSummary || null,
-    description_md: stripHtml(j.descriptionHtml || j.jobDescription || ""),
+    description_md: j.descriptionPlain || stripHtml(j.descriptionHtml || j.jobDescription || ""),
     apply_url: j.jobUrl || j.applyUrl || "",
     posted_at: j.publishedAt || null,
     raw: j,
@@ -246,9 +246,32 @@ async function runScan() {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    // Accept both pg_cron (bearer = service role) and admin bearer tokens.
-    // No anonymous access — require Authorization header.
-    if (!req.headers.get("authorization")) {
+    // Accept the service-role credential used by the scheduler or a verified
+    // administrator JWT. Merely sending any Authorization header is not proof
+    // of identity.
+    const authorization = req.headers.get("authorization") || "";
+    const bearer = authorization.replace(/^Bearer\s+/i, "");
+    const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const workerToken = Deno.env.get("WORKER_AUTH_TOKEN") || "";
+    let authorized = Boolean((serviceRole && bearer === serviceRole) || (workerToken && bearer === workerToken));
+    if (!authorized && bearer) {
+      const authClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: `Bearer ${bearer}` } }, auth: { persistSession: false } },
+      );
+      const { data: { user } } = await authClient.auth.getUser();
+      if (user) {
+        const { data: role } = await svc()
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("role", "admin")
+          .maybeSingle();
+        authorized = Boolean(role);
+      }
+    }
+    if (!authorized) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -260,8 +283,8 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return new Response(JSON.stringify({ error: msg }), {
+    console.error("career-ops-scan failed", e);
+    return new Response(JSON.stringify({ error: "Job ingestion could not be completed.", code: "INGESTION_FAILED" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

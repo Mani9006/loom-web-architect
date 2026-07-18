@@ -5,10 +5,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { ResumeJSON, createEmptyResumeJSON } from "@/types/resume";
 import { calculateATSScore } from "@/lib/ats-scorer";
 import {
-  streamAIText, parseAIResponse, mapParsedToResumePayload, RESUME_PARSE_SYSTEM_PROMPT,
-  prepareResumeTextForParsing,
+  streamAIText, parseAIResponse, mapParsedToResumePayload,
+  prepareResumeTextForParsing, calculateResumeParseQuality, buildResumeCorrectionPrompt,
 } from "@/lib/ai-resume-parser";
 import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,12 @@ import { formatDistanceToNow, format } from "date-fns";
 import { TerminalLoader, TerminalText } from "@/components/Terminal";
 
 type ResumeSource = "scratch" | "upload" | "existing";
+
+async function sha256(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value.normalize("NFKC"));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 interface ResumeRow {
   id: string;
@@ -87,6 +94,7 @@ export default function ResumeProjects() {
   const [resumeSource, setResumeSource] = useState<ResumeSource>("scratch");
   const [uploadedResumeText, setUploadedResumeText] = useState<string | null>(null);
   const [uploadedResumeFileName, setUploadedResumeFileName] = useState("");
+  const [uploadedDocumentId, setUploadedDocumentId] = useState<string | null>(null);
   const [existingDocuments, setExistingDocuments] = useState<any[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [isParsingImport, setIsParsingImport] = useState(false);
@@ -146,6 +154,7 @@ export default function ResumeProjects() {
     setResumeSource("scratch");
     setUploadedResumeText(null);
     setUploadedResumeFileName("");
+    setUploadedDocumentId(null);
     setSelectedDocumentId(null);
     setIsParsingImport(false);
   };
@@ -179,11 +188,14 @@ export default function ResumeProjects() {
     } else {
       // "upload" or "existing" — get extracted text and AI-parse it
       let textToParse: string;
+      let sourceDocumentId: string | null = null;
       if (resumeSource === "upload") {
         textToParse = uploadedResumeText!;
+        sourceDocumentId = uploadedDocumentId;
       } else {
         const selectedDoc = existingDocuments.find((d) => d.id === selectedDocumentId);
         textToParse = selectedDoc?.extracted_text || "";
+        sourceDocumentId = selectedDoc?.id || null;
         if (!textToParse) {
           toast({ title: "Error", description: "Selected document has no extracted text.", variant: "destructive" });
           setIsCreating(false);
@@ -211,13 +223,35 @@ export default function ResumeProjects() {
           "resume_parse",
         );
 
-        const parsedData = parseAIResponse(fullContent);
+        let parsedData = parseAIResponse(fullContent);
         if (!parsedData) {
           console.error("[ResumeProjects] Failed to parse AI response:", fullContent.substring(0, 500));
           throw new Error("Could not extract structured data from the AI response. Please try again.");
         }
 
+        let quality = calculateResumeParseQuality(preparedText, parsedData);
+
+        // Low-confidence imports receive one targeted correction pass. The
+        // deterministic gate, not the model's self-assessment, decides whether
+        // the extraction is safe to present as complete.
+        if (quality.status === "review_required") {
+          const correctedContent = await streamAIText(
+            session.session.access_token,
+            [{ role: "user", content: buildResumeCorrectionPrompt(preparedText, parsedData, quality) }],
+            "resume_parse",
+          );
+          const corrected = parseAIResponse(correctedContent);
+          if (corrected) {
+            const correctedQuality = calculateResumeParseQuality(preparedText, corrected);
+            if (correctedQuality.score >= quality.score) {
+              parsedData = corrected;
+              quality = correctedQuality;
+            }
+          }
+        }
+
         const mapped = mapParsedToResumePayload(parsedData);
+        const sourceHash = await sha256(preparedText);
 
         payload = {
           user_id: user.id,
@@ -232,16 +266,40 @@ export default function ResumeProjects() {
           skills: mapped.skills as any,
           projects: mapped.projects as any,
           certifications: mapped.certifications as any,
-          languages: [] as any,
+          languages: mapped.languages as any,
+          volunteer: mapped.volunteer as any,
+          awards: mapped.awards as any,
+          custom_sections: mapped.custom_sections as any,
+          source_document_id: sourceDocumentId,
+          source_hash: sourceHash,
+          parser_version: quality.version,
+          parse_quality: quality as any,
+          parsed_at: new Date().toISOString(),
           template: "professional",
         };
+
+        if (quality.status === "passed") {
+          toast({
+            title: `Source coverage ${quality.score}%`,
+            description: "The import passed the lossless extraction quality gate.",
+          });
+        } else {
+          toast({
+            title: `Review required · ${quality.score}% coverage`,
+            description: quality.warnings[0] || "Some source evidence needs review before applying.",
+            variant: "destructive",
+          });
+        }
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Failed to parse resume";
-        console.error("[ResumeProjects] Import error:", errorMsg);
+        console.error("[ResumeProjects] Import error:", error);
         void captureIncident(error, { source: "manual", operation: "resume_parse" });
+        const safeError = toUserFacingError(error, {
+          operation: "resume_parse",
+          defaultMessage: "We could not read this resume reliably. Try a text-based PDF or DOCX file.",
+        });
         toast({
-          title: "Import failed",
-          description: errorMsg.length > 150 ? errorMsg.substring(0, 150) + "..." : errorMsg,
+          title: safeError.title,
+          description: withSupportReference(safeError),
           variant: "destructive",
         });
         setIsCreating(false);
@@ -555,6 +613,7 @@ export default function ResumeProjects() {
                     }
                   }}
                   persistToDocuments={true}
+                  onDocumentSaved={(doc) => setUploadedDocumentId(doc.id)}
                   label="Drop your resume here"
                 />
                 {uploadedResumeText && (

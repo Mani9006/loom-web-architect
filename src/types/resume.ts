@@ -82,6 +82,8 @@ export interface ExperienceEntry {
   end_date: string;
   location: string;
   bullets: string[];
+  /** Exact tools/technology line attached to this role in the source resume. */
+  environment?: string;
 }
 
 // Education entry
@@ -93,6 +95,9 @@ export interface EducationEntry {
   gpa: string;
   graduation_date: string;
   location: string;
+  /** Optional range fields preserve resumes that include attendance dates. */
+  start_date?: string;
+  end_date?: string;
 }
 
 // Certification entry
@@ -201,6 +206,27 @@ export interface ResumeJSON {
   awards?: AwardEntry[];
   customSections?: CustomSection[];
   section_order?: ResumeSectionId[];
+}
+
+export interface ResumeParseQuality {
+  version: string;
+  score: number;
+  threshold: number;
+  status: "passed" | "review_required";
+  sourceCharacters: number;
+  metrics: {
+    lexicalCoverage: number;
+    bulletCoverage: number;
+    dateCoverage: number;
+    sectionCoverage: number;
+  };
+  evidence: {
+    sourceBullets: number;
+    parsedBullets: number;
+    expectedSections: string[];
+    capturedSections: string[];
+  };
+  warnings: string[];
 }
 
 // Template configuration

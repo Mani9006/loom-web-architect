@@ -365,12 +365,12 @@ export default function CareerOpsPreferencesPage() {
             type="button"
             onClick={() => setPrefs({ ...prefs, requires_sponsorship: !prefs.requires_sponsorship })}
             className={cn(
-              "h-7 w-12 rounded-full transition-colors relative",
+              "h-7 w-12 overflow-hidden rounded-full transition-colors relative",
               prefs.requires_sponsorship ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle sponsorship requirement"
           >
-            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.requires_sponsorship ? "translate-x-5" : "translate-x-0.5")} />
+            <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.requires_sponsorship ? "translate-x-5" : "translate-x-0")} />
           </button>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -404,12 +404,12 @@ export default function CareerOpsPreferencesPage() {
             type="button"
             onClick={() => setPrefs({ ...prefs, require_salary_disclosure: !prefs.require_salary_disclosure })}
             className={cn(
-              "h-7 w-12 rounded-full transition-colors relative shrink-0",
+              "h-7 w-12 overflow-hidden rounded-full transition-colors relative shrink-0",
               prefs.require_salary_disclosure ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle salary disclosure requirement"
           >
-            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.require_salary_disclosure ? "translate-x-5" : "translate-x-0.5")} />
+            <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.require_salary_disclosure ? "translate-x-5" : "translate-x-0")} />
           </button>
         </div>
       </motion.section>
@@ -431,12 +431,12 @@ export default function CareerOpsPreferencesPage() {
             type="button"
             onClick={() => setPrefs({ ...prefs, auto_apply_enabled: !prefs.auto_apply_enabled })}
             className={cn(
-              "h-7 w-12 rounded-full transition-colors relative shrink-0",
+              "h-7 w-12 overflow-hidden rounded-full transition-colors relative shrink-0",
               prefs.auto_apply_enabled ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle auto-apply"
           >
-            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.auto_apply_enabled ? "translate-x-5" : "translate-x-0.5")} />
+            <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.auto_apply_enabled ? "translate-x-5" : "translate-x-0")} />
           </button>
         </div>
 
@@ -533,12 +533,12 @@ export default function CareerOpsPreferencesPage() {
             type="button"
             onClick={() => setPrefs({ ...prefs, agent_enabled: !prefs.agent_enabled })}
             className={cn(
-              "h-7 w-12 rounded-full transition-colors relative shrink-0",
+              "h-7 w-12 overflow-hidden rounded-full transition-colors relative shrink-0",
               prefs.agent_enabled ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle auto-pilot"
           >
-            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.agent_enabled ? "translate-x-5" : "translate-x-0.5")} />
+            <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.agent_enabled ? "translate-x-5" : "translate-x-0")} />
           </button>
         </div>
 

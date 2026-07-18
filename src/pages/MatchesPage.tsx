@@ -66,13 +66,6 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function tierColor(tier?: string) {
-  if (tier === "A") return "text-foreground bg-foreground/10";
-  if (tier === "B") return "text-foreground bg-foreground/5";
-  if (tier === "C") return "text-muted-foreground bg-muted/40";
-  return "text-muted-foreground bg-muted/40";
-}
-
 function careerFitScore(evaluation: Evaluation): number {
   return evaluation.fit_score ?? Math.round(evaluation.score * 20);
 }
@@ -149,14 +142,14 @@ export default function MatchesPage() {
     let rows = withEval.filter((r) => matchPrefs(r.job));
     if (filter === "scored") rows = rows.filter((r) => r.evaluation);
     if (filter === "unscored") rows = rows.filter((r) => !r.evaluation);
-    if (filter === "top") rows = rows.filter((r) => r.evaluation?.eligible && careerFitScore(r.evaluation) >= (prefs?.auto_apply_min_fit_score ?? 82));
+    if (filter === "top") rows = rows.filter((r) => r.evaluation && careerFitScore(r.evaluation) >= (prefs?.auto_apply_min_fit_score ?? 82));
     rows.sort((a, b) => (b.evaluation ? careerFitScore(b.evaluation) : -1) - (a.evaluation ? careerFitScore(a.evaluation) : -1));
     return rows;
   }, [jobs, evaluations, filter, prefs]);
 
   const stats = useMemo(() => {
     const scored = Object.values(evaluations);
-    const readyToApply = scored.filter((e) => e.eligible && careerFitScore(e) >= (prefs?.auto_apply_min_fit_score ?? 82));
+    const readyToApply = scored.filter((e) => careerFitScore(e) >= (prefs?.auto_apply_min_fit_score ?? 82));
     return {
       total: jobs.length,
       scored: scored.length,
@@ -168,7 +161,7 @@ export default function MatchesPage() {
     setPreparing(evaluationId);
     try {
       const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
-        body: { evaluation_id: evaluationId },
+        body: { evaluation_id: evaluationId, allow_outside_preferences: true },
       });
       if (error) throw error;
       const draft = (data as { draft: { id: string; status: string; tailored_resume_id?: string | null } }).draft;
@@ -208,7 +201,8 @@ export default function MatchesPage() {
       if (error) throw error;
       const ev = (data as { evaluation: Evaluation }).evaluation;
       setEvaluations((prev) => ({ ...prev, [scannedJobId]: ev }));
-      toast.success(`${ev.eligible ? "Eligible" : "Blocked"} · ${careerFitScore(ev)}% fit (${ev.tier})`);
+      const score = careerFitScore(ev);
+      toast.success(`${score >= 80 ? "Strong fit" : score >= 60 ? "Possible fit" : "Outside some preferences"} · ${score}%`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error(msg.includes("412")
@@ -237,9 +231,9 @@ export default function MatchesPage() {
   return (
     <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-10">
       <PageHeader
-        title="The shortlist, scored."
-        status="matches · hourly scan"
-        description="Every hour we pull fresh postings from Greenhouse, Ashby, and Lever across tracked companies. Evaluate any role against your résumé to see how you stack up."
+        title="Your job matches"
+        status="fresh jobs · personalized"
+        description="Fresh company-direct roles ranked against your complete resume story, demonstrated skills, experience level, location, and saved preferences."
       />
 
       {/* Stat strip */}
@@ -253,7 +247,7 @@ export default function MatchesPage() {
           <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.scored}</div>
         </div>
         <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Ready to apply</p>
+          <p className="text-[11.5px] font-medium text-muted-foreground">Strong fits</p>
           <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.top}</div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
@@ -299,9 +293,17 @@ export default function MatchesPage() {
                 <tr key={job.id} className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors">
                   <td className="px-5 py-4">
                     {evaluation ? (
-                      <span className={cn("inline-flex items-center justify-center w-10 h-10 rounded-full text-[13px] font-bold tabular-nums", tierColor(evaluation.tier))}>
-                        {careerFitScore(evaluation)}
-                      </span>
+                      <div className="w-24 space-y-1">
+                        <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+                          <span>{careerFitScore(evaluation)}%</span>
+                          <span className="text-[10px] font-medium text-muted-foreground">
+                            {careerFitScore(evaluation) >= 80 ? "Strong" : careerFitScore(evaluation) >= 60 ? "Possible" : "Low"}
+                          </span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-foreground transition-[width]" style={{ width: `${careerFitScore(evaluation)}%` }} />
+                        </div>
+                      </div>
                     ) : (
                       <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-dashed border-border text-muted-foreground text-[11px]">—</span>
                     )}
@@ -316,12 +318,12 @@ export default function MatchesPage() {
                       <div className="text-[12.5px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">{evaluation.summary}</div>
                     ) : null}
                     {evaluation && !evaluation.eligible ? (
-                      <div className="text-[11.5px] text-rose-700 mt-1.5 max-w-[60ch] truncate">
-                        Blocked · {evaluation.hard_filters?.[0] ?? "Does not meet your hard preferences"}
+                      <div className="text-[11.5px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">
+                        Outside a saved preference · {evaluation.hard_filters?.[0] ?? "Review your preferences before enabling Autopilot"}
                       </div>
                     ) : evaluation?.fit_confidence != null ? (
                       <div className="text-[11px] text-muted-foreground/80 mt-1">
-                        {Math.round(evaluation.fit_confidence * 100)}% scoring confidence · {evaluation.score_version}
+                        {Math.round(evaluation.fit_confidence * 100)}% confidence in the available job and resume evidence
                       </div>
                     ) : null}
                   </td>
@@ -343,11 +345,11 @@ export default function MatchesPage() {
                         ) : (
                           <button
                             onClick={() => prepareApplication(evaluation.id, job.id)}
-                            disabled={preparing === evaluation.id || !evaluation.eligible}
-                            title={!evaluation.eligible ? evaluation.hard_filters?.join(" ") : undefined}
+                            disabled={preparing === evaluation.id}
+                            title={!evaluation.eligible ? "You can still prepare this application; Autopilot will not submit it automatically." : undefined}
                             className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
                           >
-                            {preparing === evaluation.id ? "Preparing…" : evaluation.eligible ? "Prepare" : "Blocked"}
+                            {preparing === evaluation.id ? "Preparing…" : "Prepare"}
                           </button>
                         )}
                         <button

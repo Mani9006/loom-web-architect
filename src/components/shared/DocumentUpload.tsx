@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- document extraction responses are migration-compatible dynamic payloads */
 import { useState, useRef, useCallback } from "react";
 import { Upload, X, Loader2, CheckCircle, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,8 @@ import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 
 interface ProgressState {
   progress: number;
@@ -27,13 +30,13 @@ interface DocumentUploadProps {
   documentCategory?: string;
 }
 
-const VALID_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"];
+const VALID_EXTENSIONS = [".pdf", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"];
 
 export function DocumentUpload({
   onTextExtracted,
   isLoading: externalLoading = false,
   className,
-  accept = ".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg,.webp",
+  accept = ".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp",
   label = "Upload Document",
   persistToDocuments = false,
   onDocumentSaved,
@@ -77,6 +80,7 @@ export function DocumentUpload({
     if (!validateFile(file)) return;
 
     setIsUploading(true);
+    let uploadedPath: string | null = null;
 
     try {
       // Get current user
@@ -101,6 +105,7 @@ export function DocumentUpload({
       if (uploadError) {
         throw uploadError;
       }
+      uploadedPath = filePath;
 
       setUploadedFile({ name: file.name, path: filePath });
       setIsUploading(false);
@@ -110,6 +115,10 @@ export function DocumentUpload({
       // Parse the document with streaming for progress
       const { data: session } = await supabase.auth.getSession();
       const isPdfOrImage = /\.(pdf|png|jpg|jpeg|webp)$/i.test(file.name);
+      const publishableKey =
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        import.meta.env.VITE_SUPABASE_ANON_KEY ||
+        "";
 
       // Add timeout for large file processing (2 minutes)
       const abortController = new AbortController();
@@ -124,6 +133,7 @@ export function DocumentUpload({
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${session.session?.access_token}`,
+              ...(publishableKey ? { apikey: publishableKey } : {}),
             },
             body: JSON.stringify({ filePath, streaming: isPdfOrImage }),
             signal: abortController.signal,
@@ -220,13 +230,6 @@ export function DocumentUpload({
         throw new Error("Could not extract text from this document. Please try pasting your resume text directly, or use a different file format.");
       }
 
-      onTextExtracted(extractedText, extractedFileName);
-
-      toast({
-        title: "Document uploaded",
-        description: `Successfully extracted text from ${file.name}`,
-      });
-
       if (persistToDocuments) {
         // Save record to user_documents and keep file in storage
         const fileExt = file.name.split(".").pop()?.toLowerCase() || "pdf";
@@ -250,21 +253,46 @@ export function DocumentUpload({
           .select("id, storage_path")
           .single();
 
-        if (!dbError && docRecord) {
-          onDocumentSaved?.({ id: (docRecord as any).id, storage_path: filePath });
+        if (dbError || !docRecord) {
+          throw new Error("Text was extracted, but the document could not be saved. Please try again.");
         }
+        onDocumentSaved?.({ id: (docRecord as any).id, storage_path: filePath });
+        uploadedPath = null;
       } else {
         // Legacy behavior: clean up the file from storage after parsing
-        await supabase.storage.from("documents").remove([filePath]);
+        const { error: cleanupError } = await supabase.storage.from("documents").remove([filePath]);
+        if (cleanupError) throw cleanupError;
+        uploadedPath = null;
       }
+
+      onTextExtracted(extractedText, extractedFileName);
+
+      toast({
+        title: "Resume ready",
+        description: `Extracted ${extractedText.length.toLocaleString()} characters from ${file.name}`,
+      });
       
     } catch (error) {
       console.error("Upload error:", error);
-      toast({
-        title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to process document",
-        variant: "destructive",
+      const operation = uploadedPath ? "document_process" : "document_upload";
+      void captureIncident(error, { source: "manual", operation });
+
+      if (uploadedPath) {
+        const failedPath = uploadedPath;
+        uploadedPath = null;
+        const { error: cleanupError } = await supabase.storage.from("documents").remove([failedPath]);
+        if (cleanupError) {
+          void captureIncident(cleanupError, { source: "manual", operation: "document_cleanup" }, "warning");
+        }
+      }
+
+      const safeError = toUserFacingError(error, {
+        operation,
+        defaultMessage: operation === "document_upload"
+          ? "The file could not be uploaded. Check the file and try again."
+          : "The file could not be read reliably. Try a text-based PDF or DOCX file.",
       });
+      toast({ title: safeError.title, description: withSupportReference(safeError), variant: "destructive" });
       setUploadedFile(null);
     } finally {
       setIsUploading(false);

@@ -88,6 +88,23 @@ describe("career fit gate", () => {
     expect(fit.hardFilters.join(" ")).toMatch(/sponsorship/i);
   });
 
+  it("treats full-time portal labels as the selected full_time preference", () => {
+    const candidate = buildCandidateCareerProfile(fourYearResume, {
+      target_roles: ["Software Engineer"],
+      work_modes: ["remote"],
+      employment_types: ["full_time", "contract"],
+    });
+    const fit = evaluateCareerFit(candidate, {
+      title: "Software Engineer",
+      remotePolicy: "Remote",
+      employmentType: "Full-time",
+      description: "Build React and TypeScript products on AWS. Requires 4+ years of experience.",
+    });
+
+    expect(fit.eligible).toBe(true);
+    expect(fit.hardFilters.join(" ")).not.toMatch(/employment types/i);
+  });
+
   it("blocks onsite jobs when the candidate selected remote only", () => {
     const candidate = buildCandidateCareerProfile(fourYearResume, {
       target_roles: ["Software Engineer"],

@@ -26,6 +26,7 @@ interface UserPrefs {
   auto_apply_enabled: boolean;
   auto_apply_portals: string[];
   review_mode: "always" | "low_confidence" | "eligible_only";
+  daily_apply_cap: number;
   agent_max_actions_per_day: number;
   agent_actions_today: number;
 }
@@ -176,6 +177,31 @@ async function runAgent(userId: string, runId: string) {
   let queued = 0;
   let failed = 0;
 
+  // Refresh the full resume-and-preference match story first. This is a
+  // deterministic zero-token pass over current company-direct roles, so the
+  // hourly worker does not waste language-model calls deciding what to score.
+  try {
+    const bootstrap = await callEdgeFunction("career-ops-bootstrap", { user_id: userId });
+    actions.push({
+      tool: "score_match",
+      input: { mode: "continuous_match_refresh" },
+      result: {
+        evaluated: bootstrap.evaluated,
+        eligible: bootstrap.eligible,
+        tokens_used: 0,
+      },
+      ts: new Date().toISOString(),
+    });
+  } catch (error) {
+    actions.push({
+      tool: "score_match",
+      input: { mode: "continuous_match_refresh" },
+      result: { error: error instanceof Error ? error.message : String(error) },
+      ts: new Date().toISOString(),
+    });
+    failed += 1;
+  }
+
   const candidates = await listUnscoredMatches(client, userId, prefs, Math.min(5, remaining));
   for (const job of candidates) {
     if (remaining <= 0) break;
@@ -208,6 +234,14 @@ async function runAgent(userId: string, runId: string) {
   }
 
   if (remaining > 0) {
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const { count: queuedToday } = await client.from("draft_applications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .in("status", ["queued", "submitted"])
+      .gte("updated_at", dayStart.toISOString());
+    let submissionsRemaining = Math.max(0, (prefs.daily_apply_cap ?? 10) - (queuedToday ?? 0));
     const evaluations = await listUnpreparedEvaluations(
       client,
       userId,
@@ -263,7 +297,8 @@ async function runAgent(userId: string, runId: string) {
         // "Auto-send eligible only" is a true service-side policy. It queues
         // only supported Greenhouse applications; every other portal remains
         // review/manual and is never silently treated as submitted.
-        const shouldAutoQueue = prefs.auto_apply_enabled
+        const shouldAutoQueue = submissionsRemaining > 0
+          && prefs.auto_apply_enabled
           && prefs.review_mode === "eligible_only"
           && prefs.auto_apply_portals.includes("greenhouse")
           && evaluation.portal === "greenhouse";
@@ -280,6 +315,7 @@ async function runAgent(userId: string, runId: string) {
               ts: new Date().toISOString(),
             });
             queued += 1;
+            submissionsRemaining -= 1;
           } catch (error) {
             actions.push({
               tool: "queue_submit",

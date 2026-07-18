@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
+  calculateResumeParseQuality,
   formatBullets,
   mapParsedToResumePayload,
   mergeAndDeduplicateSkills,
@@ -171,6 +172,7 @@ describe("ai-resume-parser utilities", () => {
             end_date: "Present",
             location: "London",
             bullets: ["Designed algorithms", "Documented systems"],
+            environment: "",
           },
         ],
         education: [
@@ -182,6 +184,8 @@ describe("ai-resume-parser utilities", () => {
             gpa: "",
             graduation_date: "1842",
             location: "",
+            start_date: "",
+            end_date: "",
           },
         ],
         certifications: [
@@ -190,6 +194,7 @@ describe("ai-resume-parser utilities", () => {
             name: "AI",
             issuer: "Academy",
             date: "1843",
+            url: "",
           },
         ],
         skills: {
@@ -203,9 +208,60 @@ describe("ai-resume-parser utilities", () => {
             organization: "Royal Society",
             date: "1843",
             bullets: ["Translated paper"],
+            url: "",
           },
         ],
+        languages: [],
+        volunteer: [],
+        awards: [],
+        custom_sections: [],
       });
+    });
+  });
+
+  describe("source coverage quality gate", () => {
+    it("passes a lossless structured extraction and counts private-use bullet glyphs", () => {
+      const source = `PROFESSIONAL SUMMARY
+Data scientist building reliable systems.
+PROFESSIONAL EXPERIENCE
+Acme | Jan 2022 - Present
+Data Scientist
+\uF0B7 Built a Python scoring service for production workflows.
+\uF0B7 Reduced model latency by 35 percent through batching.
+Environment: Python, SQL, AWS
+EDUCATION
+M.S. Analytics | Jan 2020 - May 2022
+Example University`;
+      const parsed = {
+        header: { name: "", title: "", location: "", email: "", phone: "", linkedin: "" },
+        summary: "Data scientist building reliable systems.",
+        experience: [{
+          company_or_client: "Acme", role: "Data Scientist", start_date: "Jan 2022", end_date: "Present",
+          location: "", bullets: [
+            "Built a Python scoring service for production workflows.",
+            "Reduced model latency by 35 percent through batching.",
+          ], environment: "Python, SQL, AWS",
+        }],
+        education: [{
+          degree: "M.S.", field: "Analytics", institution: "Example University", gpa: "",
+          start_date: "Jan 2020", end_date: "May 2022", graduation_date: "May 2022", location: "",
+        }],
+        certifications: [], skills: {}, projects: [], languages: [], volunteer: [], awards: [], custom_sections: [],
+      };
+      const quality = calculateResumeParseQuality(source, parsed);
+      expect(quality.evidence.sourceBullets).toBe(2);
+      expect(quality.metrics.bulletCoverage).toBe(100);
+      expect(quality.status).toBe("passed");
+    });
+
+    it("requires review when bullets and dates disappear", () => {
+      const source = "EXPERIENCE\nAcme Jan 2020 - May 2023\n\uF0B7 Built Python APIs\n\uF0B7 Improved reliability";
+      const quality = calculateResumeParseQuality(source, {
+        header: {}, summary: "", experience: [{ company_or_client: "Acme", bullets: [] }],
+        education: [], certifications: [], skills: {}, projects: [],
+      });
+      expect(quality.status).toBe("review_required");
+      expect(quality.warnings.join(" ")).toMatch(/bullet|date/i);
     });
   });
 });

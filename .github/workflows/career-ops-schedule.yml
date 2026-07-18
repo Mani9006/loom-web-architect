@@ -1,0 +1,58 @@
+name: Dev career operations schedule
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-career-operations
+  cancel-in-progress: false
+
+jobs:
+  refresh-and-dispatch:
+    name: Refresh jobs and run enabled agents
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: staging
+    steps:
+      - name: Validate configuration
+        env:
+          DEV_SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
+          DEV_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+          DEV_WORKER_AUTH_TOKEN: ${{ secrets.DEV_WORKER_AUTH_TOKEN }}
+        run: |
+          test -n "$DEV_SUPABASE_URL"
+          test -n "$DEV_SUPABASE_ANON_KEY"
+          test -n "$DEV_WORKER_AUTH_TOKEN"
+
+      - name: Refresh company-direct job inventory
+        env:
+          DEV_SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
+          DEV_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+          DEV_WORKER_AUTH_TOKEN: ${{ secrets.DEV_WORKER_AUTH_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 300 \
+            -X POST "$DEV_SUPABASE_URL/functions/v1/career-ops-scan" \
+            -H "apikey: $DEV_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $DEV_WORKER_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"source":"github-schedule"}' \
+            | jq '{scanned, marked_stale, jobs_refreshed: ([.results[]?.upserted // 0] | add)}'
+
+      - name: Run enabled Autopilot accounts
+        env:
+          DEV_SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
+          DEV_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+          DEV_WORKER_AUTH_TOKEN: ${{ secrets.DEV_WORKER_AUTH_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 360 \
+            -X POST "$DEV_SUPABASE_URL/functions/v1/agents-orchestrator" \
+            -H "apikey: $DEV_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $DEV_WORKER_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"source":"github-schedule"}' \
+            | jq '{dispatched, failed, total_eligible, skipped_unentitled}'

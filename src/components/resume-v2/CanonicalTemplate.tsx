@@ -1,21 +1,15 @@
+/* eslint-disable no-control-regex -- imported documents can contain control glyphs that must be removed */
 /**
  * The canonical resume template (v2 redesign).
  *
- * Typography choices target LaTeX-quality output:
- *   - Body:    "Source Serif 4" (Google Fonts) — modern descendant of
- *              Source Serif Pro, designed for long-form reading. Renders
- *              close to Computer Modern / Latin Modern but with better
- *              hinting in browsers.
- *   - Display: "EB Garamond" for the name + section headings — gives the
- *              page a printed-CV feel without screaming "Word document".
- *   - Mono:    "JetBrains Mono" reserved for date stamps and metrics so
- *              numbers align cleanly.
+ * Typography deliberately uses an ATS-safe system sans-serif stack. The PDF
+ * remains readable even when an employer strips styling or lacks web fonts.
  *
  * Geometry follows LaTeX's `\documentclass{article}` defaults:
  *   - 8.5 × 11 inch (US Letter)
- *   - 0.75 inch margins
- *   - 10.5pt body, 1.35 line height
- *   - Section title 11.5pt small-caps with a hairline rule under it
+ *   - 0.62 inch margins
+ *   - 10.25pt body, 1.3 line height
+ *   - Section title 10.5pt uppercase with a single hairline rule
  *
  * The template is purely a function of ResumeJSON. No template-id
  * branching. No CSS hacks. Editing happens elsewhere; this just renders.
@@ -31,15 +25,15 @@ interface Props {
 }
 
 const PAGE_STYLES: React.CSSProperties = {
-  fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, "Times New Roman", serif',
-  fontSize: "10.5pt",
-  lineHeight: 1.35,
+  fontFamily: 'Arial, Calibri, "Helvetica Neue", sans-serif',
+  fontSize: "10.25pt",
+  lineHeight: 1.3,
   color: "#0b0e14",
   width: "8.5in",
   minHeight: "11in",
-  padding: "0.75in",
+  padding: "0.62in 0.68in",
   background: "white",
-  fontFeatureSettings: '"liga" 1, "kern" 1, "onum" 1',
+  fontFeatureSettings: '"liga" 1, "kern" 1',
   WebkitFontSmoothing: "antialiased",
   boxSizing: "border-box",
 };
@@ -47,6 +41,12 @@ const PAGE_STYLES: React.CSSProperties = {
 const safeStr = (v: unknown): string => (typeof v === "string" ? v : "");
 const safeStrArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+const stripBulletGlyph = (value: string): string =>
+  value.replace(/^[\s\u000c]*(?:[•‣◦⁃∙▪▫●○■□◆\uF0B7]|[-–—*])\s*/u, "").trim();
+
+const isPlaceholderContact = (value: string): boolean =>
+  /email\s+(?:needed|required)|\(x{3}\)|^city\s*,\s*st$|\/(?:handle|username)\b/i.test(value);
 
 const fmtRange = (start: unknown, end: unknown) => {
   const s = safeStr(start).trim();
@@ -109,17 +109,18 @@ function Header({ data }: { data: ResumeJSON["header"] }) {
   const d = data ?? ({} as ResumeJSON["header"]);
   const name = safeStr(d.name);
   const title = safeStr(d.title);
-  const contactParts = [safeStr(d.location), safeStr(d.email), safeStr(d.phone), safeStr(d.linkedin)].filter((s) => s.trim());
+  const contactParts = [safeStr(d.location), safeStr(d.email), safeStr(d.phone), safeStr(d.linkedin)]
+    .filter((s) => s.trim() && !isPlaceholderContact(s));
   const isEmpty = !name && !title && contactParts.length === 0;
 
   return (
-    <header style={{ textAlign: "center", marginBottom: "10pt", paddingBottom: "10pt", borderBottom: "0.4pt solid #1a1f2c" }}>
+    <header style={{ textAlign: "center", marginBottom: "6pt", paddingBottom: "6pt", borderBottom: "0.6pt solid #111827" }}>
       <div
         style={{
-          fontFamily: '"EB Garamond", Georgia, serif',
-          fontSize: "26pt",
-          fontWeight: 600,
-          letterSpacing: "0.015em",
+          fontFamily: 'Arial, Calibri, "Helvetica Neue", sans-serif',
+          fontSize: "19pt",
+          fontWeight: 700,
+          letterSpacing: "0.01em",
           lineHeight: 1.05,
           color: "#0b0e14",
         }}
@@ -129,8 +130,8 @@ function Header({ data }: { data: ResumeJSON["header"] }) {
       {title && (
         <div
           style={{
-            fontSize: "11.5pt",
-            fontStyle: "italic",
+            fontSize: "11pt",
+            fontWeight: 600,
             color: "#39424f",
             marginTop: "3pt",
             letterSpacing: "0.01em",
@@ -143,17 +144,18 @@ function Header({ data }: { data: ResumeJSON["header"] }) {
         <div
           style={{
             fontSize: "9.5pt",
-            marginTop: "6pt",
+            marginTop: "4pt",
             color: "#2c333d",
             display: "flex",
             flexWrap: "wrap",
-            gap: "0 14pt",
+            gap: "0 7pt",
             justifyContent: "center",
           }}
         >
           {contactParts.map((p, i) => (
-            <span key={i} style={i > 0 ? { borderLeft: "0.4pt solid #9099a3", paddingLeft: "14pt" } : undefined}>
-              {p}
+            <span key={i}>
+              {i > 0 && <span aria-hidden="true" style={{ marginRight: "7pt", color: "#6b7280" }}>|</span>}
+              {p.replace(/^https?:\/\/(?:www\.)?/i, "").replace(/\/$/, "")}
             </span>
           ))}
         </div>
@@ -177,15 +179,16 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <h2
       style={{
-        fontFamily: '"EB Garamond", Georgia, serif',
-        fontSize: "11.5pt",
-        fontWeight: 600,
+        fontFamily: 'Arial, Calibri, "Helvetica Neue", sans-serif',
+        fontSize: "10.5pt",
+        fontWeight: 700,
         textTransform: "uppercase",
-        letterSpacing: "0.18em",
+        letterSpacing: "0.06em",
         color: "#0b0e14",
-        margin: "14pt 0 4pt 0",
-        paddingBottom: "2pt",
-        borderBottom: "0.4pt solid #1a1f2c",
+        margin: "9pt 0 3pt 0",
+        paddingBottom: "1.5pt",
+        borderBottom: "0.7pt solid #111827",
+        breakAfter: "avoid",
       }}
     >
       {children}
@@ -199,7 +202,7 @@ function Summary({ text }: { text: string }) {
   return (
     <section>
       <SectionTitle>Summary</SectionTitle>
-      <p style={{ margin: "4pt 0 0 0", textAlign: "justify", hyphens: "auto" }}>{text}</p>
+      <p style={{ margin: "3pt 0 0 0", textAlign: "left", hyphens: "none", overflowWrap: "normal" }}>{text}</p>
     </section>
   );
 }
@@ -207,8 +210,8 @@ function Summary({ text }: { text: string }) {
 // ─── Experience ────────────────────────────────────────────────────────────
 
 const dateStyle: React.CSSProperties = {
-  fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: "9pt",
+  fontFamily: 'Arial, Calibri, "Helvetica Neue", sans-serif',
+  fontSize: "9.25pt",
   color: "#39424f",
   whiteSpace: "nowrap",
   letterSpacing: "-0.01em",
@@ -224,7 +227,7 @@ function Experience({ items }: { items: ResumeJSON["experience"] }) {
         const location = safeStr(e?.location);
         const bullets = safeStrArr(e?.bullets).filter((b) => b.trim());
         return (
-          <div key={e?.id ?? idx} style={{ marginTop: "7pt", marginBottom: "9pt" }}>
+          <div key={e?.id ?? idx} style={{ marginTop: "5pt", marginBottom: "7pt" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
               <div style={{ fontSize: "11pt", fontWeight: 600 }}>
                 {role || <Placeholder>Role</Placeholder>}
@@ -244,15 +247,22 @@ function Experience({ items }: { items: ResumeJSON["experience"] }) {
                 style={{
                   margin: "3pt 0 0 0",
                   paddingLeft: "14pt",
-                  listStyleType: "'\\2014  '",
+                  listStyleType: "disc",
+                  orphans: 2,
+                  widows: 2,
                 }}
               >
                 {bullets.map((b, i) => (
-                  <li key={i} style={{ marginBottom: "1.5pt", textAlign: "justify", hyphens: "auto" }}>
-                    {b}
+                  <li key={i} style={{ marginBottom: "1.5pt", paddingLeft: "1pt", textAlign: "left", hyphens: "none", overflowWrap: "normal" }}>
+                    {stripBulletGlyph(b)}
                   </li>
                 ))}
               </ul>
+            )}
+            {safeStr(e?.environment).trim() && (
+              <div style={{ marginTop: "2.5pt", fontSize: "9.35pt", lineHeight: 1.25 }}>
+                <strong>Environment:</strong> {safeStr(e?.environment).replace(/^environment\s*:\s*/i, "")}
+              </div>
             )}
           </div>
         );
@@ -269,13 +279,13 @@ function Education({ items }: { items: ResumeJSON["education"] }) {
       <SectionTitle>Education</SectionTitle>
       {items.map((e, idx) => {
         const inst = safeStr(e?.institution);
-        const grad = safeStr(e?.graduation_date);
+        const grad = fmtRange(e?.start_date, e?.end_date) || safeStr(e?.graduation_date);
         const degree = safeStr(e?.degree);
         const field = safeStr(e?.field);
         const gpa = safeStr(e?.gpa);
         const loc = safeStr(e?.location);
         return (
-          <div key={e?.id ?? idx} style={{ marginTop: "5pt" }}>
+          <div key={e?.id ?? idx} style={{ marginTop: "4pt", breakInside: "avoid" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "12pt", alignItems: "baseline" }}>
               <div style={{ fontSize: "11pt", fontWeight: 600 }}>{inst || <Placeholder>Institution</Placeholder>}</div>
               <div style={dateStyle}>{grad}</div>
@@ -306,11 +316,11 @@ function Skills({ skills }: { skills: ResumeJSON["skills"] }) {
   return (
     <section>
       <SectionTitle>Skills</SectionTitle>
-      <div style={{ marginTop: "4pt", display: "grid", gridTemplateColumns: "auto 1fr", columnGap: "10pt", rowGap: "2pt" }}>
+      <div style={{ marginTop: "3pt", display: "grid", gridTemplateColumns: "max-content 1fr", columnGap: "8pt", rowGap: "1.5pt" }}>
         {entries.map(([cat, list]) => (
           <Fragment key={cat}>
             <div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{getSkillCategoryLabel(cat)}</div>
-            <div>{list.join(" · ")}</div>
+            <div style={{ overflowWrap: "normal", wordBreak: "normal" }}>{list.join(", ")}</div>
           </Fragment>
         ))}
       </div>
@@ -339,9 +349,9 @@ function Projects({ items }: { items: ResumeJSON["projects"] }) {
               <div style={dateStyle}>{date}</div>
             </div>
             {bullets.length > 0 && (
-              <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
+              <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "disc" }}>
                 {bullets.map((b, i) => (
-                  <li key={i} style={{ marginBottom: "1.5pt", textAlign: "justify", hyphens: "auto" }}>{b}</li>
+                  <li key={i} style={{ marginBottom: "1.5pt", textAlign: "left", hyphens: "none" }}>{stripBulletGlyph(b)}</li>
                 ))}
               </ul>
             )}
@@ -409,8 +419,8 @@ function Volunteer({ items }: { items: NonNullable<ResumeJSON["volunteer"]> }) {
               <div style={dateStyle}>{safeStr(v?.date)}</div>
             </div>
             {bullets.length > 0 && (
-              <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
-                {bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>)}
+              <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "disc" }}>
+                {bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{stripBulletGlyph(b)}</li>)}
               </ul>
             )}
           </div>
@@ -459,8 +469,8 @@ function CustomBlock({ section }: { section: NonNullable<ResumeJSON["customSecti
               <div style={dateStyle}>{safeStr(e?.date)}</div>
             </div>
             {bullets.length > 0 && (
-              <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "'\\2014  '" }}>
-                {bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{b}</li>)}
+              <ul style={{ margin: "2pt 0 0 0", paddingLeft: "14pt", listStyleType: "disc" }}>
+                {bullets.map((b, i) => <li key={i} style={{ marginBottom: "1.5pt" }}>{stripBulletGlyph(b)}</li>)}
               </ul>
             )}
           </div>
@@ -469,4 +479,3 @@ function CustomBlock({ section }: { section: NonNullable<ResumeJSON["customSecti
     </section>
   );
 }
-

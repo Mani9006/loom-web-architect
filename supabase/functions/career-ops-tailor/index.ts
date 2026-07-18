@@ -224,7 +224,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   return withErrorHandler(async () => {
-    const body = await req.json().catch(() => ({})) as { evaluation_id?: string; user_id?: string };
+    const body = await req.json().catch(() => ({})) as {
+      evaluation_id?: string;
+      user_id?: string;
+      allow_outside_preferences?: boolean;
+    };
     const user = await getAuthedUserOrService(req, body.user_id);
     if (!body.evaluation_id) throw new HttpError(400, "evaluation_id required");
 
@@ -239,8 +243,11 @@ serve(async (req) => {
     if (ev.score_version !== "career-fit-v1") {
       throw new HttpError(409, "job must be rescored with the current career-fit gate before tailoring");
     }
-    if (!ev.eligible) {
-      throw new HttpError(412, `job is blocked by preferences: ${(ev.hard_filters ?? []).join(" ")}`);
+    // Autopilot respects the user's saved limits. A user-initiated Apply is
+    // still allowed after the UI shows the preference mismatch; personal
+    // preferences must never make a public job inaccessible.
+    if (!ev.eligible && !body.allow_outside_preferences) {
+      throw new HttpError(412, "job is outside the saved autopilot preferences");
     }
 
     await enforceDailyCap(svc, user.id, "tailor", isPro);

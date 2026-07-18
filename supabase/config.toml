@@ -81,3 +81,20 @@ verify_jwt = false
 
 [functions.career-ops-tailor]
 verify_jwt = false
+
+[functions.career-ops-bootstrap]
+verify_jwt = false
+
+[functions.career-ops-one-click]
+verify_jwt = false
+
+# OAuth callback requests do not carry a Supabase JWT. These handlers perform
+# their own signed-state and caller verification inside the function.
+[functions.mc-gmail-connect]
+verify_jwt = false
+
+[functions.mc-gmail-callback]
+verify_jwt = false
+
+[functions.mc-gmail-poll]
+verify_jwt = false

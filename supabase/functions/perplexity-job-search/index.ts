@@ -11,6 +11,7 @@ import {
   logAiUsage,
 } from "../_shared/guards.ts";
 import { isAllowedApplyUrl } from "../_shared/jobs.ts";
+import { searchDirectJobSources } from "../_shared/direct-job-sources.ts";
 
 // ── CST Timezone Helper ─────────────────────────────────────────────────
 // Returns current date/time in America/Chicago (CST/CDT) timezone
@@ -361,6 +362,43 @@ async function searchDatabase(
   return { jobs: jobs || [], total: count || 0 };
 }
 
+async function persistDirectJobs(sb: any, jobs: any[]): Promise<any[]> {
+  const normalized: any[] = [];
+  for (const job of jobs) {
+    const applyUrl = sanitizeApplyUrl(job.apply_url || "", job.title || "", job.company || "", job.location || "");
+    const candidate = { ...job, apply_url: applyUrl };
+    const check = validateJob(candidate);
+    if (!check.valid) continue;
+
+    const jobRow = {
+      title: candidate.title,
+      company: candidate.company,
+      location: candidate.location,
+      description: candidate.description,
+      apply_url: applyUrl,
+      salary: candidate.salary || null,
+      job_type: candidate.job_type || null,
+      remote: Boolean(candidate.remote),
+      date_posted: sanitizeDatePosted(candidate.date_posted || "Recent"),
+      source: candidate.source || `${candidate.company} careers`,
+      role_category: classifyRoleCategory(candidate.title, candidate.description),
+      experience_level: detectExperienceLevel(candidate.title, candidate.description),
+      industry: detectIndustry(candidate.company, candidate.description),
+      job_fingerprint: jobFingerprint(candidate),
+      expires_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    const { data, error } = await sb
+      .from("cached_jobs")
+      .upsert(jobRow, { onConflict: "job_fingerprint", ignoreDuplicates: false })
+      .select("id")
+      .single();
+    if (!error && data?.id) {
+      normalized.push({ id: data.id, ...jobRow, job_fingerprint: undefined, expires_at: undefined });
+    }
+  }
+  return normalized;
+}
+
 // ── Main Server ────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -542,7 +580,31 @@ serve(async (req) => {
       }
     }
 
-    // ── STEP 2: DB exhausted — call the metered provider fallback ─────
+    // ── STEP 2: DB exhausted — query public direct-employer feeds ─────
+    const directJobs = await searchDirectJobSources({
+      query: searchQuery,
+      location,
+      remoteFilter: remote_filter,
+      experienceLevel: experience_level,
+      limit: pageSize,
+    });
+    const persistedDirectJobs = await persistDirectJobs(sb, directJobs);
+    if (persistedDirectJobs.length > 0) {
+      return new Response(
+        JSON.stringify({
+          jobs: persistedDirectJobs,
+          total: persistedDirectJobs.length,
+          query: searchQuery,
+          elapsed_ms: Date.now() - startTime,
+          from_cache: false,
+          from_db: false,
+          source_mode: "direct_employer",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── STEP 3: Optional metered discovery expansion ──────────────────
     await enforceDailyCap(sb, user_id, "search", isPro);
     if (!cachedPerplexityKey) {
       cachedPerplexityKey = Deno.env.get("PERPLEXITY_API_KEY") || "";
@@ -556,7 +618,10 @@ serve(async (req) => {
 
     if (!cachedPerplexityKey) {
       return new Response(
-        JSON.stringify({ error: "Perplexity API key not configured" }),
+        JSON.stringify({
+          error: "Job discovery is temporarily unavailable.",
+          code: "SEARCH_UNAVAILABLE",
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -644,9 +709,9 @@ ${sourceInstruction}
 
       if (!perplexityResponse.ok) {
         const errText = await perplexityResponse.text();
-        console.error("Perplexity API error:", errText);
+        console.error("Metered search provider error:", errText);
         return new Response(
-          JSON.stringify({ error: "Search service temporarily unavailable", details: errText }),
+          JSON.stringify({ error: "Job discovery is temporarily unavailable.", code: "SEARCH_UPSTREAM_FAILED" }),
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -842,9 +907,17 @@ ${sourceInstruction}
   } catch (err) {
     console.error("perplexity-job-search error:", err);
     const isExpected = err instanceof HttpError;
+    const status = isExpected ? err.status : 500;
+    const message = status === 401
+      ? "Please sign in again."
+      : status === 403
+        ? "Job discovery is not available for this account."
+        : status === 429
+          ? "The current job discovery limit has been reached."
+          : "Job discovery is temporarily unavailable.";
     return new Response(
-      JSON.stringify({ error: isExpected ? err.message : "Internal error" }),
-      { status: isExpected ? err.status : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: message, code: `SEARCH_${status}` }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

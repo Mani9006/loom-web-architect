@@ -92,6 +92,7 @@ export function ExperienceEditor() {
       end_date: "",
       location: "",
       bullets: [""],
+      environment: "",
     });
 
   return (
@@ -128,6 +129,7 @@ function ExperienceCard({
     start_date: safe(entry.start_date),
     end_date: safe(entry.end_date),
     location: safe(entry.location),
+    environment: safe(entry.environment),
     bullets: bulletsSafe,
   };
   const upd = (patch: Partial<ExperienceEntry>) => onChange({ ...e, ...patch });
@@ -185,6 +187,17 @@ function ExperienceCard({
           <Plus className="size-3.5 mr-1" /> Add bullet
         </Button>
       </div>
+      <Field
+        label="Environment / technologies"
+        hint="Preserved with this role; do not merge it into unrelated skill categories."
+      >
+        <Textarea
+          rows={2}
+          value={e.environment ?? ""}
+          onChange={(event) => upd({ environment: event.target.value })}
+          placeholder="Python, SQL, AWS, Kubernetes, ..."
+        />
+      </Field>
     </div>
   );
 }
@@ -196,7 +209,10 @@ export function EducationEditor() {
     useShallow((s) => ({ items: s.resume.education, upsert: s.upsertEducation, remove: s.removeEducation })),
   );
   const add = () =>
-    upsert({ id: newId(), degree: "", field: "", institution: "", gpa: "", graduation_date: "", location: "" });
+    upsert({
+      id: newId(), degree: "", field: "", institution: "", gpa: "",
+      start_date: "", end_date: "", graduation_date: "", location: "",
+    });
 
   return (
     <div className="space-y-4">
@@ -231,8 +247,15 @@ function EducationCard({
       <Field label="Field">
         <Input value={entry.field} onChange={(e) => upd({ field: e.target.value })} placeholder="Computer Science" />
       </Field>
-      <Field label="Graduation">
-        <Input value={entry.graduation_date} onChange={(e) => upd({ graduation_date: e.target.value })} />
+      <Field label="Start date">
+        <Input value={entry.start_date ?? ""} onChange={(e) => upd({ start_date: e.target.value })} placeholder="Jan 2022" />
+      </Field>
+      <Field label="End / graduation">
+        <Input
+          value={entry.end_date ?? entry.graduation_date}
+          onChange={(e) => upd({ end_date: e.target.value, graduation_date: e.target.value })}
+          placeholder="Jul 2023"
+        />
       </Field>
       <Field label="GPA (optional)">
         <Input value={entry.gpa} onChange={(e) => upd({ gpa: e.target.value })} />

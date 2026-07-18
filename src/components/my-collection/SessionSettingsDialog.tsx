@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect -- compatibility shim until mc_* database types are regenerated */
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -23,7 +24,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Archive } from "lucide-react";
-import GmailConnectCard from "./GmailConnectCard";
 
 interface Resume {
   id: string;
@@ -244,16 +244,9 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
             </Select>
           </div>
 
-          <Separator />
-
-          {/* Per-session Gmail connection. The mc_gmail_connections table has a
-              UNIQUE(session_id) constraint so each session gets exactly one
-              Gmail account, independent of any other sessions on the user's
-              account. */}
-          <div>
-            <h3 className="text-sm font-medium mb-2">Gmail integration (this session only)</h3>
-            <GmailConnectCard sessionId={session.id} />
-          </div>
+          <p className="rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+            Connect and manage the read-only application inbox from the Inbox tab in this workspace.
+          </p>
         </div>
 
         <DialogFooter className="gap-2">

@@ -26,6 +26,7 @@ import LocationAutocomplete from "@/components/LocationAutocomplete";
 import { JobApplyButton } from "@/components/JobApplyButton";
 import { JOB_ROLES } from "@/data/job-roles";
 import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 
 interface SearchJob {
   id: string;
@@ -89,6 +90,7 @@ export default function JobSearchPage() {
   const [viewMode, setViewMode] = useState<"search" | "matched">("search");
   const [matchedJobs, setMatchedJobs] = useState<MatchedJob[]>([]);
   const [matchLoading, setMatchLoading] = useState(false);
+  const [matchLoadAttempted, setMatchLoadAttempted] = useState(false);
   const [matchRefreshing, setMatchRefreshing] = useState(false);
   const [preparingMatch, setPreparingMatch] = useState<string | null>(null);
 
@@ -386,7 +388,15 @@ export default function JobSearchPage() {
       } else {
         console.error("Search failed:", err);
         void captureIncident(err, { source: "manual", operation: "job_search" });
-        toast({ title: "Search failed", description: err.message || "Please try again", variant: "destructive" });
+        const safeError = toUserFacingError(err, {
+          operation: "job_search",
+          defaultMessage: "Job discovery is temporarily unavailable. Try again in a moment.",
+        });
+        toast({
+          title: safeError.title,
+          description: withSupportReference(safeError),
+          variant: "destructive",
+        });
       }
     } finally {
       if (progressIntervalRef.current) {
@@ -516,14 +526,16 @@ export default function JobSearchPage() {
     setLocation("");
   };
 
-  // Load matched jobs from DB
-  const loadMatchedJobs = useCallback(async () => {
+  // Load matched jobs from DB. On the first empty feed, run the deterministic
+  // zero-token bootstrap once so users do not land on a permanent empty tab.
+  const loadMatchedJobs = useCallback(async (bootstrapIfEmpty = true) => {
     if (!user) return;
     setMatchLoading(true);
+    setMatchLoadAttempted(true);
     try {
-      const { data, error } = await supabase
-        .from("job_evaluations")
-        .select(`
+      const fetchEvaluations = () => supabase
+          .from("job_evaluations")
+          .select(`
           id,
           fit_score,
           score,
@@ -539,10 +551,18 @@ export default function JobSearchPage() {
             company:scan_companies(name, category)
           )
         `)
-        .eq("user_id", user.id)
-        .eq("eligible", true)
-        .order("fit_score", { ascending: false })
-        .limit(100);
+          .eq("user_id", user.id)
+          .order("fit_score", { ascending: false })
+          .limit(100);
+
+      let { data, error } = await fetchEvaluations();
+      if (error) throw error;
+
+      if ((data?.length ?? 0) === 0 && bootstrapIfEmpty) {
+        const { error: bootstrapError } = await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+        if (bootstrapError) throw bootstrapError;
+        ({ data, error } = await fetchEvaluations());
+      }
 
       if (error) throw error;
       if (data) {
@@ -573,15 +593,20 @@ export default function JobSearchPage() {
           fit_confidence: typeof m.fit_confidence === "number" ? m.fit_confidence : null,
         }));
         setMatchedJobs(mapped);
+        setSelectedJob(mapped[0] ?? null);
       }
     } catch (err) {
       console.error("Load matched jobs failed:", err);
       void captureIncident(err, { source: "manual", operation: "job_matches_load" });
-      toast({ title: "Failed to load matches", variant: "destructive" });
+      const safeError = toUserFacingError(err, {
+        operation: "job_matches_load",
+        defaultMessage: "Your match feed could not be built right now. Try again in a moment.",
+      });
+      toast({ title: safeError.title, description: withSupportReference(safeError), variant: "destructive" });
     } finally {
       setMatchLoading(false);
     }
-  }, [user, toast]);
+  }, [setSelectedJob, user, toast]);
 
   // Refresh the current career-fit feed. New evaluations are generated from
   // the dedicated Matches workspace and the Autopilot agent.
@@ -589,8 +614,8 @@ export default function JobSearchPage() {
     if (!user) return;
     setMatchRefreshing(true);
     try {
-      await loadMatchedJobs();
-      toast({ title: "Matches refreshed", description: "Showing your latest eligible career-fit evaluations." });
+      await loadMatchedJobs(true);
+      toast({ title: "Matches refreshed", description: "Fresh roles were checked against your resume and preferences." });
     } catch {
       toast({ title: "Refresh failed", variant: "destructive" });
     } finally {
@@ -611,7 +636,7 @@ export default function JobSearchPage() {
       let draft = existing;
       if (!draft) {
         const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
-          body: { evaluation_id: job.match_id },
+          body: { evaluation_id: job.match_id, allow_outside_preferences: true },
         });
         if (error) throw error;
         draft = data?.draft ?? null;
@@ -634,11 +659,11 @@ export default function JobSearchPage() {
       navigate(`/applications/${draft.id}`);
     } catch (error) {
       void captureIncident(error, { source: "manual", operation: "matched_job_prepare" });
-      toast({
-        title: "Could not prepare this application",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
+      const safeError = toUserFacingError(error, {
+        operation: "matched_job_prepare",
+        defaultMessage: "The application draft could not be prepared. Try again in a moment.",
       });
+      toast({ title: safeError.title, description: withSupportReference(safeError), variant: "destructive" });
     } finally {
       setPreparingMatch(null);
     }
@@ -646,10 +671,15 @@ export default function JobSearchPage() {
 
   // Auto-load matches when switching to matched tab
   useEffect(() => {
-    if (viewMode === "matched" && matchedJobs.length === 0 && !matchLoading) {
-      loadMatchedJobs();
+    if (viewMode === "matched" && !matchLoadAttempted && !matchLoading) {
+      void loadMatchedJobs(true);
     }
-  }, [viewMode, matchedJobs.length, matchLoading, loadMatchedJobs]);
+  }, [viewMode, matchLoadAttempted, matchLoading, loadMatchedJobs]);
+
+  useEffect(() => {
+    setMatchLoadAttempted(false);
+    setMatchedJobs([]);
+  }, [user?.id]);
 
   // Whether we're in split view (results exist)
   const showSplitView = !loading && jobs.length > 0;
@@ -887,7 +917,7 @@ export default function JobSearchPage() {
           {viewMode === "matched" && (
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                Resume-scored roles with hard filters, fit dimensions, and direct company links
+                Fresh roles ranked against your complete resume story, skills, experience, and preferences
               </p>
               <Button
                 variant="outline"
@@ -1202,6 +1232,7 @@ export default function JobSearchPage() {
                             location: selectedJob.location,
                             apply_url: selectedJob.apply_url,
                             source: selectedJob.source,
+                            description: selectedJob.description,
                           }}
                           variant="compact"
                         />
@@ -1258,22 +1289,26 @@ export default function JobSearchPage() {
         {viewMode === "matched" && (
           <>
             {matchLoading && (
-              <div className="flex items-center justify-center py-20">
+              <div className="flex flex-col items-center justify-center py-20">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="mt-3 text-sm font-medium">Building your match feed</p>
+                <p className="mt-1 text-xs text-muted-foreground">Checking fresh roles against your resume and preferences…</p>
               </div>
             )}
 
             {!matchLoading && matchedJobs.length === 0 && (
               <div className="text-center py-20">
                 <Sparkles className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-                <h3 className="text-lg font-medium">No matches yet</h3>
+                <h3 className="text-lg font-medium">No personalized matches yet</h3>
                 <p className="text-muted-foreground mt-1 max-w-md mx-auto">
-                  Add a source resume and target preferences, then evaluate roles to build your evidence-based match feed.
+                  Confirm your source resume and broaden any strict role, location, seniority, or work-mode preferences.
                 </p>
-                <Button className="mt-4 gap-2" onClick={() => navigate("/matches")}>
-                  <Sparkles className="w-4 h-4" />
-                  Open matching workspace
-                </Button>
+                <div className="mt-4 flex justify-center gap-2">
+                  <Button variant="outline" onClick={() => navigate("/career-ops/preferences")}>Review preferences</Button>
+                  <Button className="gap-2" onClick={() => navigate("/matches")}>
+                    <Sparkles className="w-4 h-4" /> Browse scored roles
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -1305,23 +1340,18 @@ export default function JobSearchPage() {
                             )}
                           >
                             <div className="flex gap-3">
-                              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                                style={{
-                                  background: job.match_score >= 80 ? 'rgb(220 252 231)' : job.match_score >= 60 ? 'rgb(254 249 195)' : 'rgb(241 245 249)',
-                                }}
-                              >
-                                <span className={cn(
-                                  "text-xs font-bold",
-                                  job.match_score >= 80 ? "text-green-700" : job.match_score >= 60 ? "text-yellow-700" : "text-rp-ink-2"
-                                )}>
-                                  {job.match_score}%
-                                </span>
-                              </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-start justify-between gap-1">
                                   <h3 className="font-semibold text-sm leading-tight line-clamp-1">{job.title}</h3>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">{job.company}</p>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <Progress value={job.match_score} className="h-1.5 flex-1" aria-label={`${job.match_score}% career fit`} />
+                                  <span className="w-10 text-right text-xs font-semibold tabular-nums">{job.match_score}%</span>
+                                </div>
+                                <p className="mt-1 text-[10px] font-medium text-muted-foreground">
+                                  {job.match_score >= 80 ? "Strong fit" : job.match_score >= 60 ? "Possible fit" : "Outside some preferences"}
+                                </p>
                                 <div className="flex flex-wrap gap-1 mt-1.5">
                                   <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                                     <MapPin className="w-2.5 h-2.5" /> {job.location}
@@ -1448,6 +1478,7 @@ export default function JobSearchPage() {
                                 location: selectedJob.location,
                                 apply_url: selectedJob.apply_url,
                                 source: selectedJob.source,
+                                description: selectedJob.description,
                               }}
                               variant="compact"
                             />

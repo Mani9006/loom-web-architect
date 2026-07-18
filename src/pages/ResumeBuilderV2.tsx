@@ -27,6 +27,8 @@ import {
   Eye,
   EyeOff,
   Code2,
+  ShieldCheck,
+  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -56,7 +58,7 @@ import {
 } from "@/components/resume-v2/SectionEditors";
 import { AiTailorPanel } from "@/components/resume-v2/AiTailorPanel";
 import { createEmptyResumeJSON } from "@/types/resume";
-import type { ResumeJSON } from "@/types/resume";
+import type { ResumeJSON, ResumeParseQuality } from "@/types/resume";
 
 // ─── Section registry ──────────────────────────────────────────────────────
 
@@ -93,6 +95,7 @@ export default function ResumeBuilderV2() {
   const [openSections, setOpenSections] = useState<string[]>(["header", "summary", "experience"]);
   const [aiOpen, setAiOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState<"preview" | "json">("preview");
+  const [parseQuality, setParseQuality] = useState<ResumeParseQuality | null>(null);
   const initialLoadDone = useRef(false);
 
   // ─── load ───────────────────────────────────────────────────────────────
@@ -121,10 +124,12 @@ export default function ResumeBuilderV2() {
         setStatus("error", error?.message ?? "not found");
         return;
       }
-      const json = rowToResumeJSON(data);
+      const rawData = data as unknown as ResumeRow;
+      const json = rowToResumeJSON(rawData);
       setResume(json);
       setResumeId(data.id);
       setResumeName(data.title ?? "Untitled resume");
+      setParseQuality(isParseQuality(rawData.parse_quality) ? rawData.parse_quality : null);
       setStatus("idle");
     })();
   }, [resumeId, user, setResume, setStatus, setResumeId, reset]);
@@ -209,6 +214,8 @@ export default function ResumeBuilderV2() {
             <p className="text-sm text-rp-ink-2 mb-6">
               Click any section to expand. Changes are saved automatically.
             </p>
+
+            {parseQuality && <ParseQualityCard quality={parseQuality} />}
 
             <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-2">
               {SECTIONS.map((s) => (
@@ -392,14 +399,59 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 // ─── Paper frame around the resume preview ────────────────────────────────
 
 function PaperFrame({ children }: { children: React.ReactNode }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const paperRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.75);
+  const [paperHeight, setPaperHeight] = useState(1056);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    const paper = paperRef.current;
+    if (!host || !paper) return;
+
+    const update = () => {
+      const available = Math.max(320, host.clientWidth - 8);
+      setScale(Math.min(1, available / 816));
+      setPaperHeight(Math.max(1056, paper.scrollHeight));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(host);
+    observer.observe(paper);
+    return () => observer.disconnect();
+  }, []);
+
+  const pageCount = Math.max(1, Math.ceil(paperHeight / 1056));
+
   return (
-    <div className="relative origin-top">
-      {/* Subtle paper shadow + edge */}
+    <div ref={hostRef} className="relative w-full flex flex-col items-center min-w-0">
+      <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-rp-rule bg-rp-paper px-3 py-1 text-[11px] text-rp-ink-2">
+        <span className="font-semibold text-rp-ink">{pageCount} {pageCount === 1 ? "page" : "pages"}</span>
+        <span aria-hidden="true">·</span>
+        <span>US Letter · selectable ATS text</span>
+      </div>
       <div
-        className="bg-white shadow-[0_2px_12px_rgba(0,0,0,0.08),0_24px_48px_-12px_rgba(0,0,0,0.18)] ring-1 ring-zinc-200/60 rounded-sm"
-        style={{ transform: "scale(0.9)", transformOrigin: "top center" }}
+        className="relative shrink-0"
+        style={{ width: 816 * scale, height: paperHeight * scale }}
       >
-        {children}
+        <div
+          ref={paperRef}
+          className="absolute left-0 top-0 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.08),0_24px_48px_-12px_rgba(0,0,0,0.18)] ring-1 ring-zinc-200/60"
+          style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+        >
+          {children}
+        </div>
+        {Array.from({ length: pageCount - 1 }, (_, index) => (
+          <div
+            key={index}
+            className="absolute left-0 right-0 z-10 border-t border-dashed border-zinc-400/80 pointer-events-none"
+            style={{ top: (index + 1) * 1056 * scale }}
+          >
+            <span className="absolute right-2 -top-3 rounded bg-zinc-100 px-1.5 py-0.5 text-[9px] font-medium text-zinc-500 shadow-sm">
+              Page {index + 2}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -465,6 +517,41 @@ function FirstStepHint({ resume }: { resume: ResumeJSON }) {
   );
 }
 
+function ParseQualityCard({ quality }: { quality: ResumeParseQuality }) {
+  const passed = quality.status === "passed";
+  const Icon = passed ? ShieldCheck : TriangleAlert;
+  return (
+    <div className={`mb-5 rounded-lg border px-4 py-3 ${
+      passed
+        ? "border-emerald-500/25 bg-emerald-500/5"
+        : "border-amber-500/30 bg-amber-500/5"
+    }`}>
+      <div className="flex items-start gap-3">
+        <Icon className={`mt-0.5 size-4 shrink-0 ${passed ? "text-emerald-600" : "text-amber-600"}`} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold text-rp-ink">
+              Source coverage {quality.score}%
+            </p>
+            <span className="text-[10px] uppercase tracking-[0.12em] text-rp-ink-3">
+              {passed ? "Quality gate passed" : "Review required"}
+            </span>
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-2 text-[10.5px] text-rp-ink-2">
+            <span>Terms {quality.metrics.lexicalCoverage}%</span>
+            <span>Bullets {quality.metrics.bulletCoverage}%</span>
+            <span>Dates {quality.metrics.dateCoverage}%</span>
+            <span>Sections {quality.metrics.sectionCoverage}%</span>
+          </div>
+          {quality.warnings.length > 0 && (
+            <p className="mt-2 text-xs leading-relaxed text-rp-ink-2">{quality.warnings[0]}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── DB row mapping ────────────────────────────────────────────────────────
 // The `resumes` table stores per-section JSONB columns. Map between that
 // shape and ResumeJSON. The migration 20260512230000 adds proper volunteer/
@@ -494,19 +581,14 @@ function rowToResumeJSON(row: ResumeRow): ResumeJSON {
     skills: (row.skills as Record<string, string[]>) ?? {},
     projects: arr(row.projects) ?? [],
     languages: arr(row.languages) ?? undefined,
-    volunteer: arr(extras.volunteer) ?? undefined,
-    awards: arr(extras.awards) ?? undefined,
-    customSections: arr(extras.customSections) ?? undefined,
+    volunteer: arr(row.volunteer) ?? arr(extras.volunteer) ?? undefined,
+    awards: arr(row.awards) ?? arr(extras.awards) ?? undefined,
+    customSections: arr(row.custom_sections) ?? arr(extras.customSections) ?? undefined,
     section_order: (row.section_order as string[] | null) ?? empty.section_order,
   };
 }
 
 function resumeJSONToRow(r: ResumeJSON, title: string, userId: string) {
-  const v2extras = {
-    volunteer: r.volunteer ?? null,
-    awards: r.awards ?? null,
-    customSections: r.customSections ?? null,
-  };
   return {
     user_id: userId,
     title,
@@ -517,7 +599,6 @@ function resumeJSONToRow(r: ResumeJSON, title: string, userId: string) {
       email: r.header.email,
       phone: r.header.phone,
       linkedin: r.header.linkedin,
-      _v2_extras: v2extras,
     },
     summary: r.summary,
     experience: r.experience,
@@ -526,10 +607,22 @@ function resumeJSONToRow(r: ResumeJSON, title: string, userId: string) {
     skills: r.skills,
     projects: r.projects,
     languages: r.languages ?? [],
+    volunteer: r.volunteer ?? [],
+    awards: r.awards ?? [],
+    custom_sections: r.customSections ?? [],
     section_order: r.section_order ?? null,
   };
 }
 
 function arr<T>(v: unknown): T[] | null {
   return Array.isArray(v) ? (v as T[]) : null;
+}
+
+function isParseQuality(value: unknown): value is ResumeParseQuality {
+  if (!value || typeof value !== "object") return false;
+  const quality = value as Partial<ResumeParseQuality>;
+  return typeof quality.score === "number"
+    && (quality.status === "passed" || quality.status === "review_required")
+    && Boolean(quality.metrics && typeof quality.metrics === "object")
+    && Array.isArray(quality.warnings);
 }

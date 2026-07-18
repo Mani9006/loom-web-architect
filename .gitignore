@@ -49,5 +49,8 @@ OPENCLAW_AI_SETUP.md
 # Supabase temp
 supabase/.temp/
 
+# Local QA artifacts and uploaded test documents
+tmp/
+
 # Vercel local metadata
 .vercel/
