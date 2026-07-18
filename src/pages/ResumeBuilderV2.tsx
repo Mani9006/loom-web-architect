@@ -108,6 +108,7 @@ export default function ResumeBuilderV2() {
   const [importFormatMode, setImportFormatMode] = useState<"ats_recommended" | "preserve_source">("ats_recommended");
   const [sourceDocumentId, setSourceDocumentId] = useState<string | null>(null);
   const [storedExtras, setStoredExtras] = useState<Record<string, unknown>>({ document_role: "master" });
+  const [hydrated, setHydrated] = useState(false);
   const initialLoadDone = useRef(false);
   const { exportToPDF, exportToWord, exportToJSON, isExporting } = useResumeExport();
 
@@ -121,10 +122,12 @@ export default function ResumeBuilderV2() {
       setResumeName("Untitled resume");
       setStoredExtras({ document_role: "master" });
       initialLoadDone.current = true;
+      setHydrated(true);
       return;
     }
 
     initialLoadDone.current = true;
+    setHydrated(false);
     setStatus("loading");
     (async () => {
       const { data, error } = await supabase
@@ -155,6 +158,7 @@ export default function ResumeBuilderV2() {
       setStoredExtras(extras);
       setSourceDocumentId(typeof rawData.source_document_id === "string" ? rawData.source_document_id : null);
       setStatus("idle");
+      setHydrated(true);
     })();
   }, [resumeId, user, setResume, setStatus, setResumeId, reset]);
 
@@ -196,11 +200,11 @@ export default function ResumeBuilderV2() {
   }, [resume, resumeName, resumeId, user, setStatus, setResumeId, navigate, importFormatMode, sourceDocumentId, storedExtras]);
 
   useEffect(() => {
-    if (!initialLoadDone.current || !user) return;
+    if (!initialLoadDone.current || !hydrated || !user) return;
     const t = setTimeout(() => void save(), 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resume, resumeName, importFormatMode]);
+  }, [resume, resumeName, importFormatMode, hydrated]);
 
   const createTailoredVersion = useCallback(async (tailored: ResumeJSON) => {
     if (!user) throw new Error("Sign in before creating a tailored version.");

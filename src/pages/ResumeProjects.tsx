@@ -543,7 +543,9 @@ export default function ResumeProjects() {
           <Button
             variant="outline"
             onClick={() => {
-              const resumeId = primaryResumeId || resumes[0]?.id;
+              const resumeId = resumes.some((resume) => resume.id === primaryResumeId)
+                ? primaryResumeId
+                : resumes[0]?.id;
               if (resumeId) navigate(`/resume-builder/${resumeId}`);
               else setCreateOpen(true);
             }}
