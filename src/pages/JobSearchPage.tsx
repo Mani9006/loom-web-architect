@@ -29,6 +29,7 @@ import { captureIncident } from "@/lib/incidents";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { JobDescription } from "@/components/JobDescription";
 import { cleanJobDescription, jobDescriptionPreview, safeMatchText } from "@/lib/job-description";
+import { filterJobsForSearchIntent } from "@/lib/job-search-relevance";
 
 interface SearchJob {
   id: string;
@@ -382,10 +383,11 @@ export default function JobSearchPage() {
       }
 
       const data = await response.json();
-      const resultJobs = ((data.jobs || []) as SearchJob[]).map((job) => ({
+      const providerJobs = ((data.jobs || []) as SearchJob[]).map((job) => ({
         ...job,
         description: cleanJobDescription(job.description),
       }));
+      const resultJobs = filterJobsForSearchIntent(providerJobs, q);
       setJobs(resultJobs);
       setSearchProgress(100);
       setSearchStatus(data.from_db ? `Found ${data.db_total || resultJobs.length} matching jobs!` : data.from_cache ? "Loaded from cache!" : "Done!");
@@ -493,10 +495,11 @@ export default function JobSearchPage() {
 
       if (response.ok) {
         const data = await response.json();
-        const newJobs = ((data.jobs || []) as SearchJob[]).map((job) => ({
+        const providerJobs = ((data.jobs || []) as SearchJob[]).map((job) => ({
           ...job,
           description: cleanJobDescription(job.description),
         }));
+        const newJobs = filterJobsForSearchIntent(providerJobs, query);
         if (newJobs.length > 0) {
           // Deduplicate — don't add jobs already in the list
           const existingKeys = new Set(jobs.map((j) => `${j.title}:::${j.company}`.toLowerCase()));
