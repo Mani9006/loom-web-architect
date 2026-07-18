@@ -125,15 +125,25 @@ export default function ResumeProjects() {
       const applicationResumeIds = new Set(
         (applicationDrafts || []).flatMap(({ tailored_resume_id }) => tailored_resume_id ? [tailored_resume_id] : []),
       );
-      const masters = (data as any as ResumeRow[]).filter((resume) => {
+      const nonApplicationResumes = (data as any as ResumeRow[]).filter((resume) => {
         const role = resume.personal_info?._v2_extras?.document_role;
-        if (role === "application_snapshot" || role === "tailored_draft" || applicationResumeIds.has(resume.id)) return false;
+        return role !== "application_snapshot" && role !== "tailored_draft" && !applicationResumeIds.has(resume.id);
+      });
+      let masters = nonApplicationResumes.filter((resume) => {
         // Imported documents are durable masters even when a historical title
         // contains the word "tailored". Generated copies do not carry the source
         // document link and stay with their application instead.
         if (resume.source_document_id) return true;
         return !/—\s*tailored(?:\s*—|$)|application resume$/i.test(resume.title || "");
       });
+      if (masters.length === 0 && nonApplicationResumes.length > 0) {
+        // Legacy records predate document-role metadata. Keep the oldest one as
+        // the source rather than exposing every historical variant or an empty
+        // library. New saves receive explicit metadata and do not use this path.
+        masters = [nonApplicationResumes.reduce((oldest, resume) =>
+          new Date(resume.created_at).getTime() < new Date(oldest.created_at).getTime() ? resume : oldest
+        )];
+      }
       setResumes(masters);
     }
     const { data: profile } = await supabase

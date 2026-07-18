@@ -56,7 +56,7 @@ const SYSTEM_PROMPT = `You are a senior résumé editor and application coach. G
 Rules:
 - Never fabricate experience the resume doesn't support.
 - Preserve every source experience entry, employer, role, date, location, and ID in its original order. You may reorder bullets, but do not delete facts.
-- Preserve the source skill category keys and project IDs. Reorder only skills that the source already demonstrates.
+- Preserve project IDs. For skills, return only a job-relevant subset of skills the source already demonstrates; never add a skill. The source résumé remains unchanged.
 - Keep each answer <120 words; 2-4 sentences.
 - Every answer references something specific from the JD.
 - Return ONLY JSON, no markdown fences.
@@ -252,10 +252,24 @@ function mergeProjects(output: unknown, source: unknown): Array<Record<string, u
   });
 }
 
-function constrainSkills(output: unknown, source: unknown): Record<string, string[]> {
+function constrainSkills(output: unknown, source: unknown, jobDescription: string): Record<string, string[]> {
   const sourceSkills = normalizeSkills(source);
   const outputSkills = normalizeSkills(output);
   const result: Record<string, string[]> = {};
+  const description = jobDescription.toLowerCase();
+  const categoryCaps: Record<string, number> = {
+    programming_languages: 8,
+    ai_ml: 12,
+    data_engineering: 6,
+    cloud_devops: 6,
+    databases: 5,
+    frameworks_apis: 6,
+    analytics_bi: 5,
+    testing_observability: 5,
+    delivery_methods: 3,
+    tools_platforms: 3,
+  };
+  let remaining = 40;
 
   for (const [category, sourceValues] of Object.entries(sourceSkills)) {
     const byKey = new Map(sourceValues.map((value) => [value.toLowerCase(), value]));
@@ -263,10 +277,19 @@ function constrainSkills(output: unknown, source: unknown): Record<string, strin
       .map((value) => byKey.get(value.toLowerCase()))
       .filter((value): value is string => Boolean(value));
     const seen = new Set(ordered.map((value) => value.toLowerCase()));
-    result[category] = [
+    const candidates = [
       ...ordered,
       ...sourceValues.filter((value) => !seen.has(value.toLowerCase())),
-    ];
+    ].map((value, index) => ({
+      value,
+      index,
+      mentioned: description.includes(value.toLowerCase()),
+    })).sort((a, b) => Number(b.mentioned) - Number(a.mentioned) || a.index - b.index);
+    const limit = Math.min(categoryCaps[category] ?? 4, remaining);
+    const selected = candidates.slice(0, limit).map(({ value }) => value);
+    if (selected.length > 0) result[category] = selected;
+    remaining -= selected.length;
+    if (remaining <= 0) break;
   }
 
   return result;
@@ -355,7 +378,7 @@ serve(async (req) => {
     const sourceProjects = Array.isArray(baseResume.projects) ? baseResume.projects : [];
     const tailoredExperience = mergeExperience(payload.tailored_resume.experience, sourceExperience);
     const tailoredProjects = mergeProjects(payload.tailored_resume.projects, sourceProjects);
-    const tailoredSkills = constrainSkills(payload.tailored_resume.skills, baseResume.skills);
+    const tailoredSkills = constrainSkills(payload.tailored_resume.skills, baseResume.skills, job.description_md ?? "");
     const childTitle = `${companyName} — ${job.title} · application resume`.slice(0, 120);
     const sourcePersonalInfo = asRecord(baseResume.personal_info);
     const sourceExtras = asRecord(sourcePersonalInfo._v2_extras);
