@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import {
   Plus, Search, Briefcase, Building2, Clock, Target, Trash2, Loader2,
-  Bookmark, MapPin, DollarSign, Globe, X, FileText, Sparkles, Zap, Mail, BarChart3, ExternalLink,
+  Bookmark, MapPin, DollarSign, Globe, X, FileText, Sparkles, Zap, BarChart3, ExternalLink,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -517,10 +517,13 @@ export default function JobTracker() {
           <p className="mt-2 text-sm font-semibold text-rp-ink">Agent</p>
           <p className="mt-0.5 text-xs text-rp-ink-2">Matches, tailored packets, ATS, and safe queue controls.</p>
         </button>
-        <button onClick={() => navigate("/cover-letters")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
-          <Mail className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
-          <p className="mt-2 text-sm font-semibold text-rp-ink">Application writing</p>
-          <p className="mt-0.5 text-xs text-rp-ink-2">Cover letters and job-specific answers.</p>
+        <button
+          onClick={() => navigate(applicationPackets[0] ? `/applications/${applicationPackets[0].id}` : "/matches")}
+          className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors"
+        >
+          <FileText className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Application packets</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Tailored résumé, ATS evidence, cover letter, and answers.</p>
         </button>
         <button onClick={() => navigate("/analytics")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
           <BarChart3 className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
@@ -594,7 +597,7 @@ export default function JobTracker() {
       <div className="flex items-center justify-end gap-2 mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rp-ink-3" />
-          <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
+          <Input aria-label="Search applications" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -603,8 +606,8 @@ export default function JobTracker() {
             <DialogContent>
               <DialogHeader><DialogTitle>Add New Job</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                <div><Label>Job Title</Label><Input value={newJob.title} onChange={(e) => setNewJob((p) => ({ ...p, title: e.target.value }))} placeholder="e.g. Software Engineer" /></div>
-                <div><Label>Company</Label><Input value={newJob.company} onChange={(e) => setNewJob((p) => ({ ...p, company: e.target.value }))} placeholder="e.g. Google" /></div>
+                <div><Label htmlFor="new-job-title">Job Title</Label><Input id="new-job-title" value={newJob.title} onChange={(e) => setNewJob((p) => ({ ...p, title: e.target.value }))} placeholder="e.g. Software Engineer" /></div>
+                <div><Label htmlFor="new-job-company">Company</Label><Input id="new-job-company" value={newJob.company} onChange={(e) => setNewJob((p) => ({ ...p, company: e.target.value }))} placeholder="e.g. Google" /></div>
                 <Button onClick={addJob} className="w-full">Add Job</Button>
               </div>
             </DialogContent>
@@ -674,6 +677,7 @@ export default function JobTracker() {
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); deleteJob(job.id); }}
+                        aria-label={`Delete ${job.title}${job.company ? ` at ${job.company}` : ""}`}
                         className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 transition-all"
                       >
                         <Trash2 className="w-3 h-3 text-destructive" />

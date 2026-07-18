@@ -113,7 +113,7 @@ export default function ApplicationReviewPage() {
         .maybeSingle();
       if (error || !data) {
         toast.error("Draft not found");
-        navigate("/matches");
+        navigate("/job-tracker");
         return;
       }
       setDraft(data as unknown as Draft);
@@ -219,10 +219,10 @@ export default function ApplicationReviewPage() {
     <div className="px-6 lg:px-12 py-10 lg:py-12 max-w-[1280px] mx-auto space-y-10">
       <motion.header initial="hidden" animate="visible" variants={fadeUp} custom={0}>
         <button
-          onClick={() => navigate("/matches")}
+          onClick={() => navigate("/job-tracker")}
           className="text-[12px] text-muted-foreground hover:text-foreground transition-colors mb-4"
         >
-          ← Matches
+          ← Applications
         </button>
         <div className="flex items-end justify-between flex-wrap gap-4">
           <div>
@@ -246,6 +246,14 @@ export default function ApplicationReviewPage() {
               </span>
               <span className="mt-1 block text-[10px] font-medium text-muted-foreground">career fit</span>
             </div>
+            <a
+              href={job.apply_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="h-9 px-4 inline-flex items-center rounded-md text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
+            >
+              Open employer portal
+            </a>
             {draft.status === "submitted" ? (
               <span className="h-9 px-3 inline-flex items-center rounded-md text-[12px] text-muted-foreground border border-border">
                 Submitted {new Date(draft.submitted_at!).toLocaleDateString()}
@@ -264,14 +272,6 @@ export default function ApplicationReviewPage() {
                 >
                   {refreshingPacket ? "Refreshing…" : "Refresh packet"}
                 </button>
-                <a
-                  href={job.apply_url}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="h-9 px-4 inline-flex items-center rounded-md text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
-                >
-                  Open portal
-                </a>
                 <button
                   onClick={queueAutoSubmit}
                   disabled={queueingSubmit}

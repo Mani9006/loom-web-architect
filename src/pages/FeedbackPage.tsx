@@ -97,8 +97,9 @@ export default function FeedbackPage() {
         </div>
 
         <div>
-          <label className="block text-[13px] font-semibold text-foreground mb-2">Subject</label>
+          <label htmlFor="feedback-subject" className="block text-[13px] font-semibold text-foreground mb-2">Subject</label>
           <input
+            id="feedback-subject"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             placeholder="Short one-liner"
@@ -108,8 +109,9 @@ export default function FeedbackPage() {
         </div>
 
         <div>
-          <label className="block text-[13px] font-semibold text-foreground mb-2">Message</label>
+          <label htmlFor="feedback-message" className="block text-[13px] font-semibold text-foreground mb-2">Message</label>
           <textarea
+            id="feedback-message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="What happened, what you expected, and anything else useful."
