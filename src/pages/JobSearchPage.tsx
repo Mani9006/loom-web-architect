@@ -82,7 +82,10 @@ function displayJobDate(value: string): string {
   if (days === 0) return "Posted today";
   if (days === 1) return "Posted yesterday";
   if (days < 7) return `Posted ${days} days ago`;
-  if (days < 35) return `Posted ${Math.floor(days / 7)} weeks ago`;
+  if (days < 35) {
+    const weeks = Math.floor(days / 7);
+    return `Posted ${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
+  }
   return `Posted ${parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
 }
 

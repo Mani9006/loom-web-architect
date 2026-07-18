@@ -565,7 +565,14 @@ function containsTerm(text: string, term: string): boolean {
 }
 
 function skillsOverlap(candidate: string, required: string): boolean {
-  return candidate === required || candidate.includes(required) || required.includes(candidate);
+  return canonicalSkill(candidate) === canonicalSkill(required);
+}
+
+function canonicalSkill(value: string): string {
+  return normalize(value)
+    .replace(/\brest apis\b/g, "rest api")
+    .replace(/\bpostgres\b/g, "postgresql")
+    .replace(/\bpowerbi\b/g, "power bi");
 }
 
 function inferRequiredYears(description: string): number | null {

@@ -303,8 +303,8 @@ export default function ApplicationReviewPage() {
                 ats.overall >= 65 ? "border-amber-500/25 text-amber-700 dark:text-amber-400" :
                 "border-rose-500/25 text-rose-700 dark:text-rose-400",
               )}>
-                <span className="text-2xl font-bold">{Math.round(ats.overall)}</span>
-                <span className="text-[9px] uppercase tracking-wider">ATS</span>
+                <span className="text-xl font-bold">{Math.round(ats.overall)}%</span>
+                <span className="text-[9px] uppercase tracking-wider">ATS score</span>
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">Exact tailored résumé</p>

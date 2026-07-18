@@ -206,4 +206,42 @@ describe("career fit gate", () => {
       ["Sales Engineer", "Account Executive"],
     )).toBe(true);
   });
+
+  it("does not turn substrings inside longer skill names into single-letter skill evidence", () => {
+    const candidate = buildCandidateCareerProfile({
+      personal_info: { title: "AI Engineer" },
+      experience: [{
+        role: "AI Engineer",
+        company: "Example",
+        start_date: "Jan 2022",
+        end_date: "Present",
+        bullets: ["Built guardrails and MongoDB-backed services."],
+      }],
+      skills: { platforms: ["guardrails", "MongoDB"] },
+    });
+
+    const fit = evaluateCareerFit(candidate, {
+      title: "Data Scientist",
+      description: "Statistical programming experience in R and Go is required.",
+    });
+
+    expect(fit.matchedSkills).not.toContain("r");
+    expect(fit.matchedSkills).not.toContain("go");
+    expect(fit.missingSkills).toEqual(expect.arrayContaining(["r", "go"]));
+  });
+
+  it("still recognizes safe skill aliases without substring matching", () => {
+    const candidate = buildCandidateCareerProfile({
+      personal_info: { title: "Backend Engineer" },
+      experience: [],
+      skills: { apis: ["REST APIs"], databases: ["Postgres"] },
+    });
+
+    const fit = evaluateCareerFit(candidate, {
+      title: "Backend Engineer",
+      description: "Build services using a REST API and PostgreSQL.",
+    });
+
+    expect(fit.matchedSkills).toEqual(expect.arrayContaining(["rest api", "postgresql"]));
+  });
 });

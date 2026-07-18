@@ -43,15 +43,25 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
     try {
       // Opening a form or entering the automation queue is not a verified
       // submission. Keep it saved until the worker records a receipt.
-      await supabase.from("tracked_jobs").upsert(
-        {
+      const { data: existing, error: lookupError } = await supabase
+        .from("tracked_jobs")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("title", job.title)
+        .eq("company", job.company)
+        .limit(1)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!existing) {
+        const { error: insertError } = await supabase.from("tracked_jobs").insert({
           user_id: user.id,
           title: job.title,
           company: job.company,
           status: "Saved",
-        },
-        { onConflict: "user_id,title,company" }
-      );
+          url: resolved.url,
+        });
+        if (insertError) throw insertError;
+      }
 
       void trackProductEvent(method === "auto" ? "job_apply_queued" : "job_apply_opened", {
         method,

@@ -11,7 +11,6 @@ import {
   FileCheck2,
   FileText,
   Lock,
-  Mic2,
   Radar,
   RefreshCcw,
   Send,
@@ -619,12 +618,6 @@ export default function AgentPage() {
               <li className="flex gap-2"><Send className="h-4 w-4 shrink-0 text-rp-accent" /> Only a Submitted receipt counts as applied.</li>
             </ul>
           </section>
-
-          <button onClick={() => navigate("/interview-prep")} className="w-full border border-rp-rule bg-rp-canvas p-5 text-left hover:bg-rp-paper transition-colors">
-            <Mic2 className="h-4 w-4 text-rp-accent" />
-            <p className="mt-3 text-sm font-semibold text-rp-ink">Interview practice</p>
-            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Prepare STAR stories and rehearse when a match advances.</p>
-          </button>
         </aside>
       </div>
     </div>
