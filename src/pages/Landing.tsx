@@ -6,6 +6,7 @@ import {
   FileText, Search, Target, Mail, Mic, Wand2, Sparkles, Columns3,
   ArrowRight, Check,
 } from "lucide-react";
+import { BILLING_PLANS, formatPlanPrice } from "@/lib/billing-plans";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
@@ -27,24 +28,6 @@ const proofs = [
   { quote: "I stopped spreadsheet-ing my applications and started closing them.", name: "Sarah Chen", role: "SWE \u2192 Google" },
   { quote: "The voice rehearsals were uncannily realistic. I walked in already warmed up.", name: "Michael Torres", role: "PM \u2192 Meta" },
   { quote: "Tailored eight cover letters in twenty minutes. Every one read like me.", name: "Priya Sharma", role: "DS \u2192 Amazon" },
-];
-
-const plans = [
-  {
-    name: "Free", price: "$0", tagline: "Everything you need to start applying.",
-    features: ["3 AI résumés", "ATS score checking", "Basic job search", "5 cover letters / month"],
-    cta: "Get started", highlight: false,
-  },
-  {
-    name: "Pro", price: "$12", tagline: "For serious candidates running a real search.",
-    features: ["Unlimited résumés", "Matches + evaluations", "Unlimited cover letters", "Voice interview prep", "Real-time job matching", "Priority support"],
-    cta: "Start free trial", highlight: true,
-  },
-  {
-    name: "Enterprise", price: "$29", tagline: "The whole studio, with auto-apply + coach.",
-    features: ["Everything in Pro", "Greenhouse auto-apply", "LinkedIn optimizer", "Skill gap analyzer", "Career coach AI", "API access"],
-    cta: "Contact sales", highlight: false,
-  },
 ];
 
 export default function Landing() {
@@ -231,24 +214,24 @@ export default function Landing() {
             <h2 className="text-[32px] sm:text-[40px] font-bold tracking-tight text-foreground leading-[1.1]">Simple, transparent pricing.</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {plans.map((plan, i) => (
+            {BILLING_PLANS.map((plan, i) => (
               <motion.div key={plan.name} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
-                className={`rounded-xl p-6 flex flex-col ${plan.highlight ? "bg-foreground text-background shadow-xl" : "bg-card border border-border"}`}>
-                <p className={`text-[12px] font-medium mb-3 ${plan.highlight ? "text-background/60" : "text-muted-foreground"}`}>{plan.name}</p>
+                className={`rounded-xl p-6 flex flex-col ${plan.popular ? "bg-foreground text-background shadow-xl" : "bg-card border border-border"}`}>
+                <p className={`text-[12px] font-medium mb-3 ${plan.popular ? "text-background/60" : "text-muted-foreground"}`}>{plan.name}</p>
                 <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-[36px] font-bold tracking-tight">{plan.price}</span>
-                  {plan.price !== "$0" && <span className={`text-[13px] ${plan.highlight ? "text-background/60" : "text-muted-foreground"}`}>/ month</span>}
+                  <span className="text-[36px] font-bold tracking-tight">{formatPlanPrice(plan.price)}</span>
+                  {plan.price !== 0 && <span className={`text-[13px] ${plan.popular ? "text-background/60" : "text-muted-foreground"}`}>/ month</span>}
                 </div>
-                <p className={`text-[13px] mb-6 ${plan.highlight ? "text-background/75" : "text-muted-foreground"}`}>{plan.tagline}</p>
+                <p className={`text-[13px] mb-6 ${plan.popular ? "text-background/75" : "text-muted-foreground"}`}>{plan.description}</p>
                 <button onClick={() => navigate("/auth?mode=signup")}
-                  className={`h-10 rounded-md text-[13px] font-medium transition-colors mb-6 ${plan.highlight ? "bg-background text-foreground hover:bg-background/90" : "bg-foreground text-background hover:bg-foreground/90"}`}>
+                  className={`h-10 rounded-md text-[13px] font-medium transition-colors mb-6 ${plan.popular ? "bg-background text-foreground hover:bg-background/90" : "bg-foreground text-background hover:bg-foreground/90"}`}>
                   {plan.cta}
                 </button>
                 <ul className="space-y-2.5 text-[13px]">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-2">
-                      <Check className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${plan.highlight ? "text-background/80" : "text-emerald-600"}`} strokeWidth={2.5} />
-                      <span className={plan.highlight ? "text-background/85" : "text-foreground/85"}>{f}</span>
+                      <Check className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${plan.popular ? "text-background/80" : "text-emerald-600"}`} strokeWidth={2.5} />
+                      <span className={plan.popular ? "text-background/85" : "text-foreground/85"}>{f}</span>
                     </li>
                   ))}
                 </ul>

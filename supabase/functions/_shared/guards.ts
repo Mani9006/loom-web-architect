@@ -96,6 +96,63 @@ export async function enforceAccountActive(svc: SupabaseClient, userId: string):
   return { isPro };
 }
 
+export async function enforceAutoApplyEntitlement(
+  svc: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  const { data, error } = await svc
+    .from("user_access_controls")
+    .select("account_status, subscription_plan, purchase_state")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new HttpError(500, "unable to verify auto-apply entitlement");
+
+  const plan = String(data?.subscription_plan || "free").toLowerCase();
+  const purchaseState = String(data?.purchase_state || "").toLowerCase();
+  const entitled = data?.account_status === "active"
+    && ["autopilot", "premium"].includes(plan)
+    && ["trial", "active", "manual"].includes(purchaseState);
+
+  if (!entitled) throw new HttpError(402, "Autopilot subscription required");
+}
+
+/**
+ * Infrastructure safety ceiling. It includes failed executions because they
+ * still consume browser/proxy resources. Customer-facing credits may be
+ * refunded separately, but no account can create unbounded monthly work.
+ */
+export async function enforceMonthlyAutoApplyExecutionCap(
+  svc: SupabaseClient,
+  userId: string,
+  requestedJobs: number,
+): Promise<void> {
+  const limit = Math.max(1, Number(Deno.env.get("AUTOPILOT_MONTHLY_EXECUTION_CAP") || 120));
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+
+  const { data, error } = await svc
+    .from("applypass_tasks")
+    .select("task_type,payload,status")
+    .eq("user_id", userId)
+    .gte("created_at", monthStart.toISOString())
+    .neq("status", "canceled")
+    .limit(500);
+  if (error) throw new HttpError(500, "unable to verify monthly auto-apply usage");
+
+  const used = (data || []).reduce((total, task) => {
+    if (task.task_type === "career_ops_submit") return total + 1;
+    const payload = task.payload && typeof task.payload === "object" && !Array.isArray(task.payload)
+      ? task.payload as Record<string, unknown>
+      : {};
+    return total + (Array.isArray(payload.jobs) ? payload.jobs.length : 1);
+  }, 0);
+
+  if (used + requestedJobs > limit) {
+    throw new HttpError(429, `monthly auto-apply execution cap reached (${limit})`);
+  }
+}
+
 export async function enforceDailyCap(
   svc: SupabaseClient,
   userId: string,

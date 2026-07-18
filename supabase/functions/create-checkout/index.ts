@@ -7,6 +7,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const PLAN_CATALOG = {
+  pro: {
+    name: "ResumePreps Pro",
+    description: "30 tailored application packets and 100 fit evaluations per month",
+    amount: "1900",
+  },
+  autopilot: {
+    name: "ResumePreps Autopilot",
+    description: "100 supported-portal submissions with review and status receipts per month",
+    amount: "5900",
+  },
+} as const;
+
+type CheckoutPlan = keyof typeof PLAN_CATALOG;
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -38,18 +53,34 @@ serve(async (req: Request) => {
       });
     }
 
-    const { planType } = await req.json();
+    const { planType: requestedPlan } = await req.json();
+    if (typeof requestedPlan !== "string" || !(requestedPlan in PLAN_CATALOG)) {
+      return new Response(JSON.stringify({ error: "Unknown subscription plan" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const planType = requestedPlan as CheckoutPlan;
+    const plan = PLAN_CATALOG[planType];
 
     // Check for Stripe key
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
 
     if (!stripeKey) {
-      // No Stripe configured yet - create subscription record directly for testing
+      // Test grants must be explicitly enabled. A missing billing secret must
+      // never turn into a free paid entitlement in production.
+      if (Deno.env.get("ALLOW_TEST_SUBSCRIPTIONS") !== "true") {
+        return new Response(JSON.stringify({ error: "Billing is not configured for this environment" }), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const adminClient = createClient(supabaseUrl, serviceKey);
 
       await adminClient.from("subscription_plans").upsert({
         user_id: user.id,
-        plan_type: planType || "premium",
+        plan_type: planType,
         status: "active",
         current_period_start: new Date().toISOString(),
         current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -60,7 +91,7 @@ serve(async (req: Request) => {
       await adminClient.from("user_access_controls").upsert({
         user_id: user.id,
         purchase_state: "active",
-        subscription_plan: planType || "premium",
+        subscription_plan: planType,
         ai_features_enabled: true,
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
@@ -85,15 +116,15 @@ serve(async (req: Request) => {
         "mode": "subscription",
         "customer_email": user.email || "",
         "line_items[0][price_data][currency]": "usd",
-        "line_items[0][price_data][product_data][name]": "ResumePreps Premium",
-        "line_items[0][price_data][product_data][description]": "AI-powered auto-apply, unlimited matches, priority support",
-        "line_items[0][price_data][unit_amount]": "12000", // $120
+        "line_items[0][price_data][product_data][name]": plan.name,
+        "line_items[0][price_data][product_data][description]": plan.description,
+        "line_items[0][price_data][unit_amount]": plan.amount,
         "line_items[0][price_data][recurring][interval]": "month",
         "line_items[0][quantity]": "1",
         "success_url": `${req.headers.get("origin") || "https://resumepreps.com"}/job-search?checkout=success`,
         "cancel_url": `${req.headers.get("origin") || "https://resumepreps.com"}/pricing?checkout=canceled`,
         "metadata[user_id]": user.id,
-        "metadata[plan_type]": planType || "premium",
+        "metadata[plan_type]": planType,
       }),
     });
 

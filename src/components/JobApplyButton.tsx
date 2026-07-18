@@ -28,7 +28,7 @@ interface JobApplyButtonProps {
 
 export function JobApplyButton({ job, variant = "default", onApplied }: JobApplyButtonProps) {
   const { user } = useAuth();
-  const { isPremium } = useSubscription();
+  const { hasAutoApply } = useSubscription();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [applying, setApplying] = useState(false);
@@ -91,10 +91,10 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
   };
 
   const handleAutoApply = async () => {
-    if (!isPremium) {
+    if (!hasAutoApply) {
       toast({
         title: "Premium Feature",
-        description: "Auto-Apply requires a Premium subscription.",
+        description: "Cloud Auto-Apply requires an Autopilot subscription.",
       });
       navigate("/pricing");
       return;
@@ -168,7 +168,7 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
         <Button size="sm" className="gap-1.5 h-8" onClick={handleManualApply}>
           Apply <ExternalLink className="w-3.5 h-3.5" />
         </Button>
-        {isPremium && (
+        {hasAutoApply && (
           <Button
             size="sm"
             variant="secondary"
@@ -191,19 +191,19 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
         <ExternalLink className="w-4 h-4" />
       </Button>
       <Button
-        variant={isPremium ? "secondary" : "outline"}
-        className={cn("gap-2", !isPremium && "opacity-70")}
+        variant={hasAutoApply ? "secondary" : "outline"}
+        className={cn("gap-2", !hasAutoApply && "opacity-70")}
         onClick={handleAutoApply}
         disabled={applying}
       >
         {applying ? (
           <Loader2 className="w-4 h-4 animate-spin" />
-        ) : isPremium ? (
+        ) : hasAutoApply ? (
           <Zap className="w-4 h-4" />
         ) : (
           <Crown className="w-4 h-4" />
         )}
-        {isPremium ? "Auto-Apply" : "Premium"}
+        {hasAutoApply ? "Auto-Apply" : "Autopilot"}
       </Button>
     </div>
   );

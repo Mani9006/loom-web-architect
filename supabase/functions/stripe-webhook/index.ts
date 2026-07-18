@@ -7,6 +7,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const PLAN_LABELS: Record<string, string> = {
+  pro: "Pro ($19/mo)",
+  autopilot: "Autopilot ($59/mo)",
+  premium: "Legacy Premium",
+};
+
 // ── Email helper ─────────────────────────────────────────────────────
 async function sendEmailNotification(
   supabaseUrl: string,
@@ -88,7 +94,7 @@ serve(async (req: Request) => {
           if (email) {
             const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
             void sendEmailNotification(supabaseUrl, serviceKey, "subscription", email, {
-              plan_name: planType === "premium" ? "Premium ($120/mo)" : planType,
+              plan_name: PLAN_LABELS[planType] || planType,
               status: "active",
               period_end: periodEnd,
             });

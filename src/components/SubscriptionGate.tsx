@@ -11,6 +11,7 @@ interface SubscriptionState {
   plan: SubscriptionPlan;
   status: SubscriptionStatus;
   isPremium: boolean;
+  hasAutoApply: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
 }
@@ -19,6 +20,7 @@ const SubscriptionContext = createContext<SubscriptionState>({
   plan: "free",
   status: "active",
   isPremium: false,
+  hasAutoApply: false,
   loading: true,
   refresh: async () => {},
 });
@@ -31,12 +33,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     plan: "free",
     status: "active",
     isPremium: false,
+    hasAutoApply: false,
     loading: true,
   });
 
   const refresh = async () => {
     if (!user) {
-      setState({ plan: "free", status: "active", isPremium: false, loading: false });
+      setState({ plan: "free", status: "active", isPremium: false, hasAutoApply: false, loading: false });
       return;
     }
 
@@ -51,7 +54,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
       setState({ ...resolveSubscription(data), loading: false });
     } catch {
-      setState({ plan: "free", status: "active", isPremium: false, loading: false });
+      setState({ plan: "free", status: "active", isPremium: false, hasAutoApply: false, loading: false });
     }
   };
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy profile/job JSON is incrementally typed */
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -73,7 +74,7 @@ interface MatchedJob {
 export default function AutoApplyPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { isPremium, loading: subLoading } = useSubscription();
+  const { hasAutoApply, loading: subLoading } = useSubscription();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -519,7 +520,7 @@ export default function AutoApplyPage() {
   const isOwnerOrAdmin = isOwnerEmail(user?.email) || (user as { isAdmin?: boolean } | null)?.isAdmin;
 
   // Premium gate for Auto Apply
-  if (!subLoading && !isPremium && !isOwnerOrAdmin) {
+  if (!subLoading && !hasAutoApply && !isOwnerOrAdmin) {
     return (
       <div className="bg-muted/30 min-h-full">
         <div className="max-w-5xl mx-auto p-4 sm:p-6">
@@ -527,10 +528,10 @@ export default function AutoApplyPage() {
             <CardHeader className="space-y-4">
               <div className="flex items-center gap-2">
                 <Crown className="w-6 h-6 text-amber-600" />
-                <CardTitle className="text-2xl text-amber-900">Premium Feature</CardTitle>
+                <CardTitle className="text-2xl text-amber-900">Autopilot Feature</CardTitle>
               </div>
               <CardDescription className="text-amber-800 text-base">
-                Auto-Apply automatically submits applications to matched jobs on your behalf.
+                Autopilot prepares and submits applications on supported portals with review and status receipts.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -543,7 +544,7 @@ export default function AutoApplyPage() {
                   </li>
                   <li className="flex items-center gap-2 text-sm text-rp-ink">
                     <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                    Apply to 50+ jobs per day
+                    Up to 100 supported-portal submissions per month
                   </li>
                   <li className="flex items-center gap-2 text-sm text-rp-ink">
                     <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
@@ -556,7 +557,7 @@ export default function AutoApplyPage() {
                 <Link to="/pricing" className="flex-1">
                   <Button className="w-full bg-amber-600 hover:bg-amber-700 text-white" size="lg">
                     <Crown className="w-4 h-4 mr-2" />
-                    Upgrade to Premium — $120/mo
+                    Choose Autopilot — $59/mo
                   </Button>
                 </Link>
               </div>

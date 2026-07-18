@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import {
   Plus, Search, Briefcase, Building2, Clock, Target, Trash2, Loader2,
-  Bookmark, MapPin, DollarSign, Globe, X, FileText,
+  Bookmark, MapPin, DollarSign, Globe, X, FileText, Sparkles, Zap, Mail, BarChart3,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,17 @@ interface Job {
   status: string;
   created_at: string;
 }
+
+type DraftApplicationStatus = "draft" | "ready" | "queued" | "submitted" | "skipped" | "failed";
+
+const EMPTY_AUTOMATION_COUNTS: Record<DraftApplicationStatus, number> = {
+  draft: 0,
+  ready: 0,
+  queued: 0,
+  submitted: 0,
+  skipped: 0,
+  failed: 0,
+};
 
 const COLUMNS = [
   { key: "Saved", color: "border-t-muted-foreground" },
@@ -159,6 +170,7 @@ export default function JobTracker() {
   const [newJob, setNewJob] = useState({ title: "", company: "" });
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [automationCounts, setAutomationCounts] = useState(EMPTY_AUTOMATION_COUNTS);
 
   const [selectedSavedJob, setSelectedSavedJob] = useState<SavedJobDetail | null>(null);
   const [selectedKanbanJob, setSelectedKanbanJob] = useState<Job | null>(null);
@@ -195,6 +207,21 @@ export default function JobTracker() {
         .order("saved_at", { ascending: false });
 
       setSavedJobDetails((savedData as SavedJobDetail[]) || []);
+
+      // Keep preparation and submission states observable in the same workspace.
+      // Older environments without the career-ops migration can still load the tracker.
+      const { data: draftData } = await supabase
+        .from("draft_applications")
+        .select("status")
+        .eq("user_id", user.id);
+
+      if (draftData) {
+        const next = { ...EMPTY_AUTOMATION_COUNTS };
+        draftData.forEach(({ status }) => {
+          if (status in next) next[status as DraftApplicationStatus] += 1;
+        });
+        setAutomationCounts(next);
+      }
       setLoading(false);
     };
     load();
@@ -439,8 +466,44 @@ export default function JobTracker() {
       <PageHeader
         title="Applications."
         status="kanban · pipeline"
-        description="Drag and drop between Saved · Applied · Interviewing · Offer · Rejected. Status changes are logged for analytics."
+        description="One record for every opportunity—from match and tailored resume through application, interview, and offer."
       />
+      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-px bg-rp-rule border border-rp-rule mb-6">
+        <button onClick={() => navigate("/matches")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
+          <Sparkles className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Matched jobs</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Review fit and tailor a resume.</p>
+        </button>
+        <button onClick={() => navigate("/auto-apply")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
+          <Zap className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Auto Apply</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Supervised queue, answers, and status.</p>
+        </button>
+        <button onClick={() => navigate("/cover-letters")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
+          <Mail className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Application writing</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Cover letters and job-specific answers.</p>
+        </button>
+        <button onClick={() => navigate("/analytics")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
+          <BarChart3 className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Outcomes</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Track conversion and follow-up activity.</p>
+        </button>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 border-y border-rp-rule mb-6" aria-label="Application automation status">
+        {[
+          { label: "Prepared", value: automationCounts.draft + automationCounts.ready },
+          { label: "Queued", value: automationCounts.queued },
+          { label: "Submitted", value: automationCounts.submitted },
+          { label: "Failed", value: automationCounts.failed },
+          { label: "Skipped", value: automationCounts.skipped },
+        ].map((item) => (
+          <div key={item.label} className="px-3 py-3 border-r border-rp-rule last:border-r-0">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-rp-ink/50">{item.label}</p>
+            <p className="mt-1 text-xl font-semibold tabular-nums text-rp-ink">{item.value}</p>
+          </div>
+        ))}
+      </div>
       <div className="flex items-center justify-end gap-2 mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rp-ink-3" />

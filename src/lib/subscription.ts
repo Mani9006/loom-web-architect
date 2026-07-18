@@ -1,4 +1,4 @@
-export type SubscriptionPlan = "free" | "premium";
+export type SubscriptionPlan = "free" | "pro" | "autopilot";
 export type SubscriptionStatus = "active" | "canceled" | "past_due" | "trialing";
 
 export interface AccountAccessRecord {
@@ -11,6 +11,7 @@ export interface ResolvedSubscription {
   plan: SubscriptionPlan;
   status: SubscriptionStatus;
   isPremium: boolean;
+  hasAutoApply: boolean;
 }
 
 const PAID_PURCHASE_STATES = new Set(["active", "manual", "trial"]);
@@ -23,7 +24,7 @@ export function resolveSubscription(
   access: AccountAccessRecord | null | undefined,
 ): ResolvedSubscription {
   if (!access) {
-    return { plan: "free", status: "active", isPremium: false };
+    return { plan: "free", status: "active", isPremium: false, hasAutoApply: false };
   }
 
   const accountStatus = (access.account_status || "active").trim().toLowerCase();
@@ -43,9 +44,14 @@ export function resolveSubscription(
     && hasPaidPlan
     && PAID_PURCHASE_STATES.has(purchaseState);
 
+  const paidPlan: SubscriptionPlan = rawPlan === "autopilot" || rawPlan === "premium"
+    ? "autopilot"
+    : "pro";
+
   return {
-    plan: isPremium ? "premium" : "free",
+    plan: isPremium ? paidPlan : "free",
     status,
     isPremium,
+    hasAutoApply: isPremium && paidPlan === "autopilot",
   };
 }

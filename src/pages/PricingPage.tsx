@@ -2,68 +2,29 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useSubscription } from "@/components/SubscriptionGate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Check, Sparkles, Zap, Crown, Loader2, ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const PLANS = [
-  {
-    name: "Free",
-    price: "$0",
-    period: "forever",
-    description: "Get started with job discovery",
-    features: [
-      "AI-powered job matching",
-      "Job discovery from 4+ sources",
-      "Save & track jobs",
-      "Resume ATS scoring",
-      "Manual apply (redirect to job portal)",
-      "Up to 50 matches per day",
-    ],
-    cta: "Current Plan",
-    popular: false,
-    planType: "free",
-  },
-  {
-    name: "Premium",
-    price: "$120",
-    period: "/month",
-    description: "Automated job applications at scale",
-    features: [
-      "Everything in Free",
-      "Auto-Apply to matched jobs",
-      "AI-optimized applications",
-      "Priority job matching",
-      "Application tracking & analytics",
-      "Email notifications & alerts",
-      "Unlimited matches per day",
-      "ATS password manager",
-      "Priority support",
-    ],
-    cta: "Upgrade to Premium",
-    popular: true,
-    planType: "premium",
-  },
-];
+import { BILLING_PLANS, formatPlanPrice, type BillingPlanId } from "@/lib/billing-plans";
 
 export default function PricingPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<string>("free");
+  const { plan: currentPlan, refresh } = useSubscription();
+  const [loadingPlan, setLoadingPlan] = useState<BillingPlanId | null>(null);
 
-  const handleUpgrade = async (planType: string) => {
+  const handleUpgrade = async (planType: BillingPlanId) => {
     if (planType === "free") return;
     if (!user) {
       toast({ title: "Sign in required", description: "Please sign in to upgrade." });
       return;
     }
 
-    setLoading(true);
+    setLoadingPlan(planType);
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
@@ -86,24 +47,24 @@ export default function PricingPage() {
         if (data.url) {
           window.location.href = data.url;
         } else {
-          toast({ title: "Subscription activated!", description: "Welcome to Premium!" });
-          setCurrentPlan("premium");
+          await refresh();
+          toast({ title: "Subscription activated", description: `Welcome to ResumePreps ${planType === "pro" ? "Pro" : "Autopilot"}.` });
         }
       } else {
         const err = await response.json();
         toast({
           title: "Upgrade unavailable",
-          description: err.message || "Stripe integration coming soon. Contact support for early access.",
+          description: err.error || err.message || "Stripe integration coming soon. Contact support for early access.",
           variant: "destructive",
         });
       }
     } catch {
       toast({
         title: "Coming Soon",
-        description: "Payment integration is being set up. Contact support for early access to Premium.",
+        description: "Payment integration is being set up. Contact support for early paid access.",
       });
     } finally {
-      setLoading(false);
+      setLoadingPlan(null);
     }
   };
 
@@ -115,8 +76,8 @@ export default function PricingPage() {
           <p className="text-muted-foreground">Supercharge your job search with AI-powered automation</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {PLANS.map((plan) => (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {BILLING_PLANS.map((plan) => (
             <Card
               key={plan.name}
               className={cn(
@@ -131,12 +92,12 @@ export default function PricingPage() {
               )}
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  {plan.popular ? <Crown className="w-5 h-5 text-primary" /> : <Zap className="w-5 h-5 text-muted-foreground" />}
+                  {plan.id === "autopilot" ? <Crown className="w-5 h-5 text-primary" /> : plan.id === "pro" ? <Sparkles className="w-5 h-5 text-primary" /> : <Zap className="w-5 h-5 text-muted-foreground" />}
                   <CardTitle>{plan.name}</CardTitle>
                 </div>
                 <div className="mt-2">
-                  <span className="text-4xl font-bold">{plan.price}</span>
-                  <span className="text-muted-foreground">{plan.period}</span>
+                  <span className="text-4xl font-bold">{formatPlanPrice(plan.price)}</span>
+                  <span className="text-muted-foreground ml-1">{plan.period}</span>
                 </div>
                 <CardDescription>{plan.description}</CardDescription>
               </CardHeader>
@@ -152,14 +113,14 @@ export default function PricingPage() {
                 <Button
                   className="w-full gap-2"
                   variant={plan.popular ? "default" : "outline"}
-                  disabled={loading || currentPlan === plan.planType}
-                  onClick={() => handleUpgrade(plan.planType)}
+                  disabled={loadingPlan !== null || currentPlan === plan.id || plan.id === "free"}
+                  onClick={() => handleUpgrade(plan.id)}
                 >
-                  {loading && plan.popular ? (
+                  {loadingPlan === plan.id ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : null}
-                  {currentPlan === plan.planType ? "Current Plan" : plan.cta}
-                  {plan.popular && currentPlan !== plan.planType && <ArrowRight className="w-4 h-4" />}
+                  {currentPlan === plan.id ? "Current Plan" : plan.id === "free" ? "Included" : plan.cta}
+                  {plan.popular && currentPlan !== plan.id && <ArrowRight className="w-4 h-4" />}
                 </Button>
               </CardContent>
             </Card>
@@ -167,7 +128,8 @@ export default function PricingPage() {
         </div>
 
         <div className="text-center text-sm text-muted-foreground">
-          <p>Cancel anytime. No long-term commitment required.</p>
+          <p>Clear monthly limits protect application quality and prevent surprise usage charges.</p>
+          <p className="mt-1">Cancel anytime. No long-term commitment required.</p>
           <p className="mt-1">Need help? Contact us at support@resumepreps.com</p>
         </div>
       </div>

@@ -18,12 +18,11 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  Home, FileText, Search, Target, Mic, Mail, Wand2,
-  MessageCircle, Folder, Zap, Columns3, Sparkles, TrendingUp, Map,
-  ShieldCheck, Crown, LogOut, Settings, SlidersHorizontal,
+  Home, FileText, Search, Mic, Columns3, Sparkles, Map,
+  ShieldCheck, Crown, LogOut, Settings,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
   Bell, HelpCircle,
-  FolderOpen, ArrowUpRight } from "lucide-react";
+  ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -48,21 +47,9 @@ const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
   { label: "Job Search", icon: Search, path: "/job-search" },
   { label: "Matches", icon: Sparkles, path: "/matches" },
-  { label: "My Collection", icon: FolderOpen, path: "/my-collection" },
-  { label: "Resume Builder", icon: FileText, path: "/resume-builder" },
-  { label: "ATS Checker", icon: Target, path: "/ats-checker" },
   { label: "Applications", icon: Columns3, path: "/job-tracker" },
-  { label: "Cover Letters", icon: Mail, path: "/cover-letters" },
+  { label: "Resume", icon: FileText, path: "/resume-builder" },
   { label: "Interviews", icon: Mic, path: "/interview-prep" },
-  { label: "AI Chat", icon: MessageCircle, path: "/chat" },
-];
-
-const pinnedNav: NavItem[] = [
-  { label: "AI Toolbox", icon: Wand2, path: "/ai-toolbox" },
-  { label: "Documents", icon: Folder, path: "/documents" },
-  { label: "Career Controls", icon: SlidersHorizontal, path: "/career-ops/preferences", badge: "NEW" },
-  { label: "Auto Apply", icon: Zap, path: "/auto-apply", badge: "PRO" },
-  { label: "Analytics", icon: TrendingUp, path: "/analytics" },
 ];
 
 const ownerOnlyTools: NavItem[] = [
@@ -71,6 +58,20 @@ const ownerOnlyTools: NavItem[] = [
   { label: "Admin Portal", icon: Crown, path: "/admin" },
   { label: "Feature Flags", icon: Settings, path: "/admin/flags" },
 ];
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 px-4 mt-6 mb-1.5">
+      <span
+        className="text-[9.5px] font-medium uppercase tracking-[0.18em] text-rp-ink/45"
+        style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
+      >
+        {children}
+      </span>
+      <span className="flex-1 h-px bg-rp-ink/[0.08]" />
+    </div>
+  );
+}
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -82,14 +83,11 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anuOpen, setAnuOpen] = useState(false);
 
-  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
-  useEffect(() => { if (isMobile) setSidebarOpen(true); }, [isMobile]);
-
   useEffect(() => {
     if (!user) return;
     supabase.from("profiles").select("full_name").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { setDisplayName(data?.full_name || user.email?.split("@")[0] || "User"); });
-  }, [user?.id]);
+  }, [user]);
 
   const handleSignOut = async () => { await signOut(); navigate("/auth"); };
   const handleNavigate = (path: string) => { navigate(path); if (isMobile) setMobileOpen(false); };
@@ -109,7 +107,7 @@ export default function AppLayout() {
   const hasAdminAccess = isOwnerEmail(user.email) || isAdmin;
   const visibleOwnerTools = hasAdminAccess ? ownerOnlyTools : [];
 
-  const allNav = [...mainNav, ...pinnedNav, ...visibleOwnerTools];
+  const allNav = [...mainNav, ...visibleOwnerTools];
   const current = allNav.find((n) => isActive(n.path));
   const crumb = current?.label ?? "";
 
@@ -169,19 +167,6 @@ export default function AppLayout() {
     );
   };
 
-  // ── Section label ─────────────────────────────────────────────────────
-  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-    <div className="flex items-center gap-2 px-4 mt-6 mb-1.5">
-      <span
-        className="text-[9.5px] font-medium uppercase tracking-[0.18em] text-rp-ink/45"
-        style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
-      >
-        {children}
-      </span>
-      <span className="flex-1 h-px bg-rp-ink/[0.08]" />
-    </div>
-  );
-
   const sidebarContent = (
     <aside
       className={cn(
@@ -234,9 +219,6 @@ export default function AppLayout() {
       <nav className="flex-1 overflow-y-auto py-3">
         {mainNav.map((i) => <NavButton key={i.path} item={i} />)}
 
-        {showText && <SectionLabel>More</SectionLabel>}
-        {pinnedNav.map((i) => <NavButton key={i.path} item={i} />)}
-
         {visibleOwnerTools.length > 0 && (
           <>
             {showText && <SectionLabel>Admin</SectionLabel>}
@@ -276,7 +258,7 @@ export default function AppLayout() {
               className="text-[11px] text-rp-ink/55 mt-1.5 leading-snug"
               style={{ fontFamily: '"Source Serif 4", Georgia, serif' }}
             >
-              Unlimited tailored resumes and Greenhouse auto-apply.
+              Per-job tailoring, supervised auto-apply, and one application record.
             </div>
             <div className="mt-2.5 flex items-center justify-between">
               <span

@@ -7,6 +7,7 @@ describe("subscription entitlement resolution", () => {
       plan: "free",
       status: "active",
       isPremium: false,
+      hasAutoApply: false,
     });
   });
 
@@ -16,9 +17,10 @@ describe("subscription entitlement resolution", () => {
       purchase_state: "manual",
       subscription_plan: "pro",
     })).toEqual({
-      plan: "premium",
+      plan: "pro",
       status: "active",
       isPremium: true,
+      hasAutoApply: false,
     });
   });
 
@@ -28,9 +30,10 @@ describe("subscription entitlement resolution", () => {
       purchase_state: "trial",
       subscription_plan: "premium",
     })).toEqual({
-      plan: "premium",
+      plan: "autopilot",
       status: "trialing",
       isPremium: true,
+      hasAutoApply: true,
     });
   });
 
@@ -51,6 +54,15 @@ describe("subscription entitlement resolution", () => {
       plan: "free",
       status: "active",
       isPremium: false,
+      hasAutoApply: false,
     });
+  });
+
+  it("unlocks cloud auto-apply only for the Autopilot entitlement", () => {
+    expect(resolveSubscription({
+      account_status: "active",
+      purchase_state: "active",
+      subscription_plan: "autopilot",
+    })).toMatchObject({ plan: "autopilot", isPremium: true, hasAutoApply: true });
   });
 });

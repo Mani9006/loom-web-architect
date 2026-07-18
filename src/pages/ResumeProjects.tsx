@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy Supabase JSON rows are incrementally typed */
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -377,6 +378,30 @@ export default function ResumeProjects() {
         >
           Every draft, tailored variant, and saved version. Click one to edit, or start a new one and the AI tailor turns any job description into a matching application.
         </p>
+
+        {/* One resume workflow, rather than separate products in the sidebar. */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-px bg-rp-rule border border-rp-rule mt-8">
+          <button onClick={() => setCreateOpen(true)} className="bg-rp-canvas p-4 text-left hover:bg-rp-paper transition-colors group">
+            <Upload className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
+            <p className="mt-3 text-sm font-semibold text-rp-ink">Import & parse</p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Turn PDF, DOCX, text, or an existing document into editable resume sections.</p>
+          </button>
+          <button onClick={() => navigate("/ats-checker")} className="bg-rp-canvas p-4 text-left hover:bg-rp-paper transition-colors group">
+            <Shield className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
+            <p className="mt-3 text-sm font-semibold text-rp-ink">ATS & formatting</p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Check parseability, structure, section quality, keywords, and job alignment.</p>
+          </button>
+          <button onClick={() => navigate("/matches")} className="bg-rp-canvas p-4 text-left hover:bg-rp-paper transition-colors group">
+            <Sparkles className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
+            <p className="mt-3 text-sm font-semibold text-rp-ink">Tailor per job</p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Create a separate evidence-backed version without overwriting your source resume.</p>
+          </button>
+          <button onClick={() => navigate("/documents")} className="bg-rp-canvas p-4 text-left hover:bg-rp-paper transition-colors group">
+            <FolderOpen className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
+            <p className="mt-3 text-sm font-semibold text-rp-ink">Documents</p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Keep source resumes, tailored variants, and application documents together.</p>
+          </button>
+        </div>
 
         {/* Action row — primary uses default (white-on-black) like the rest of the app */}
         <div className="mt-7 flex items-center gap-2">

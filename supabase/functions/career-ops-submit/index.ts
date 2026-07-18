@@ -27,6 +27,10 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  enforceAutoApplyEntitlement,
+  enforceMonthlyAutoApplyExecutionCap,
+} from "../_shared/guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -164,6 +168,10 @@ serve(async (req) => {
     const { data: userRes } = await auth.auth.getUser();
     const user = userRes?.user;
     if (!user) return jsonResponse({ error: "unauthorized" }, 401);
+
+    const svc = serviceClient();
+    await enforceAutoApplyEntitlement(svc, user.id);
+    await enforceMonthlyAutoApplyExecutionCap(svc, user.id, 1);
 
     const body = await req.json().catch(() => ({})) as SubmitPayload;
     if (!body.draft_application_id) return jsonResponse({ error: "draft_application_id required" }, 400);

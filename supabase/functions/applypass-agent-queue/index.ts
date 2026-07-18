@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  enforceAutoApplyEntitlement,
+  enforceMonthlyAutoApplyExecutionCap,
+} from "../_shared/guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -230,6 +234,10 @@ serve(async (req: Request) => {
       return jsonResponse({ error: "Maximum 25 jobs per queued task" }, 400);
     }
 
+    const serviceClient = createServiceClient();
+    await enforceAutoApplyEntitlement(serviceClient, user.id);
+    await enforceMonthlyAutoApplyExecutionCap(serviceClient, user.id, jobs.length);
+
     const taskPayload = {
       jobs,
       resumeId: body?.resumeId || null,
@@ -255,6 +263,9 @@ serve(async (req: Request) => {
 
     return jsonResponse({ ok: true, task: data });
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
+    const status = error && typeof error === "object" && "status" in error
+      ? Number((error as { status?: number }).status) || 500
+      : 500;
+    return jsonResponse({ error: error instanceof Error ? error.message : "Unknown error" }, status);
   }
 });
