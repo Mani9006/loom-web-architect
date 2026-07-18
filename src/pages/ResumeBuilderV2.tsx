@@ -201,6 +201,7 @@ export default function ResumeBuilderV2() {
 
   useEffect(() => {
     if (!initialLoadDone.current || !hydrated || !user) return;
+    if (!resumeId && resumeName.trim() === "Untitled resume" && !hasMeaningfulResumeContent(resume)) return;
     const t = setTimeout(() => void save(), 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -737,6 +738,16 @@ function resumeJSONToRow(
 function safeFileName(value: string): string {
   const sanitized = value.trim().replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "");
   return sanitized || "resume";
+}
+
+function hasMeaningfulResumeContent(resume: ResumeJSON): boolean {
+  if (Object.values(resume.header).some((value) => typeof value === "string" && value.trim().length > 0)) return true;
+  if (resume.summary.trim()) return true;
+  if (resume.experience.some((entry) => Object.values(entry).some((value) =>
+    typeof value === "string" ? value.trim().length > 0 : Array.isArray(value) && value.some(Boolean)
+  ))) return true;
+  if (resume.education.some((entry) => Object.values(entry).some((value) => typeof value === "string" && value.trim().length > 0))) return true;
+  return Object.values(normalizeResumeSkills(resume.skills)).some((items) => items.length > 0);
 }
 
 function arr<T>(v: unknown): T[] | null {
