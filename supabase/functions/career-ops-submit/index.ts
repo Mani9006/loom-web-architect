@@ -30,6 +30,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import {
   enforceAutoApplyEntitlement,
   enforceMonthlyAutoApplyExecutionCap,
+  getAuthedUserOrService,
 } from "../_shared/guards.ts";
 
 const corsHeaders = {
@@ -39,6 +40,28 @@ const corsHeaders = {
 
 interface SubmitPayload {
   draft_application_id: string;
+  user_id?: string;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function answersToMemory(value: unknown): Record<string, string> {
+  if (!Array.isArray(value)) return {};
+  const entries = value.flatMap((item) => {
+    const answer = asRecord(item);
+    const question = asString(answer.question);
+    const response = asString(answer.answer);
+    return question && response ? [[question, response] as const] : [];
+  });
+  return Object.fromEntries(entries);
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -46,17 +69,6 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function userClient(req: Request): SupabaseClient {
-  return createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    {
-      global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
-      auth: { persistSession: false },
-    },
-  );
 }
 
 function serviceClient(): SupabaseClient {
@@ -73,7 +85,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
   // Load draft + evaluation + job + company
   const { data: draft, error: draftErr } = await svc
     .from("draft_applications")
-    .select(`id, user_id, evaluation_id, tailored_resume_id, tailored_cv_md, answers, status,
+    .select(`id, user_id, evaluation_id, tailored_resume_id, tailored_cv_md, tailored_cv_pdf_url, answers, status,
       evaluation:job_evaluations(
         scanned_job:scanned_jobs(
           id, title, apply_url, external_id,
@@ -123,8 +135,55 @@ async function enqueueSubmit(userId: string, draftId: string) {
     const e = new Error(`daily submit cap reached (${prefs.daily_apply_cap})`); (e as any).status = 429; throw e;
   }
 
+  const [{ data: profile }, { data: tailoredResume }] = await Promise.all([
+    svc.from("profiles")
+      .select("email,full_name,job_preferences")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    draft.tailored_resume_id
+      ? svc.from("resumes").select("personal_info,experience").eq("id", draft.tailored_resume_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const storedProfile = asRecord(asRecord(asRecord(profile?.job_preferences).applypass).profile);
+  const personalInfo = asRecord(tailoredResume?.personal_info);
+  const experience = Array.isArray(tailoredResume?.experience) ? tailoredResume.experience : [];
+  const candidateProfile = {
+    fullName: asString(storedProfile.fullName) || asString(profile?.full_name) || asString(personalInfo.name),
+    email: asString(storedProfile.email) || asString(profile?.email) || asString(personalInfo.email),
+    phone: asString(storedProfile.phone) || asString(personalInfo.phone),
+    location: asString(storedProfile.location) || asString(personalInfo.location),
+    currentTitle: asString(storedProfile.currentTitle) || asString(personalInfo.title) || asString(asRecord(experience[0]).role),
+    yearsExperience: asString(storedProfile.yearsExperience),
+    linkedinUrl: asString(storedProfile.linkedinUrl) || asString(personalInfo.linkedin),
+    portfolioUrl: asString(storedProfile.portfolioUrl),
+    expectedSalary: asString(storedProfile.expectedSalary),
+    workAuthorization: asString(storedProfile.workAuthorization),
+    noticePeriod: asString(storedProfile.noticePeriod),
+  };
+
+  const queuedAt = new Date().toISOString();
+
   // Enqueue
   const payload = {
+    jobs: [{
+      id: job.id,
+      title: job.title,
+      company: company.name,
+      url: job.apply_url,
+      approvalReceipt: {
+        approved: true,
+        reviewedAt: queuedAt,
+        source: "eligible_only_policy",
+      },
+    }],
+    resumeId: draft.tailored_resume_id,
+    resumeFileUrl: draft.tailored_cv_pdf_url,
+    tailoredResumeMarkdown: draft.tailored_cv_md,
+    candidateProfile,
+    answerMemory: answersToMemory(draft.answers),
+    source: "career_agent",
+    createdAt: queuedAt,
     portal: "greenhouse",
     company_slug: company.slug,
     company_name: company.name,
@@ -164,16 +223,13 @@ async function enqueueSubmit(userId: string, draftId: string) {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const auth = userClient(req);
-    const { data: userRes } = await auth.auth.getUser();
-    const user = userRes?.user;
-    if (!user) return jsonResponse({ error: "unauthorized" }, 401);
+    const body = await req.json().catch(() => ({})) as SubmitPayload;
+    const user = await getAuthedUserOrService(req, body.user_id);
 
     const svc = serviceClient();
     await enforceAutoApplyEntitlement(svc, user.id);
     await enforceMonthlyAutoApplyExecutionCap(svc, user.id, 1);
 
-    const body = await req.json().catch(() => ({})) as SubmitPayload;
     if (!body.draft_application_id) return jsonResponse({ error: "draft_application_id required" }, 400);
 
     const result = await enqueueSubmit(user.id, body.draft_application_id);

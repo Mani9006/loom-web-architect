@@ -19,9 +19,24 @@ const MAX_DESC = 10_000;
 interface TailorPayload {
   tailored_resume: {
     summary: string;
-    experience: Array<{ title: string; company: string; start_date?: string; end_date?: string; bullets: string[] }>;
-    skills: string[];
-    projects?: Array<{ name: string; description: string }>;
+    experience: Array<{
+      id?: string;
+      role: string;
+      company_or_client: string;
+      start_date: string;
+      end_date: string;
+      location: string;
+      bullets: string[];
+    }>;
+    skills: Record<string, string[]>;
+    projects?: Array<{
+      id?: string;
+      title: string;
+      organization: string;
+      date: string;
+      bullets: string[];
+      url?: string;
+    }>;
   };
   cover_note: string;
   answers: Array<{ question: string; answer: string }>;
@@ -29,7 +44,7 @@ interface TailorPayload {
 
 const SYSTEM_PROMPT = `You are a senior résumé editor and application coach. Given a candidate's base resume and a specific job posting, produce:
 
-1. A tailored resume (JSON) — NEVER invent roles, skills, dates, or numbers. Reorder bullets and rewrite phrasing to foreground what the job wants. Strong verbs. Quantify only when the source already did.
+1. A tailored resume (JSON) — NEVER invent roles, skills, dates, locations, or numbers. Reorder bullets and rewrite phrasing to foreground what the job wants. Strong verbs. Quantify only when the source already did.
 2. A one-paragraph cover note (3-4 sentences, "I'm choosing you" tone, specific proof points, no fluff).
 3. Draft answers to five standard ATS questions:
    a. Why are you interested in this role?
@@ -40,33 +55,45 @@ const SYSTEM_PROMPT = `You are a senior résumé editor and application coach. G
 
 Rules:
 - Never fabricate experience the resume doesn't support.
+- Preserve every source experience entry, employer, role, date, location, and ID in its original order. You may reorder bullets, but do not delete facts.
+- Preserve the source skill category keys and project IDs. Reorder only skills that the source already demonstrates.
 - Keep each answer <120 words; 2-4 sentences.
 - Every answer references something specific from the JD.
 - Return ONLY JSON, no markdown fences.
 
 Schema:
 {
-  "tailored_resume": {"summary": string, "experience": [{"title","company","start_date","end_date","bullets": string[]}], "skills": string[], "projects": [{"name","description"}]},
+  "tailored_resume": {
+    "summary": string,
+    "experience": [{"id","role","company_or_client","start_date","end_date","location","bullets": string[]}],
+    "skills": {"category_key": string[]},
+    "projects": [{"id","title","organization","date","bullets": string[],"url": string?}]
+  },
   "cover_note": string,
   "answers": [{"question","answer"}, ...]
 }`;
 
 function buildResumePrompt(r: any): string {
   const p: string[] = [];
-  if (r.personal_info?.name) p.push(`Name: ${r.personal_info.name}`);
+  if (r.personal_info?.fullName || r.personal_info?.name) p.push(`Name: ${r.personal_info.fullName || r.personal_info.name}`);
   if (r.summary || r.personal_info?.summary) p.push(`Summary: ${r.summary || r.personal_info.summary}`);
   if (Array.isArray(r.experience)) {
     p.push("## Experience");
     for (const x of r.experience) {
-      p.push(`- ${x.title ?? ""} @ ${x.company ?? ""} (${x.start_date ?? ""}–${x.end_date ?? "present"})`);
+      p.push(`- ${x.role ?? x.title ?? ""} @ ${x.company_or_client ?? x.company ?? ""} (${x.start_date ?? ""}–${x.end_date ?? "present"}) [id=${x.id ?? ""}; location=${x.location ?? ""}]`);
       if (Array.isArray(x.bullets)) for (const b of x.bullets) p.push(`  • ${b}`);
       else if (x.description) p.push(`  • ${x.description}`);
     }
   }
-  if (Array.isArray(r.skills)) p.push("## Skills\n" + r.skills.map((s: any) => s?.name || s).join(", "));
+  const skills = normalizeSkills(r.skills);
+  if (Object.keys(skills).length > 0) p.push("## Skills\n" + JSON.stringify(skills));
   if (Array.isArray(r.projects)) {
     p.push("## Projects");
-    for (const x of r.projects) p.push(`- ${x.name}: ${x.description}`);
+    for (const x of r.projects) {
+      p.push(`- ${x.title ?? x.name ?? ""} [id=${x.id ?? ""}; organization=${x.organization ?? ""}; date=${x.date ?? ""}]`);
+      if (Array.isArray(x.bullets)) for (const bullet of x.bullets) p.push(`  • ${bullet}`);
+      else if (x.description) p.push(`  • ${x.description}`);
+    }
   }
   return p.join("\n");
 }
@@ -77,17 +104,120 @@ function renderMarkdown(t: TailorPayload["tailored_resume"], name: string): stri
   if (t.experience?.length) {
     L.push("", "## Experience");
     for (const x of t.experience) {
-      L.push(`\n**${x.title}** — ${x.company}  `);
+      L.push(`\n**${x.role}** — ${x.company_or_client}  `);
       L.push(`_${x.start_date ?? ""} – ${x.end_date ?? "present"}_`);
+      if (x.location) L.push(`${x.location}  `);
       for (const b of x.bullets) L.push(`- ${b}`);
     }
   }
-  if (t.skills?.length) L.push("", "## Skills", t.skills.join(" · "));
+  const skills = normalizeSkills(t.skills);
+  if (Object.keys(skills).length > 0) {
+    L.push("", "## Skills");
+    for (const [category, values] of Object.entries(skills)) {
+      L.push(`**${category.replace(/_/g, " ")}**: ${values.join(" · ")}`);
+    }
+  }
   if (t.projects?.length) {
     L.push("", "## Projects");
-    for (const p of t.projects) L.push(`- **${p.name}** — ${p.description}`);
+    for (const p of t.projects) {
+      L.push(`- **${p.title}**${p.organization ? ` — ${p.organization}` : ""}`);
+      for (const bullet of p.bullets ?? []) L.push(`  - ${bullet}`);
+    }
   }
   return L.join("\n");
+}
+
+function normalizeSkills(value: unknown): Record<string, string[]> {
+  if (Array.isArray(value)) {
+    const tools = value.map((item: any) => typeof item === "string" ? item : item?.name).filter(Boolean);
+    return tools.length > 0 ? { tools } : {};
+  }
+  if (!value || typeof value !== "object") return {};
+  const result: Record<string, string[]> = {};
+  for (const [key, items] of Object.entries(value as Record<string, unknown>)) {
+    if (!Array.isArray(items)) continue;
+    const clean = items.map(String).map((item) => item.trim()).filter(Boolean);
+    if (clean.length > 0) result[key] = [...new Set(clean)];
+  }
+  return result;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function cleanBullets(value: unknown, fallback: unknown): string[] {
+  const clean = Array.isArray(value)
+    ? value.map(String).map((item) => item.trim()).filter(Boolean)
+    : [];
+  if (clean.length > 0) return clean;
+  if (Array.isArray(fallback)) return fallback.map(String).map((item) => item.trim()).filter(Boolean);
+  return typeof fallback === "string" && fallback.trim() ? [fallback.trim()] : [];
+}
+
+function findTailoredEntry(output: unknown, source: Record<string, unknown>, index: number): Record<string, unknown> {
+  if (!Array.isArray(output)) return {};
+  const sourceId = typeof source.id === "string" ? source.id : "";
+  if (sourceId) {
+    const matching = output.find((entry) => asRecord(entry).id === sourceId);
+    if (matching) return asRecord(matching);
+  }
+  return asRecord(output[index]);
+}
+
+function mergeExperience(output: unknown, source: unknown): Array<Record<string, unknown>> {
+  const sourceEntries = Array.isArray(source) ? source.map(asRecord) : [];
+  return sourceEntries.map((entry, index) => {
+    const tailored = findTailoredEntry(output, entry, index);
+    return {
+      ...entry,
+      id: entry.id,
+      role: entry.role ?? entry.title ?? "",
+      company_or_client: entry.company_or_client ?? entry.company ?? "",
+      start_date: entry.start_date ?? "",
+      end_date: entry.end_date ?? "",
+      location: entry.location ?? "",
+      bullets: cleanBullets(tailored.bullets, entry.bullets ?? entry.description),
+    };
+  });
+}
+
+function mergeProjects(output: unknown, source: unknown): Array<Record<string, unknown>> {
+  const sourceEntries = Array.isArray(source) ? source.map(asRecord) : [];
+  return sourceEntries.map((entry, index) => {
+    const tailored = findTailoredEntry(output, entry, index);
+    return {
+      ...entry,
+      id: entry.id,
+      title: entry.title ?? entry.name ?? "",
+      organization: entry.organization ?? "",
+      date: entry.date ?? "",
+      url: entry.url,
+      bullets: cleanBullets(tailored.bullets, entry.bullets ?? entry.description),
+    };
+  });
+}
+
+function constrainSkills(output: unknown, source: unknown): Record<string, string[]> {
+  const sourceSkills = normalizeSkills(source);
+  const outputSkills = normalizeSkills(output);
+  const result: Record<string, string[]> = {};
+
+  for (const [category, sourceValues] of Object.entries(sourceSkills)) {
+    const byKey = new Map(sourceValues.map((value) => [value.toLowerCase(), value]));
+    const ordered = (outputSkills[category] ?? [])
+      .map((value) => byKey.get(value.toLowerCase()))
+      .filter((value): value is string => Boolean(value));
+    const seen = new Set(ordered.map((value) => value.toLowerCase()));
+    result[category] = [
+      ...ordered,
+      ...sourceValues.filter((value) => !seen.has(value.toLowerCase())),
+    ];
+  }
+
+  return result;
 }
 
 serve(async (req) => {
@@ -151,24 +281,35 @@ serve(async (req) => {
     });
     const payload = result.text;
 
+    const sourceExperience = Array.isArray(baseResume.experience) ? baseResume.experience : [];
+    const sourceProjects = Array.isArray(baseResume.projects) ? baseResume.projects : [];
+    const tailoredExperience = mergeExperience(payload.tailored_resume.experience, sourceExperience);
+    const tailoredProjects = mergeProjects(payload.tailored_resume.projects, sourceProjects);
+    const tailoredSkills = constrainSkills(payload.tailored_resume.skills, baseResume.skills);
     const childTitle = `${baseResume.title || "Resume"} — ${companyName} ${job.title}`.slice(0, 120);
     const { data: child, error: childErr } = await svc.from("resumes").insert({
       user_id: user.id,
       title: childTitle,
       personal_info: baseResume.personal_info,
       summary: payload.tailored_resume.summary,
-      experience: payload.tailored_resume.experience,
+      experience: tailoredExperience,
       education: baseResume.education || [],
-      skills: payload.tailored_resume.skills?.map((s) => ({ name: s })) || baseResume.skills,
-      projects: payload.tailored_resume.projects || baseResume.projects || [],
+      skills: tailoredSkills,
+      projects: tailoredProjects,
       certifications: baseResume.certifications || [],
       languages: baseResume.languages || [],
       template: baseResume.template || "default",
+      section_order: baseResume.section_order || null,
     }).select("id").single();
     if (childErr) throw new HttpError(500, `save tailored resume: ${childErr.message}`);
 
-    const name = (baseResume as any).personal_info?.name || "Candidate";
-    const tailored_cv_md = renderMarkdown(payload.tailored_resume, name);
+    const name = (baseResume as any).personal_info?.fullName || (baseResume as any).personal_info?.name || "Candidate";
+    const tailored_cv_md = renderMarkdown({
+      ...payload.tailored_resume,
+      experience: tailoredExperience,
+      projects: tailoredProjects,
+      skills: tailoredSkills,
+    }, name);
 
     const { data: draft, error: draftErr } = await svc.from("draft_applications").upsert({
       user_id: user.id,

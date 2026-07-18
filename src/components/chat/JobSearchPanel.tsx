@@ -677,7 +677,7 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
                 <li>• Matches your skills to related roles (not just exact titles)</li>
                 <li>• Searches across multiple job boards and company pages</li>
                 <li>• Returns real jobs with direct apply links</li>
-                <li>• AI-powered match scoring based on your experience</li>
+                <li>• Match scoring grounded in your experience and preferences</li>
               </ul>
             </Card>
           )}

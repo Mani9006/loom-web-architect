@@ -45,6 +45,7 @@ const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
 const AdminPortal = lazy(() => import("./pages/AdminPortal"));
 const AutoApplyPage = lazy(() => import("./pages/AutoApplyPage"));
+const AgentPage = lazy(() => import("./pages/AgentPage"));
 const MatchesPage = lazy(() => import("./pages/MatchesPage"));
 const ApplicationReviewPage = lazy(() => import("./pages/ApplicationReviewPage"));
 const CareerOpsPreferencesPage = lazy(() => import("./pages/CareerOpsPreferencesPage"));
@@ -121,6 +122,7 @@ const App = () => {
                     <Route path="/feedback" element={<FeedbackPage />} />
                     <Route path="/docs" element={<DocsPage />} />
                     <Route path="/auto-apply" element={<AutoApplyPage />} />
+                    <Route path="/agent" element={<AgentPage />} />
                     <Route path="/profile-setup" element={<ProfileSetupPage />} />
                     <Route path="/pricing" element={<PricingPage />} />
                     <Route path="/interview-prep" element={<InterviewPrepPage />} />

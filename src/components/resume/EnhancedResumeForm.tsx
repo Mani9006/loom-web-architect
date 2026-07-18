@@ -516,7 +516,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
             </CardHeader>
             <CardContent className="pt-0">
               <p className="text-xs text-muted-foreground mb-3">
-                Upload your PDF or Word resume and AI will auto-fill the form
+                Upload your PDF or Word resume to extract its sections and auto-fill the form.
               </p>
               <DocumentUpload
                 onTextExtracted={handleResumeImported}
@@ -1162,7 +1162,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
           ) : (
             <>
               <Sparkles className="h-5 w-5" />
-              Generate AI Resume
+              Generate Resume Draft
             </>
           )}
         </Button>

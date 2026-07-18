@@ -155,7 +155,7 @@ export function ResumeForm({ onGenerate, isGenerating }: ResumeFormProps) {
             <Sparkles className="w-6 h-6 text-white" />
           </div>
         </div>
-        <h1 className="text-2xl font-semibold mb-2">AI Resume Builder</h1>
+        <h1 className="text-2xl font-semibold mb-2">Resume Builder</h1>
         <p className="text-muted-foreground">
           Enter your details and let AI craft compelling bullet points for your resume
         </p>
@@ -176,7 +176,7 @@ export function ResumeForm({ onGenerate, isGenerating }: ResumeFormProps) {
             className="bg-background"
           />
           <p className="text-xs text-muted-foreground mt-2">
-            AI will tailor your resume content for this role
+            ResumePreps will tailor a copy of your resume for this role.
           </p>
         </CardContent>
       </Card>
@@ -347,7 +347,7 @@ export function ResumeForm({ onGenerate, isGenerating }: ResumeFormProps) {
             </div>
           ))}
           <p className="text-xs text-muted-foreground">
-            💡 Don't worry about bullet points - AI will generate them based on your role and company
+            💡 Add your role and company first; the writing assistant can help draft evidence-based bullets.
           </p>
         </CardContent>
       </Card>
@@ -488,7 +488,7 @@ export function ResumeForm({ onGenerate, isGenerating }: ResumeFormProps) {
         ) : (
           <>
             <Sparkles className="w-5 h-5" />
-            Generate AI Resume
+            Generate Resume Draft
           </>
         )}
       </Button>

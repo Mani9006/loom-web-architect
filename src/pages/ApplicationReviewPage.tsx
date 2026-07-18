@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { captureIncident } from "@/lib/incidents";
+import { Progress } from "@/components/ui/progress";
 
 interface Draft {
   id: string;
@@ -26,6 +28,42 @@ interface Draft {
     };
   };
 }
+
+interface AtsScore {
+  overall: number;
+  dim_format: number;
+  dim_keywords: number;
+  dim_experience: number;
+  dim_skills: number;
+  dim_education: number;
+  dim_impact: number;
+  matched_keywords: string[];
+  missing_keywords: string[];
+}
+
+interface LooseQueryResult {
+  data: unknown;
+  error: { message: string } | null;
+}
+
+interface LooseQuery {
+  select(columns: string): LooseQuery;
+  eq(column: string, value: string): LooseQuery;
+  order(column: string, options: { ascending: boolean }): LooseQuery;
+  limit(count: number): LooseQuery;
+  maybeSingle(): Promise<LooseQueryResult>;
+}
+
+const migratedTables = supabase as unknown as { from(table: string): LooseQuery };
+
+const ATS_DIMENSIONS: Array<{ key: keyof AtsScore; label: string }> = [
+  { key: "dim_format", label: "Format" },
+  { key: "dim_keywords", label: "Keywords" },
+  { key: "dim_experience", label: "Experience" },
+  { key: "dim_skills", label: "Skills" },
+  { key: "dim_education", label: "Education" },
+  { key: "dim_impact", label: "Impact" },
+];
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
@@ -57,6 +95,7 @@ export default function ApplicationReviewPage() {
   const [loading, setLoading] = useState(true);
   const [markingSubmitted, setMarkingSubmitted] = useState(false);
   const [queueingSubmit, setQueueingSubmit] = useState(false);
+  const [ats, setAts] = useState<AtsScore | null>(null);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -76,6 +115,22 @@ export default function ApplicationReviewPage() {
         return;
       }
       setDraft(data as unknown as Draft);
+      if (data.tailored_resume_id) {
+        const atsResult = await migratedTables
+          .from("ats_scores")
+          .select("overall,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords,created_at")
+          .eq("user_id", user.id)
+          .eq("resume_id", data.tailored_resume_id)
+          .eq("scanned_job_id", (data as unknown as Draft).evaluation.scanned_job.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (atsResult.error) {
+          void captureIncident(new Error(atsResult.error.message), { source: "manual", operation: "application_ats_load" }, "warning");
+        } else {
+          setAts((atsResult.data as AtsScore | null) ?? null);
+        }
+      }
       setLoading(false);
     })();
   }, [id, user, navigate]);
@@ -89,10 +144,11 @@ export default function ApplicationReviewPage() {
       });
       if (error) throw error;
       setDraft({ ...draft, status: "queued" });
-      toast.success("Queued for auto-submit. You'll see a Submitted status once the worker is done.");
+      toast.success("Queued safely. The worker will submit only after required fields and attachments pass.");
       void data;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
+      void captureIncident(e, { source: "manual", operation: "application_queue" });
       toast.error(
         msg.includes("403") ? "Enable auto-apply in Preferences first." :
         msg.includes("422") ? "Portal not supported for auto-submit — use Open portal." :
@@ -114,6 +170,7 @@ export default function ApplicationReviewPage() {
       .eq("id", draft.id);
     setMarkingSubmitted(false);
     if (error) {
+      void captureIncident(new Error(error.message), { source: "manual", operation: "application_mark_submitted" });
       toast.error("Failed to mark submitted");
     } else {
       toast.success("Marked as submitted");
@@ -166,7 +223,7 @@ export default function ApplicationReviewPage() {
               </span>
             ) : draft.status === "queued" ? (
               <span className="h-9 px-3 inline-flex items-center rounded-md text-[12px] text-muted-foreground border border-border bg-muted">
-                Queued for auto-submit…
+                Queued for worker checks…
               </span>
             ) : (
               <>
@@ -182,9 +239,9 @@ export default function ApplicationReviewPage() {
                   onClick={queueAutoSubmit}
                   disabled={queueingSubmit}
                   className="h-9 px-3.5 inline-flex items-center rounded-md text-[13px] text-foreground border border-border hover:bg-muted transition-colors disabled:opacity-50"
-                  title="Queue auto-submit (Greenhouse only, must enable in preferences)"
+                  title="Queue a guarded Greenhouse submission (auto-apply must be enabled)"
                 >
-                  {queueingSubmit ? "Queueing…" : "Auto-submit"}
+                  {queueingSubmit ? "Queueing…" : "Queue application"}
                 </button>
                 <button
                   onClick={markSubmitted}
@@ -198,6 +255,48 @@ export default function ApplicationReviewPage() {
           </div>
         </div>
       </motion.header>
+
+      {ats && (
+        <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+            <div className="flex items-center gap-4 lg:w-64">
+              <div className={cn(
+                "flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-[7px] tabular-nums",
+                ats.overall >= 80 ? "border-emerald-500/25 text-emerald-700 dark:text-emerald-400" :
+                ats.overall >= 65 ? "border-amber-500/25 text-amber-700 dark:text-amber-400" :
+                "border-rose-500/25 text-rose-700 dark:text-rose-400",
+              )}>
+                <span className="text-2xl font-bold">{Math.round(ats.overall)}</span>
+                <span className="text-[9px] uppercase tracking-wider">ATS</span>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Exact tailored résumé</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">This score belongs to this job-specific version, not the source résumé.</p>
+              </div>
+            </div>
+            <div className="grid flex-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-3">
+              {ATS_DIMENSIONS.map((dimension) => {
+                const value = Number(ats[dimension.key] ?? 0);
+                return (
+                  <div key={dimension.key}>
+                    <div className="mb-1.5 flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{dimension.label}</span>
+                      <span className="font-semibold tabular-nums">{Math.round(value)}%</span>
+                    </div>
+                    <Progress value={value} className="h-1.5" />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {(ats.matched_keywords.length > 0 || ats.missing_keywords.length > 0) && (
+            <div className="mt-5 grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
+              <p className="text-xs leading-relaxed text-muted-foreground"><span className="font-semibold text-foreground">Matched:</span> {ats.matched_keywords.slice(0, 10).join(" · ") || "—"}</p>
+              <p className="text-xs leading-relaxed text-muted-foreground"><span className="font-semibold text-foreground">Missing:</span> {ats.missing_keywords.slice(0, 10).join(" · ") || "—"}</p>
+            </div>
+          )}
+        </motion.section>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6">
         {/* Tailored CV */}

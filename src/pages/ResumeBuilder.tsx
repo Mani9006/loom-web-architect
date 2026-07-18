@@ -854,7 +854,7 @@ export default function ResumeBuilder() {
             <div className="mt-2 p-3 bg-muted/40 rounded-lg border border-border/30 space-y-3">
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">
-                  Copy your LinkedIn profile page content (Ctrl+A → Ctrl+C on your LinkedIn profile) and paste it below. AI will extract your experience, education, skills, and more.
+                  Copy your LinkedIn profile page content (Ctrl+A → Ctrl+C on your LinkedIn profile) and paste it below. ResumePreps will extract your experience, education, skills, and more.
                 </p>
               </div>
               <Textarea
@@ -923,7 +923,7 @@ export default function ResumeBuilder() {
             {showJobTarget && (
               <div className="mt-2 p-3 bg-muted/40 rounded-lg border border-border/30 space-y-3">
                 <Textarea
-                  placeholder="Paste a job description here to get keyword matching and AI-powered tailoring..."
+                  placeholder="Paste a job description here for keyword matching and job-specific tailoring..."
                   value={jobDescription}
                   onChange={(e) => setJobDescription(e.target.value)}
                   className="bg-background text-sm min-h-[100px] resize-y"

@@ -239,7 +239,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
               className="font-mono text-[12px]"
             />
             <p className="text-[10px] text-muted-foreground mt-1">
-              Required if you want to use the "Tailor with AI" button on this card.
+              Required if you want to use the "Tailor to job" action on this card.
             </p>
           </div>
         </div>

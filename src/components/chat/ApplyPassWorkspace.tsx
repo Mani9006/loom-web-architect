@@ -1465,7 +1465,7 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
           <Badge variant="secondary">Beta</Badge>
         </CardTitle>
         <CardDescription>
-          Search, shortlist, and apply faster with AI memory, profile autofill, and job-fit guidance.
+          Search, shortlist, and apply faster with saved context, profile autofill, and job-fit guidance.
         </CardDescription>
       </CardHeader>
 

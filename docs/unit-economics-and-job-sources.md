@@ -152,8 +152,8 @@ At $99 the defined worst case is about 78.2% gross margin, leaving roughly 28 pe
 
 ## Current cost leaks to fix before billing
 
-1. `job-search` can run several Exa searches with page content and then invoke Sonar Pro for one user request. At 100 searches this can consume roughly $8+ of Exa and roughly $6-$12+ of Sonar/token cost per account. Replace it with centralized cached ingestion and nano ranking.
-2. Several older functions hardcode `gpt-4o`. Route extraction/classification to nano and tailoring to mini; reserve larger models for explicit fallback.
+1. The primary Job Search path is now authenticated, DB-first, direct-employer-only, and capped at 10 paid provider fallbacks/day on Free or 100/day on paid accounts. The older Exa/Sonar search functions still exist for legacy routes; remove them after route-usage telemetry proves they are unused.
+2. The main resume parser/orchestrator now routes classification to GPT-5.4 nano and parsing/writing to GPT-5.4 mini. Several older functions still hardcode `gpt-4o`; migrate them only when their active route and output eval are identified.
 3. The landing page, in-app pricing page, Auto Apply gate, checkout function, and webhook currently disagree on price. Do not activate public checkout until one plan catalog drives all of them.
 4. Auto-apply now has an entitlement check and a 120-execution infrastructure ceiling, but there is not yet a complete customer-facing monthly meter for fit evaluations, tailored packets, successful submissions, and managed proxy bytes. Marketing limits without full enforcement do not protect margin.
 5. Stripe webhook signature verification is marked incomplete in the current function. Billing is not production-ready until signatures, idempotency, and plan entitlements are verified.

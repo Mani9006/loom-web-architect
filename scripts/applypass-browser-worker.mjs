@@ -2,7 +2,7 @@
 
 import os from "node:os";
 import path from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -85,12 +85,17 @@ async function maybeScreenshot(page, taskId, jobId) {
 async function fillCommonFields(page, profile = {}, answerMemory = {}) {
   return await page.evaluate(({ profileData, memoryData }) => {
     const profile = profileData || {};
+    const nameParts = String(profile.fullName || "").trim().split(/\s+/).filter(Boolean);
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
     const answerEntries = Object.entries(memoryData || {})
       .map(([k, v]) => [String(k).toLowerCase(), String(v)])
       .filter(([, v]) => v.trim().length > 0);
 
     const fieldMappings = [
-      { keys: ["full name", "name", "first name"], value: profile.fullName || "" },
+      { keys: ["first name", "given name"], value: firstName },
+      { keys: ["last name", "family name", "surname"], value: lastName },
+      { keys: ["full name", "legal name"], value: profile.fullName || "" },
       { keys: ["email", "e-mail"], value: profile.email || "" },
       { keys: ["phone", "mobile", "contact"], value: profile.phone || "" },
       { keys: ["linkedin"], value: profile.linkedinUrl || "" },
@@ -217,6 +222,88 @@ async function fillCommonFields(page, profile = {}, answerMemory = {}) {
   });
 }
 
+async function downloadResumeFile(payload) {
+  const url = String(payload?.resumeFileUrl || "").trim();
+  if (!url.startsWith("https://")) return { directory: null, filePath: null };
+
+  const response = await fetch(url, { redirect: "follow" });
+  if (!response.ok) throw new Error(`Resume download failed (${response.status})`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength === 0 || bytes.byteLength > 10 * 1024 * 1024) {
+    throw new Error("Resume file must be between 1 byte and 10 MB");
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  const extension = contentType.includes("wordprocessingml") ? ".docx" : ".pdf";
+  const directory = await mkdtemp(path.join(os.tmpdir(), "resumepreps-worker-"));
+  const filePath = path.join(directory, `tailored-resume${extension}`);
+  await writeFile(filePath, bytes);
+  return { directory, filePath };
+}
+
+async function uploadResume(page, filePath) {
+  const inputs = page.locator('input[type="file"]');
+  const count = await inputs.count();
+  if (count === 0) return { fileInputs: 0, resumeInputs: 0, uploaded: 0, requiredMissing: false };
+
+  let resumeInputs = 0;
+  let uploaded = 0;
+  let requiredMissing = false;
+
+  for (let index = 0; index < count; index += 1) {
+    const input = inputs.nth(index);
+    const details = await input.evaluate((element) => {
+      const id = element.getAttribute("id") || "";
+      const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
+      const parentText = element.closest("label")?.textContent || element.parentElement?.textContent || "";
+      const metadata = [
+        element.getAttribute("name") || "",
+        id,
+        element.getAttribute("aria-label") || "",
+        label,
+        parentText,
+      ].join(" ").toLowerCase();
+      return {
+        isResume: /\b(resume|résumé|cv|curriculum vitae)\b/i.test(metadata),
+        required: element.hasAttribute("required") || element.getAttribute("aria-required") === "true",
+      };
+    });
+
+    const isResumeInput = details.isResume || count === 1;
+    if (!isResumeInput) {
+      if (details.required) requiredMissing = true;
+      continue;
+    }
+
+    resumeInputs += 1;
+    if (filePath) {
+      await input.setInputFiles(filePath);
+      uploaded += 1;
+    } else if (details.required) {
+      requiredMissing = true;
+    }
+  }
+
+  if (resumeInputs > 0 && uploaded === 0) requiredMissing = true;
+  return { fileInputs: count, resumeInputs, uploaded, requiredMissing };
+}
+
+async function inspectReadiness(page) {
+  return await page.evaluate(() => {
+    const required = Array.from(document.querySelectorAll("input[required], textarea[required], select[required], [aria-required='true']"));
+    const incomplete = required.filter((node) => {
+      if (node instanceof HTMLInputElement) {
+        if (["checkbox", "radio"].includes(node.type)) return !node.checked;
+        if (node.type === "file") return !node.files?.length;
+        return !node.value.trim();
+      }
+      if (node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) return !node.value.trim();
+      return false;
+    });
+    return { requiredFields: required.length, incompleteRequired: incomplete.length };
+  });
+}
+
 async function detectSubmitButton(page) {
   return await page.evaluate(() => {
     const accepted = new Set(["submit", "submit application", "send application"]);
@@ -246,7 +333,7 @@ async function confirmSubmission(page, previousUrl) {
   };
 }
 
-async function processJob(browser, taskId, job, payload) {
+async function processJob(browser, taskId, job, payload, resumeFilePath) {
   const startedAt = Date.now();
   const result = {
     jobId: String(job?.id || ""),
@@ -258,6 +345,7 @@ async function processJob(browser, taskId, job, payload) {
     totalFields: 0,
     submitButton: null,
     submitted: false,
+    resumeUploaded: false,
     screenshotPath: null,
     error: null,
     durationMs: 0,
@@ -281,13 +369,19 @@ async function processJob(browser, taskId, job, payload) {
     result.filledCount = Number(filled?.filledCount || 0);
     result.totalFields = Number(filled?.totalFields || 0);
 
+    const upload = await uploadResume(page, resumeFilePath);
+    result.resumeUploaded = upload.uploaded > 0;
+
     const submitButton = await detectSubmitButton(page);
     result.submitButton = submitButton?.label || null;
 
     const approval = job?.approvalReceipt || payload?.approvalReceipts?.[result.jobId];
     const approved = approval?.approved === true && typeof approval?.reviewedAt === "string";
 
-    if (submitButton && AUTO_SUBMIT && approved) {
+    const readiness = await inspectReadiness(page);
+    const blocked = upload.requiredMissing || readiness.incompleteRequired > 0;
+
+    if (submitButton && AUTO_SUBMIT && approved && !blocked) {
       const previousUrl = page.url();
       const finalButtons = page.locator('button, input[type="submit"]');
       await finalButtons.nth(submitButton.index).click({ timeout: 10000 });
@@ -298,7 +392,12 @@ async function processJob(browser, taskId, job, payload) {
         result.error = `Final click did not produce a verifiable receipt (${confirmation.invalidFields} invalid fields).`;
       }
     } else if (submitButton) {
-      result.status = "ready_for_review";
+      result.status = blocked ? "needs_review" : "ready_for_review";
+      if (blocked) {
+        result.error = upload.requiredMissing
+          ? "A required attachment is missing; submission was not attempted."
+          : `${readiness.incompleteRequired} required field(s) still need review; submission was not attempted.`;
+      }
     }
 
     result.screenshotPath = await maybeScreenshot(page, taskId, result.jobId);
@@ -321,6 +420,7 @@ async function processTask(task) {
 
   const started = nowIso();
   const jobResults = [];
+  let resumeFile = { directory: null, filePath: null };
 
   if (jobs.length === 0) {
     await failTask(taskId, "Task has no jobs.", { jobs: [] }, {
@@ -335,6 +435,7 @@ async function processTask(task) {
   const browser = await chromium.launch({ headless: true });
 
   try {
+    resumeFile = await downloadResumeFile(payload);
     await heartbeat(taskId, {
       level: "info",
       workerId: WORKER_ID,
@@ -350,24 +451,34 @@ async function processTask(task) {
         message: `Processing job: ${String(job?.title || "Unknown")}`,
       });
 
-      const result = await processJob(browser, taskId, job, payload);
+      const result = await processJob(browser, taskId, job, payload, resumeFile.filePath);
       jobResults.push(result);
 
       await heartbeat(taskId, {
-        level: ["processed", "ready_for_review", "submitted"].includes(result.status) ? "info" : "warn",
+        level: ["processed", "ready_for_review", "needs_review", "submitted"].includes(result.status) ? "info" : "warn",
         workerId: WORKER_ID,
         at: nowIso(),
-        message: ["processed", "ready_for_review", "submitted"].includes(result.status)
+        message: ["processed", "ready_for_review", "needs_review", "submitted"].includes(result.status)
           ? `${result.status}: ${result.title}`
           : `Failed ${result.title}: ${result.error}`,
         jobId: result.jobId,
       });
     }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown worker error";
+    await failTask(taskId, message, { jobs: jobResults }, {
+      level: "error",
+      workerId: WORKER_ID,
+      at: nowIso(),
+      message,
+    });
+    return;
   } finally {
     await browser.close();
+    if (resumeFile.directory) await rm(resumeFile.directory, { recursive: true, force: true });
   }
 
-  const success = jobResults.filter((r) => ["processed", "ready_for_review", "submitted"].includes(r.status)).length;
+  const success = jobResults.filter((r) => ["processed", "ready_for_review", "needs_review", "submitted"].includes(r.status)).length;
   const failed = jobResults.length - success;
 
   const summary = {

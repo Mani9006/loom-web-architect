@@ -137,7 +137,7 @@ export default function Auth() {
             Your career,<br/><span className="gradient-text">supercharged.</span>
           </h2>
           <p className="text-muted-foreground text-lg leading-relaxed">
-            AI-powered resume building, interview prep, and job matching — all in one beautiful platform.
+            Resume building, evidence-based job matching, application tracking, and interview practice in one workspace.
           </p>
         </div>
       </div>

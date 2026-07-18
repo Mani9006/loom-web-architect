@@ -1,9 +1,10 @@
 /**
- * Side panel: AI tailoring + live ATS score.
+ * Side panel: job tailoring + live ATS score.
  *
  * - User pastes a job description and clicks "Tailor".
  * - Calls career-ops-tailor-v2 edge function.
- * - Replaces the entire ResumeJSON in the store with the AI-tailored version.
+ * - Hands the tailored result back to the builder so it can be saved as a
+ *   separate version without overwriting the source resume.
  * - Below, shows live ATS score (computed client-side from current store state)
  *   plus JD-keyword match if a JD is present.
  */
@@ -20,13 +21,17 @@ import { useResumeStore } from "@/lib/resume-store";
 import { calculateATSScore } from "@/lib/ats-scorer";
 import { TerminalLoader } from "@/components/Terminal";
 import type { ResumeJSON } from "@/types/resume";
+import { captureIncident } from "@/lib/incidents";
 
-export function AiTailorPanel() {
-  const { resume, jobDescription, setResume, setJobDescription } = useResumeStore(
+export function AiTailorPanel({
+  onCreateTailoredVersion,
+}: {
+  onCreateTailoredVersion: (tailored: ResumeJSON) => Promise<void>;
+}) {
+  const { resume, jobDescription, setJobDescription } = useResumeStore(
     useShallow((s) => ({
       resume: s.resume,
       jobDescription: s.jobDescription,
-      setResume: s.setResume,
       setJobDescription: s.setJobDescription,
     })),
   );
@@ -53,10 +58,11 @@ export function AiTailorPanel() {
       );
       if (error) throw error;
       if (!data?.tailored) throw new Error("Empty response from tailor");
-      setResume(data.tailored);
-      toast.success("Resume tailored to the job description.");
+      await onCreateTailoredVersion(data.tailored);
+      toast.success("Tailored version created. Your source resume is unchanged.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Tailor failed";
+      void captureIncident(e, { source: "manual", operation: "resume_tailor" });
       toast.error(msg);
     } finally {
       setBusy(false);
@@ -67,10 +73,10 @@ export function AiTailorPanel() {
     <div className="flex flex-col h-full">
       <div className="p-4 border-b">
         <h3 className="text-sm font-semibold flex items-center gap-1.5">
-          <Sparkles className="size-4 text-primary" /> AI Tailor
+          <Sparkles className="size-4 text-primary" /> Job Tailor
         </h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Paste the job description. We'll rewrite your resume to match — without lying about your experience.
+          Create a separate, job-specific version without changing your source resume or inventing experience.
         </p>
       </div>
 
@@ -84,11 +90,11 @@ export function AiTailorPanel() {
         />
         <Button onClick={onTailor} disabled={busy} className="w-full">
           {busy ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Sparkles className="size-4 mr-1.5" />}
-          {busy ? "Tailoring..." : "Tailor resume to this JD"}
+          {busy ? "Creating tailored version..." : "Create tailored version"}
         </Button>
         {busy && (
           <TerminalLoader
-            title="AI tailor"
+            title="Job tailor"
             lines={[
               "extracting required skills from the JD...",
               "scoring your bullets against the role...",

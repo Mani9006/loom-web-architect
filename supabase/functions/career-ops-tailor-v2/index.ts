@@ -7,8 +7,7 @@
  * Input:  { resume: ResumeJSON, job_description: string }
  * Output: { tailored: ResumeJSON, model: string, tokens_in, tokens_out }
  *
- * Uses _shared/llm.ts standard tier (Sonnet 4.6 by default; swappable via
- * LLM_DEFAULT_PROVIDER + OPENAI_MODEL_STANDARD env).
+ * Uses the provider-swappable standard routing tier from _shared/llm.ts.
  *
  * Hard constraints in the prompt:
  *   - No fabrication. Only reorder/rephrase what's already in the resume.
@@ -77,7 +76,7 @@ Your job: rewrite a candidate's resume to land an interview for a specific job, 
 HARD RULES (violating any of these makes the output unusable):
 1. Never invent companies, titles, dates, degrees, certifications, or quantitative claims that weren't in the input resume.
 2. You MAY: reorder bullets, rephrase for impact, swap synonyms to mirror the JD's vocabulary, expand abbreviations, infer reasonable metrics ONLY if implied (e.g., "led the team" → "led a team" is OK; "led a team of 12" is NOT unless the original says so).
-3. You MAY: reorder experience entries by relevance to the JD.
+3. Keep experience and project entries in their original order. You may reorder their bullets by relevance.
 4. You MAY: suggest skill keywords from the JD ONLY if the candidate's resume already shows evidence of using them (don't add Kubernetes if they never mention containers).
 5. Keep every entry's "id" field exactly as it was. New entries you might generate must NOT happen — never add new experience/education/cert/project entries that weren't in the input.
 6. Preserve full ResumeJSON schema. All required keys must be present.
@@ -121,31 +120,85 @@ Tailor this resume to maximize fit for the job description. Output the full tail
 }
 
 /**
- * Make sure every entry's id matches the input (LLMs sometimes invent new
- * ids or drop them). Also enforce required keys exist with safe defaults.
+ * Treat model output as untrusted. Only summary and bullet wording/order may
+ * change. All factual identity fields, collections, and skills are pinned to
+ * the source résumé so a model cannot fabricate or silently delete history.
  */
 function sanitizeTailored(out: Record<string, unknown>, input: Record<string, unknown>): Record<string, unknown> {
-  const sane: Record<string, unknown> = { ...out };
+  const sane: Record<string, unknown> = {
+    ...input,
+    header: asRecord(input.header),
+    summary: typeof out.summary === "string" && out.summary.trim()
+      ? out.summary.trim()
+      : typeof input.summary === "string" ? input.summary : "",
+    experience: mergeBulletEntries(out.experience, input.experience),
+    projects: mergeBulletEntries(out.projects, input.projects),
+    skills: constrainSkills(out.skills, input.skills),
+  };
 
-  // Pass-through arrays — pin IDs by matching position to input when the LLM dropped them.
-  for (const key of ["experience", "education", "certifications", "projects", "languages", "volunteer", "awards"]) {
-    if (!Array.isArray(out[key])) {
-      sane[key] = Array.isArray(input[key]) ? input[key] : [];
-      continue;
-    }
-    const inArr = Array.isArray(input[key]) ? (input[key] as Array<{ id?: string }>) : [];
-    sane[key] = (out[key] as Array<Record<string, unknown>>).map((entry, i) => {
-      if (!entry.id && inArr[i]?.id) {
-        return { ...entry, id: inArr[i].id };
-      }
-      return entry;
-    });
+  for (const key of ["education", "certifications", "languages", "volunteer", "awards"]) {
+    sane[key] = Array.isArray(input[key]) ? input[key] : [];
   }
 
-  // Ensure header/summary/skills exist
-  if (!sane.header || typeof sane.header !== "object") sane.header = input.header ?? {};
-  if (typeof sane.summary !== "string") sane.summary = (input.summary as string) ?? "";
-  if (!sane.skills || typeof sane.skills !== "object") sane.skills = input.skills ?? {};
-
   return sane;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function cleanBullets(value: unknown, fallback: unknown): string[] {
+  const clean = Array.isArray(value)
+    ? value.map(String).map((item) => item.trim()).filter(Boolean)
+    : [];
+  if (clean.length > 0) return clean;
+  return Array.isArray(fallback)
+    ? fallback.map(String).map((item) => item.trim()).filter(Boolean)
+    : [];
+}
+
+function mergeBulletEntries(output: unknown, source: unknown): Array<Record<string, unknown>> {
+  const outputEntries = Array.isArray(output) ? output.map(asRecord) : [];
+  const sourceEntries = Array.isArray(source) ? source.map(asRecord) : [];
+
+  return sourceEntries.map((sourceEntry, index) => {
+    const sourceId = typeof sourceEntry.id === "string" ? sourceEntry.id : "";
+    const tailored = sourceId
+      ? outputEntries.find((entry) => entry.id === sourceId) ?? outputEntries[index]
+      : outputEntries[index];
+    return {
+      ...sourceEntry,
+      bullets: cleanBullets(tailored?.bullets, sourceEntry.bullets),
+    };
+  });
+}
+
+function normalizeSkills(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, string[]> = {};
+  for (const [category, values] of Object.entries(value as Record<string, unknown>)) {
+    if (!Array.isArray(values)) continue;
+    const clean = values.map(String).map((item) => item.trim()).filter(Boolean);
+    result[category] = [...new Set(clean)];
+  }
+  return result;
+}
+
+function constrainSkills(output: unknown, source: unknown): Record<string, string[]> {
+  const sourceSkills = normalizeSkills(source);
+  const outputSkills = normalizeSkills(output);
+  const result: Record<string, string[]> = {};
+
+  for (const [category, sourceValues] of Object.entries(sourceSkills)) {
+    const byKey = new Map(sourceValues.map((value) => [value.toLowerCase(), value]));
+    const ordered = (outputSkills[category] ?? [])
+      .map((value) => byKey.get(value.toLowerCase()))
+      .filter((value): value is string => Boolean(value));
+    const seen = new Set(ordered.map((value) => value.toLowerCase()));
+    result[category] = [...ordered, ...sourceValues.filter((value) => !seen.has(value.toLowerCase()))];
+  }
+
+  return result;
 }

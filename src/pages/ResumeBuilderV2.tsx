@@ -2,13 +2,13 @@
  * Resume Builder v2 — full redesign.
  *
  * Visual model:
- *   - Top bar:    minimal (title input + save status + export + AI toggle).
+ *   - Top bar:    minimal (title input + save status + export + tailor toggle).
  *   - Editor:     left column, vertically stacked section accordions. No
  *                 tabs to flip through — everything's there, scroll to find
  *                 what you want. Click a section header to collapse/expand.
  *   - Preview:    right column, the resume rendered on a "paper" card
  *                 floating on an off-white desk. Visible by default.
- *   - AI panel:   collapsible right rail with JD input + tailor button +
+ *   - Tailor panel: collapsible right rail with JD input + tailor button +
  *                 live ATS score breakdown.
  *
  * The preview updates on every keystroke via the Zustand store (single source
@@ -163,6 +163,25 @@ export default function ResumeBuilderV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume, resumeName]);
 
+  const createTailoredVersion = useCallback(async (tailored: ResumeJSON) => {
+    if (!user) throw new Error("Sign in before creating a tailored version.");
+
+    const sourceTitle = resumeName.trim() || "Untitled resume";
+    const tailoredTitle = `${sourceTitle.replace(/\s+— tailored$/i, "")} — tailored`;
+    const payload = resumeJSONToRow(tailored, tailoredTitle, user.id);
+    const table = supabase.from("resumes") as ReturnType<typeof supabase.from>;
+    const { data, error } = await table.insert(payload as never).select("id").maybeSingle();
+    if (error || !data) {
+      throw new Error(error?.message ?? "Could not save the tailored version.");
+    }
+
+    setResume(tailored);
+    setResumeId(data.id);
+    setResumeName(tailoredTitle);
+    setStatus("saved");
+    navigate(`/resume-builder/v2/${data.id}`, { replace: true });
+  }, [navigate, resumeName, setResume, setResumeId, setStatus, user]);
+
   // ─── render ────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-rp-canvas overflow-hidden">
@@ -232,20 +251,20 @@ export default function ResumeBuilderV2() {
         </div>
       </div>
 
-      {/* AI side sheet */}
+      {/* Job-tailoring side sheet */}
       <Sheet open={aiOpen} onOpenChange={setAiOpen}>
         <SheetContent side="right" className="w-[400px] sm:max-w-none p-0">
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="flex items-center gap-2 text-base">
               <Sparkles className="size-4 text-amber-500" />
-              AI tailor + score
+              Job tailor + ATS score
             </SheetTitle>
             <SheetDescription className="sr-only">
               Paste a job description to tailor your resume, and view your ATS score.
             </SheetDescription>
           </SheetHeader>
           <div className="h-[calc(100vh-3.5rem)] overflow-y-auto">
-            <AiTailorPanel />
+            <AiTailorPanel onCreateTailoredVersion={createTailoredVersion} />
           </div>
         </SheetContent>
       </Sheet>
@@ -299,7 +318,7 @@ function TopBar({
         onClick={onToggleAi}
         className="ml-2"
       >
-        <Sparkles className="size-4 mr-1.5" /> AI tailor
+        <Sparkles className="size-4 mr-1.5" /> Tailor to job
       </Button>
       <Button variant="outline" size="sm" onClick={onSave}>
         <Save className="size-4 mr-1" /> Save

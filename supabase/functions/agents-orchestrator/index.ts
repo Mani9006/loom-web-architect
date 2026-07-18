@@ -72,13 +72,32 @@ serve(async (req) => {
       .or(`last_agent_run_at.is.null,last_agent_run_at.lt.${cutoff}`)
       .limit(MAX_USERS_PER_RUN);
 
-    const users = ((rows || []) as Array<{
+    const candidates = ((rows || []) as Array<{
       user_id: string;
       agent_actions_today: number;
       agent_max_actions_per_day: number;
     }>)
       .filter((r) => r.agent_actions_today < r.agent_max_actions_per_day)
       .map((r) => r.user_id);
+
+    // The service worker must not run costly matching/tailoring work for a
+    // free, canceled, or suspended account even if a stale preference remains.
+    const { data: accessRows } = candidates.length > 0
+      ? await client.from("user_access_controls")
+        .select("user_id,account_status,purchase_state,subscription_plan")
+        .in("user_id", candidates)
+      : { data: [] };
+    const entitled = new Set(((accessRows || []) as Array<{
+      user_id: string;
+      account_status: string;
+      purchase_state: string;
+      subscription_plan: string;
+    }>)
+      .filter((row) => row.account_status === "active"
+        && ["trial", "active", "manual"].includes(row.purchase_state)
+        && ["autopilot", "premium"].includes((row.subscription_plan || "").toLowerCase()))
+      .map((row) => row.user_id));
+    const users = candidates.filter((userId) => entitled.has(userId));
 
     const results: Array<{ user_id: string; ok: boolean; error?: string }> = [];
     const queue = [...users];
@@ -96,6 +115,7 @@ serve(async (req) => {
       dispatched: ok,
       failed: results.length - ok,
       total_eligible: users.length,
+      skipped_unentitled: candidates.length - users.length,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

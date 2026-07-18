@@ -3,6 +3,14 @@
 // v20: Full CST (America/Chicago) timezone support + comprehensive debug logging
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  enforceAccountActive,
+  enforceDailyCap,
+  getAuthedUser,
+  HttpError,
+  logAiUsage,
+} from "../_shared/guards.ts";
+import { isAllowedApplyUrl } from "../_shared/jobs.ts";
 
 // ── CST Timezone Helper ─────────────────────────────────────────────────
 // Returns current date/time in America/Chicago (CST/CDT) timezone
@@ -189,23 +197,17 @@ const GENERIC_URL_PATTERNS = [
   /ziprecruiter\.com\/jobs\/search/i,
 ];
 
-function buildFallbackUrl(title: string, company: string, location: string): string {
-  const query = `${title} ${company}`.trim();
-  const loc = (location || "United States").trim();
-  return `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(query)}&location=${encodeURIComponent(loc)}`;
-}
-
-function sanitizeApplyUrl(url: string, title: string, company: string, location: string): string {
-  if (!url || !url.startsWith("http")) return buildFallbackUrl(title, company, location);
+function sanitizeApplyUrl(url: string, title: string, company: string, _location: string): string {
+  if (!url || !url.startsWith("http")) return "";
   const lower = url.toLowerCase();
-  if (/fake|placeholder|example\.com|undefined|null/.test(lower)) return buildFallbackUrl(title, company, location);
+  if (/fake|placeholder|example\.com|undefined|null/.test(lower)) return "";
   for (const pattern of GENERIC_URL_PATTERNS) {
     if (pattern.test(lower)) {
       console.log(`Generic URL detected for ${title} at ${company}: ${url}`);
-      return buildFallbackUrl(title, company, location);
+      return "";
     }
   }
-  return url;
+  return isAllowedApplyUrl(url) ? url : "";
 }
 
 function validateJob(job: any): { valid: boolean; reason?: string } {
@@ -213,6 +215,7 @@ function validateJob(job: any): { valid: boolean; reason?: string } {
   if (!job.company || job.company.length < 2) return { valid: false, reason: "missing company" };
   if (!job.location || job.location.length < 2) return { valid: false, reason: "missing location" };
   if (!job.apply_url || !job.apply_url.startsWith("http")) return { valid: false, reason: "invalid apply_url" };
+  if (!isAllowedApplyUrl(job.apply_url)) return { valid: false, reason: "not a direct company or ATS URL" };
   if (!job.description || job.description.length < 50) return { valid: false, reason: "description too short" };
   const loc = (job.location || "").toLowerCase();
   const nonUSPatterns = [
@@ -375,7 +378,6 @@ serve(async (req) => {
       job_type,
       date_posted,
       resume_text,
-      user_id,
       experience_level,
       remote_filter,
       search_source,
@@ -392,6 +394,9 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, serviceKey);
+    const user = await getAuthedUser(req);
+    const user_id = user.id;
+    const { isPro } = await enforceAccountActive(sb, user_id);
 
     const searchQuery = query || "software engineer";
     const cstInfo = getCSTNow();
@@ -424,7 +429,7 @@ serve(async (req) => {
       if (dbResult.jobs.length > 0) {
         // Post-query filter: enforce date_posted matches the requested filter
         // date_posted in DB can be: "March 5, 2026", "2026-03-05", "Recently", "1 week ago", etc.
-        let dateFilteredJobs = dbResult.jobs;
+        let dateFilteredJobs = dbResult.jobs.filter((job: any) => isAllowedApplyUrl(job.apply_url));
         if (date_posted && date_posted !== "all" && date_posted !== "month") {
           const cstNow = getCSTNow();
           const nowMs = cstNow.date.getTime();
@@ -537,7 +542,8 @@ serve(async (req) => {
       }
     }
 
-    // ── STEP 2: DB exhausted or force_web_search — Call Perplexity ─────
+    // ── STEP 2: DB exhausted — call the metered provider fallback ─────
+    await enforceDailyCap(sb, user_id, "search", isPro);
     if (!cachedPerplexityKey) {
       cachedPerplexityKey = Deno.env.get("PERPLEXITY_API_KEY") || "";
       if (!cachedPerplexityKey) {
@@ -578,15 +584,11 @@ serve(async (req) => {
     });
     console.log(`[STEP2] Falling through to Perplexity. Today (CST): ${todayStr}`);
 
-    const useAllSources = search_source === "all";
-
-    const sourceInstruction = useAllSources
-      ? `- MULTI-SOURCE REQUIREMENT: You MUST search across ALL of these job boards and return jobs from at least 4 different sources: LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, AngelList/Wellfound, company career pages (careers.google.com, jobs.lever.co, greenhouse.io, etc.), USAJobs.gov, Handshake, FlexJobs. For each job, accurately set the "source" field to the job board where you found it.`
-      : `- DIRECT COMPANY SOURCES ONLY: You MUST search ONLY company career pages, hiring platforms, and direct employer portals. Search these sources: Greenhouse (boards.greenhouse.io), Lever (jobs.lever.co), Workday (*.myworkdayjobs.com), iCIMS, Jobvite, BambooHR, SmartRecruiters, company career pages (careers.*.com, *.com/careers, jobs.*.com), and direct employer job postings. Do NOT return jobs from aggregator job boards like Indeed, LinkedIn, ZipRecruiter, Glassdoor, SimplyHired, Monster, or CareerBuilder. The "source" field must be the actual company name or their ATS platform (e.g., "Google Careers", "Greenhouse", "Lever", "Workday"), NEVER a job board aggregator.`;
+    const sourceInstruction = `- DIRECT COMPANY SOURCES ONLY: You MUST search ONLY company career pages, hiring platforms, and direct employer portals. Search Greenhouse, Lever, Ashby, Workday, iCIMS, Jobvite, BambooHR, SmartRecruiters, and company career pages. Do NOT return aggregator pages. The source field must identify the employer or ATS.`;
 
     const systemPrompt = `You are a job search engine for the United States job market ONLY. Return ONLY valid JSON, no markdown, no explanation.
 TODAY'S DATE IS: ${todayStr}. Use this to calculate accurate relative dates for when jobs were posted.
-Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"2 days ago","source":"${useAllSources ? "LinkedIn/Indeed/Glassdoor/etc" : "Company Careers/Greenhouse/Lever/Workday"}","experience_level":"Entry-Level/Mid-Level/Senior/Executive"}]}
+Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"2 days ago","source":"Company Careers/Greenhouse/Lever/Ashby/Workday","experience_level":"Entry-Level/Mid-Level/Senior/Executive"}]}
 CRITICAL RULES:
 - ONLY return jobs located in the United States — absolutely NO jobs from India, Canada, UK, Europe, Asia, or any other country
 - Every location MUST be a US city/state (e.g. "San Francisco, CA", "New York, NY", "Remote (US)")
@@ -606,9 +608,7 @@ ${sourceInstruction}
       ? ` This is page ${pageNum} of search results — return DIFFERENT jobs than typical first-page results. Focus on additional companies, smaller/newer companies, and less-common job boards. Do NOT repeat commonly shown listings.`
       : "";
 
-    const userPrompt = useAllSources
-      ? `Search ALL major US job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, company career pages) and find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs from different US-based companies and different job board sources. Do NOT include any jobs from outside the United States.${resumeHint}${paginationHint}`
-      : `Search company career pages, Greenhouse, Lever, Workday, and direct employer hiring portals to find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs posted directly by companies on their own career sites. Do NOT include results from job board aggregators like Indeed, LinkedIn, ZipRecruiter, Glassdoor, SimplyHired, or Monster. Only return jobs from direct company career pages and employer ATS platforms. Do NOT include any jobs from outside the United States.${resumeHint}${paginationHint}`;
+    const userPrompt = `Search company career pages, Greenhouse, Lever, Ashby, Workday, and direct employer hiring portals to find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15 different jobs posted directly by companies. Do NOT include results from aggregators. Do NOT include jobs from outside the United States.${resumeHint}${paginationHint}`;
 
     let recencyFilter = "month";
     if (date_posted === "today") recencyFilter = "day";
@@ -652,6 +652,13 @@ ${sourceInstruction}
       }
 
       const perplexityData = await perplexityResponse.json();
+      await logAiUsage(
+        sb,
+        user_id,
+        "search",
+        Number(perplexityData.usage?.prompt_tokens || 0),
+        Number(perplexityData.usage?.completion_tokens || 0),
+      );
       const content = perplexityData.choices?.[0]?.message?.content || "";
       const citations = perplexityData.citations || [];
 
@@ -834,9 +841,10 @@ ${sourceInstruction}
     }
   } catch (err) {
     console.error("perplexity-job-search error:", err);
+    const isExpected = err instanceof HttpError;
     return new Response(
-      JSON.stringify({ error: "Internal error", message: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: isExpected ? err.message : "Internal error" }),
+      { status: isExpected ? err.status : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

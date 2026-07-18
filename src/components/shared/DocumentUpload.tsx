@@ -413,7 +413,7 @@ export function DocumentUpload({
           <Progress value={progressState.progress} className="h-2" />
           {progressState.pageCount && progressState.pageCount > 1 && (
             <p className="text-xs text-muted-foreground">
-              Processing {progressState.pageCount} pages with AI OCR...
+              Reading {progressState.pageCount} pages with document recognition...
             </p>
           )}
         </div>

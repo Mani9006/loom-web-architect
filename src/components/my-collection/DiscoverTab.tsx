@@ -387,7 +387,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         description:
           jobs.length === 0
             ? "Try widening your target roles in Settings, or ask for jobs more directly."
-            : "Click Tailor with AI on any to save + tailor.",
+            : "Click Tailor to job on any result to save it and create a tailored copy.",
       });
       return;
     }
@@ -682,7 +682,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           ) : (
             <>
               <Sparkles className="w-3.5 h-3.5 mr-1" />
-              {foundJobs.length > 0 || conversation.length > 0 ? "Search again" : "Find jobs with AI"}
+              {foundJobs.length > 0 || conversation.length > 0 ? "Search again" : "Find matching jobs"}
             </>
           )}
         </Button>
@@ -712,7 +712,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           <div>
             <h4 className="font-medium text-sm">AI needs a bit more info</h4>
             <p className="text-xs text-muted-foreground">
-              Answer below and the AI will continue searching with your context.
+              Answer below and ResumePreps will continue searching with your context.
             </p>
           </div>
           {clarification.questions.map((q, idx) => (
@@ -761,7 +761,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         </p>
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Button onClick={() => runSearch([])} disabled={busy}>
-            <Sparkles className="w-4 h-4 mr-1" /> Find jobs with AI
+              <Sparkles className="w-4 h-4 mr-1" /> Find matching jobs
           </Button>
           <Button variant="outline" onClick={() => setAddOpen(true)}>
             <Plus className="w-4 h-4 mr-1" /> Add manually
@@ -822,7 +822,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3 h-3 mr-1" /> Tailor with AI
+                        <Sparkles className="w-3 h-3 mr-1" /> Tailor to job
                       </>
                     )}
                   </Button>

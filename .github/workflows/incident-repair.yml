@@ -1,0 +1,133 @@
+name: Incident repair (manual dev PR)
+
+on:
+  workflow_dispatch:
+    inputs:
+      incident_id:
+        description: "Staging app_incidents UUID"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: incident-repair-${{ inputs.incident_id }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Diagnose in isolated runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    outputs:
+      result: ${{ steps.codex.outputs.final-message }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Validate incident identifier
+        env:
+          INCIDENT_ID: ${{ inputs.incident_id }}
+        run: |
+          if ! [[ "$INCIDENT_ID" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+            echo "Invalid incident UUID" >&2
+            exit 1
+          fi
+
+      - name: Fetch sanitized staging incident
+        env:
+          INCIDENT_ID: ${{ inputs.incident_id }}
+          STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          test -n "$STAGING_SUPABASE_URL"
+          test -n "$STAGING_SUPABASE_SERVICE_ROLE_KEY"
+          curl --fail --silent --show-error \
+            --get "$STAGING_SUPABASE_URL/rest/v1/app_incidents" \
+            -H "apikey: $STAGING_SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $STAGING_SUPABASE_SERVICE_ROLE_KEY" \
+            --data-urlencode "id=eq.$INCIDENT_ID" \
+            --data-urlencode "select=id,fingerprint,environment,release_sha,severity,route,message,stack_trace,context,occurrences,first_seen_at,last_seen_at" \
+            > .incident-input.json
+          test "$(jq length .incident-input.json)" = "1"
+
+      # Keep Codex last in this job. No privileged action or secret-consuming
+      # step runs after model-controlled workspace access.
+      - name: Propose bounded repair patch
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex-incident-prompt.md
+          output-schema-file: .github/codex-incident-output.schema.json
+          model: ${{ vars.INCIDENT_FIX_MODEL || 'gpt-5.4-mini' }}
+          effort: medium
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+
+  validate-and-open-pr:
+    name: Validate patch and open dev PR
+    needs: diagnose
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Apply allowlisted patch
+        env:
+          CODEX_INCIDENT_RESULT: ${{ needs.diagnose.outputs.result }}
+        run: node scripts/apply-incident-patch.mjs
+
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run type-check
+      - run: npm run test
+      - run: npm run build
+        env:
+          VITE_ENV: staging
+          VITE_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_PROJECT_ID: ${{ secrets.STAGING_SUPABASE_PROJECT_REF }}
+
+      - name: Commit repair branch
+        id: branch
+        env:
+          INCIDENT_ID: ${{ inputs.incident_id }}
+        run: |
+          SHORT_ID="${INCIDENT_ID:0:8}"
+          BRANCH="codex/incident-$SHORT_ID-${GITHUB_RUN_ID}"
+          git checkout -b "$BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- src supabase/functions scripts qa
+          git commit -m "fix: repair staging incident $SHORT_ID"
+          git push --set-upstream origin "$BRANCH"
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Open draft pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INCIDENT_ID: ${{ inputs.incident_id }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+        run: |
+          SUMMARY=$(cat /tmp/resumepreps-incident-summary.txt)
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --draft \
+            --title "[Incident] $SUMMARY" \
+            --body "Manual staging incident repair for \`$INCIDENT_ID\`.
+
+          The patch was proposed in an isolated Codex job, allowlisted by path, and passed audit, typecheck, tests, and build. It must be tested on the Vercel preview before promotion. Production was not changed."

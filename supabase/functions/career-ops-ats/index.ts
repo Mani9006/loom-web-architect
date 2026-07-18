@@ -5,17 +5,18 @@
  *   1. Deterministic checks (no LLM): format (bullet length, action verbs at
  *      start, quantified bullets), sections present, length ratios,
  *      keyword density.
- *   2. Haiku 4.5 pass (simple tier) to extract JD keywords + produce
- *      sharp, actionable suggestions. Cheap; ~20k/day at free tier scale.
+ *   2. Cost-routed small-model pass to extract JD keywords + produce sharp,
+ *      actionable suggestions.
  *   3. Final row written to `ats_scores` with six dimensions 0-100.
  *
- * Body: { resume_id: uuid, scanned_job_id?: uuid, job_description?: string }
+ * Body: { resume_id: uuid, scanned_job_id?: uuid, job_description?: string, user_id?: uuid }
  * Returns: { ats: row }
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { callClaude, truncate } from "../_shared/ai.ts";
+import { truncate } from "../_shared/ai.ts";
+import { callLlmWithFallback } from "../_shared/llm.ts";
 import {
-  corsHeaders, jsonResponse, withErrorHandler, getAuthedUser,
+  corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
 } from "../_shared/guards.ts";
 
@@ -67,7 +68,8 @@ function deterministicAnalysis(resume: any): DetReport {
   const hasSummary = Boolean(resume.summary || resume.personal_info?.summary);
   const hasExperience = Array.isArray(resume.experience) && resume.experience.length > 0;
   const hasEducation = Array.isArray(resume.education) && resume.education.length > 0;
-  const hasSkills = Array.isArray(resume.skills) && resume.skills.length > 0;
+  const skillList = flattenSkills(resume.skills);
+  const hasSkills = skillList.length > 0;
 
   if (!hasSummary) { issues.push({ scope: "format", where: "summary", message: "no summary/about section" }); formatScore -= 10; }
   if (!hasExperience) { issues.push({ scope: "format", where: "experience", message: "no experience section" }); formatScore -= 30; }
@@ -85,7 +87,11 @@ function deterministicAnalysis(resume: any): DetReport {
         allBullets.push(b);
         const a = analyseBullet(b);
         bulletScores.push(a.score);
-        for (const i of a.issues) issues.push({ scope: "experience", where: `${x.company ?? ""} — ${x.title ?? ""}`, message: i });
+        for (const i of a.issues) issues.push({
+          scope: "experience",
+          where: `${x.company_or_client ?? x.company ?? ""} — ${x.role ?? x.title ?? ""}`,
+          message: i,
+        });
       }
     }
   }
@@ -102,11 +108,23 @@ function deterministicAnalysis(resume: any): DetReport {
     format: Math.max(0, Math.min(100, Math.round(formatScore))),
     experience: Math.max(0, Math.min(100, Math.round(bulletAvg))),
     education: hasEducation ? 90 : 40,
-    skills: hasSkills ? Math.min(100, (resume.skills?.length || 0) * 8) : 0,
+    skills: hasSkills ? Math.min(100, skillList.length * 8) : 0,
     impact: impactScore,
     issues,
     bullets: allBullets,
   };
+}
+
+function flattenSkills(skills: unknown): string[] {
+  if (Array.isArray(skills)) {
+    return skills.map((skill) => typeof skill === "string" ? skill : String(skill?.name || "")).filter(Boolean);
+  }
+  if (skills && typeof skills === "object") {
+    return Object.values(skills as Record<string, unknown>)
+      .flatMap((value) => Array.isArray(value) ? value.map(String) : [])
+      .filter(Boolean);
+  }
+  return [];
 }
 
 // ── AI keyword matcher (Haiku 4.5) ────────────────────────────
@@ -143,12 +161,15 @@ function resumeToPlainText(r: any): string {
   const parts: string[] = [];
   if (r.summary || r.personal_info?.summary) parts.push(r.summary || r.personal_info.summary);
   if (Array.isArray(r.experience)) for (const x of r.experience) {
-    parts.push(`${x.title ?? ""} ${x.company ?? ""}`);
+    parts.push(`${x.role ?? x.title ?? ""} ${x.company_or_client ?? x.company ?? ""}`);
     if (Array.isArray(x.bullets)) parts.push(x.bullets.join(" "));
     else if (x.description) parts.push(x.description);
   }
-  if (Array.isArray(r.skills)) parts.push(r.skills.map((s: any) => s?.name || s).join(" "));
-  if (Array.isArray(r.projects)) parts.push(r.projects.map((p: any) => `${p.name} ${p.description}`).join(" "));
+  const skills = flattenSkills(r.skills);
+  if (skills.length > 0) parts.push(skills.join(" "));
+  if (Array.isArray(r.projects)) parts.push(r.projects.map((p: any) =>
+    `${p.title ?? p.name ?? ""} ${p.organization ?? ""} ${p.description ?? ""} ${Array.isArray(p.bullets) ? p.bullets.join(" ") : ""}`,
+  ).join(" "));
   return parts.join("\n");
 }
 
@@ -158,10 +179,10 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   return withErrorHandler(async () => {
-    const user = await getAuthedUser(req);
     const body = await req.json().catch(() => ({})) as {
-      resume_id?: string; scanned_job_id?: string; job_description?: string;
+      resume_id?: string; scanned_job_id?: string; job_description?: string; user_id?: string;
     };
+    const user = await getAuthedUserOrService(req, body.user_id);
     if (!body.resume_id) throw new HttpError(400, "resume_id required");
 
     const svc = serviceClient();
@@ -184,7 +205,7 @@ serve(async (req) => {
     const det = deterministicAnalysis(resume);
     const resumeText = resumeToPlainText(resume);
 
-    // Keywords + suggestions via Haiku if JD present; else generic suggestions.
+    // Keywords + suggestions use the cheap routing tier if a JD is present.
     let keywordScore = 0;
     let matched: string[] = [];
     let missing: string[] = [];
@@ -193,8 +214,8 @@ serve(async (req) => {
     let tokens_in = 0, tokens_out = 0;
 
     if (jdText && jdText.trim().length > 100) {
-      const result = await callClaude<KeywordPayload>({
-        tier: "simple", // Haiku 4.5 — cheap for extraction
+      const result = await callLlmWithFallback<KeywordPayload>({
+        tier: "cheap",
         system: KW_SYSTEM,
         user: `Job description:\n${truncate(jdText, 10_000)}`,
         maxTokens: 600,

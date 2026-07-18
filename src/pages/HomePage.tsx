@@ -19,12 +19,10 @@ import {
   FileText,
   Search,
   Target,
-  Mail,
-  Mic,
+  Bot,
   Sparkles,
   Columns3,
   Quote,
-  SlidersHorizontal,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -49,7 +47,8 @@ interface TopMatch {
   summary: string | null;
   title: string;
   company: string;
-  apply_url: string;
+  location: string;
+  dimensions: Array<{ key: string; label: string; score: number }>;
 }
 
 interface RecentResume {
@@ -67,13 +66,12 @@ interface AgentSummary {
 // ─── Static content ────────────────────────────────────────────────────
 
 const quickActions: Array<{ label: string; desc: string; icon: React.ElementType; path: string }> = [
-  { label: "Resume Builder",  desc: "Draft, tailor, export",     icon: FileText,    path: "/resume-builder" },
-  { label: "ATS Checker",     desc: "Score against a JD",        icon: Target,      path: "/ats-checker" },
-  { label: "Job Search",      desc: "Company career pages",      icon: Search,      path: "/job-search" },
-  { label: "Matches",         desc: "Pre-scored open roles",     icon: Sparkles,    path: "/matches" },
-  { label: "Career Controls", desc: "Fit rules & review policy", icon: SlidersHorizontal, path: "/career-ops/preferences" },
-  { label: "Cover Letters",   desc: "One per application",       icon: Mail,        path: "/cover-letters" },
-  { label: "Interview Prep",  desc: "STAR drills with AI",       icon: Mic,         path: "/interview-prep" },
+  { label: "Job Search",   desc: "Direct company openings",     icon: Search,      path: "/job-search" },
+  { label: "Matches",      desc: "Resume-scored opportunities", icon: Sparkles,    path: "/matches" },
+  { label: "Agent",        desc: "Match, tailor, check, queue",  icon: Bot,         path: "/agent" },
+  { label: "Resume",       desc: "Edit, tailor, export",         icon: FileText,    path: "/resume-builder" },
+  { label: "ATS Preview",  desc: "Score against a job",         icon: Target,      path: "/ats-checker" },
+  { label: "Applications", desc: "Status and receipts",         icon: Columns3,    path: "/job-tracker" },
 ];
 
 // ─── Date helpers (masthead) ───────────────────────────────────────────
@@ -115,9 +113,10 @@ export default function HomePage() {
         supabase.from("resumes").select("id, title, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(5),
         supabase
           .from("job_evaluations")
-          .select("id,score,tier,summary,scanned_job_id,scanned_jobs(title,apply_url,company:scan_companies(name))")
+          .select("id,score,fit_score,tier,summary,dimension_scores,scanned_job_id,scanned_jobs(title,location,apply_url,company:scan_companies(name))")
           .eq("user_id", user.id)
-          .order("score", { ascending: false })
+          .eq("eligible", true)
+          .order("fit_score", { ascending: false })
           .limit(3),
       ]);
 
@@ -138,15 +137,18 @@ export default function HomePage() {
       const matches: TopMatch[] = ((matchesRes.data || []) as Array<Record<string, unknown>>)
         .filter((m) => m.scanned_jobs)
         .map((m) => {
-          const sj = m.scanned_jobs as { title: string; apply_url: string; company?: { name?: string } };
+          const sj = m.scanned_jobs as { title: string; location?: string; apply_url: string; company?: { name?: string } };
           return {
             evaluation_id: String(m.id),
-            score: Number(m.score),
+            score: Math.round(Number(m.fit_score ?? Number(m.score) * 20)),
             tier: String(m.tier ?? ""),
             summary: (m.summary as string | null) ?? null,
             title: sj.title,
             company: sj.company?.name ?? "—",
-            apply_url: sj.apply_url,
+            location: sj.location ?? "Location not listed",
+            dimensions: Array.isArray(m.dimension_scores)
+              ? (m.dimension_scores as Array<{ key: string; label: string; score: number }>)
+              : [],
           };
         });
       setTopMatches(matches);
@@ -198,10 +200,9 @@ export default function HomePage() {
       return {
         eyebrow: "Today · Apply",
         headline: `A ${topMatches[0].tier || ""} match for you at ${topMatches[0].company}.`,
-        body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title} — score ${topMatches[0].score.toFixed(1)} out of 5.`,
-        cta: "Open the role",
-        href: topMatches[0].apply_url,
-        external: true as const,
+        body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title} — ${topMatches[0].score}% career fit before the ATS check.`,
+        cta: "Tailor and review",
+        href: "/matches",
       };
     }
     if (stats.applied + stats.interviewing > 0) {
@@ -285,7 +286,7 @@ export default function HomePage() {
             style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "16px", lineHeight: 1.6 }}
           >
             {recentResumes.length === 0
-              ? "Start with your first résumé. You can upload a PDF and the AI will parse every section, or build from scratch."
+              ? "Start with your first résumé. Upload a PDF to parse every section, or build from scratch."
               : `You have ${stats.applied + stats.interviewing} application${stats.applied + stats.interviewing === 1 ? "" : "s"} in flight${topMatches.length > 0 ? ` and ${topMatches.length} fresh match${topMatches.length === 1 ? "" : "es"} waiting` : ""}.`}
           </p>
 
@@ -296,7 +297,7 @@ export default function HomePage() {
             body={lede.body}
             cta={lede.cta}
             href={lede.href}
-            external={"external" in lede ? lede.external : false}
+            external={Boolean("external" in lede && lede.external)}
             onNavigate={navigate}
           />
 
@@ -390,7 +391,7 @@ export default function HomePage() {
           {/* ── Agent activity block (quote treatment) ───────────────── */}
           {agentSummary && (
             <section className="mt-16">
-              <SectionHead n={3} title="Auto-pilot" />
+              <SectionHead n={3} title="Agent activity" />
               <blockquote className="mt-4 border-l-2 border-rp-accent pl-5 max-w-3xl">
                 <Quote className="w-4 h-4 text-rp-accent mb-2" strokeWidth={1.6} />
                 <p
@@ -424,12 +425,10 @@ export default function HomePage() {
               <SectionHead n={4} title="Top matches" />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-rp-rule border border-rp-rule mt-3">
                 {topMatches.map((m, i) => (
-                  <a
+                  <button
                     key={m.evaluation_id}
-                    href={m.apply_url}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="bg-rp-canvas p-5 block hover:bg-rp-paper transition-colors no-underline group"
+                    onClick={() => navigate("/matches")}
+                    className="bg-rp-canvas p-5 block text-left hover:bg-rp-paper transition-colors no-underline group"
                   >
                     <div className="flex items-baseline justify-between">
                       <span
@@ -442,7 +441,7 @@ export default function HomePage() {
                         className="text-rp-accent tabular-nums"
                         style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "12px", fontWeight: 600 }}
                       >
-                        {m.score.toFixed(1)}
+                        {m.score}%
                       </span>
                     </div>
                     <h3
@@ -463,6 +462,7 @@ export default function HomePage() {
                     >
                       {m.company}
                     </p>
+                    <p className="mt-1 text-[11px] text-rp-ink-3">{m.location}</p>
                     {m.summary && (
                       <p
                         className="text-rp-ink-2 mt-3 line-clamp-3"
@@ -471,7 +471,16 @@ export default function HomePage() {
                         {m.summary}
                       </p>
                     )}
-                  </a>
+                    {m.dimensions.length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-1.5">
+                        {m.dimensions.slice(0, 3).map((dimension) => (
+                          <span key={dimension.key} className="border border-rp-rule px-2 py-1 text-[10px] text-rp-ink-2">
+                            {dimension.label} {Math.round(dimension.score)}%
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </button>
                 ))}
               </div>
             </section>
@@ -564,20 +573,8 @@ function Brief({
   external: boolean;
   onNavigate: (p: string) => void;
 }) {
-  const Wrapper = (props: { children: React.ReactNode }) =>
-    external ? (
-      <a href={href} target="_blank" rel="noreferrer noopener" className="block">
-        {props.children}
-      </a>
-    ) : (
-      <button onClick={() => onNavigate(href)} className="block text-left w-full">
-        {props.children}
-      </button>
-    );
-
-  return (
-    <div className="mt-10 border-y-2 border-rp-ink py-7">
-      <Wrapper>
+  const content = (
+    <>
         <div
           className="text-rp-accent"
           style={{
@@ -614,7 +611,20 @@ function Brief({
           {cta}
           <ArrowUpRight className="w-4 h-4" strokeWidth={1.75} />
         </span>
-      </Wrapper>
+    </>
+  );
+
+  return (
+    <div className="mt-10 border-y-2 border-rp-ink py-7">
+      {external ? (
+        <a href={href} target="_blank" rel="noreferrer noopener" className="block">
+          {content}
+        </a>
+      ) : (
+        <button onClick={() => onNavigate(href)} className="block text-left w-full">
+          {content}
+        </button>
+      )}
     </div>
   );
 }
@@ -634,7 +644,7 @@ function EmptyResumes({ onCreate }: { onCreate: () => void }) {
         className="text-rp-ink-2 mt-1.5 max-w-md"
         style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "14px", lineHeight: 1.55 }}
       >
-        Start with a blank one, or upload a PDF and let the AI parse it into editable sections.
+        Start with a blank one, or upload a PDF to parse it into editable sections.
       </p>
       <button
         onClick={onCreate}

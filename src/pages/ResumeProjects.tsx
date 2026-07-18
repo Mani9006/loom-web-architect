@@ -8,6 +8,7 @@ import {
   streamAIText, parseAIResponse, mapParsedToResumePayload, RESUME_PARSE_SYSTEM_PROMPT,
   prepareResumeTextForParsing,
 } from "@/lib/ai-resume-parser";
+import { captureIncident } from "@/lib/incidents";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { Button } from "@/components/ui/button";
@@ -237,6 +238,7 @@ export default function ResumeProjects() {
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Failed to parse resume";
         console.error("[ResumeProjects] Import error:", errorMsg);
+        void captureIncident(error, { source: "manual", operation: "resume_parse" });
         toast({
           title: "Import failed",
           description: errorMsg.length > 150 ? errorMsg.substring(0, 150) + "..." : errorMsg,
@@ -450,7 +452,7 @@ export default function ResumeProjects() {
           </div>
           <h2 className="text-xl font-semibold mb-2">No resumes yet</h2>
           <p className="text-muted-foreground max-w-md mb-6">
-            Create your first resume to get started. Our AI-powered builder will help you craft an ATS-optimized resume in minutes.
+            Create your first resume to get started. Build an ATS-ready source resume, then tailor a separate copy for each job.
           </p>
           <Button onClick={() => setCreateOpen(true)} size="lg" className="gap-2">
             <Plus className="h-5 w-5" />

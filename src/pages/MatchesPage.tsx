@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { captureIncident } from "@/lib/incidents";
 
 interface ScannedJob {
   id: string;
@@ -163,19 +164,30 @@ export default function MatchesPage() {
     };
   }, [jobs, evaluations, prefs]);
 
-  const prepareApplication = async (evaluationId: string) => {
+  const prepareApplication = async (evaluationId: string, scannedJobId: string) => {
     setPreparing(evaluationId);
     try {
       const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
         body: { evaluation_id: evaluationId },
       });
       if (error) throw error;
-      const draft = (data as { draft: { id: string; status: string } }).draft;
+      const draft = (data as { draft: { id: string; status: string; tailored_resume_id?: string | null } }).draft;
       setDrafts((prev) => ({ ...prev, [evaluationId]: { id: draft.id, status: draft.status } }));
-      toast.success("Application prepared — review before submitting");
+      let atsScore: number | null = null;
+      if (draft.tailored_resume_id) {
+        const { data: atsData, error: atsError } = await supabase.functions.invoke("career-ops-ats", {
+          body: { resume_id: draft.tailored_resume_id, scanned_job_id: scannedJobId },
+        });
+        if (atsError) throw atsError;
+        atsScore = Number(atsData?.ats?.overall ?? 0);
+      }
+      toast.success(atsScore
+        ? `Application prepared · ${Math.round(atsScore)} ATS — review before submitting`
+        : "Application prepared — review before submitting");
       navigate(`/applications/${draft.id}`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
+      void captureIncident(e, { source: "manual", operation: "match_prepare" });
       toast.error(
         msg.includes("412") ? "Add a resume first." :
         msg.includes("429") ? "Daily tailor cap hit — upgrade for more." :
@@ -330,7 +342,7 @@ export default function MatchesPage() {
                           </button>
                         ) : (
                           <button
-                            onClick={() => prepareApplication(evaluation.id)}
+                            onClick={() => prepareApplication(evaluation.id, job.id)}
                             disabled={preparing === evaluation.id || !evaluation.eligible}
                             title={!evaluation.eligible ? evaluation.hard_filters?.join(" ") : undefined}
                             className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"

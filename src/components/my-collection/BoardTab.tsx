@@ -128,7 +128,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       toast({
         title: "Create a resume first",
         description:
-          "The AI tailor needs a base resume. Open Resume Builder (in the left nav), make one, then come back and click Tailor with AI again.",
+          "Job tailoring needs a source resume. Open Resume in the left nav, create one, then come back and click Tailor to job again.",
         variant: "destructive",
       });
       return;
@@ -467,7 +467,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 mr-1" /> Tailor with AI
+                        <Sparkles className="w-3.5 h-3.5 mr-1" /> Tailor to job
                       </>
                     )}
                   </Button>

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   formatBullets,
   mapParsedToResumePayload,
@@ -66,6 +67,18 @@ describe("ai-resume-parser utilities", () => {
   });
 
   describe("prepareResumeTextForParsing", () => {
+    it("preserves the complete project QA resume fixture", () => {
+      const fixture = readFileSync("qa/fixtures/sample-resume.txt", "utf8");
+      const prepared = prepareResumeTextForParsing(fixture);
+
+      expect(prepared).toContain("SUMMARY");
+      expect(prepared).toContain("EXPERIENCE");
+      expect(prepared).toContain("SKILLS");
+      expect(prepared).toContain("EDUCATION");
+      expect(prepared).toContain("Reduced API response time by 38%");
+      expect(prepared).not.toContain("[Content truncated for processing]");
+    });
+
     it("trims short resume text without truncating", () => {
       expect(prepareResumeTextForParsing("  Summary\n\nExperience  ")).toBe("Summary\n\nExperience");
     });

@@ -377,7 +377,7 @@ async function classifyIntent(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini", // Fast model for classification
+        model: Deno.env.get("OPENAI_MODEL_CLASSIFY") || "gpt-5.4-nano",
         messages: [
           { role: "system", content: AGENTS.orchestrator.systemPrompt },
           ...conversationHistory.slice(-2),
@@ -410,8 +410,12 @@ async function classifyIntent(
   }
 }
 
-// Model selection based on task - using OpenAI models
+// Model routing is cost-aware and environment-overridable. Extraction and
+// substantive writing use mini; classification/conversation use nano.
 function getOptimalModelForAgent(agentType: string): string {
+  const nano = Deno.env.get("OPENAI_MODEL_CHEAP") || "gpt-5.4-nano";
+  const mini = Deno.env.get("OPENAI_MODEL_STANDARD") || "gpt-5.4-mini";
+  const parser = Deno.env.get("OPENAI_MODEL_RESUME_PARSE") || mini;
   switch (agentType) {
     case "cover_letter":
     case "resume":
@@ -419,16 +423,14 @@ function getOptimalModelForAgent(agentType: string): string {
     case "salary_negotiation":
     case "networking":
     case "resume_enhance":
-      // GPT-4o for complex writing and analysis tasks
-      return "gpt-4o";
+      return mini;
     case "resume_parse":
-      return "gpt-4o";
+      return parser;
     case "interview":
     case "job_search":
     case "general":
     default:
-      // GPT-4o-mini for faster conversational tasks
-      return "gpt-4o-mini";
+      return nano;
   }
 }
 
@@ -487,22 +489,24 @@ ${memoryContext ? `## User Context (from previous interactions)\n${memoryContext
 Keep responses clear, well-structured, and actionable. Use markdown formatting for readability.`;
 
   // Force JSON mode for parse-style tasks so the model can't return prose.
-  // (response_format works alongside streaming on gpt-4o.)
+  // Structured JSON mode works alongside streaming on supported OpenAI models.
   // Lower temperature on parse to 0 — extraction is a deterministic task,
   // any creativity at temperature 1.0 (OpenAI default) leads to invented
   // bullets/skipped entries.
   const requestBody: Record<string, unknown> = {
     model: optimalModel,
-    max_tokens: maxTokens,
     messages: [
       { role: "system", content: systemPrompt },
       ...messages,
     ],
     stream: true,
   };
+  if (/^gpt-5/i.test(optimalModel)) requestBody.max_completion_tokens = maxTokens;
+  else requestBody.max_tokens = maxTokens;
   if (normalizedAgentType === "resume_parse") {
     requestBody.response_format = { type: "json_object" };
-    requestBody.temperature = 0;
+    // GPT-5 reasoning models do not accept arbitrary temperature values.
+    if (!/^gpt-5/i.test(optimalModel)) requestBody.temperature = 0;
   }
 
   const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {

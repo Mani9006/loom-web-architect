@@ -17,7 +17,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  Home, FileText, Search, Mic, Columns3, Sparkles, Map,
+  Home, FileText, Search, Bot, Columns3, Sparkles, Map,
   ShieldCheck, Crown, LogOut, Settings,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
   HelpCircle, Sun, Moon, BookOpen, MessageSquare, CreditCard,
@@ -50,7 +50,7 @@ const mainNav: NavItem[] = [
   { label: "Matches", icon: Sparkles, path: "/matches" },
   { label: "Applications", icon: Columns3, path: "/job-tracker" },
   { label: "Resume", icon: FileText, path: "/resume-builder" },
-  { label: "Interviews", icon: Mic, path: "/interview-prep" },
+  { label: "Agent", icon: Bot, path: "/agent" },
 ];
 
 const ownerOnlyTools: NavItem[] = [
@@ -115,7 +115,7 @@ export default function AppLayout() {
   const visibleOwnerTools = hasAdminAccess ? ownerOnlyTools : [];
   const planLabel = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
   const primaryAction = hasAutoApply
-    ? { label: "Review queue", path: "/auto-apply" }
+    ? { label: "Open Agent", path: "/agent" }
     : { label: "Find jobs", path: "/job-search" };
 
   const allNav = [...mainNav, ...visibleOwnerTools];

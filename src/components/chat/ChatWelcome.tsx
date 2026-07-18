@@ -33,7 +33,7 @@ const quickActions = [
   {
     icon: Search,
     label: "Find Jobs",
-    description: "AI-powered job search",
+    description: "Find relevant jobs with clear fit evidence",
     route: "/job-search",
   },
   {

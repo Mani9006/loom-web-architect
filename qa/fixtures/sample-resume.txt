@@ -1,0 +1,22 @@
+Jordan Lee
+Software Engineer
+Chicago, IL | jordan.lee@example.com | (312) 555-0198
+
+SUMMARY
+Software engineer with five years of experience building reliable web applications and data services.
+
+EXPERIENCE
+Software Engineer, Northstar Systems | Chicago, IL | January 2022 - Present
+- Reduced API response time by 38% by redesigning caching and database access patterns.
+- Built a TypeScript service that processes 2 million events per day with 99.95% availability.
+- Mentored three junior engineers and introduced automated release checks that cut rollback incidents by 40%.
+
+Application Developer, Lakefront Labs | Chicago, IL | June 2019 - December 2021
+- Delivered React workflows used by 12,000 monthly customers.
+- Automated regression testing for critical account flows and reduced manual QA time by 18 hours per release.
+
+SKILLS
+TypeScript, JavaScript, React, Node.js, PostgreSQL, AWS, Docker, GitHub Actions
+
+EDUCATION
+Bachelor of Science in Computer Science, University of Illinois Chicago, 2019

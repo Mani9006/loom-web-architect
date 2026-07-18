@@ -9,11 +9,11 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export const CAPS = {
-  free:  { evaluation: 20, tailor: 10, linkedin: 10, ats: 25, story: 15 },
-  pro:   { evaluation: 200, tailor: 100, linkedin: 100, ats: 500, story: 150 },
+  free:  { search: 10, evaluation: 20, tailor: 10, linkedin: 10, ats: 25, story: 15 },
+  pro:   { search: 100, evaluation: 200, tailor: 100, linkedin: 100, ats: 500, story: 150 },
 };
 
-export type UsageKind = "evaluation" | "tailor" | "linkedin" | "ats" | "story" | "draft_answers";
+export type UsageKind = "search" | "evaluation" | "tailor" | "linkedin" | "ats" | "story" | "draft_answers";
 
 export function corsHeaders(): Record<string, string> {
   return {

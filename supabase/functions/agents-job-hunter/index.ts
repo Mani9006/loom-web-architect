@@ -11,6 +11,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enforceAutoApplyEntitlement, HttpError } from "../_shared/guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,12 +23,15 @@ interface UserPrefs {
   excluded_companies: string[];
   work_modes: string[];
   auto_apply_min_fit_score: number;
+  auto_apply_enabled: boolean;
+  auto_apply_portals: string[];
+  review_mode: "always" | "low_confidence" | "eligible_only";
   agent_max_actions_per_day: number;
   agent_actions_today: number;
 }
 
 interface AgentAction {
-  tool: "score_match" | "prepare_draft";
+  tool: "score_match" | "prepare_draft" | "score_ats" | "queue_submit";
   input: Record<string, unknown>;
   result: Record<string, unknown>;
   ts: string;
@@ -106,9 +110,9 @@ async function listUnpreparedEvaluations(
   userId: string,
   minFitScore: number,
   limit: number,
-): Promise<Array<{ id: string; fit_score: number; title: string }>> {
+): Promise<Array<{ id: string; scanned_job_id: string; fit_score: number; title: string; portal: string | null }>> {
   const { data: evaluations } = await client.from("job_evaluations")
-    .select("id,fit_score,scanned_jobs(title)")
+    .select("id,scanned_job_id,fit_score,scanned_jobs(title,company:scan_companies(api_type))")
     .eq("user_id", userId)
     .eq("eligible", true)
     .eq("score_version", "career-fit-v1")
@@ -121,10 +125,17 @@ async function listUnpreparedEvaluations(
   return (evaluations ?? [])
     .filter((evaluation: { id: string }) => !drafted.has(evaluation.id))
     .slice(0, limit)
-    .map((evaluation: { id: string; fit_score: number; scanned_jobs: { title: string } | null }) => ({
+    .map((evaluation: {
+      id: string;
+      scanned_job_id: string;
+      fit_score: number;
+      scanned_jobs: { title: string; company: { api_type: string | null } | null } | null;
+    }) => ({
       id: evaluation.id,
+      scanned_job_id: evaluation.scanned_job_id,
       fit_score: evaluation.fit_score,
       title: evaluation.scanned_jobs?.title ?? "Unknown role",
+      portal: evaluation.scanned_jobs?.company?.api_type ?? null,
     }));
 }
 
@@ -161,6 +172,8 @@ async function runAgent(userId: string, runId: string) {
   const actions: AgentAction[] = [];
   let scored = 0;
   let prepared = 0;
+  let atsScored = 0;
+  let queued = 0;
   let failed = 0;
 
   const candidates = await listUnscoredMatches(client, userId, prefs, Math.min(5, remaining));
@@ -207,13 +220,77 @@ async function runAgent(userId: string, runId: string) {
       try {
         const response = await callEdgeFunction("career-ops-tailor", input);
         const draft = asRecord(response.draft);
+        const draftId = String(draft.id ?? "");
+        const tailoredResumeId = String(draft.tailored_resume_id ?? "");
         actions.push({
           tool: "prepare_draft",
           input: { evaluation_id: evaluation.id, title: evaluation.title, fit_score: evaluation.fit_score },
-          result: { draft_id: draft.id, status: draft.status },
+          result: { draft_id: draftId, status: draft.status },
           ts: new Date().toISOString(),
         });
         prepared += 1;
+        remaining -= 1;
+
+        // Autopilot scores the exact tailored resume against the exact job so
+        // the user sees an evidence-based ATS preview before submission.
+        if (remaining > 0 && tailoredResumeId) {
+          try {
+            const atsResponse = await callEdgeFunction("career-ops-ats", {
+              user_id: userId,
+              resume_id: tailoredResumeId,
+              scanned_job_id: evaluation.scanned_job_id,
+            });
+            const ats = asRecord(atsResponse.ats);
+            actions.push({
+              tool: "score_ats",
+              input: { resume_id: tailoredResumeId, scanned_job_id: evaluation.scanned_job_id },
+              result: { ats_score_id: ats.id, overall: ats.overall },
+              ts: new Date().toISOString(),
+            });
+            atsScored += 1;
+          } catch (error) {
+            actions.push({
+              tool: "score_ats",
+              input: { resume_id: tailoredResumeId, scanned_job_id: evaluation.scanned_job_id },
+              result: { error: error instanceof Error ? error.message : String(error) },
+              ts: new Date().toISOString(),
+            });
+            failed += 1;
+          }
+          remaining -= 1;
+        }
+
+        // "Auto-send eligible only" is a true service-side policy. It queues
+        // only supported Greenhouse applications; every other portal remains
+        // review/manual and is never silently treated as submitted.
+        const shouldAutoQueue = prefs.auto_apply_enabled
+          && prefs.review_mode === "eligible_only"
+          && prefs.auto_apply_portals.includes("greenhouse")
+          && evaluation.portal === "greenhouse";
+        if (remaining > 0 && shouldAutoQueue && draftId) {
+          try {
+            const submitResponse = await callEdgeFunction("career-ops-submit", {
+              user_id: userId,
+              draft_application_id: draftId,
+            });
+            actions.push({
+              tool: "queue_submit",
+              input: { draft_application_id: draftId, portal: evaluation.portal },
+              result: asRecord(submitResponse.task),
+              ts: new Date().toISOString(),
+            });
+            queued += 1;
+          } catch (error) {
+            actions.push({
+              tool: "queue_submit",
+              input: { draft_application_id: draftId, portal: evaluation.portal },
+              result: { error: error instanceof Error ? error.message : String(error) },
+              ts: new Date().toISOString(),
+            });
+            failed += 1;
+          }
+          remaining -= 1;
+        }
       } catch (error) {
         actions.push({
           tool: "prepare_draft",
@@ -222,15 +299,15 @@ async function runAgent(userId: string, runId: string) {
           ts: new Date().toISOString(),
         });
         failed += 1;
+        remaining -= 1;
       }
-      remaining -= 1;
     }
   }
 
   const used = actions.length;
   const summary = used === 0
     ? "No fresh or eligible work was available this hour."
-    : `Scored ${scored} fresh job${scored === 1 ? "" : "s"}, prepared ${prepared} review-ready draft${prepared === 1 ? "" : "s"}, and recorded ${failed} failed action${failed === 1 ? "" : "s"}.`;
+    : `Scored ${scored} fresh job${scored === 1 ? "" : "s"}, prepared ${prepared} draft${prepared === 1 ? "" : "s"}, ATS-checked ${atsScored}, queued ${queued}, and recorded ${failed} failed action${failed === 1 ? "" : "s"}.`;
   return finalize(client, runId, "completed", summary, actions, used);
 }
 
@@ -290,6 +367,13 @@ serve(async (req) => {
     if (!body.user_id) return jsonResponse({ error: "user_id required" }, 400);
 
     const client = svc();
+    try {
+      await enforceAutoApplyEntitlement(client, body.user_id);
+    } catch (entitlementError) {
+      const status = entitlementError instanceof HttpError ? entitlementError.status : 500;
+      const message = entitlementError instanceof Error ? entitlementError.message : String(entitlementError);
+      return jsonResponse({ error: message }, status);
+    }
     const { data: run, error } = await client.from("agent_runs").insert({
       user_id: body.user_id,
       agent: "job_hunter",
@@ -311,6 +395,7 @@ serve(async (req) => {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return jsonResponse({ error: message }, 500);
+    const status = error instanceof HttpError ? error.status : 500;
+    return jsonResponse({ error: message }, status);
   }
 });

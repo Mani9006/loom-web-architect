@@ -50,6 +50,46 @@ function createServiceClient() {
   return createClient(supabaseUrl, serviceRole);
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+async function syncCareerDraft(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  taskContext: Record<string, unknown> | null,
+  outcome: "complete" | "fail",
+  result: unknown,
+  errorMessage?: string,
+) {
+  if (!taskContext || taskContext.task_type !== "career_ops_submit") return;
+  const payload = asRecord(taskContext.payload);
+  const draftId = typeof payload.draft_application_id === "string" ? payload.draft_application_id : "";
+  const userId = typeof taskContext.user_id === "string" ? taskContext.user_id : "";
+  if (!draftId || !userId) return;
+
+  if (outcome === "fail") {
+    await serviceClient.from("draft_applications").update({
+      status: "failed",
+      error_message: (errorMessage || "Worker execution failed").slice(0, 1500),
+    }).eq("id", draftId).eq("user_id", userId);
+    return;
+  }
+
+  const jobs = Array.isArray(asRecord(result).jobs) ? asRecord(result).jobs as unknown[] : [];
+  const submitted = jobs.some((job) => asRecord(job).status === "submitted" && asRecord(job).submitted === true);
+  const firstIssue = jobs
+    .map((job) => asRecord(job).error)
+    .find((message) => typeof message === "string" && message.trim());
+
+  await serviceClient.from("draft_applications").update({
+    status: submitted ? "submitted" : "ready",
+    submitted_at: submitted ? new Date().toISOString() : null,
+    error_message: submitted ? null : typeof firstIssue === "string" ? firstIssue.slice(0, 1500) : null,
+  }).eq("id", draftId).eq("user_id", userId);
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -108,6 +148,11 @@ serve(async (req: Request) => {
       }
 
       if (action === "complete") {
+        const { data: taskContext } = await serviceClient
+          .from("applypass_tasks")
+          .select("task_type,payload,user_id")
+          .eq("id", taskId)
+          .maybeSingle();
         const { data, error } = await serviceClient
           .from("applypass_tasks")
           .update({
@@ -132,11 +177,18 @@ serve(async (req: Request) => {
           });
         }
 
+        await syncCareerDraft(serviceClient, taskContext, "complete", body?.result);
+
         return jsonResponse({ ok: true, task: data });
       }
 
       if (action === "fail") {
         const errorMessage = String(body?.errorMessage || "Worker execution failed").slice(0, 1500);
+        const { data: taskContext } = await serviceClient
+          .from("applypass_tasks")
+          .select("task_type,payload,user_id")
+          .eq("id", taskId)
+          .maybeSingle();
 
         const { data, error } = await serviceClient
           .from("applypass_tasks")
@@ -161,6 +213,8 @@ serve(async (req: Request) => {
             p_entry: body.log,
           });
         }
+
+        await syncCareerDraft(serviceClient, taskContext, "fail", body?.result, errorMessage);
 
         return jsonResponse({ ok: true, task: data });
       }

@@ -73,7 +73,7 @@ export default function PricingPage() {
       <div className="max-w-4xl mx-auto p-6 space-y-8">
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">Choose Your Plan</h1>
-          <p className="text-muted-foreground">Supercharge your job search with AI-powered automation</p>
+          <p className="text-muted-foreground">Choose how much of your job search you want ResumePreps to handle.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
