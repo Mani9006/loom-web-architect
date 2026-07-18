@@ -92,6 +92,8 @@ Or run the consolidated release gate:
 npm run hq:gate
 ```
 
+`hq:gate` currently runs type checking, tests, and a production build. Run ESLint on every changed file; the repository-wide lint backlog is documented as cleanup work and should be reduced without hiding new violations.
+
 Additional useful commands:
 
 ```sh
@@ -133,6 +135,9 @@ Agent work can be triggered by creating a GitHub issue with the `agent-task` lab
 - `QUICK_START.md` — fast setup notes
 - `SETUP_GUIDE.md` — deeper setup guidance
 - `docs/CAREER_OPS_RUNBOOK.md` — career operations workflows
+- `docs/product-rescue-blueprint.md` — live product audit, market map, target architecture, and delivery sequence
+- `docs/infrastructure-decision.md` — zero-operations hosting, CI/CD, AI-review budget, and Jenkins/Kubernetes decision
+- `docs/release-runbook.md` — development/staging/production promotion, QA accounts, smoke tests, and rollback
 - `docs/applypass-browser-worker.md` — ApplyPass worker operations
 - `docs/enterprise-readiness-blueprint.md` — enterprise readiness plan
 - `docs/growth-experiment-fabric.md` — growth experimentation system

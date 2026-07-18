@@ -3,7 +3,8 @@
  *
  * Picks users with `agent_enabled=true` whose last_agent_run_at is older
  * than ~55 minutes (or null) and dispatches `agents-job-hunter` for each,
- * with bounded concurrency so we don't burst the Anthropic API.
+ * with bounded concurrency so downstream evaluation and tailoring stay within
+ * provider and database limits.
  *
  * Triggered by pg_cron every hour at minute :13. Manual admin kicks via
  * POST { source: "admin" } with the service role bearer.
@@ -51,7 +52,8 @@ async function dispatch(userId: string): Promise<{ user_id: string; ok: boolean;
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  if (!req.headers.get("authorization")) {
+  const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token || token !== Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

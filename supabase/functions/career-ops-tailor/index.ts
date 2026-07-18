@@ -1,15 +1,16 @@
 /**
  * career-ops-tailor — Tailored CV + cover note + 5 draft answers.
  *
- * Model: Sonnet 4.6 (truth-preserving résumé rewrite + tone-controlled writing).
+ * Model: standard routing tier (cost-controlled and provider-swappable).
  *
  * Body: { evaluation_id: uuid }
  * Returns: { draft }
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { callClaude, truncate } from "../_shared/ai.ts";
+import { truncate } from "../_shared/ai.ts";
+import { callLlmWithFallback } from "../_shared/llm.ts";
 import {
-  corsHeaders, jsonResponse, withErrorHandler, getAuthedUser,
+  corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
 } from "../_shared/guards.ts";
 
@@ -93,18 +94,24 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   return withErrorHandler(async () => {
-    const user = await getAuthedUser(req);
-    const body = await req.json().catch(() => ({})) as { evaluation_id?: string };
+    const body = await req.json().catch(() => ({})) as { evaluation_id?: string; user_id?: string };
+    const user = await getAuthedUserOrService(req, body.user_id);
     if (!body.evaluation_id) throw new HttpError(400, "evaluation_id required");
 
     const svc = serviceClient();
     const { isPro } = await enforceAccountActive(svc, user.id);
 
     const { data: ev } = await svc.from("job_evaluations")
-      .select("id,user_id,scanned_job_id,keyword_matches,gaps,resume_id")
+      .select("id,user_id,scanned_job_id,keyword_matches,gaps,resume_id,eligible,hard_filters,score_version")
       .eq("id", body.evaluation_id).maybeSingle();
     if (!ev) throw new HttpError(404, "evaluation not found");
     if (ev.user_id !== user.id) throw new HttpError(403, "forbidden");
+    if (ev.score_version !== "career-fit-v1") {
+      throw new HttpError(409, "job must be rescored with the current career-fit gate before tailoring");
+    }
+    if (!ev.eligible) {
+      throw new HttpError(412, `job is blocked by preferences: ${(ev.hard_filters ?? []).join(" ")}`);
+    }
 
     await enforceDailyCap(svc, user.id, "tailor", isPro);
 
@@ -126,8 +133,8 @@ serve(async (req) => {
     if (!baseResume) throw new HttpError(412, "no resume found for user");
 
     const companyName = (job as any).company?.name ?? "the company";
-    const result = await callClaude<TailorPayload>({
-      tier: "complex",
+    const result = await callLlmWithFallback<TailorPayload>({
+      tier: "standard",
       system: SYSTEM_PROMPT,
       cachedContext: `Candidate base résumé:\n\n${buildResumePrompt(baseResume)}`,
       user:

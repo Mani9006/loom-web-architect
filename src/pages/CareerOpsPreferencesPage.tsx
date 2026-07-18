@@ -9,12 +9,25 @@ import { cn } from "@/lib/utils";
 interface Prefs {
   target_roles: string[];
   negative_keywords: string[];
+  excluded_companies: string[];
   locations: string[];
+  target_countries: string[];
+  work_modes: string[];
+  employment_types: string[];
+  seniority_levels: string[];
   remote_only: boolean;
   comp_target_usd_min: number | null;
   comp_target_usd_max: number | null;
+  work_authorization: string | null;
+  requires_sponsorship: boolean;
+  require_salary_disclosure: boolean;
+  max_stretch_years: number;
+  min_years_experience: number | null;
+  max_years_experience: number | null;
+  review_mode: "always" | "low_confidence" | "eligible_only";
   auto_apply_enabled: boolean;
   auto_apply_min_score: number;
+  auto_apply_min_fit_score: number;
   daily_apply_cap: number;
   auto_apply_portals: string[];
   agent_enabled: boolean;
@@ -24,12 +37,25 @@ interface Prefs {
 const DEFAULT: Prefs = {
   target_roles: [],
   negative_keywords: [],
+  excluded_companies: [],
   locations: [],
+  target_countries: ["United States"],
+  work_modes: ["remote", "hybrid", "onsite"],
+  employment_types: ["full_time"],
+  seniority_levels: ["entry", "mid", "senior"],
   remote_only: false,
   comp_target_usd_min: null,
   comp_target_usd_max: null,
+  work_authorization: null,
+  requires_sponsorship: false,
+  require_salary_disclosure: false,
+  max_stretch_years: 2,
+  min_years_experience: null,
+  max_years_experience: null,
+  review_mode: "always",
   auto_apply_enabled: false,
   auto_apply_min_score: 4.5,
+  auto_apply_min_fit_score: 82,
   daily_apply_cap: 5,
   auto_apply_portals: ["greenhouse"],
   agent_enabled: false,
@@ -44,7 +70,7 @@ interface AgentRun {
   completed_at: string | null;
   iterations: number;
   summary: string | null;
-  actions: Array<{ tool: string; input: any; result: any; ts: string }>;
+  actions: Array<{ tool: string; input: unknown; result: unknown; ts: string }>;
 }
 
 const fadeUp = {
@@ -64,10 +90,12 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
   };
   return (
     <div className="space-y-3">
-      <div>
-        <p className="text-[14px] font-semibold text-foreground">{label}</p>
-        <p className="text-[12px] text-muted-foreground">{hint}</p>
-      </div>
+      {label || hint ? (
+        <div>
+          {label ? <p className="text-[14px] font-semibold text-foreground">{label}</p> : null}
+          {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {values.map((v, i) => (
           <span key={i} className="inline-flex items-center gap-2 h-8 pl-3 pr-2 rounded-full bg-foreground/5 text-[12px] text-foreground">
@@ -101,6 +129,44 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
   );
 }
 
+function ChoiceChips({ label, hint, values, choices, onChange }: {
+  label: string;
+  hint: string;
+  values: string[];
+  choices: Array<{ value: string; label: string }>;
+  onChange: (values: string[]) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {label || hint ? (
+        <div>
+          {label ? <p className="text-[14px] font-semibold text-foreground">{label}</p> : null}
+          {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {choices.map((choice) => {
+          const active = values.includes(choice.value);
+          return (
+            <button
+              type="button"
+              key={choice.value}
+              aria-pressed={active}
+              onClick={() => onChange(active ? values.filter((value) => value !== choice.value) : [...values, choice.value])}
+              className={cn(
+                "h-9 px-4 rounded-full text-[12px] font-medium transition-colors",
+                active ? "bg-foreground text-background" : "border border-foreground/15 text-foreground hover:bg-foreground/5",
+              )}
+            >
+              {choice.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function CareerOpsPreferencesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -112,14 +178,16 @@ export default function CareerOpsPreferencesPage() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const sb = supabase as unknown as { from: (t: string) => any };
       const [prefsRes, runsRes] = await Promise.all([
-        sb.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
-        sb.from("agent_runs").select("*").eq("user_id", user.id)
+        supabase.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
+        supabase.from("agent_runs").select("*").eq("user_id", user.id)
           .order("started_at", { ascending: false }).limit(8),
       ]);
       if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as unknown as Prefs) });
-      setRuns(((runsRes.data || []) as unknown) as AgentRun[]);
+      setRuns((runsRes.data || []).map((run) => ({
+        ...run,
+        actions: Array.isArray(run.actions) ? run.actions as unknown as AgentRun["actions"] : [],
+      })));
       setLoading(false);
     })();
   }, [user]);
@@ -127,9 +195,13 @@ export default function CareerOpsPreferencesPage() {
   const save = async () => {
     if (!user) return;
     setSaving(true);
+    const normalized = {
+      ...prefs,
+      remote_only: prefs.work_modes.length === 1 && prefs.work_modes[0] === "remote",
+    };
     const { error } = await supabase
       .from("user_job_prefs")
-      .upsert({ user_id: user.id, ...prefs } as never, { onConflict: "user_id" });
+      .upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" });
     setSaving(false);
     if (error) toast.error(`Save failed: ${error.message}`);
     else toast.success("Preferences saved");
@@ -161,39 +233,144 @@ export default function CareerOpsPreferencesPage() {
         </div>
         <TagEditor
           label="Target roles"
-          hint="Keywords that must appear in the job title (e.g. 'AI', 'Staff', 'Platform')."
+          hint="Role families you can support with resume evidence; exact title wording is not required."
           values={prefs.target_roles}
           onChange={(target_roles) => setPrefs({ ...prefs, target_roles })}
           placeholder="Staff Engineer, Product Manager…"
         />
         <TagEditor
           label="Negative keywords"
-          hint="Titles containing any of these are hidden."
+          hint="Any title or description containing one of these is blocked."
           values={prefs.negative_keywords}
           onChange={(negative_keywords) => setPrefs({ ...prefs, negative_keywords })}
           placeholder="Intern, Sales…"
         />
         <TagEditor
+          label="Excluded companies"
+          hint="Companies you never want included in the shortlist."
+          values={prefs.excluded_companies}
+          onChange={(excluded_companies) => setPrefs({ ...prefs, excluded_companies })}
+          placeholder="Company name…"
+        />
+        <TagEditor
           label="Preferred locations"
-          hint="City or region. Leave empty to include all."
+          hint="Cities or regions for hybrid and on-site work."
           values={prefs.locations}
           onChange={(locations) => setPrefs({ ...prefs, locations })}
           placeholder="Berlin, Remote EU…"
         />
-        <div className="flex items-center justify-between">
+        <TagEditor
+          label="Countries"
+          hint="Country eligibility is checked before a role can be prepared."
+          values={prefs.target_countries}
+          onChange={(target_countries) => setPrefs({ ...prefs, target_countries })}
+          placeholder="United States, Canada…"
+        />
+        <ChoiceChips
+          label="Work mode"
+          hint="Choose every arrangement you will accept."
+          values={prefs.work_modes}
+          onChange={(work_modes) => setPrefs({ ...prefs, work_modes })}
+          choices={[
+            { value: "remote", label: "Remote" },
+            { value: "hybrid", label: "Hybrid" },
+            { value: "onsite", label: "On-site" },
+          ]}
+        />
+        <ChoiceChips
+          label="Seniority"
+          hint="A role outside these levels is blocked, even if its keywords look similar."
+          values={prefs.seniority_levels}
+          onChange={(seniority_levels) => setPrefs({ ...prefs, seniority_levels })}
+          choices={[
+            { value: "entry", label: "Entry" },
+            { value: "mid", label: "Mid" },
+            { value: "senior", label: "Senior" },
+            { value: "staff", label: "Staff / Principal" },
+            { value: "manager", label: "Manager" },
+            { value: "director", label: "Director" },
+            { value: "executive", label: "Executive" },
+          ]}
+        />
+        <ChoiceChips
+          label="Employment type"
+          hint="Only selected employment types can enter the application queue."
+          values={prefs.employment_types}
+          onChange={(employment_types) => setPrefs({ ...prefs, employment_types })}
+          choices={[
+            { value: "full_time", label: "Full-time" },
+            { value: "contract", label: "Contract" },
+            { value: "part_time", label: "Part-time" },
+            { value: "internship", label: "Internship" },
+          ]}
+        />
+        <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <p className="text-[14px] font-semibold text-foreground">Remote only</p>
-            <p className="text-[12px] text-muted-foreground">Hide on-site and hybrid roles.</p>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Work authorization</p>
+            <input
+              value={prefs.work_authorization ?? ""}
+              onChange={(e) => setPrefs({ ...prefs, work_authorization: e.target.value || null })}
+              placeholder="US citizen, H-1B, OPT…"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+            />
+          </div>
+          <div>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Maximum experience stretch</p>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.5"
+              value={prefs.max_stretch_years}
+              onChange={(e) => setPrefs({ ...prefs, max_stretch_years: Number(e.target.value) })}
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Block roles asking for more than this many extra years.</p>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Minimum job experience level</p>
+            <input
+              type="number"
+              min="0"
+              max="40"
+              step="0.5"
+              value={prefs.min_years_experience ?? ""}
+              onChange={(e) => setPrefs({ ...prefs, min_years_experience: e.target.value ? Number(e.target.value) : null })}
+              placeholder="No minimum"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+            />
+          </div>
+          <div>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Maximum job experience level</p>
+            <input
+              type="number"
+              min="0"
+              max="40"
+              step="0.5"
+              value={prefs.max_years_experience ?? ""}
+              onChange={(e) => setPrefs({ ...prefs, max_years_experience: e.target.value ? Number(e.target.value) : null })}
+              placeholder="No maximum"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <div>
+            <p className="text-[14px] font-semibold text-foreground">I need sponsorship</p>
+            <p className="text-[12px] text-muted-foreground">Block postings that explicitly cannot sponsor.</p>
           </div>
           <button
             type="button"
-            onClick={() => setPrefs({ ...prefs, remote_only: !prefs.remote_only })}
+            onClick={() => setPrefs({ ...prefs, requires_sponsorship: !prefs.requires_sponsorship })}
             className={cn(
               "h-7 w-12 rounded-full transition-colors relative",
-              prefs.remote_only ? "bg-foreground" : "bg-foreground/10",
+              prefs.requires_sponsorship ? "bg-foreground" : "bg-foreground/10",
             )}
+            aria-label="Toggle sponsorship requirement"
           >
-            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.remote_only ? "translate-x-5" : "translate-x-0.5")} />
+            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.requires_sponsorship ? "translate-x-5" : "translate-x-0.5")} />
           </button>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -217,6 +394,23 @@ export default function CareerOpsPreferencesPage() {
               className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
             />
           </div>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <div>
+            <p className="text-[14px] font-semibold text-foreground">Require a disclosed salary</p>
+            <p className="text-[12px] text-muted-foreground">Block roles without a usable compensation range.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPrefs({ ...prefs, require_salary_disclosure: !prefs.require_salary_disclosure })}
+            className={cn(
+              "h-7 w-12 rounded-full transition-colors relative shrink-0",
+              prefs.require_salary_disclosure ? "bg-foreground" : "bg-foreground/10",
+            )}
+            aria-label="Toggle salary disclosure requirement"
+          >
+            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.require_salary_disclosure ? "translate-x-5" : "translate-x-0.5")} />
+          </button>
         </div>
       </motion.section>
 
@@ -248,15 +442,14 @@ export default function CareerOpsPreferencesPage() {
 
         <div className={cn("grid grid-cols-2 gap-6 pt-4 border-t border-foreground/10", !prefs.auto_apply_enabled && "opacity-50 pointer-events-none")}>
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Minimum score</p>
-            <p className="text-[12px] text-muted-foreground mb-2">Only submit to roles scored ≥ this.</p>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Minimum career fit</p>
+            <p className="text-[12px] text-muted-foreground mb-2">0–100 evidence-based gate. Hard filters still win.</p>
             <input
               type="number"
-              step="0.1"
               min="0"
-              max="5"
-              value={prefs.auto_apply_min_score}
-              onChange={(e) => setPrefs({ ...prefs, auto_apply_min_score: Number(e.target.value) })}
+              max="100"
+              value={prefs.auto_apply_min_fit_score}
+              onChange={(e) => setPrefs({ ...prefs, auto_apply_min_fit_score: Number(e.target.value) })}
               className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
             />
           </div>
@@ -272,6 +465,22 @@ export default function CareerOpsPreferencesPage() {
               className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
             />
           </div>
+        </div>
+
+        <div className="pt-4 border-t border-foreground/10">
+          <p className="text-[13px] font-semibold text-foreground mb-1">Review policy</p>
+          <p className="text-[12px] text-muted-foreground mb-3">Controls the last human checkpoint; blocked jobs can never submit.</p>
+          <ChoiceChips
+            label=""
+            hint=""
+            values={[prefs.review_mode]}
+            onChange={(values) => setPrefs({ ...prefs, review_mode: (values.at(-1) ?? "always") as Prefs["review_mode"] })}
+            choices={[
+              { value: "always", label: "Review every application" },
+              { value: "low_confidence", label: "Review low confidence" },
+              { value: "eligible_only", label: "Auto-send eligible only" },
+            ]}
+          />
         </div>
 
         {prefs.auto_apply_enabled && (

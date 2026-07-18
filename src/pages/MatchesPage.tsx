@@ -24,6 +24,12 @@ interface Evaluation {
   id: string;
   scanned_job_id: string;
   score: number;
+  fit_score: number | null;
+  fit_confidence: number | null;
+  eligible: boolean;
+  hard_filters: string[] | null;
+  dimension_scores: unknown;
+  score_version: string;
   tier: "A" | "B" | "C" | "D" | "F";
   archetype: string | null;
   summary: string | null;
@@ -37,6 +43,7 @@ interface UserPrefs {
   target_roles: string[];
   negative_keywords: string[];
   auto_apply_min_score: number;
+  auto_apply_min_fit_score: number;
   daily_apply_cap: number;
   auto_apply_enabled: boolean;
 }
@@ -65,6 +72,10 @@ function tierColor(tier?: string) {
   return "text-muted-foreground bg-muted/40";
 }
 
+function careerFitScore(evaluation: Evaluation): number {
+  return evaluation.fit_score ?? Math.round(evaluation.score * 20);
+}
+
 export default function MatchesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -90,12 +101,12 @@ export default function MatchesPage() {
           .limit(200),
         supabase
           .from("job_evaluations")
-          .select("id,scanned_job_id,score,tier,archetype,summary,keyword_matches,gaps,report_md,evaluated_at")
+          .select("id,scanned_job_id,score,fit_score,fit_confidence,eligible,hard_filters,dimension_scores,score_version,tier,archetype,summary,keyword_matches,gaps,report_md,evaluated_at")
           .eq("user_id", user.id)
           .order("score", { ascending: false }),
         supabase
           .from("user_job_prefs")
-          .select("target_roles,negative_keywords,auto_apply_min_score,daily_apply_cap,auto_apply_enabled")
+          .select("target_roles,negative_keywords,auto_apply_min_score,auto_apply_min_fit_score,daily_apply_cap,auto_apply_enabled")
           .eq("user_id", user.id)
           .maybeSingle(),
         supabase
@@ -116,6 +127,7 @@ export default function MatchesPage() {
         target_roles: [],
         negative_keywords: [],
         auto_apply_min_score: 4.5,
+        auto_apply_min_fit_score: 82,
         daily_apply_cap: 5,
         auto_apply_enabled: false,
       });
@@ -136,14 +148,14 @@ export default function MatchesPage() {
     let rows = withEval.filter((r) => matchPrefs(r.job));
     if (filter === "scored") rows = rows.filter((r) => r.evaluation);
     if (filter === "unscored") rows = rows.filter((r) => !r.evaluation);
-    if (filter === "top") rows = rows.filter((r) => r.evaluation && r.evaluation.score >= 4.0);
-    rows.sort((a, b) => (b.evaluation?.score ?? -1) - (a.evaluation?.score ?? -1));
+    if (filter === "top") rows = rows.filter((r) => r.evaluation?.eligible && careerFitScore(r.evaluation) >= (prefs?.auto_apply_min_fit_score ?? 82));
+    rows.sort((a, b) => (b.evaluation ? careerFitScore(b.evaluation) : -1) - (a.evaluation ? careerFitScore(a.evaluation) : -1));
     return rows;
   }, [jobs, evaluations, filter, prefs]);
 
   const stats = useMemo(() => {
     const scored = Object.values(evaluations);
-    const readyToApply = scored.filter((e) => e.score >= (prefs?.auto_apply_min_score ?? 4.5));
+    const readyToApply = scored.filter((e) => e.eligible && careerFitScore(e) >= (prefs?.auto_apply_min_fit_score ?? 82));
     return {
       total: jobs.length,
       scored: scored.length,
@@ -184,7 +196,7 @@ export default function MatchesPage() {
       if (error) throw error;
       const ev = (data as { evaluation: Evaluation }).evaluation;
       setEvaluations((prev) => ({ ...prev, [scannedJobId]: ev }));
-      toast.success(`Scored ${ev.score.toFixed(2)} (${ev.tier})`);
+      toast.success(`${ev.eligible ? "Eligible" : "Blocked"} · ${careerFitScore(ev)}% fit (${ev.tier})`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error(msg.includes("412")
@@ -263,7 +275,7 @@ export default function MatchesPage() {
           <table className="w-full text-[13.5px]">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-5 py-3 w-16">Score</th>
+                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-5 py-3 w-20">Fit</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Role</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Location</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 hidden lg:table-cell">Seen</th>
@@ -276,7 +288,7 @@ export default function MatchesPage() {
                   <td className="px-5 py-4">
                     {evaluation ? (
                       <span className={cn("inline-flex items-center justify-center w-10 h-10 rounded-full text-[13px] font-bold tabular-nums", tierColor(evaluation.tier))}>
-                        {evaluation.score.toFixed(1)}
+                        {careerFitScore(evaluation)}
                       </span>
                     ) : (
                       <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-dashed border-border text-muted-foreground text-[11px]">—</span>
@@ -290,6 +302,15 @@ export default function MatchesPage() {
                     </div>
                     {evaluation?.summary ? (
                       <div className="text-[12.5px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">{evaluation.summary}</div>
+                    ) : null}
+                    {evaluation && !evaluation.eligible ? (
+                      <div className="text-[11.5px] text-rose-700 mt-1.5 max-w-[60ch] truncate">
+                        Blocked · {evaluation.hard_filters?.[0] ?? "Does not meet your hard preferences"}
+                      </div>
+                    ) : evaluation?.fit_confidence != null ? (
+                      <div className="text-[11px] text-muted-foreground/80 mt-1">
+                        {Math.round(evaluation.fit_confidence * 100)}% scoring confidence · {evaluation.score_version}
+                      </div>
                     ) : null}
                   </td>
                   <td className="px-3 py-4 text-[13px] text-muted-foreground">
@@ -310,10 +331,11 @@ export default function MatchesPage() {
                         ) : (
                           <button
                             onClick={() => prepareApplication(evaluation.id)}
-                            disabled={preparing === evaluation.id}
+                            disabled={preparing === evaluation.id || !evaluation.eligible}
+                            title={!evaluation.eligible ? evaluation.hard_filters?.join(" ") : undefined}
                             className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
                           >
-                            {preparing === evaluation.id ? "Preparing…" : "Prepare"}
+                            {preparing === evaluation.id ? "Preparing…" : evaluation.eligible ? "Prepare" : "Blocked"}
                           </button>
                         )}
                         <button

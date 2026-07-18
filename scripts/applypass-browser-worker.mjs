@@ -218,25 +218,32 @@ async function fillCommonFields(page, profile = {}, answerMemory = {}) {
 }
 
 async function detectSubmitButton(page) {
-  const candidates = [
-    'button:has-text("Submit")',
-    'button:has-text("Apply")',
-    'button:has-text("Send application")',
-    'button:has-text("Continue")',
-    'input[type="submit"]',
-  ];
-
-  for (const selector of candidates) {
-    const locator = page.locator(selector).first();
-    if (await locator.count()) {
-      if (await locator.isVisible().catch(() => false)) {
-        const label = (await locator.textContent().catch(() => "")) || selector;
-        return { selector, label: label.trim() || selector };
-      }
+  return await page.evaluate(() => {
+    const accepted = new Set(["submit", "submit application", "send application"]);
+    const elements = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+    for (let index = 0; index < elements.length; index += 1) {
+      const element = elements[index];
+      const label = (element.textContent || element.getAttribute("value") || "").toLowerCase().replace(/\s+/g, " ").trim();
+      const rect = element.getBoundingClientRect();
+      const disabled = element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true";
+      if (accepted.has(label) && rect.width > 0 && rect.height > 0 && !disabled) return { index, label };
     }
-  }
+    return null;
+  });
+}
 
-  return null;
+async function confirmSubmission(page, previousUrl) {
+  await page.waitForTimeout(1800);
+  const pageState = await page.evaluate(() => ({
+    text: document.body?.innerText?.slice(0, 8000).toLowerCase() || "",
+    invalidFields: document.querySelectorAll(':invalid, [aria-invalid="true"]').length,
+  }));
+  const confirmed = /(application (?:has been )?(?:received|submitted)|thank you for applying|thanks for applying|submission confirmed)/i.test(pageState.text);
+  return {
+    confirmed,
+    urlChanged: page.url() !== previousUrl,
+    invalidFields: pageState.invalidFields,
+  };
 }
 
 async function processJob(browser, taskId, job, payload) {
@@ -277,14 +284,25 @@ async function processJob(browser, taskId, job, payload) {
     const submitButton = await detectSubmitButton(page);
     result.submitButton = submitButton?.label || null;
 
-    if (submitButton && AUTO_SUBMIT) {
-      await page.locator(submitButton.selector).first().click({ timeout: 10000 });
-      await page.waitForTimeout(1500);
-      result.submitted = true;
+    const approval = job?.approvalReceipt || payload?.approvalReceipts?.[result.jobId];
+    const approved = approval?.approved === true && typeof approval?.reviewedAt === "string";
+
+    if (submitButton && AUTO_SUBMIT && approved) {
+      const previousUrl = page.url();
+      const finalButtons = page.locator('button, input[type="submit"]');
+      await finalButtons.nth(submitButton.index).click({ timeout: 10000 });
+      const confirmation = await confirmSubmission(page, previousUrl);
+      result.submitted = confirmation.confirmed;
+      result.status = confirmation.confirmed ? "submitted" : "needs_review";
+      if (!confirmation.confirmed) {
+        result.error = `Final click did not produce a verifiable receipt (${confirmation.invalidFields} invalid fields).`;
+      }
+    } else if (submitButton) {
+      result.status = "ready_for_review";
     }
 
     result.screenshotPath = await maybeScreenshot(page, taskId, result.jobId);
-    result.status = "processed";
+    if (result.status === "failed") result.status = "processed";
     result.durationMs = Date.now() - startedAt;
     return result;
   } catch (error) {
@@ -336,11 +354,11 @@ async function processTask(task) {
       jobResults.push(result);
 
       await heartbeat(taskId, {
-        level: result.status === "processed" ? "info" : "warn",
+        level: ["processed", "ready_for_review", "submitted"].includes(result.status) ? "info" : "warn",
         workerId: WORKER_ID,
         at: nowIso(),
-        message: result.status === "processed"
-          ? `Processed ${result.title}`
+        message: ["processed", "ready_for_review", "submitted"].includes(result.status)
+          ? `${result.status}: ${result.title}`
           : `Failed ${result.title}: ${result.error}`,
         jobId: result.jobId,
       });
@@ -349,7 +367,7 @@ async function processTask(task) {
     await browser.close();
   }
 
-  const success = jobResults.filter((r) => r.status === "processed").length;
+  const success = jobResults.filter((r) => ["processed", "ready_for_review", "submitted"].includes(r.status)).length;
   const failed = jobResults.length - success;
 
   const summary = {

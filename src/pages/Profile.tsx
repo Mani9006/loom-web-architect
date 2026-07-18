@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ArrowLeft, Loader2, Save, User as UserIcon, Mail, Phone, MapPin, Shield, LogOut, Sparkles } from "lucide-react";
+import { Loader2, Save, User as UserIcon, Mail, Phone, MapPin, Shield, LogOut } from "lucide-react";
 
 interface ProfileData {
   full_name: string;
@@ -38,18 +38,14 @@ export default function Profile() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  useEffect(() => {
-    if (user) fetchProfile();
-  }, [user]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     if (!user) return;
     try {
-      const { data, error } = await (supabase
+      const { data, error } = await supabase
         .from("profiles")
-        .select("full_name, email, phone, location" as any)
+        .select("full_name, email, phone, location")
         .eq("user_id", user.id)
-        .maybeSingle() as any);
+        .maybeSingle();
       if (error) throw error;
       if (data) {
         setProfile({
@@ -66,7 +62,11 @@ export default function Profile() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast, user]);
+
+  useEffect(() => {
+    if (user) void fetchProfile();
+  }, [fetchProfile, user]);
 
   const handleSave = async () => {
     if (!user) return;

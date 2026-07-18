@@ -10,9 +10,17 @@ on:
   pull_request:
     branches: [main, production]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -24,8 +32,27 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Dependency security gate
+        run: npm audit --audit-level=high
+
       - name: Type check
         run: npm run type-check
+
+      - name: Lint changed application files
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" \
+            | grep -E '^(src/|scripts/).+\.(ts|tsx|js|jsx|mjs)$' \
+            | grep -v '^src/integrations/supabase/types.ts$' \
+            > /tmp/lint-files.txt || true
+          if [ -s /tmp/lint-files.txt ]; then
+            xargs -d '\n' npx eslint < /tmp/lint-files.txt
+          else
+            echo "No changed application files require linting."
+          fi
 
       - name: Test
         run: npm run test

@@ -61,6 +61,23 @@ export async function getAuthedUser(req: Request): Promise<{ id: string; email: 
   return { id: data.user.id, email: data.user.email ?? null };
 }
 
+/**
+ * Resolve a normal signed-in user, or an explicitly named user for a trusted
+ * service-role worker. The service path is intentionally opt-in per request so
+ * user-facing calls cannot impersonate another account by adding user_id.
+ */
+export async function getAuthedUserOrService(
+  req: Request,
+  serviceUserId?: string,
+): Promise<{ id: string; email: string | null }> {
+  if (serviceUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(serviceUserId)) {
+    const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (serviceRoleKey && token === serviceRoleKey) return { id: serviceUserId, email: null };
+  }
+  return getAuthedUser(req);
+}
+
 export async function enforceAccountActive(svc: SupabaseClient, userId: string): Promise<{ isPro: boolean }> {
   const { data } = await svc
     .from("user_access_controls")

@@ -25,10 +25,14 @@ jobs:
   agent-dispatch:
     name: Claude Code Agent Task
     runs-on: ubuntu-latest
+    # Disabled unless explicitly enabled. This legacy workflow is broader and
+    # potentially more expensive than the bounded ai-review workflow.
     if: |
-      (github.event_name == 'workflow_dispatch') ||
-      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'agent-task')) ||
-      (github.event_name == 'issue_comment' && contains(github.event.issue.labels.*.name, 'agent-task') && github.event.comment.user.login != 'github-actions[bot]')
+      vars.ENABLE_CLAUDE_AGENT == '1' && (
+        (github.event_name == 'workflow_dispatch') ||
+        (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'agent-task')) ||
+        (github.event_name == 'issue_comment' && contains(github.event.issue.labels.*.name, 'agent-task') && github.event.comment.user.login != 'github-actions[bot]')
+      )
     steps:
       - uses: actions/checkout@v4
         with:
