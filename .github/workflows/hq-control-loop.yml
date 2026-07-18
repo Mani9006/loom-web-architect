@@ -25,6 +25,11 @@ jobs:
     name: Jira Governance & Deployment Gate
     runs-on: ubuntu-latest
     if: ${{ vars.ENABLE_HQ_LOOP != '0' }}
+    env:
+      JIRA_URL: ${{ secrets.JIRA_URL }}
+      JIRA_USER: ${{ secrets.JIRA_USER }}
+      JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+      PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY || 'KAN' }}
     outputs:
       deploy_state: ${{ steps.deploy.outputs.state }}
       open_issues: ${{ steps.jira.outputs.open_count }}
@@ -42,12 +47,7 @@ jobs:
 
       - name: Check Jira ticket status
         id: jira
-        if: ${{ secrets.JIRA_URL != '' }}
-        env:
-          JIRA_URL: ${{ secrets.JIRA_URL }}
-          JIRA_USER: ${{ secrets.JIRA_USER }}
-          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
-          PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY || 'KAN' }}
+        if: ${{ env.JIRA_URL != '' }}
         run: |
           RESPONSE=$(curl -s -u "$JIRA_USER:$JIRA_TOKEN" \
             -H "Content-Type: application/json" \
