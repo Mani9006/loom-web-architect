@@ -235,7 +235,7 @@ export default function MatchesPage() {
       const ev = (data as { evaluation: Evaluation }).evaluation;
       setEvaluations((prev) => ({ ...prev, [scannedJobId]: ev }));
       const score = careerFitScore(ev);
-      toast.success(`${score >= 80 ? "Strong fit" : score >= 60 ? "Possible fit" : "Outside some preferences"} · ${score}%`);
+      toast.success(`${score >= 80 ? "Strong fit" : score >= 65 ? "Good fit" : "Potential fit"} · ${score}%`);
     } catch (e: unknown) {
       const safeError = toUserFacingError(e, {
         operation: "match_rescore",
@@ -340,7 +340,7 @@ export default function MatchesPage() {
                         <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
                           <span>{careerFitScore(evaluation)}%</span>
                           <span className="text-[10px] font-medium text-muted-foreground">
-                            {careerFitScore(evaluation) >= 80 ? "Strong" : careerFitScore(evaluation) >= 60 ? "Possible" : "Low"}
+                            {careerFitScore(evaluation) >= 80 ? "Strong" : careerFitScore(evaluation) >= 65 ? "Good" : "Potential"}
                           </span>
                         </div>
                         <div className="h-1.5 overflow-hidden rounded-full bg-muted">

@@ -174,16 +174,19 @@ export default function CareerOpsPreferencesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [confirmedExperienceYears, setConfirmedExperienceYears] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const [prefsRes, runsRes] = await Promise.all([
+      const [prefsRes, runsRes, profileRes] = await Promise.all([
         supabase.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
         supabase.from("agent_runs").select("*").eq("user_id", user.id)
           .order("started_at", { ascending: false }).limit(8),
+        supabase.from("profiles").select("years_of_experience").eq("user_id", user.id).maybeSingle(),
       ]);
       if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as unknown as Prefs) });
+      setConfirmedExperienceYears(typeof profileRes.data?.years_of_experience === "number" ? profileRes.data.years_of_experience : null);
       setRuns((runsRes.data || []).map((run) => ({
         ...run,
         actions: Array.isArray(run.actions) ? run.actions as unknown as AgentRun["actions"] : [],
@@ -199,12 +202,13 @@ export default function CareerOpsPreferencesPage() {
       ...prefs,
       remote_only: prefs.work_modes.length === 1 && prefs.work_modes[0] === "remote",
     };
-    const { error } = await supabase
-      .from("user_job_prefs")
-      .upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" });
+    const [prefsResult, profileResult] = await Promise.all([
+      supabase.from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
+      supabase.from("profiles").update({ years_of_experience: confirmedExperienceYears } as never).eq("user_id", user.id),
+    ]);
     setSaving(false);
-    if (error) toast.error(`Save failed: ${error.message}`);
-    else toast.success("Preferences saved");
+    if (prefsResult.error || profileResult.error) toast.error("Your matching settings could not be saved. Try again in a moment.");
+    else toast.success("Matching settings saved");
   };
 
   if (loading) {
@@ -231,6 +235,27 @@ export default function CareerOpsPreferencesPage() {
         <div className="flex items-baseline justify-between">
           <p className="text-[13px] font-semibold text-foreground">Targeting</p>
         </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_180px] sm:items-end">
+          <div>
+            <p className="text-[14px] font-semibold text-foreground">Confirmed total experience</p>
+            <p className="text-[12px] leading-relaxed text-muted-foreground">
+              Enter your verified total once. Leave blank to calculate non-overlapping months across every client in the matching resume.
+            </p>
+          </div>
+          <div className="relative">
+            <input
+              type="number"
+              min={0}
+              max={50}
+              step={0.5}
+              value={confirmedExperienceYears ?? ""}
+              onChange={(event) => setConfirmedExperienceYears(event.target.value === "" ? null : Number(event.target.value))}
+              placeholder="Auto from dates"
+              className="h-10 w-full rounded-md border border-foreground/15 bg-background px-3 pr-14 text-[13px] text-foreground focus:outline-none focus:border-foreground/30"
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">years</span>
+          </div>
+        </div>
         <TagEditor
           label="Target roles"
           hint="Role families you can support with resume evidence; exact title wording is not required."
@@ -240,7 +265,7 @@ export default function CareerOpsPreferencesPage() {
         />
         <TagEditor
           label="Negative keywords"
-          hint="Any title or description containing one of these is blocked."
+          hint="Exclude any title or description containing one of these terms."
           values={prefs.negative_keywords}
           onChange={(negative_keywords) => setPrefs({ ...prefs, negative_keywords })}
           placeholder="Intern, Sales…"

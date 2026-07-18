@@ -80,12 +80,15 @@ serve(async (req) => {
         ? rawPrefs.target_countries
         : inferredCountry ? [inferredCountry] : [],
     };
-    const candidate = buildCandidateCareerProfile(resume, prefs);
     const reviewedGraph = careerReviews?.[0]?.resume_id === resume.id && careerReviews[0].graph && typeof careerReviews[0].graph === "object"
       ? careerReviews[0].graph as Record<string, unknown>
       : null;
     const reviewedRoleFamilies = reviewRoleTerms(reviewedGraph?.primary_role_families);
     const reviewedAdjacentRoles = reviewRoleTerms(reviewedGraph?.adjacent_roles, "title");
+    const candidate = buildCandidateCareerProfile(resume, {
+      ...prefs,
+      target_roles: unique([...(prefs.target_roles ?? []), ...reviewedRoleFamilies, ...reviewedAdjacentRoles]),
+    });
     const targets = normalizeTerms(
       [
         ...(prefs.target_roles ?? []),
@@ -147,7 +150,11 @@ serve(async (req) => {
       });
       const tier = tierFor(fit.score, fit.eligible);
       const gaps = unique([...fit.hardFilters, ...fit.dimensions.flatMap((dimension) => dimension.gaps)]).slice(0, 12);
-      const strongest = [...fit.dimensions].sort((a, b) => b.score - a.score).slice(0, 2).map((item) => item.label);
+      const strongest = fit.dimensions
+        .filter((dimension) => ["role", "skills", "experience"].includes(dimension.key))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 2)
+        .map((item) => item.label);
       const roleEvidence = fit.dimensions.find((dimension) => dimension.key === "role")?.evidence[0];
       const experienceEvidence = fit.dimensions.find((dimension) => dimension.key === "experience")?.evidence[0];
       const summary = [
@@ -185,6 +192,13 @@ serve(async (req) => {
     const persisted = rows
       .filter((row) => row.fit_score >= MIN_PUBLISHED_FIT)
       .filter((row) => !row.hard_filters.some((filter) => /outside selected countries/i.test(filter)))
+      .filter((row) => !row.hard_filters.some((filter) => /outside selected seniority|not credible|experience gap exceeds/i.test(filter)))
+      .filter((row) => {
+        const dimensions = Array.isArray(row.dimension_scores) ? row.dimension_scores : [];
+        const role = dimensions.find((dimension) => dimension.key === "role")?.score ?? 0;
+        const skills = dimensions.find((dimension) => dimension.key === "skills")?.score ?? 0;
+        return role >= 52 || skills >= 60;
+      })
       .sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.fit_score - a.fit_score || b._relevance - a._relevance)
       .slice(0, MAX_EVALUATIONS)
       .map(({ _relevance: _ignored, ...row }) => row);

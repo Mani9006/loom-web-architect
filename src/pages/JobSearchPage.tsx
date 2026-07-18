@@ -1428,7 +1428,7 @@ export default function JobSearchPage() {
                                   <span className="w-10 text-right text-xs font-semibold tabular-nums">{job.match_score}%</span>
                                 </div>
                                 <p className="mt-1 text-[10px] font-medium text-muted-foreground">
-                                  {job.match_score >= 80 ? "Strong fit" : job.match_score >= 60 ? "Possible fit" : "Outside some preferences"}
+                                  {job.match_score >= 80 ? "Strong fit" : job.match_score >= 65 ? "Good fit" : "Potential fit"}
                                 </p>
                                 <div className="flex flex-wrap gap-1 mt-1.5">
                                   <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
