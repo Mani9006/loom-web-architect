@@ -114,14 +114,22 @@ const ROLE_STOP_WORDS = new Set([
 ]);
 
 const COUNTRY_ALIASES: Record<string, string[]> = {
-  "united states": ["united states", "usa", "u.s.", "us only"],
-  canada: ["canada", "canadian"],
-  "united kingdom": ["united kingdom", "uk only", "great britain"],
-  india: ["india", "indian"],
-  germany: ["germany", "deutschland"],
-  france: ["france"],
-  australia: ["australia"],
-  ireland: ["ireland"],
+  "united states": ["united states", "usa", "u.s.", "us only", "new york", "california", "texas", "chicago", "seattle", "boston", "austin", "dallas", "san francisco"],
+  canada: ["canada", "canadian", "toronto", "vancouver", "montreal"],
+  "united kingdom": ["united kingdom", "uk", "uk only", "great britain", "england", "scotland", "london", "manchester"],
+  india: ["india", "indian", "hyderabad", "bengaluru", "bangalore", "chennai", "mumbai", "delhi", "pune"],
+  germany: ["germany", "deutschland", "berlin", "munich"],
+  france: ["france", "paris"],
+  australia: ["australia", "sydney", "melbourne"],
+  ireland: ["ireland", "dublin"],
+  qatar: ["qatar", "doha"],
+  "united arab emirates": ["united arab emirates", "uae", "dubai", "abu dhabi"],
+  singapore: ["singapore"],
+  japan: ["japan", "tokyo"],
+  netherlands: ["netherlands", "amsterdam"],
+  spain: ["spain", "madrid", "barcelona"],
+  brazil: ["brazil", "sao paulo", "rio de janeiro"],
+  mexico: ["mexico", "mexico city"],
 };
 
 export function buildCandidateCareerProfile(

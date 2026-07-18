@@ -176,4 +176,22 @@ describe("career fit gate", () => {
     expect(fit.inferred.country).toBe("canada");
     expect(fit.hardFilters.join(" ")).toMatch(/country|canada/i);
   });
+
+  it("recognizes city-only international locations before applying country preferences", () => {
+    const candidate = buildCandidateCareerProfile(fourYearResume, {
+      target_roles: ["Software Engineer"],
+      target_countries: ["United States"],
+      work_modes: ["remote"],
+    });
+    const fit = evaluateCareerFit(candidate, {
+      title: "Software Engineer",
+      location: "London, UK",
+      remotePolicy: "Remote in the UK",
+      description: "Build React services for customers across England.",
+    });
+
+    expect(fit.inferred.country).toBe("united kingdom");
+    expect(fit.eligible).toBe(false);
+    expect(fit.hardFilters.join(" ")).toMatch(/outside selected countries/i);
+  });
 });

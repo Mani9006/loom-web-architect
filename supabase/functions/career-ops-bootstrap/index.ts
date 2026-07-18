@@ -184,6 +184,7 @@ serve(async (req) => {
 
     const persisted = rows
       .filter((row) => row.fit_score >= MIN_PUBLISHED_FIT)
+      .filter((row) => !row.hard_filters.some((filter) => /outside selected countries/i.test(filter)))
       .sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.fit_score - a.fit_score || b._relevance - a._relevance)
       .slice(0, MAX_EVALUATIONS)
       .map(({ _relevance: _ignored, ...row }) => row);
