@@ -484,7 +484,7 @@ export default function ResumeProjects() {
             className="text-rp-ink-3"
             style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
           >
-            library · {resumes.length} on the shelf
+            library · {resumes.length} {resumes.length === 1 ? "résumé" : "résumés"}
           </span>
         </div>
 
@@ -542,11 +542,15 @@ export default function ResumeProjects() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => navigate("/resume-builder/v2")}
+            onClick={() => {
+              const resumeId = primaryResumeId || resumes[0]?.id;
+              if (resumeId) navigate(`/resume-builder/${resumeId}`);
+              else setCreateOpen(true);
+            }}
             className="gap-2"
           >
-            <Sparkles className="h-4 w-4" />
-            Open editor
+            <Pencil className="h-4 w-4" />
+            {resumes.length > 0 ? "Open matching résumé" : "Open editor"}
           </Button>
         </div>
 
