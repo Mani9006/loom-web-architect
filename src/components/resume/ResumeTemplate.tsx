@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER, type ResumeSectionId } from "@/types/resume";
 import { getTemplate } from "@/config/resume-templates";
 import { normalizeResumeSkills } from "@/lib/resume-skills";
+import { cleanResumeBulletText, cleanResumeForOutput } from "@/lib/resume-output-text";
 
 interface ResumeTemplateProps {
   data: ResumeJSON;
@@ -127,6 +128,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
   const [pageCount, setPageCount] = useState(1);
 
   const template = useMemo(() => getTemplate(templateId), [templateId]);
+  const cleanData = useMemo(() => cleanResumeForOutput(data), [data]);
   const sectionHeadingStyle = useMemo(() => buildSectionHeadingStyle(templateId), [templateId]);
   const headerBorderStyle = useMemo(() => buildHeaderBorderStyle(templateId), [templateId]);
   const titleAccentColor = useMemo(() => buildTitleAccentColor(templateId), [templateId]);
@@ -150,26 +152,26 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [data]);
+  }, [cleanData]);
 
-  const skillCategories = Object.entries(normalizeResumeSkills(data.skills))
+  const skillCategories = Object.entries(normalizeResumeSkills(cleanData.skills))
     .filter(([_, skills]) => skills.length > 0)
     .map(([key, skills]) => ({
       category: getSkillCategoryLabel(key),
       skills,
     }));
 
-  const validExperience = data.experience.filter((e) => e.company_or_client);
-  const validEducation = data.education.filter((e) => e.institution);
-  const validCerts = data.certifications.filter((c) => c.name);
-  const validProjects = (data.projects || []).filter((p) => p.title);
-  const validLanguages = (data.languages || []).filter((l) => l.language);
-  const validVolunteer = (data.volunteer || []).filter((v) => v.organization);
-  const validAwards = (data.awards || []).filter((a) => a.title);
+  const validExperience = cleanData.experience.filter((e) => e.company_or_client);
+  const validEducation = cleanData.education.filter((e) => e.institution);
+  const validCerts = cleanData.certifications.filter((c) => c.name);
+  const validProjects = (cleanData.projects || []).filter((p) => p.title);
+  const validLanguages = (cleanData.languages || []).filter((l) => l.language);
+  const validVolunteer = (cleanData.volunteer || []).filter((v) => v.organization);
+  const validAwards = (cleanData.awards || []).filter((a) => a.title);
 
   // Format LinkedIn display: show clean URL for ATS parsing
-  const linkedInDisplay = data.header.linkedin
-    ? data.header.linkedin.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
+  const linkedInDisplay = cleanData.header.linkedin
+    ? cleanData.header.linkedin.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
     : "";
 
   // Skills rendering varies by template
@@ -295,10 +297,10 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
         }}
       >
         <h1 style={{ fontSize: template.layout.headerFontSize, fontWeight: 700, letterSpacing: "0.03em", margin: 0 }}>
-          {data.header.name || "Your Name"}
+          {cleanData.header.name || "Your Name"}
         </h1>
-        {data.header.title && (
-          <p style={{ fontSize: template.layout.titleFontSize, fontWeight: 600, margin: "2pt 0 0 0", color: titleAccentColor }}>{data.header.title}</p>
+        {cleanData.header.title && (
+          <p style={{ fontSize: template.layout.titleFontSize, fontWeight: 600, margin: "2pt 0 0 0", color: titleAccentColor }}>{cleanData.header.title}</p>
         )}
         {/* Contact info -- plain text for ATS parsing, pipe-separated */}
         <div
@@ -312,17 +314,17 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
             fontSize: "9.5pt",
           }}
         >
-          {data.header.location && <span>{data.header.location}</span>}
-          {data.header.location && (data.header.email || data.header.phone || data.header.linkedin) && (
+          {cleanData.header.location && <span>{cleanData.header.location}</span>}
+          {cleanData.header.location && (cleanData.header.email || cleanData.header.phone || cleanData.header.linkedin) && (
             <span aria-hidden="true">|</span>
           )}
-          {data.header.email && <span>{data.header.email}</span>}
-          {data.header.email && (data.header.phone || data.header.linkedin) && <span aria-hidden="true">|</span>}
-          {data.header.phone && <span>{data.header.phone}</span>}
-          {data.header.phone && data.header.linkedin && <span aria-hidden="true">|</span>}
-          {data.header.linkedin && (
+          {cleanData.header.email && <span>{cleanData.header.email}</span>}
+          {cleanData.header.email && (cleanData.header.phone || cleanData.header.linkedin) && <span aria-hidden="true">|</span>}
+          {cleanData.header.phone && <span>{cleanData.header.phone}</span>}
+          {cleanData.header.phone && cleanData.header.linkedin && <span aria-hidden="true">|</span>}
+          {cleanData.header.linkedin && (
             <a
-              href={data.header.linkedin.startsWith("http") ? data.header.linkedin : `https://${data.header.linkedin}`}
+              href={cleanData.header.linkedin.startsWith("http") ? cleanData.header.linkedin : `https://${cleanData.header.linkedin}`}
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: "#000", textDecoration: "none" }}
@@ -334,13 +336,13 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
       </header>
 
       {/* ===== DYNAMIC SECTION RENDERING (respects section_order) ===== */}
-      {(data.section_order || DEFAULT_SECTION_ORDER).map((sectionId) => {
+      {(cleanData.section_order || DEFAULT_SECTION_ORDER).map((sectionId) => {
         switch (sectionId) {
           case "summary":
-            return data.summary ? (
+            return cleanData.summary ? (
               <section key="summary">
                 <h2 style={sectionHeadingStyle}>Professional Summary</h2>
-                <p style={{ textAlign: "justify", lineHeight: String(template.layout.lineHeight), margin: 0, fontSize: template.layout.fontSize }}>{data.summary}</p>
+                <p style={{ textAlign: "justify", lineHeight: String(template.layout.lineHeight), margin: 0, fontSize: template.layout.fontSize }}>{cleanData.summary}</p>
               </section>
             ) : null;
 
@@ -349,10 +351,10 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
               <section key="experience">
                 <h2 style={sectionHeadingStyle}>Professional Experience</h2>
                 {validExperience.map((exp, idx) => (
-                  <div key={exp.id} style={{ marginBottom: idx < validExperience.length - 1 ? SPACING.entryMarginBottom : 0 }}>
+                  <div key={exp.id} style={{ marginBottom: idx < validExperience.length - 1 ? SPACING.entryMarginBottom : 0, breakInside: "avoid", pageBreakInside: "avoid" }}>
                     <div style={flexRowStyle}>
                       <span style={{ fontWeight: 700, fontSize: template.layout.fontSize }}>{exp.role}</span>
-                      <span style={rightMetaStyle}>{exp.start_date} — {exp.end_date}</span>
+                      <span style={rightMetaStyle}>{exp.start_date} - {exp.end_date}</span>
                     </div>
                     <div style={flexRowStyle}>
                       <span style={{ fontStyle: "italic", fontSize: template.layout.fontSize }}>{exp.company_or_client}</span>
@@ -361,7 +363,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                     {exp.bullets.length > 0 && (
                       <ul style={bulletListStyle}>
                         {exp.bullets.map((bullet, bIdx) => (
-                          <li key={bIdx} style={bulletItemStyle}>{bullet}</li>
+                          <li key={bIdx} style={bulletItemStyle}>{cleanResumeBulletText(bullet)}</li>
                         ))}
                       </ul>
                     )}
@@ -379,7 +381,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                     <div style={flexRowStyle}>
                       <span style={{ fontSize: template.layout.fontSize }}>
                         <strong>{edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree"}</strong>
-                        {edu.institution && <span> — {edu.institution}</span>}
+                        {edu.institution && <span> - {edu.institution}</span>}
                         {edu.gpa && <span> (GPA: {edu.gpa})</span>}
                       </span>
                       <span style={rightMetaStyle}>{edu.graduation_date}</span>
@@ -405,7 +407,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                       ) : (
                         <strong>{cert.name}</strong>
                       )}
-                      {cert.issuer && <span> — {cert.issuer}</span>}
+                      {cert.issuer && <span> - {cert.issuer}</span>}
                     </span>
                     <span style={rightMetaStyle}>{cert.date}</span>
                   </div>
@@ -418,7 +420,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
               <section key="projects">
                 <h2 style={sectionHeadingStyle}>Projects</h2>
                 {validProjects.map((project, idx) => (
-                  <div key={project.id} style={{ marginBottom: idx < validProjects.length - 1 ? SPACING.entryMarginBottom : 0 }}>
+                  <div key={project.id} style={{ marginBottom: idx < validProjects.length - 1 ? SPACING.entryMarginBottom : 0, breakInside: "avoid", pageBreakInside: "avoid" }}>
                     <div style={flexRowStyle}>
                       {project.url ? (
                         <a href={project.url.startsWith("http") ? project.url : `https://${project.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{project.title}</a>
@@ -427,14 +429,14 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                       )}
                       {(project.organization || project.date) && (
                         <span style={{ ...rightMetaStyle, fontStyle: "italic" }}>
-                          {project.organization && `${project.organization} — `}{project.date}
+                          {project.organization && `${project.organization} - `}{project.date}
                         </span>
                       )}
                     </div>
                     {project.bullets.length > 0 && (
                       <ul style={bulletListStyle}>
                         {project.bullets.map((bullet, bIdx) => (
-                          <li key={bIdx} style={bulletItemStyle}>{bullet}</li>
+                          <li key={bIdx} style={bulletItemStyle}>{cleanResumeBulletText(bullet)}</li>
                         ))}
                       </ul>
                     )}
@@ -464,7 +466,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
               <section key="volunteer">
                 <h2 style={sectionHeadingStyle}>Volunteer Experience</h2>
                 {validVolunteer.map((vol, idx) => (
-                  <div key={vol.id} style={{ marginBottom: idx < validVolunteer.length - 1 ? SPACING.entryMarginBottom : 0 }}>
+                  <div key={vol.id} style={{ marginBottom: idx < validVolunteer.length - 1 ? SPACING.entryMarginBottom : 0, breakInside: "avoid", pageBreakInside: "avoid" }}>
                     <div style={flexRowStyle}>
                       <span style={{ fontWeight: 700, fontSize: template.layout.fontSize }}>{vol.role || "Volunteer"}</span>
                       {vol.date && <span style={rightMetaStyle}>{vol.date}</span>}
@@ -473,7 +475,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                     {vol.bullets.length > 0 && (
                       <ul style={bulletListStyle}>
                         {vol.bullets.map((bullet, bIdx) => (
-                          <li key={bIdx} style={bulletItemStyle}>{bullet}</li>
+                          <li key={bIdx} style={bulletItemStyle}>{cleanResumeBulletText(bullet)}</li>
                         ))}
                       </ul>
                     )}
@@ -494,7 +496,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                       ) : (
                         <strong>{award.title}</strong>
                       )}
-                      {award.issuer && <span> — {award.issuer}</span>}
+                      {award.issuer && <span> - {award.issuer}</span>}
                     </span>
                     <span style={rightMetaStyle}>{award.date}</span>
                   </div>
@@ -504,7 +506,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
 
           default: {
             // Custom sections
-            const cs = (data.customSections || []).find((s) => s.id === sectionId);
+            const cs = (cleanData.customSections || []).find((s) => s.id === sectionId);
             if (!cs || !cs.entries.some((e) => e.title)) return null;
             return (
               <section key={cs.id}>
@@ -512,7 +514,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                 {cs.entries
                   .filter((e) => e.title)
                   .map((entry, idx, arr) => (
-                    <div key={entry.id} style={{ marginBottom: idx < arr.length - 1 ? SPACING.entryMarginBottom : 0 }}>
+                    <div key={entry.id} style={{ marginBottom: idx < arr.length - 1 ? SPACING.entryMarginBottom : 0, breakInside: "avoid", pageBreakInside: "avoid" }}>
                       <div style={flexRowStyle}>
                         {entry.url ? (
                           <a href={entry.url.startsWith("http") ? entry.url : `https://${entry.url}`} target="_blank" rel="noopener noreferrer" style={linkedTitleStyle}>{entry.title}</a>
@@ -527,7 +529,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
                       {entry.bullets.length > 0 && (
                         <ul style={bulletListStyle}>
                           {entry.bullets.map((bullet, bIdx) => (
-                            <li key={bIdx} style={bulletItemStyle}>{bullet}</li>
+                            <li key={bIdx} style={bulletItemStyle}>{cleanResumeBulletText(bullet)}</li>
                           ))}
                         </ul>
                       )}

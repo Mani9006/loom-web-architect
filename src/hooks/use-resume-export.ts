@@ -2,6 +2,7 @@
 import { useCallback, useState } from "react";
 import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER } from "@/types/resume";
 import { normalizeResumeForOutput, normalizeResumeSkills } from "@/lib/resume-skills";
+import { cleanResumeBulletText, cleanResumeDisplayText, cleanResumeForOutput } from "@/lib/resume-output-text";
 import { toast } from "sonner";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -55,7 +56,7 @@ const ptToIn = (pt: number) => pt / 72;
 type FontStyle = "normal" | "bold" | "italic" | "bolditalic";
 type JsPDFInstance = import("jspdf").jsPDF;
 
-class PDFResumeRenderer {
+export class PDFResumeRenderer {
   private doc!: JsPDFInstance;
   private y = 0;
   private widthCache = new Map<string, number>();
@@ -88,7 +89,7 @@ class PDFResumeRenderer {
 
   private wrapText(text: string, maxWidth: number, size: number, style: FontStyle = "normal"): string[] {
     this.setFont(size, style);
-    return this.doc.splitTextToSize(text, maxWidth) as string[];
+    return this.doc.splitTextToSize(cleanResumeDisplayText(text), maxWidth) as string[];
   }
 
   private text(
@@ -100,7 +101,7 @@ class PDFResumeRenderer {
     align: "left" | "center" | "right" = "left",
   ) {
     this.setFont(size, style);
-    this.doc.text(str, x, y, { align });
+    this.doc.text(cleanResumeDisplayText(str), x, y, { align });
   }
 
   /** Draws text as a clickable hyperlink in the PDF. Falls back to plain text if no URL. */
@@ -112,6 +113,7 @@ class PDFResumeRenderer {
     size: number,
     style: FontStyle = "bold",
   ) {
+    str = cleanResumeDisplayText(str);
     this.setFont(size, style);
     if (url) {
       const fullUrl = url.startsWith("http") ? url : `https://${url}`;
@@ -169,7 +171,7 @@ class PDFResumeRenderer {
    */
   private justifiedBlock(text: string, x: number, maxWidth: number, size: number, style: FontStyle = "normal") {
     this.setFont(size, style);
-    const allWords = text.split(/\s+/).filter((w) => w.length > 0);
+    const allWords = cleanResumeDisplayText(text).split(/\s+/).filter((w) => w.length > 0);
     if (allWords.length === 0) return;
 
     const lineH = this.lh(size);
@@ -237,6 +239,22 @@ class PDFResumeRenderer {
     }
   }
 
+  private flexRowHeight(
+    left: string,
+    right: string,
+    leftSize: number,
+    leftStyle: FontStyle,
+    rightSize: number,
+    rightStyle: FontStyle = "normal",
+  ) {
+    const lineH = this.lh(Math.max(leftSize, rightSize));
+    const rightW = right ? this.textWidth(right, rightSize, rightStyle) : 0;
+    const gap = right ? ptToIn(8) : 0;
+    const maxLeftW = CONTENT_WIDTH - rightW - gap;
+    const leftLines = this.wrapText(left, maxLeftW, leftSize, leftStyle);
+    return Math.max(1, leftLines.length) * lineH;
+  }
+
   private sectionHeading(title: string) {
     const headingH = ptToIn(SP.sectionMarginTop) + this.lh(FS.sectionHeading) + ptToIn(2) + ptToIn(1.5);
     const minBlock = headingH + this.lh(FS.body) * 2;
@@ -250,6 +268,8 @@ class PDFResumeRenderer {
   }
 
   private bulletPoint(text: string, indent = 0.19) {
+    text = cleanResumeBulletText(text);
+    if (!text) return;
     const bulletX = PAGE.marginLeft + indent - ptToIn(8);
     const textX = PAGE.marginLeft + indent;
     const maxW = CONTENT_WIDTH - indent;
@@ -299,6 +319,37 @@ class PDFResumeRenderer {
       this.y = drawY;
     }
     this.y += ptToIn(SP.bulletAfter);
+  }
+
+  private bulletPointHeight(text: string, indent = 0.19) {
+    text = cleanResumeBulletText(text);
+    if (!text) return 0;
+    const maxW = CONTENT_WIDTH - indent;
+    const words = text.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return 0;
+    this.setFont(FS.body, "normal");
+    const lineH = this.lh(FS.body);
+    const spaceWidth = (this.doc.getStringUnitWidth(" ") * FS.body) / 72;
+    let lineCount = 1;
+    let currentWidth = 0;
+
+    for (const word of words) {
+      const wordWidth = (this.doc.getStringUnitWidth(word) * FS.body) / 72;
+      const neededWidth = currentWidth > 0 ? currentWidth + spaceWidth + wordWidth : wordWidth;
+      if (neededWidth > maxW && currentWidth > 0) {
+        lineCount += 1;
+        currentWidth = wordWidth;
+      } else {
+        currentWidth = neededWidth;
+      }
+    }
+
+    return lineCount * lineH + ptToIn(SP.bulletAfter);
+  }
+
+  private ensureEntryStart(headingHeight: number, firstBullet?: string, minVisibleRows = 1) {
+    const minimum = headingHeight + Math.max(this.bulletPointHeight(firstBullet || ""), this.lh(FS.body) * minVisibleRows);
+    this.ensureSpace(minimum);
   }
 
   // ── Section renderers ──────────────────────────────────────────────
@@ -369,9 +420,14 @@ class PDFResumeRenderer {
     if (valid.length === 0) return;
     this.sectionHeading("Professional Experience");
     valid.forEach((exp, idx) => {
+      const dateText = `${exp.start_date || "Start"} - ${exp.end_date || "Present"}`;
+      const headingHeight =
+        this.flexRowHeight(exp.role || "Role", dateText, FS.body, "bold", FS.small) +
+        this.flexRowHeight(exp.company_or_client, exp.location || "", FS.body, "italic", FS.small);
+      this.ensureEntryStart(headingHeight, exp.bullets[0], 2);
       this.flexRow(
         exp.role || "Role",
-        `${exp.start_date || "Start"} \u2014 ${exp.end_date || "Present"}`,
+        dateText,
         FS.body,
         "bold",
         FS.small,
@@ -390,7 +446,7 @@ class PDFResumeRenderer {
       // Use "in" between degree and field (e.g., "B.S. in Computer Science")
       const deg = edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree";
       let left = deg;
-      if (edu.institution) left += ` \u2014 ${edu.institution}`;
+      if (edu.institution) left += ` - ${edu.institution}`;
       if (edu.gpa) left += ` (GPA: ${edu.gpa})`;
       this.flexRow(left, edu.graduation_date || "", FS.body, "bold", FS.small);
       if (edu.location) {
@@ -415,16 +471,15 @@ class PDFResumeRenderer {
     cats.forEach((cat) => {
       const prefix = `${cat.label}: `;
       const prefixW = this.textWidth(prefix, FS.body, "bold");
-      const fullText = prefix + cat.skills.join(", ");
-      const lines = this.wrapText(fullText, CONTENT_WIDTH, FS.body);
+      const skillText = cat.skills.join(", ");
+      const lines = this.wrapText(skillText, CONTENT_WIDTH - prefixW, FS.body);
       const lineH = this.lh(FS.body);
       for (let i = 0; i < lines.length; i++) {
         this.ensureSpace(lineH);
         const drawY = this.y + lineH;
         if (i === 0) {
           this.text(prefix, PAGE.marginLeft, drawY, FS.body, "bold");
-          const rest = lines[0].substring(prefix.length);
-          if (rest) this.text(rest, PAGE.marginLeft + prefixW, drawY, FS.body);
+          if (lines[0]) this.text(lines[0], PAGE.marginLeft + prefixW, drawY, FS.body);
         } else {
           this.text(lines[i], PAGE.marginLeft, drawY, FS.body);
         }
@@ -439,7 +494,7 @@ class PDFResumeRenderer {
     if (valid.length === 0) return;
     this.sectionHeading("Certifications");
     valid.forEach((cert) => {
-      // Name bold (hyperlinked if URL provided), issuer normal weight with em-dash separator
+      // Name bold (hyperlinked if URL provided), issuer normal weight with a clean separator
       const nameW = this.textWidth(cert.name, FS.body, "bold");
       const lineH = this.lh(FS.body);
       const rightText = cert.date || "";
@@ -450,9 +505,9 @@ class PDFResumeRenderer {
       // Bold name — hyperlinked if cert.url is provided
       this.linkedText(cert.name, cert.url, PAGE.marginLeft, drawY, FS.body, "bold");
 
-      // Normal weight issuer after em-dash
+      // Normal weight issuer after separator
       if (cert.issuer) {
-        const separator = " \u2014 ";
+        const separator = " - ";
         const sepW = this.textWidth(separator, FS.body);
         this.text(separator, PAGE.marginLeft + nameW, drawY, FS.body);
         this.text(cert.issuer, PAGE.marginLeft + nameW + sepW, drawY, FS.body);
@@ -475,7 +530,9 @@ class PDFResumeRenderer {
       const rightParts: string[] = [];
       if (proj.organization) rightParts.push(proj.organization);
       if (proj.date) rightParts.push(proj.date);
-      const rightText = rightParts.join(" \u2014 ");
+      const rightText = rightParts.join(" - ");
+      const headingHeight = this.flexRowHeight(proj.title, rightText, FS.body, "bold", FS.small, "italic");
+      this.ensureEntryStart(headingHeight, proj.bullets[0], 1);
 
       // If project has a URL, render the title as a hyperlink; otherwise use flexRow
       if (proj.url) {
@@ -520,6 +577,10 @@ class PDFResumeRenderer {
     if (valid.length === 0) return;
     this.sectionHeading("Volunteer Experience");
     valid.forEach((vol, idx) => {
+      const headingHeight =
+        this.flexRowHeight(vol.role || "Volunteer", vol.date || "", FS.body, "bold", FS.small) +
+        this.lh(FS.body);
+      this.ensureEntryStart(headingHeight, vol.bullets[0], 1);
       this.flexRow(vol.role || "Volunteer", vol.date || "", FS.body, "bold", FS.small);
       const orgH = this.lh(FS.body);
       this.ensureSpace(orgH);
@@ -535,7 +596,7 @@ class PDFResumeRenderer {
     if (valid.length === 0) return;
     this.sectionHeading("Awards & Publications");
     valid.forEach((award) => {
-      // Title bold (hyperlinked if URL provided), issuer normal with em-dash
+      // Title bold (hyperlinked if URL provided), issuer normal with a clean separator
       const nameW = this.textWidth(award.title, FS.body, "bold");
       const lineH = this.lh(FS.body);
 
@@ -546,7 +607,7 @@ class PDFResumeRenderer {
       this.linkedText(award.title, award.url, PAGE.marginLeft, drawY, FS.body, "bold");
 
       if (award.issuer) {
-        const separator = " \u2014 ";
+        const separator = " - ";
         const sepW = this.textWidth(separator, FS.body);
         this.text(separator, PAGE.marginLeft + nameW, drawY, FS.body);
         this.text(award.issuer, PAGE.marginLeft + nameW + sepW, drawY, FS.body);
@@ -566,6 +627,8 @@ class PDFResumeRenderer {
       this.sectionHeading(cs.name);
       const entries = cs.entries.filter((e) => e.title);
       entries.forEach((entry, idx) => {
+        const headingHeight = this.flexRowHeight(entry.title, entry.date || "", FS.body, "bold", FS.small) + (entry.subtitle ? this.lh(FS.body) : 0);
+        this.ensureEntryStart(headingHeight, entry.bullets[0], 1);
         // If entry has a URL, render title as hyperlink; otherwise use flexRow
         if (entry.url) {
           const lineH = this.lh(FS.body);
@@ -717,6 +780,7 @@ class PDFResumeRenderer {
 // ═══════════════════════════════════════════════════════════════════════
 
 export function generatePlainText(data: ResumeJSON): string {
+  data = cleanResumeForOutput(normalizeResumeForOutput(data));
   const LINE_WIDTH = 80;
   const SEPARATOR = "=".repeat(LINE_WIDTH);
   const lines: string[] = [];
@@ -765,7 +829,7 @@ export function generatePlainText(data: ResumeJSON): string {
       lines.push(flexLine(exp.role || "Role", `${exp.start_date || "Start"} - ${exp.end_date || "Present"}`));
       const parts: string[] = [exp.company_or_client];
       if (exp.location) parts.push(exp.location);
-      lines.push(parts.join(" — "));
+      lines.push(parts.join(" - "));
       exp.bullets.forEach((b) => lines.push(`  - ${b}`));
       if (idx < valid.length - 1) lines.push("");
     });
@@ -778,7 +842,7 @@ export function generatePlainText(data: ResumeJSON): string {
     valid.forEach((edu) => {
       const deg = edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree";
       let left = deg;
-      if (edu.institution) left += ` — ${edu.institution}`;
+      if (edu.institution) left += ` - ${edu.institution}`;
       if (edu.gpa) left += ` (GPA: ${edu.gpa})`;
       lines.push(flexLine(left, edu.graduation_date || ""));
       if (edu.location) lines.push(edu.location);
@@ -798,7 +862,7 @@ export function generatePlainText(data: ResumeJSON): string {
     addSectionHeading("Certifications");
     valid.forEach((cert) => {
       let left = cert.name;
-      if (cert.issuer) left += ` — ${cert.issuer}`;
+      if (cert.issuer) left += ` - ${cert.issuer}`;
       lines.push(flexLine(left, cert.date || ""));
     });
   };
@@ -811,7 +875,7 @@ export function generatePlainText(data: ResumeJSON): string {
       const rightParts: string[] = [];
       if (proj.organization) rightParts.push(proj.organization);
       if (proj.date) rightParts.push(proj.date);
-      lines.push(flexLine(proj.title, rightParts.join(" — ")));
+      lines.push(flexLine(proj.title, rightParts.join(" - ")));
       proj.bullets.forEach((b) => lines.push(`  - ${b}`));
       if (idx < valid.length - 1) lines.push("");
     });
@@ -842,7 +906,7 @@ export function generatePlainText(data: ResumeJSON): string {
     addSectionHeading("Awards & Publications");
     valid.forEach((award) => {
       let left = award.title;
-      if (award.issuer) left += ` — ${award.issuer}`;
+      if (award.issuer) left += ` - ${award.issuer}`;
       lines.push(flexLine(left, award.date || ""));
     });
   };
@@ -892,7 +956,7 @@ export function useResumeExport() {
   const exportToPDF = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
-      data = normalizeResumeForOutput(data);
+      data = cleanResumeForOutput(normalizeResumeForOutput(data));
       const renderer = new PDFResumeRenderer();
       const doc = await renderer.render(data);
       const failedSections: string[] = (doc as any).__failedSections || [];
@@ -932,7 +996,7 @@ export function useResumeExport() {
   const exportToWord = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
-      data = normalizeResumeForOutput(data);
+      data = cleanResumeForOutput(normalizeResumeForOutput(data));
       validateResumeForExport(data);
       const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ExternalHyperlink } = await import("docx");
       const { saveAs } = await import("file-saver");
@@ -1034,8 +1098,8 @@ export function useResumeExport() {
         if (valid.length === 0) return [];
         const paragraphs: any[] = [sectionHeading("Professional Experience")];
         valid.forEach((exp) => {
-          paragraphs.push(new Paragraph({ spacing: { before: 120 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: exp.role || "Role", bold: true, size: 20, font: "Calibri" }), new TextRun({ text: `\t${exp.start_date || "Start"} \u2014 ${exp.end_date || "Present"}`, size: 19, font: "Calibri" })] }));
-          paragraphs.push(new Paragraph({ tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: exp.company_or_client, italics: true, size: 20, font: "Calibri" }), exp.location ? new TextRun({ text: `\t${exp.location}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+          paragraphs.push(new Paragraph({ spacing: { before: 120 }, keepNext: exp.bullets.length > 0, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: exp.role || "Role", bold: true, size: 20, font: "Calibri" }), new TextRun({ text: `\t${exp.start_date || "Start"} - ${exp.end_date || "Present"}`, size: 19, font: "Calibri" })] }));
+          paragraphs.push(new Paragraph({ keepNext: exp.bullets.length > 0, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: exp.company_or_client, italics: true, size: 20, font: "Calibri" }), exp.location ? new TextRun({ text: `\t${exp.location}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
           exp.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
         });
         return paragraphs;
@@ -1047,7 +1111,7 @@ export function useResumeExport() {
         const paragraphs: any[] = [sectionHeading("Education")];
         valid.forEach((edu) => {
           const degreeText = edu.degree && edu.field ? `${edu.degree} in ${edu.field}` : edu.degree || edu.field || "Degree";
-          paragraphs.push(new Paragraph({ spacing: { before: 80 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: degreeText, bold: true, size: 20, font: "Calibri" }), edu.institution ? new TextRun({ text: ` \u2014 ${edu.institution}`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), edu.gpa ? new TextRun({ text: ` (GPA: ${edu.gpa})`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), new TextRun({ text: `\t${edu.graduation_date || ""}`, size: 19, font: "Calibri" })] }));
+          paragraphs.push(new Paragraph({ spacing: { before: 80 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: degreeText, bold: true, size: 20, font: "Calibri" }), edu.institution ? new TextRun({ text: ` - ${edu.institution}`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), edu.gpa ? new TextRun({ text: ` (GPA: ${edu.gpa})`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), new TextRun({ text: `\t${edu.graduation_date || ""}`, size: 19, font: "Calibri" })] }));
           if (edu.location) { paragraphs.push(new Paragraph({ children: [new TextRun({ text: edu.location, italics: true, size: 19, font: "Calibri" })] })); }
         });
         return paragraphs;
@@ -1076,7 +1140,7 @@ export function useResumeExport() {
         const paragraphs: any[] = [sectionHeading("Certifications")];
         valid.forEach((cert) => {
           const certNameChild = cert.url ? new ExternalHyperlink({ link: cert.url.startsWith("http") ? cert.url : `https://${cert.url}`, children: [new TextRun({ text: cert.name, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: cert.name, bold: true, size: 20, font: "Calibri" });
-          paragraphs.push(new Paragraph({ spacing: { before: 40 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [certNameChild, cert.issuer ? new TextRun({ text: ` \u2014 ${cert.issuer}`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), new TextRun({ text: `\t${cert.date || ""}`, size: 19, font: "Calibri" })] }));
+          paragraphs.push(new Paragraph({ spacing: { before: 40 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [certNameChild, cert.issuer ? new TextRun({ text: ` - ${cert.issuer}`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), new TextRun({ text: `\t${cert.date || ""}`, size: 19, font: "Calibri" })] }));
         });
         return paragraphs;
       };
@@ -1087,7 +1151,7 @@ export function useResumeExport() {
         const paragraphs: any[] = [sectionHeading("Projects")];
         valid.forEach((project) => {
           const projTitleChild = project.url ? new ExternalHyperlink({ link: project.url.startsWith("http") ? project.url : `https://${project.url}`, children: [new TextRun({ text: project.title, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: project.title, bold: true, size: 20, font: "Calibri" });
-          paragraphs.push(new Paragraph({ spacing: { before: 100 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [projTitleChild, (project.date || project.organization) ? new TextRun({ text: `\t${project.organization ? `${project.organization} \u2014 ` : ""}${project.date || ""}`, italics: true, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+          paragraphs.push(new Paragraph({ spacing: { before: 100 }, keepNext: project.bullets.length > 0, tabStops: [{ type: "right" as any, position: 9360 }], children: [projTitleChild, (project.date || project.organization) ? new TextRun({ text: `\t${project.organization ? `${project.organization} - ` : ""}${project.date || ""}`, italics: true, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
           project.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
         });
         return paragraphs;
@@ -1105,8 +1169,8 @@ export function useResumeExport() {
         if (valid.length === 0) return [];
         const paragraphs: any[] = [sectionHeading("Volunteer Experience")];
         valid.forEach((vol) => {
-          paragraphs.push(new Paragraph({ spacing: { before: 100 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: vol.role || "Volunteer", bold: true, size: 20, font: "Calibri" }), vol.date ? new TextRun({ text: `\t${vol.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
-          paragraphs.push(new Paragraph({ children: [new TextRun({ text: vol.organization, italics: true, size: 20, font: "Calibri" })] }));
+          paragraphs.push(new Paragraph({ spacing: { before: 100 }, keepNext: true, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: vol.role || "Volunteer", bold: true, size: 20, font: "Calibri" }), vol.date ? new TextRun({ text: `\t${vol.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+          paragraphs.push(new Paragraph({ keepNext: vol.bullets.length > 0, children: [new TextRun({ text: vol.organization, italics: true, size: 20, font: "Calibri" })] }));
           vol.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
         });
         return paragraphs;
@@ -1118,7 +1182,7 @@ export function useResumeExport() {
         const paragraphs: any[] = [sectionHeading("Awards & Publications")];
         valid.forEach((award) => {
           const awardTitleChild = award.url ? new ExternalHyperlink({ link: award.url.startsWith("http") ? award.url : `https://${award.url}`, children: [new TextRun({ text: award.title, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: award.title, bold: true, size: 20, font: "Calibri" });
-          paragraphs.push(new Paragraph({ spacing: { before: 40 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [awardTitleChild, award.issuer ? new TextRun({ text: ` \u2014 ${award.issuer}`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), award.date ? new TextRun({ text: `\t${award.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+          paragraphs.push(new Paragraph({ spacing: { before: 40 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [awardTitleChild, award.issuer ? new TextRun({ text: ` - ${award.issuer}`, size: 20, font: "Calibri" }) : new TextRun({ text: "" }), award.date ? new TextRun({ text: `\t${award.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
         });
         return paragraphs;
       };
@@ -1128,8 +1192,8 @@ export function useResumeExport() {
         const paragraphs: any[] = [sectionHeading(cs.name)];
         cs.entries.filter((e: any) => e.title).forEach((entry: any) => {
           const entryTitleChild = entry.url ? new ExternalHyperlink({ link: entry.url.startsWith("http") ? entry.url : `https://${entry.url}`, children: [new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri" });
-          paragraphs.push(new Paragraph({ spacing: { before: 100 }, tabStops: [{ type: "right" as any, position: 9360 }], children: [entryTitleChild, entry.date ? new TextRun({ text: `\t${entry.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
-          if (entry.subtitle) { paragraphs.push(new Paragraph({ children: [new TextRun({ text: entry.subtitle, italics: true, size: 20, font: "Calibri" })] })); }
+          paragraphs.push(new Paragraph({ spacing: { before: 100 }, keepNext: entry.bullets.length > 0 || Boolean(entry.subtitle), tabStops: [{ type: "right" as any, position: 9360 }], children: [entryTitleChild, entry.date ? new TextRun({ text: `\t${entry.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
+          if (entry.subtitle) { paragraphs.push(new Paragraph({ keepNext: entry.bullets.length > 0, children: [new TextRun({ text: entry.subtitle, italics: true, size: 20, font: "Calibri" })] })); }
           entry.bullets.forEach((bullet: string) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
         });
         return paragraphs;
@@ -1203,7 +1267,7 @@ export function useResumeExport() {
   const exportToText = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
-      data = normalizeResumeForOutput(data);
+      data = cleanResumeForOutput(normalizeResumeForOutput(data));
       const textContent = generatePlainText(data);
       const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -1227,7 +1291,7 @@ export function useResumeExport() {
   const exportToJSON = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
-      data = normalizeResumeForOutput(data);
+      data = cleanResumeForOutput(normalizeResumeForOutput(data));
       validateResumeForExport(data);
       const content = JSON.stringify(data, null, 2);
       const roundTrip = JSON.parse(content) as ResumeJSON;
