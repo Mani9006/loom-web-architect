@@ -379,7 +379,7 @@ export const SKILL_CATEGORY_ALIASES: Record<string, string> = {
 
   // Data Engineering & ETL variations
   data_engineering_etl: "data_engineering_etl",
-  data_engineering: "data_engineering_etl",
+  data_engineering: "data_engineering",
   etl: "data_engineering_etl",
   etl_tools: "data_engineering_etl",
   data_pipeline: "data_engineering_etl",
@@ -402,7 +402,7 @@ export const SKILL_CATEGORY_ALIASES: Record<string, string> = {
   cloud: "cloud_mlops",
   cloud_platforms: "cloud_mlops",
   cloud_and_devops: "cloud_mlops",
-  cloud_devops: "cloud_mlops",
+  cloud_devops: "cloud_devops",
   cloud_services: "cloud_mlops",
   mlops: "cloud_mlops",
   ml_ops: "cloud_mlops",

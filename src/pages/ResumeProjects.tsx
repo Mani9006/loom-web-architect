@@ -64,6 +64,7 @@ interface ResumeRow {
   template: string;
   updated_at: string;
   created_at: string;
+  source_document_id?: string | null;
 }
 
 function mapRowToResumeJSON(r: ResumeRow): ResumeJSON {
@@ -126,9 +127,12 @@ export default function ResumeProjects() {
       );
       const masters = (data as any as ResumeRow[]).filter((resume) => {
         const role = resume.personal_info?._v2_extras?.document_role;
-        return role !== "application_snapshot"
-          && !applicationResumeIds.has(resume.id)
-          && !/—\s*tailored$/i.test(resume.title || "");
+        if (role === "application_snapshot" || role === "tailored_draft" || applicationResumeIds.has(resume.id)) return false;
+        // Imported documents are durable masters even when a historical title
+        // contains the word "tailored". Generated copies do not carry the source
+        // document link and stay with their application instead.
+        if (resume.source_document_id) return true;
+        return !/—\s*tailored(?:\s*—|$)|application resume$/i.test(resume.title || "");
       });
       setResumes(masters);
     }

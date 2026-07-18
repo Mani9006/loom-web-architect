@@ -139,7 +139,7 @@ function normalizeSkills(value: unknown): Record<string, string[]> {
   for (const [sourceCategory, items] of entries) {
     for (const rawItem of items) {
       for (const part of String(rawItem ?? "").split(/[,;|\n\r•·]+/)) {
-        const item = part.replace(/^[\s\-–—:]+|[\s\-–—:.]+$/g, "").replace(/\s+/g, " ").trim();
+        const item = canonicalSkillDisplay(part.replace(/^[\s\-–—:]+|[\s\-–—:.]+$/g, "").replace(/\s+/g, " ").trim());
         const identity = item.toLowerCase().replace(/[^a-z0-9+#./]+/g, "");
         if (!isConcreteSkill(item) || !identity || seen.has(identity)) continue;
         result[classifySkill(item, sourceCategory)].push(item);
@@ -153,20 +153,34 @@ function normalizeSkills(value: unknown): Record<string, string[]> {
 function isConcreteSkill(value: string): boolean {
   const words = value.split(/\s+/).filter(Boolean);
   if (!value || value.length > 64 || words.length > 7) return false;
-  if (/^(?:skills|technical skills|core skills|tools|technologies|communication|leadership|teamwork|problem solving|deployment readiness reviews)$/i.test(value)) return false;
+  if (/^(?:skills|technical skills|core skills|tools|technologies|communication|leadership|teamwork|problem solving|deployment readiness reviews|cloud and infrastructure|data and streaming)$/i.test(value)) return false;
   if (words.length > 3 && /\b(?:built|developed|designed|implemented|managed|led|delivered|collaborated|reviewed|ensured|improved|created)\b/i.test(value)) return false;
   return true;
 }
 
+function canonicalSkillDisplay(value: string): string {
+  const aliases: Record<string, string> = {
+    "rag and retrieval": "RAG",
+    "agentic ai and tooling": "Agentic AI",
+    "mlops and observability": "MLOps",
+    "amazon web services": "AWS",
+    "google cloud platform": "GCP",
+    "ci cd": "CI/CD",
+    "cicd": "CI/CD",
+    "postgres": "PostgreSQL",
+  };
+  return aliases[value.toLowerCase().replace(/[._-]+/g, " ").replace(/\s+/g, " ").trim()] ?? value;
+}
+
 function classifySkill(skill: string, sourceCategory: string): string {
   if (/^(?:python|r|java|javascript|typescript|c|c\+\+|c#|go|golang|rust|scala|kotlin|swift|ruby|php|matlab|bash|shell|powershell|vba|sql|html|css)$/i.test(skill)) return "programming_languages";
-  if (/\b(?:ai|machine learning|deep learning|generative ai|llm|rag|nlp|computer vision|pytorch|tensorflow|keras|scikit|xgboost|transformers?|bert|spacy|hugging face|langchain|langgraph|llamaindex|openai|anthropic|gemini|embeddings?|vector search|prompt engineering|fine[- ]?tuning|guardrails?|feature engineering|mlflow)\b/i.test(skill)) return "ai_ml";
+  if (/\b(?:ai|machine learning|deep learning|generative ai|agentic ai|llm|rag|nlp|computer vision|pytorch|tensorflow|keras|scikit|xgboost|transformers?|bert|spacy|hugging face|langchain|langgraph|llamaindex|openai|anthropic|gemini|embeddings?|vector search|prompt engineering|fine[- ]?tuning|guardrails?|feature engineering|mlflow|structured outputs?|function calling|tool calling|hybrid retrieval|reranking|chunking|metadata filtering|retrieval evaluation|hallucination checks?|safety validation|classification|anomaly detection)\b/i.test(skill)) return "ai_ml";
   if (/\b(?:etl|elt|data engineering|data pipeline|data lake|lakehouse|data warehouse|airflow|dagster|prefect|spark|hadoop|kafka|flink|dbt|databricks|snowflake|redshift|bigquery|workflow orchestration)\b/i.test(skill)) return "data_engineering";
-  if (/\b(?:aws|azure|gcp|google cloud|docker|kubernetes|helm|terraform|ansible|jenkins|github actions|gitlab ci|ci\/cd|devops|mlops|serverless|containerization)\b/i.test(skill)) return "cloud_devops";
+  if (/\b(?:aws|azure|gcp|google cloud|docker|kubernetes|helm|terraform|ansible|jenkins|github actions|gitlab ci|ci\/cd|devops|mlops|serverless|s3|containerization)\b/i.test(skill)) return "cloud_devops";
   if (/\b(?:postgres|mysql|oracle|sql server|sqlite|mongodb|dynamodb|cassandra|redis|neo4j|elasticsearch|opensearch|pinecone|weaviate|milvus|chroma|qdrant|database|nosql)\b/i.test(skill)) return "databases";
   if (/\b(?:react|angular|vue|next\.?js|node\.?js|express|spring|fastapi|flask|django|\.net|graphql|grpc|rest(?:ful)? apis?|microservices|state management|redux|streamlit|android|ios|flutter)\b/i.test(skill)) return "frameworks_apis";
   if (/\b(?:power bi|tableau|looker|qlik|excel|pandas|numpy|scipy|matplotlib|seaborn|plotly|statistics|a\/b testing|analytics|business intelligence|data visualization|forecasting)\b/i.test(skill)) return "analytics_bi";
-  if (/\b(?:testing|test coverage|unit tests?|integration tests?|pytest|junit|jest|cypress|selenium|playwright|postman|observability|monitoring|prometheus|grafana|datadog|splunk)\b/i.test(skill)) return "testing_observability";
+  if (/\b(?:testing|test coverage|unit tests?|integration tests?|pytest|junit|jest|cypress|selenium|playwright|postman|observability|monitoring|logging|prometheus|grafana|datadog|splunk|golden datasets?|rubric-based review|latency tracking|cost monitoring)\b/i.test(skill)) return "testing_observability";
   if (/\b(?:agile|scrum|kanban|sdlc|jira|confluence|acceptance criteria|requirements analysis|project management|stakeholder management)\b/i.test(skill)) return "delivery_methods";
   const source = sourceCategory.toLowerCase().replace(/[^a-z0-9]+/g, "_");
   if (/ai|machine|deep_learning|data_science|gen|nlp|statistical/.test(source)) return "ai_ml";

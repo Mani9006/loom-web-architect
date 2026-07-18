@@ -142,6 +142,9 @@ const DISPLAY_ALIASES: Record<string, string> = {
   pytest: "pytest",
   powerbi: "Power BI",
   "power bi": "Power BI",
+  "rag and retrieval": "RAG",
+  "agentic ai and tooling": "Agentic AI",
+  "mlops and observability": "MLOps",
 };
 
 const NON_SKILLS = new Set([
@@ -160,16 +163,18 @@ const NON_SKILLS = new Set([
   "problem solving",
   "leadership",
   "teamwork",
+  "cloud and infrastructure",
+  "data and streaming",
 ]);
 
 const PROGRAMMING = /^(?:python|r|java|javascript|typescript|c|c\+\+|c#|go|golang|rust|scala|kotlin|swift|ruby|php|matlab|bash|shell|powershell|vba|sql|html|css)$/i;
-const AI_ML = /\b(?:ai|artificial intelligence|machine learning|deep learning|generative ai|llm|large language model|rag|retrieval augmented|nlp|natural language processing|computer vision|pytorch|tensorflow|keras|scikit|sklearn|xgboost|lightgbm|transformers?|bert|spacy|hugging face|langchain|langgraph|llamaindex|openai|anthropic|gemini|bedrock|sagemaker|vertex ai|embeddings?|vector search|prompt engineering|fine[- ]?tuning|reinforcement learning|(?:model )?guardrails?|feature engineering|mlflow)\b/i;
+const AI_ML = /\b(?:ai|artificial intelligence|machine learning|deep learning|generative ai|agentic ai|llm|large language model|rag|retrieval augmented|nlp|natural language processing|computer vision|pytorch|tensorflow|keras|scikit|sklearn|xgboost|lightgbm|transformers?|bert|spacy|hugging face|langchain|langgraph|llamaindex|openai|anthropic|gemini|bedrock|sagemaker|vertex ai|embeddings?|vector search|prompt engineering|fine[- ]?tuning|reinforcement learning|(?:model )?guardrails?|feature engineering|mlflow|structured outputs?|function calling|tool calling|hybrid retrieval|reranking|chunking|metadata filtering|retrieval evaluation|hallucination checks?|safety validation|classification|anomaly detection)\b/i;
 const DATA_ENGINEERING = /\b(?:etl|elt|data engineering|data pipeline|data lake|lakehouse|data warehouse|airflow|dagster|prefect|spark|hadoop|kafka|flink|beam|dbt|databricks|snowflake|redshift|bigquery|synapse|informatica|talend|workflow orchestration|stream processing)\b/i;
-const CLOUD_DEVOPS = /\b(?:aws|amazon web services|azure|gcp|google cloud|cloud computing|docker|kubernetes|helm|terraform|ansible|jenkins|github actions|gitlab ci|circleci|ci\/cd|devops|mlops|serverless|lambda|cloudformation|ecs|eks|aks|gke|openshift|containerization)\b/i;
+const CLOUD_DEVOPS = /\b(?:aws|amazon web services|azure|gcp|google cloud|cloud computing|docker|kubernetes|helm|terraform|ansible|jenkins|github actions|gitlab ci|circleci|ci\/cd|devops|mlops|serverless|lambda|s3|cloudformation|ecs|eks|aks|gke|openshift|containerization)\b/i;
 const DATABASES = /\b(?:postgres|postgresql|mysql|mariadb|oracle|sql server|sqlite|mongodb|dynamodb|cassandra|redis|neo4j|elasticsearch|opensearch|solr|pinecone|weaviate|milvus|chroma|qdrant|database|nosql|vector database)\b/i;
 const FRAMEWORKS = /\b(?:react|angular|vue|svelte|next\.?js|node\.?js|express|nestjs|spring|spring boot|fastapi|flask|django|\.net|asp\.net|rails|laravel|graphql|grpc|rest(?:ful)? apis?|microservices|api design|state management|redux|kafka streams|streamlit|gradio|android|ios|flutter|react native)\b/i;
 const ANALYTICS = /\b(?:power bi|tableau|looker|qlik|excel|pandas|numpy|scipy|matplotlib|seaborn|plotly|statistics|statistical analysis|a\/b testing|experimentation|analytics|business intelligence|data visualization|forecasting|time series)\b/i;
-const TESTING = /\b(?:testing|test coverage|unit tests?|integration tests?|end[- ]to[- ]end|pytest|junit|jest|mocha|cypress|selenium|playwright|postman|observability|monitoring|logging|prometheus|grafana|datadog|splunk|new relic|open telemetry|opentelemetry)\b/i;
+const TESTING = /\b(?:testing|test coverage|unit tests?|integration tests?|end[- ]to[- ]end|pytest|junit|jest|mocha|cypress|selenium|playwright|postman|observability|monitoring|logging|prometheus|grafana|datadog|splunk|new relic|open telemetry|opentelemetry|golden datasets?|rubric-based review|latency tracking|cost monitoring)\b/i;
 const DELIVERY = /\b(?:agile|scrum|kanban|sdlc|jira|confluence|acceptance criteria|requirements analysis|product management|project management|stakeholder management)\b/i;
 const TOOLS = /\b(?:git|github|gitlab|bitbucket|linux|unix|windows|visual studio|vs code|intellij|eclipse|maven|gradle|npm|yarn|pnpm|jupyter|notebook|huggingface|sap|salesforce)\b/i;
 
