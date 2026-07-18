@@ -39,6 +39,8 @@ const AIToolbox = lazy(() => import("./pages/AIToolbox"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Profile = lazy(() => import("./pages/Profile"));
+const InboxPage = lazy(() => import("./pages/InboxPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
@@ -114,6 +116,7 @@ const App = () => {
                     <Route path="/resume-builder/:resumeId" element={<ResumeBuilderV2 />} />
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
                     <Route path="/job-tracker" element={<JobTracker />} />
+                    <Route path="/inbox" element={<InboxPage />} />
                     <Route path="/matches" element={<MatchesPage />} />
                     <Route path="/applications/:id" element={<ApplicationReviewPage />} />
                     <Route path="/career-ops/preferences" element={<CareerOpsPreferencesPage />} />
@@ -147,6 +150,7 @@ const App = () => {
                       }
                     />
                     <Route path="/profile" element={<Profile />} />
+                    <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/documents" element={<Documents />} />
                     <Route path="/ai-toolbox" element={<AIToolbox />} />
                     <Route path="/analytics" element={<Analytics />} />

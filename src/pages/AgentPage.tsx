@@ -10,6 +10,7 @@ import {
   Clock3,
   FileCheck2,
   FileText,
+  Layers3,
   Lock,
   Radar,
   RefreshCcw,
@@ -148,6 +149,8 @@ export default function AgentPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [batchPreparing, setBatchPreparing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
 
   const loadWorkspace = useCallback(async (showSpinner = false) => {
     if (!user) return;
@@ -293,6 +296,61 @@ export default function AgentPage() {
     }
     setControls(normalized);
     toast.success(normalized.agent_enabled ? "Agent controls saved" : "Agent paused");
+  };
+
+  const prepareTopMatches = async () => {
+    if (!hasAutoApply) {
+      navigate("/pricing");
+      return;
+    }
+    const selected = matches.filter((match) => fitScore(match) >= 50).slice(0, 5);
+    if (!selected.length) {
+      toast.error("No matches above 50% are ready to prepare yet.");
+      return;
+    }
+
+    setBatchPreparing(true);
+    setBatchProgress({ current: 0, total: selected.length });
+    let prepared = 0;
+    let queued = 0;
+    let needsAttention = 0;
+
+    for (let index = 0; index < selected.length; index += 1) {
+      const match = selected[index];
+      setBatchProgress({ current: index + 1, total: selected.length });
+      try {
+        const { data: tailorData, error: tailorError } = await supabase.functions.invoke("career-ops-tailor", {
+          body: { evaluation_id: match.id, allow_outside_preferences: true },
+        });
+        if (tailorError || !tailorData?.draft?.id) throw tailorError ?? new Error("Application packet was not created");
+        prepared += 1;
+
+        if (tailorData.draft.tailored_resume_id && match.scanned_job?.id) {
+          const { error: atsError } = await supabase.functions.invoke("career-ops-ats", {
+            body: { resume_id: tailorData.draft.tailored_resume_id, scanned_job_id: match.scanned_job.id },
+          });
+          if (atsError) void captureIncident(atsError, { source: "manual", operation: "agent_batch_ats" }, "warning");
+        }
+
+        const shouldQueue = controls.review_mode === "eligible_only" && fitScore(match) >= controls.auto_apply_min_fit_score;
+        if (shouldQueue) {
+          const { error: submitError } = await supabase.functions.invoke("career-ops-submit", {
+            body: { draft_application_id: tailorData.draft.id },
+          });
+          if (submitError) needsAttention += 1;
+          else queued += 1;
+        }
+      } catch (error) {
+        needsAttention += 1;
+        void captureIncident(error, { source: "manual", operation: "agent_batch_prepare" });
+      }
+    }
+
+    await loadWorkspace();
+    setBatchPreparing(false);
+    setBatchProgress(null);
+    const reviewReady = Math.max(0, prepared - queued);
+    toast.success(`${prepared} application packet${prepared === 1 ? "" : "s"} prepared · ${queued} queued · ${reviewReady + needsAttention} ready for review`);
   };
 
   const planName = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
@@ -473,13 +531,19 @@ export default function AgentPage() {
                 </div>
                 <p className="mt-1 text-xs text-rp-ink-2">Autopilot refreshes this feed hourly, even when you are signed out.</p>
               </div>
-              <button
-                onClick={() => void loadWorkspace(true)}
-                className="inline-flex items-center gap-2 text-xs font-medium text-rp-ink-2 hover:text-rp-ink"
-                disabled={refreshing}
-              >
-                <RefreshCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> Refresh
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" onClick={prepareTopMatches} disabled={batchPreparing || matches.length === 0}>
+                  <Layers3 className="mr-2 h-3.5 w-3.5" />
+                  {batchProgress ? `Preparing ${batchProgress.current}/${batchProgress.total}` : controls.review_mode === "eligible_only" ? "Prepare & apply top 5" : "Prepare top 5"}
+                </Button>
+                <button
+                  onClick={() => void loadWorkspace(true)}
+                  className="inline-flex items-center gap-2 px-2 text-xs font-medium text-rp-ink-2 hover:text-rp-ink"
+                  disabled={refreshing || batchPreparing}
+                >
+                  <RefreshCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> Refresh
+                </button>
+              </div>
             </div>
             {matches.length === 0 ? (
               <div className="p-8 text-center">

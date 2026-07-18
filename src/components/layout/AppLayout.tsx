@@ -17,7 +17,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  Home, FileText, Search, Bot, Columns3, Sparkles, Map,
+  Home, FileText, Search, Bot, Columns3, Sparkles, Map, Inbox,
   ShieldCheck, Crown, LogOut, Settings,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
   HelpCircle, Sun, Moon, BookOpen, MessageSquare, CreditCard,
@@ -49,8 +49,10 @@ const mainNav: NavItem[] = [
   { label: "Job Search", icon: Search, path: "/job-search" },
   { label: "Matches", icon: Sparkles, path: "/matches" },
   { label: "Applications", icon: Columns3, path: "/job-tracker" },
+  { label: "Inbox", icon: Inbox, path: "/inbox" },
   { label: "Resume", icon: FileText, path: "/resume-builder" },
   { label: "Agent", icon: Bot, path: "/agent" },
+  { label: "Profile", icon: UserIcon, path: "/profile" },
 ];
 
 const ownerOnlyTools: NavItem[] = [
@@ -393,8 +395,8 @@ export default function AppLayout() {
                 <DropdownMenuItem onClick={() => navigate("/home")} className="cursor-pointer rounded-md gap-2">
                   <Home className="w-4 h-4" /> Home
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate("/career-ops/preferences")} className="cursor-pointer rounded-md gap-2">
-                  <Settings className="w-4 h-4" /> Preferences
+                <DropdownMenuItem onClick={() => navigate("/settings")} className="cursor-pointer rounded-md gap-2">
+                  <Settings className="w-4 h-4" /> Settings
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate("/pricing")} className="cursor-pointer rounded-md gap-2">
                   <CreditCard className="w-4 h-4" /> Plan & billing

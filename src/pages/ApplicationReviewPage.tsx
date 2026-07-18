@@ -1,32 +1,37 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { captureIncident } from "@/lib/incidents";
-import { Progress } from "@/components/ui/progress";
+import { Activity, AlertTriangle, Check, Copy as CopyIcon, ExternalLink, FileCheck2, FileText, Loader2, MessageSquareText, RefreshCw, Send } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { captureIncident } from "@/lib/incidents";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+type DraftStatus = "draft" | "ready" | "queued" | "submitted" | "skipped" | "failed";
+type DetailTab = "form" | "resume" | "cover" | "activity";
+
+interface Answer { question: string; answer: string }
 interface Draft {
   id: string;
   evaluation_id: string;
   tailored_resume_id: string | null;
   tailored_cv_md: string | null;
-  answers: Array<{ question: string; answer: string }>;
-  status: "draft" | "ready" | "queued" | "submitted" | "skipped" | "failed";
+  answers: Answer[];
+  status: DraftStatus;
+  applypass_task_id: string | null;
+  error_message: string | null;
   submitted_at: string | null;
+  created_at: string;
+  updated_at: string;
   evaluation: {
     score: number;
     fit_score: number | null;
     tier: string;
     summary: string | null;
-    scanned_job: {
-      id: string;
-      title: string;
-      apply_url: string;
-      company: { name: string };
-    };
+    scanned_job: { id: string; title: string; apply_url: string; company: { name: string } };
   };
 }
 
@@ -42,50 +47,42 @@ interface AtsScore {
   missing_keywords: string[];
 }
 
-interface LooseQueryResult {
-  data: unknown;
-  error: { message: string } | null;
+interface TaskState {
+  id: string;
+  status: string;
+  error_message: string | null;
+  run_log: unknown;
+  attempt_count: number;
+  max_attempts: number;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
-interface LooseQuery {
-  select(columns: string): LooseQuery;
-  eq(column: string, value: string): LooseQuery;
-  order(column: string, options: { ascending: boolean }): LooseQuery;
-  limit(count: number): LooseQuery;
-  maybeSingle(): Promise<LooseQueryResult>;
-}
-
-const migratedTables = supabase as unknown as { from(table: string): LooseQuery };
-
-const ATS_DIMENSIONS: Array<{ key: keyof AtsScore; label: string }> = [
-  { key: "dim_format", label: "Format" },
-  { key: "dim_keywords", label: "Keywords" },
-  { key: "dim_experience", label: "Experience" },
-  { key: "dim_skills", label: "Skills" },
-  { key: "dim_education", label: "Education" },
-  { key: "dim_impact", label: "Impact" },
+const dimensions: Array<{ key: keyof AtsScore; label: string }> = [
+  { key: "dim_format", label: "Format" }, { key: "dim_keywords", label: "Keywords" },
+  { key: "dim_experience", label: "Experience" }, { key: "dim_skills", label: "Skills" },
+  { key: "dim_education", label: "Education" }, { key: "dim_impact", label: "Impact" },
 ];
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.06, duration: 0.55, ease: [0.16, 1, 0.3, 1] as const } }),
-};
+function normalizeAnswers(value: unknown): Answer[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    return typeof row.question === "string" && typeof row.answer === "string" ? [{ question: row.question, answer: row.answer }] : [];
+  });
+}
 
-function Copy({ value }: { value: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button
-      onClick={async () => {
-        await navigator.clipboard.writeText(value);
-        setDone(true);
-        toast.success("Copied");
-        setTimeout(() => setDone(false), 1500);
-      }}
-      className="h-7 px-3 rounded-md text-[11.5px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-    >
-      {done ? "Copied ✓" : "Copy"}
-    </button>
-  );
+function statusLabel(status: DraftStatus): string {
+  return { draft: "Optimizing", ready: "Ready for review", queued: "Submission in progress", submitted: "Submitted", skipped: "Skipped", failed: "Needs attention" }[status];
+}
+
+function lifecycleIndex(status: DraftStatus): number {
+  if (status === "submitted" || status === "skipped") return 3;
+  if (status === "queued" || status === "failed") return 2;
+  if (status === "ready") return 1;
+  return 0;
 }
 
 export default function ApplicationReviewPage() {
@@ -93,294 +90,142 @@ export default function ApplicationReviewPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [markingSubmitted, setMarkingSubmitted] = useState(false);
-  const [queueingSubmit, setQueueingSubmit] = useState(false);
-  const [refreshingPacket, setRefreshingPacket] = useState(false);
   const [ats, setAts] = useState<AtsScore | null>(null);
+  const [task, setTask] = useState<TaskState | null>(null);
+  const [tab, setTab] = useState<DetailTab>("form");
+  const [loading, setLoading] = useState(true);
+  const [queueing, setQueueing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [marking, setMarking] = useState(false);
+
+  const load = useCallback(async (initial = false) => {
+    if (!user || !id) return;
+    const { data, error } = await supabase.from("draft_applications")
+      .select(`id,evaluation_id,tailored_resume_id,tailored_cv_md,answers,status,applypass_task_id,error_message,submitted_at,created_at,updated_at,
+        evaluation:job_evaluations(score,fit_score,tier,summary,scanned_job:scanned_jobs(id,title,apply_url,company:scan_companies(name)))`)
+      .eq("id", id).eq("user_id", user.id).maybeSingle();
+    if (error || !data) {
+      toast.error("Application record not found");
+      navigate("/job-tracker");
+      return;
+    }
+    const nextDraft = { ...(data as unknown as Draft), answers: normalizeAnswers(data.answers) };
+    setDraft(nextDraft);
+
+    const requests: PromiseLike<unknown>[] = [];
+    if (nextDraft.tailored_resume_id) {
+      requests.push((supabase as any).from("ats_scores")
+        .select("overall,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords")
+        .eq("user_id", user.id).eq("resume_id", nextDraft.tailored_resume_id).eq("scanned_job_id", nextDraft.evaluation.scanned_job.id)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle()
+        .then(({ data: score }: { data: AtsScore | null }) => setAts(score)));
+    }
+    if (nextDraft.applypass_task_id) {
+      requests.push(supabase.from("applypass_tasks")
+        .select("id,status,error_message,run_log,attempt_count,max_attempts,created_at,started_at,completed_at")
+        .eq("id", nextDraft.applypass_task_id).eq("user_id", user.id).maybeSingle()
+        .then(({ data: taskData }) => setTask(taskData as TaskState | null)));
+    } else setTask(null);
+    await Promise.allSettled(requests);
+    if (initial) setLoading(false);
+  }, [id, navigate, user]);
 
   useEffect(() => {
+    void load(true);
     if (!user || !id) return;
-    (async () => {
-      const { data, error } = await supabase
-        .from("draft_applications")
-        .select(`id, evaluation_id, tailored_resume_id, tailored_cv_md, answers, status, submitted_at,
-          evaluation:job_evaluations(score, fit_score, tier, summary,
-            scanned_job:scanned_jobs(id, title, apply_url, company:scan_companies(name))
-          )`)
-        .eq("id", id)
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (error || !data) {
-        toast.error("Draft not found");
-        navigate("/job-tracker");
-        return;
-      }
-      setDraft(data as unknown as Draft);
-      if (data.tailored_resume_id) {
-        const atsResult = await migratedTables
-          .from("ats_scores")
-          .select("overall,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords,created_at")
-          .eq("user_id", user.id)
-          .eq("resume_id", data.tailored_resume_id)
-          .eq("scanned_job_id", (data as unknown as Draft).evaluation.scanned_job.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (atsResult.error) {
-          void captureIncident(new Error(atsResult.error.message), { source: "manual", operation: "application_ats_load" }, "warning");
-        } else {
-          setAts((atsResult.data as AtsScore | null) ?? null);
-        }
-      }
-      setLoading(false);
-    })();
-  }, [id, user, navigate]);
+    const channel = supabase.channel(`application-record-${id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "draft_applications", filter: `id=eq.${id}` }, () => void load())
+      .subscribe();
+    const poll = window.setInterval(() => { if (draft?.status === "queued") void load(); }, 10_000);
+    return () => { window.clearInterval(poll); void supabase.removeChannel(channel); };
+  }, [draft?.status, id, load, user]);
 
-  const queueAutoSubmit = async () => {
-    if (!draft) return;
-    setQueueingSubmit(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("career-ops-submit", {
-        body: { draft_application_id: draft.id },
-      });
-      if (error) throw error;
-      setDraft({ ...draft, status: "queued" });
-      toast.success("Queued safely. The worker will submit only after required fields and attachments pass.");
-      void data;
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      void captureIncident(e, { source: "manual", operation: "application_queue" });
-      toast.error(
-        msg.includes("403") ? "Enable auto-apply in Preferences first." :
-        msg.includes("422") ? "Portal not supported for auto-submit — use Open portal." :
-        msg.includes("429") ? "Daily submit cap hit — try tomorrow." :
-        msg.includes("409") ? "Already submitted or in an unsubmittable state." :
-        "This application could not be queued. Review it and use the employer portal, or try again later."
-      );
-    } finally {
-      setQueueingSubmit(false);
-    }
-  };
+  const coverNote = useMemo(() => draft?.answers.find((answer) => /cover (letter|note)/i.test(answer.question)) || null, [draft]);
+  const formAnswers = useMemo(() => draft?.answers.filter((answer) => !/cover (letter|note)/i.test(answer.question)) || [], [draft]);
 
-  const markSubmitted = async () => {
+  async function queueApplication() {
     if (!draft) return;
-    setMarkingSubmitted(true);
-    const { error } = await supabase
-      .from("draft_applications")
-      .update({ status: "submitted", submitted_at: new Date().toISOString() })
-      .eq("id", draft.id);
-    setMarkingSubmitted(false);
+    setQueueing(true);
+    const { error } = await supabase.functions.invoke("career-ops-submit", { body: { draft_application_id: draft.id } });
+    setQueueing(false);
     if (error) {
-      void captureIncident(new Error(error.message), { source: "manual", operation: "application_mark_submitted" });
-      toast.error("Failed to mark submitted");
-    } else {
-      toast.success("Marked as submitted");
-      setDraft({ ...draft, status: "submitted", submitted_at: new Date().toISOString() });
+      void captureIncident(error, { source: "manual", operation: "application_queue" });
+      toast.error("Automatic submission is unavailable for this job or policy. Your packet remains ready and the employer link is still available.");
+      return;
     }
-  };
-
-  const refreshPacket = async () => {
-    if (!draft) return;
-    setRefreshingPacket(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
-        body: { evaluation_id: draft.evaluation_id, allow_outside_preferences: true, force: true },
-      });
-      if (error || !data?.draft?.tailored_resume_id) throw error ?? new Error("resume_missing");
-      const { error: atsError } = await supabase.functions.invoke("career-ops-ats", {
-        body: {
-          resume_id: data.draft.tailored_resume_id,
-          scanned_job_id: draft.evaluation.scanned_job.id,
-        },
-      });
-      if (atsError) throw atsError;
-      toast.success("Tailored résumé, answers, and ATS score refreshed from the current master résumé.");
-      window.location.reload();
-    } catch (error) {
-      void captureIncident(error, { source: "manual", operation: "application_packet_refresh" });
-      toast.error("This application packet could not be refreshed. Try again in a moment.");
-      setRefreshingPacket(false);
-    }
-  };
-
-  if (loading || !draft) {
-    return (
-      <div className="px-6 lg:px-12 py-12 max-w-[1280px] mx-auto">
-        <div className="h-10 w-40 rounded-full bg-foreground/5 animate-pulse mb-8" />
-        <div className="h-72 rounded-2xl bg-foreground/5 animate-pulse" />
-      </div>
-    );
+    toast.success("Submission queued. This page will update as each check completes.");
+    await load();
+    setTab("activity");
   }
 
+  async function refreshPacket() {
+    if (!draft) return;
+    setRefreshing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("career-ops-tailor", { body: { evaluation_id: draft.evaluation_id, allow_outside_preferences: true, force: true } });
+      if (error || !data?.draft?.tailored_resume_id) throw error ?? new Error("resume_missing");
+      const { error: atsError } = await supabase.functions.invoke("career-ops-ats", { body: { resume_id: data.draft.tailored_resume_id, scanned_job_id: draft.evaluation.scanned_job.id } });
+      if (atsError) throw atsError;
+      toast.success("Résumé, cover note, answers, and ATS preview refreshed from your verified profile.");
+      await load();
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: "application_packet_refresh" });
+      toast.error("This packet could not be refreshed right now. Your existing version is unchanged.");
+    } finally { setRefreshing(false); }
+  }
+
+  async function markSubmitted() {
+    if (!draft) return;
+    setMarking(true);
+    const submittedAt = new Date().toISOString();
+    const { error } = await supabase.from("draft_applications").update({ status: "submitted", submitted_at: submittedAt }).eq("id", draft.id).eq("user_id", user!.id);
+    setMarking(false);
+    if (error) toast.error("The status could not be saved.");
+    else { toast.success("Application marked submitted"); await load(); }
+  }
+
+  if (loading || !draft) return <div className="flex min-h-80 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>;
   const job = draft.evaluation.scanned_job;
+  const fit = Math.round(draft.evaluation.fit_score ?? draft.evaluation.score * 20);
+  const activePhase = lifecycleIndex(draft.status);
+  const phases = ["Optimize", "Review", "Submit", "Done"];
+  const logs = Array.isArray(task?.run_log) ? task.run_log as Array<Record<string, unknown>> : [];
 
   return (
-    <div className="px-6 lg:px-12 py-10 lg:py-12 max-w-[1280px] mx-auto space-y-10">
-      <motion.header initial="hidden" animate="visible" variants={fadeUp} custom={0}>
-        <button
-          onClick={() => navigate("/job-tracker")}
-          className="text-[12px] text-muted-foreground hover:text-foreground transition-colors mb-4"
-        >
-          ← Applications
-        </button>
-        <div className="flex items-end justify-between flex-wrap gap-4">
-          <div>
-            <p className="text-[12px] font-medium text-muted-foreground mb-1.5">
-              Application draft · {job.company.name}
-            </p>
-            <h1 className="text-[28px] sm:text-[32px] font-bold text-foreground tracking-tight leading-tight max-w-[28ch]">
-              {job.title}
-            </h1>
-            <p className="mt-2 text-[14px] text-muted-foreground max-w-[64ch] leading-relaxed">
-              {draft.evaluation.summary}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="text-center" aria-label={`${Math.round(draft.evaluation.fit_score ?? draft.evaluation.score * 20)} percent career fit`}>
-              <span className={cn(
-                "inline-flex items-center justify-center w-12 h-12 rounded-full text-[13px] font-bold tabular-nums",
-                draft.evaluation.tier === "A" ? "bg-foreground/10 text-foreground" : "bg-muted text-muted-foreground",
-              )}>
-                {Math.round(draft.evaluation.fit_score ?? draft.evaluation.score * 20)}%
-              </span>
-              <span className="mt-1 block text-[10px] font-medium text-muted-foreground">career fit</span>
-            </div>
-            <a
-              href={job.apply_url}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="h-9 px-4 inline-flex items-center rounded-md text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
-            >
-              Open employer portal
-            </a>
-            {draft.status === "submitted" ? (
-              <span className="h-9 px-3 inline-flex items-center rounded-md text-[12px] text-muted-foreground border border-border">
-                Submitted {new Date(draft.submitted_at!).toLocaleDateString()}
-              </span>
-            ) : draft.status === "queued" ? (
-              <span className="h-9 px-3 inline-flex items-center rounded-md text-[12px] text-muted-foreground border border-border bg-muted">
-                Queued for worker checks…
-              </span>
-            ) : (
-              <>
-                <button
-                  onClick={refreshPacket}
-                  disabled={refreshingPacket}
-                  className="h-9 px-3.5 inline-flex items-center rounded-md text-[13px] text-foreground border border-border hover:bg-muted transition-colors disabled:opacity-50"
-                  title="Rebuild this job-specific résumé and ATS score from the current master"
-                >
-                  {refreshingPacket ? "Refreshing…" : "Refresh packet"}
-                </button>
-                <button
-                  onClick={queueAutoSubmit}
-                  disabled={queueingSubmit}
-                  className="h-9 px-3.5 inline-flex items-center rounded-md text-[13px] text-foreground border border-border hover:bg-muted transition-colors disabled:opacity-50"
-                  title="Queue a guarded Greenhouse submission (auto-apply must be enabled)"
-                >
-                  {queueingSubmit ? "Queueing…" : "Queue application"}
-                </button>
-                <button
-                  onClick={markSubmitted}
-                  disabled={markingSubmitted}
-                  className="h-9 px-3.5 inline-flex items-center rounded-md text-[13px] text-foreground border border-border hover:bg-muted transition-colors disabled:opacity-50"
-                >
-                  {markingSubmitted ? "Saving…" : "Mark submitted"}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </motion.header>
+    <div className="max-w-[1280px] mx-auto px-6 lg:px-10 pt-10 pb-16">
+      <button onClick={() => navigate("/job-tracker")} className="text-xs text-muted-foreground hover:text-foreground">← Applications</button>
+      <header className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-medium text-muted-foreground">{job.company.name}</span><span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", draft.status === "submitted" ? "bg-emerald-500/10 text-emerald-600" : draft.status === "failed" ? "bg-rose-500/10 text-rose-600" : "bg-primary/10 text-primary")}>{statusLabel(draft.status)}</span></div><h1 className="mt-2 text-3xl font-bold tracking-tight">{job.title}</h1>{draft.evaluation.summary && <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{draft.evaluation.summary}</p>}</div>
+        <div className="flex flex-wrap items-center gap-2"><div className="mr-2 text-center"><p className="text-2xl font-bold tabular-nums">{fit}%</p><p className="text-[10px] uppercase tracking-wide text-muted-foreground">career fit</p></div><Button asChild><a href={job.apply_url} target="_blank" rel="noreferrer noopener"><ExternalLink className="mr-2 h-4 w-4" />Employer portal</a></Button>{!(["submitted", "queued"] as DraftStatus[]).includes(draft.status) && <><Button variant="outline" onClick={refreshPacket} disabled={refreshing}><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />{refreshing ? "Refreshing…" : "Refresh packet"}</Button><Button variant="outline" onClick={queueApplication} disabled={queueing}><Send className="mr-2 h-4 w-4" />{queueing ? "Queueing…" : "Queue application"}</Button><Button variant="ghost" onClick={markSubmitted} disabled={marking}>{marking ? "Saving…" : "Mark submitted"}</Button></>}</div>
+      </header>
 
-      {ats && (
-        <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-5 sm:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-            <div className="flex items-center gap-4 lg:w-64">
-              <div className={cn(
-                "flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-[7px] tabular-nums",
-                ats.overall >= 80 ? "border-emerald-500/25 text-emerald-700 dark:text-emerald-400" :
-                ats.overall >= 65 ? "border-amber-500/25 text-amber-700 dark:text-amber-400" :
-                "border-rose-500/25 text-rose-700 dark:text-rose-400",
-              )}>
-                <span className="text-xl font-bold">{Math.round(ats.overall)}%</span>
-                <span className="text-[9px] uppercase tracking-wider">ATS score</span>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Exact tailored résumé</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">This score belongs to this job-specific version, not the source résumé.</p>
-              </div>
-            </div>
-            <div className="grid flex-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-3">
-              {ATS_DIMENSIONS.map((dimension) => {
-                const value = Number(ats[dimension.key] ?? 0);
-                return (
-                  <div key={dimension.key}>
-                    <div className="mb-1.5 flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">{dimension.label}</span>
-                      <span className="font-semibold tabular-nums">{Math.round(value)}%</span>
-                    </div>
-                    <Progress value={value} className="h-1.5" />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          {(ats.matched_keywords.length > 0 || ats.missing_keywords.length > 0) && (
-            <div className="mt-5 grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
-              <p className="text-xs leading-relaxed text-muted-foreground"><span className="font-semibold text-foreground">Matched:</span> {ats.matched_keywords.slice(0, 10).join(" · ") || "—"}</p>
-              <p className="text-xs leading-relaxed text-muted-foreground"><span className="font-semibold text-foreground">Missing:</span> {ats.missing_keywords.slice(0, 10).join(" · ") || "—"}</p>
-            </div>
-          )}
-        </motion.section>
-      )}
+      <section className="mt-7 border border-rp-rule bg-rp-paper p-5" aria-label="Application progress"><div className="grid grid-cols-4">{phases.map((phase, index) => <div key={phase} className="relative flex flex-col items-center text-center"><div className={cn("absolute left-0 right-0 top-3 h-px", index === 0 ? "left-1/2" : index === 3 ? "right-1/2" : "", index <= activePhase ? "bg-primary" : "bg-border")} /><span className={cn("relative z-10 flex h-6 w-6 items-center justify-center rounded-full border text-[10px]", index < activePhase || draft.status === "submitted" ? "border-primary bg-primary text-primary-foreground" : index === activePhase ? "border-primary bg-background text-primary" : "border-border bg-background text-muted-foreground")}>{index < activePhase || draft.status === "submitted" ? <Check className="h-3.5 w-3.5" /> : index + 1}</span><span className="mt-2 text-[11px] font-medium">{phase}</span></div>)}</div>{draft.status === "failed" && <div className="mt-4 flex gap-2 border border-rose-500/20 bg-rose-500/5 p-3 text-xs text-rose-700 dark:text-rose-300"><AlertTriangle className="h-4 w-4 shrink-0" /><span>{draft.error_message || task?.error_message || "Submission needs review. Your packet and employer link remain available."}</span></div>}</section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6">
-        {/* Tailored CV */}
-        <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-6 overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-[13px] font-semibold text-foreground">Tailored résumé</p>
-            <div className="flex items-center gap-2">
-              {draft.tailored_cv_md && <Copy value={draft.tailored_cv_md} />}
-              {draft.tailored_resume_id && (
-                <button
-                  onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}
-                  className="h-7 px-3 rounded-md text-[11.5px] text-foreground border border-border hover:bg-muted transition-colors"
-                >
-                  Open editor
-                </button>
-              )}
-            </div>
-          </div>
-          <pre className="text-[13px] leading-[1.55] text-foreground whitespace-pre-wrap max-h-[560px] overflow-y-auto pr-2 font-sans">
-            {draft.tailored_cv_md || "No tailored CV generated yet."}
-          </pre>
-        </motion.section>
+      {ats && <section className="mt-5 border border-rp-rule bg-rp-canvas p-5"><div className="grid gap-5 lg:grid-cols-[190px_1fr]"><div className="flex items-center gap-4"><div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-[7px] border-primary/20"><span className="text-xl font-bold">{Math.round(ats.overall)}%</span><span className="text-[9px] uppercase">ATS</span></div><div><p className="text-sm font-semibold">Job-specific score</p><p className="mt-1 text-xs text-muted-foreground">For this exact résumé and job.</p></div></div><div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{dimensions.map((dimension) => { const value = Number(ats[dimension.key] || 0); return <div key={dimension.key}><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{dimension.label}</span><span>{Math.round(value)}%</span></div><Progress value={value} className="h-1.5" /></div>; })}</div></div></section>}
 
-        {/* Draft answers */}
-        <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={2} className="glass-card p-6">
-          <p className="text-[13px] font-semibold text-foreground mb-4">Draft answers</p>
-          <ol className="space-y-5">
-            {draft.answers.map((a, i) => (
-              <li key={i} className="space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-[13.5px] font-semibold text-foreground leading-snug flex-1">
-                    {String(i + 1).padStart(2, "0")} · {a.question}
-                  </p>
-                  <Copy value={a.answer} />
-                </div>
-                <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-                  {a.answer}
-                </p>
-              </li>
-            ))}
-          </ol>
-        </motion.section>
-      </div>
+      <div className="mt-6 flex flex-wrap gap-1 border-b border-rp-rule">{[
+        { id: "form" as const, label: "Submitted form", icon: FileCheck2 }, { id: "resume" as const, label: "Résumé", icon: FileText },
+        { id: "cover" as const, label: "Cover note", icon: MessageSquareText }, { id: "activity" as const, label: "Activity", icon: Activity },
+      ].map((item) => <button key={item.id} onClick={() => setTab(item.id)} className={cn("inline-flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-medium", tab === item.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}><item.icon className="h-3.5 w-3.5" />{item.label}</button>)}</div>
 
-      <div className="text-[12px] text-muted-foreground">
-        Read it through before you submit. Review every claim. These drafts are yours to edit.
-      </div>
+      <section className="min-h-80 border border-t-0 border-rp-rule bg-rp-paper p-5 sm:p-6">
+        {tab === "form" && <div><div className="flex items-center justify-between"><div><h2 className="text-base font-semibold">Application answers</h2><p className="mt-1 text-xs text-muted-foreground">The exact reusable answers prepared for this employer.</p></div></div>{formAnswers.length ? <ol className="mt-6 divide-y divide-rp-rule">{formAnswers.map((answer, index) => <li key={`${answer.question}-${index}`} className="grid gap-2 py-4 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)_auto]"><p className="text-xs font-semibold">{answer.question}</p><p className="text-sm leading-relaxed text-muted-foreground">{answer.answer}</p><CopyButton value={answer.answer} /></li>)}</ol> : <Empty text="No additional employer questions were saved for this application." />}</div>}
+        {tab === "resume" && <div><div className="flex items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Tailored résumé</h2><p className="mt-1 text-xs text-muted-foreground">Grounded in your source résumé and aligned to this job.</p></div>{draft.tailored_resume_id && <Button variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}>Open editor</Button>}</div>{draft.tailored_cv_md ? <pre className="mt-6 max-h-[700px] overflow-y-auto whitespace-pre-wrap border border-rp-rule bg-background p-6 font-sans text-sm leading-relaxed">{draft.tailored_cv_md}</pre> : <Empty text="No tailored résumé was generated." />}</div>}
+        {tab === "cover" && <div><h2 className="text-base font-semibold">Cover note</h2><p className="mt-1 text-xs text-muted-foreground">Generated only when useful or requested by the employer.</p>{coverNote ? <div className="mt-6 border border-rp-rule bg-background p-6"><div className="flex justify-end"><CopyButton value={coverNote.answer} /></div><p className="whitespace-pre-wrap text-sm leading-relaxed">{coverNote.answer}</p></div> : <Empty text="No cover note is attached to this application." />}</div>}
+        {tab === "activity" && <div><h2 className="text-base font-semibold">Application activity</h2><p className="mt-1 text-xs text-muted-foreground">Preparation, queue attempts, worker checks, and outcome for this job.</p><div className="mt-6 space-y-3"><ActivityRow title="Packet prepared" date={draft.created_at} detail="Tailored résumé and application answers created." />{task && <ActivityRow title={`Submission ${task.status}`} date={task.completed_at || task.started_at || task.created_at} detail={`Attempt ${task.attempt_count} of ${task.max_attempts}${task.error_message ? ` · ${task.error_message}` : ""}`} />}{logs.map((entry, index) => <ActivityRow key={index} title={String(entry.step || entry.status || entry.event || `Worker event ${index + 1}`)} date={typeof entry.at === "string" ? entry.at : typeof entry.timestamp === "string" ? entry.timestamp : null} detail={String(entry.message || entry.detail || "Application check recorded.")} />)}{draft.submitted_at && <ActivityRow title="Submitted" date={draft.submitted_at} detail="Submission recorded successfully." />}{!task && !draft.submitted_at && <ActivityRow title="Awaiting your decision" date={draft.updated_at} detail="Review the packet, queue supported automation, or open the employer portal." />}</div></div>}
+      </section>
+      <p className="mt-4 text-xs text-muted-foreground">Only a Submitted outcome counts as applied. Queued means the worker is still checking and completing the application.</p>
     </div>
   );
+}
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return <button onClick={async () => { await navigator.clipboard.writeText(value); setCopied(true); window.setTimeout(() => setCopied(false), 1400); }} className="inline-flex h-7 items-center gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground">{copied ? <Check className="h-3.5 w-3.5" /> : <CopyIcon className="h-3.5 w-3.5" />}{copied ? "Copied" : "Copy"}</button>;
+}
+
+function Empty({ text }: { text: string }) { return <div className="mt-6 flex min-h-44 items-center justify-center border border-dashed border-rp-rule p-6 text-center text-sm text-muted-foreground">{text}</div>; }
+
+function ActivityRow({ title, date, detail }: { title: string; date: string | null; detail: string }) {
+  return <div className="grid gap-1 border-l-2 border-primary/30 py-2 pl-4 sm:grid-cols-[180px_1fr_auto]"><p className="text-sm font-semibold capitalize">{title}</p><p className="text-xs leading-relaxed text-muted-foreground">{detail}</p>{date && <time className="text-[10px] text-muted-foreground">{new Date(date).toLocaleString()}</time>}</div>;
 }
