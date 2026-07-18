@@ -116,6 +116,19 @@ function safeMatchText(raw: unknown): string {
     .replace(/\bblocked\b/gi, "held for review");
 }
 
+function displayJobDate(value: string): string {
+  if (!value) return "";
+  if (/today|yesterday|ago|recent/i.test(value)) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const days = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 86_400_000));
+  if (days === 0) return "Posted today";
+  if (days === 1) return "Posted yesterday";
+  if (days < 7) return `Posted ${days} days ago`;
+  if (days < 35) return `Posted ${Math.floor(days / 7)} weeks ago`;
+  return `Posted ${parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
 function JobDescription({ value }: { value: string }) {
   const clean = cleanJobDescription(value);
   if (!clean) return null;
@@ -656,13 +669,13 @@ export default function JobSearchPage() {
           salary: m.scanned_job.compensation_text,
           job_type: null,
           remote: /remote/i.test(`${m.scanned_job.remote_policy || ""} ${m.scanned_job.location || ""}`),
-          date_posted: m.scanned_job.posted_at || m.scanned_job.last_seen_at || m.evaluated_at,
+          date_posted: displayJobDate(m.scanned_job.posted_at || m.scanned_job.last_seen_at || m.evaluated_at),
           source: "career pages",
           industry: m.scanned_job.company?.category,
           match_score: Math.round(m.fit_score ?? Number(m.score || 0) * 20),
           match_reasons: Object.fromEntries(
             (Array.isArray(m.dimension_scores) ? m.dimension_scores : [])
-              .filter((dimension: any) => dimension?.key && Number.isFinite(Number(dimension?.score)))
+              .filter((dimension: any) => ["role", "skills", "experience"].includes(String(dimension?.key)) && Number.isFinite(Number(dimension?.score)))
               .map((dimension: any) => [String(dimension.key), Math.round(Number(dimension.score))]),
           ),
           match_id: m.id,

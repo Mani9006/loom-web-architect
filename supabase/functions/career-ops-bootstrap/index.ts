@@ -197,7 +197,7 @@ serve(async (req) => {
         const dimensions = Array.isArray(row.dimension_scores) ? row.dimension_scores : [];
         const role = dimensions.find((dimension) => dimension.key === "role")?.score ?? 0;
         const skills = dimensions.find((dimension) => dimension.key === "skills")?.score ?? 0;
-        return role >= 52 || skills >= 60;
+        return role >= 52 || (role >= 45 && skills >= 60);
       })
       .sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.fit_score - a.fit_score || b._relevance - a._relevance)
       .slice(0, MAX_EVALUATIONS)

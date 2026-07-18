@@ -126,6 +126,13 @@ const COUNTRY_ALIASES: Record<string, string[]> = {
   "united arab emirates": ["united arab emirates", "uae", "dubai", "abu dhabi"],
   singapore: ["singapore"],
   japan: ["japan", "tokyo"],
+  "south korea": ["south korea", "republic of korea", "seoul"],
+  "hong kong": ["hong kong"],
+  switzerland: ["switzerland", "zurich", "geneva"],
+  sweden: ["sweden", "stockholm"],
+  denmark: ["denmark", "copenhagen"],
+  norway: ["norway", "oslo"],
+  poland: ["poland", "warsaw", "krakow"],
   netherlands: ["netherlands", "amsterdam"],
   spain: ["spain", "madrid", "barcelona"],
   brazil: ["brazil", "sao paulo", "rio de janeiro"],
@@ -638,7 +645,7 @@ function roleSimilarity(target: string, title: string): number {
   const jaccard = intersection.length / union.length;
   if (jaccard >= 0.66) return 85;
   if (jaccard >= 0.4) return 68;
-  if (intersection.length > 0) return 52;
+  if (intersection.length > 0) return union.length >= 4 && intersection.length === 1 ? 38 : 52;
   return 18;
 }
 
