@@ -82,6 +82,11 @@ interface ApplicationPacket {
   };
 }
 
+interface WorkerRuntime {
+  online: boolean;
+  lastSeen: string | null;
+}
+
 const PACKET_STATUS: Record<DraftApplicationStatus, { label: string; note: string }> = {
   draft: { label: "Preparing", note: "Packet is still being assembled." },
   ready: { label: "Ready for review", note: "Résumé and answers are ready; nothing has been submitted." },
@@ -197,6 +202,7 @@ export default function JobTracker() {
   const [userId, setUserId] = useState<string | null>(null);
   const [automationCounts, setAutomationCounts] = useState(EMPTY_AUTOMATION_COUNTS);
   const [applicationPackets, setApplicationPackets] = useState<ApplicationPacket[]>([]);
+  const [workerRuntime, setWorkerRuntime] = useState<WorkerRuntime>({ online: false, lastSeen: null });
 
   const [selectedSavedJob, setSelectedSavedJob] = useState<SavedJobDetail | null>(null);
   const [selectedKanbanJob, setSelectedKanbanJob] = useState<Job | null>(null);
@@ -254,6 +260,17 @@ export default function JobTracker() {
         });
         setAutomationCounts(next);
       }
+
+      const { data: heartbeat } = await supabase
+        .from("mc_worker_heartbeats")
+        .select("last_seen")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const lastSeen = heartbeat?.last_seen || null;
+      setWorkerRuntime({
+        online: Boolean(lastSeen && Date.now() - new Date(lastSeen).getTime() < 90_000),
+        lastSeen,
+      });
       setLoading(false);
     };
     load();
@@ -545,6 +562,24 @@ export default function JobTracker() {
           </div>
         ))}
       </div>
+      {automationCounts.queued > 0 && (
+        <section className={cn(
+          "mb-6 flex flex-col gap-3 border p-4 sm:flex-row sm:items-center sm:justify-between",
+          workerRuntime.online ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5",
+        )} aria-live="polite">
+          <div>
+            <p className="text-sm font-semibold text-rp-ink">
+              {workerRuntime.online ? "Submission worker is processing the queue" : "Submission worker is offline"}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">
+              {workerRuntime.online
+                ? "The browser worker is filling the employer form. This changes to Submitted only after a verifiable receipt."
+                : `${automationCounts.queued} application${automationCounts.queued === 1 ? " is" : "s are"} saved safely, but nothing can be submitted until an application worker is online.`}
+            </p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => navigate("/agent")}>Open Agent status</Button>
+        </section>
+      )}
       {applicationPackets.length > 0 && (
         <section className="mb-6" aria-labelledby="application-packets-title">
           <div className="mb-3 flex items-end justify-between gap-3">

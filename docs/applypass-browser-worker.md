@@ -12,7 +12,7 @@ This worker consumes queued tasks from `applypass_tasks` and runs Playwright bro
 ## Required environment variables
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
-- `APPLYPASS_WORKER_TOKEN`
+- `APPLYPASS_WORKER_TOKEN` (or the shared `WORKER_AUTH_TOKEN`)
 
 ## Optional environment variables
 - `APPLYPASS_WORKER_ID` (default: `applypass-worker-<hostname>`)

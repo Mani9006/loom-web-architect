@@ -7,7 +7,7 @@ import { chromium } from "@playwright/test";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-const WORKER_TOKEN = process.env.APPLYPASS_WORKER_TOKEN;
+const WORKER_TOKEN = process.env.APPLYPASS_WORKER_TOKEN || process.env.WORKER_AUTH_TOKEN;
 const WORKER_ID = process.env.APPLYPASS_WORKER_ID || `applypass-worker-${os.hostname()}`;
 const POLL_MS = Number(process.env.APPLYPASS_WORKER_POLL_MS || 5000);
 const AUTO_SUBMIT = String(process.env.APPLYPASS_AUTO_SUBMIT || "false").toLowerCase() === "true";
@@ -18,7 +18,7 @@ const maxTasksArg = process.argv.find((arg) => arg.startsWith("--max-tasks="));
 const maxTasks = maxTasksArg ? Number(maxTasksArg.split("=")[1]) : Number(process.env.APPLYPASS_MAX_TASKS || 0);
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !WORKER_TOKEN) {
-  console.error("Missing required env: SUPABASE_URL, SUPABASE_ANON_KEY, APPLYPASS_WORKER_TOKEN");
+  console.error("Missing required env: SUPABASE_URL, SUPABASE_ANON_KEY, and APPLYPASS_WORKER_TOKEN or WORKER_AUTH_TOKEN");
   process.exit(1);
 }
 

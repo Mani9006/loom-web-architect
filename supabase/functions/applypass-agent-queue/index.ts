@@ -36,7 +36,7 @@ function getWorkerToken(req: Request, body: Record<string, unknown>): string {
 }
 
 function workerAuthorized(req: Request, body: Record<string, unknown>): boolean {
-  const expected = Deno.env.get("APPLYPASS_WORKER_TOKEN") || "";
+  const expected = Deno.env.get("APPLYPASS_WORKER_TOKEN") || Deno.env.get("WORKER_AUTH_TOKEN") || "";
   if (!expected) return false;
   const actual = getWorkerToken(req, body);
   return Boolean(actual) && actual === expected;
@@ -206,7 +206,7 @@ serve(async (req: Request) => {
           .update({ heartbeat_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq("id", taskId)
           .eq("status", "running")
-          .select("id,status,heartbeat_at,updated_at")
+          .select("id,user_id,status,heartbeat_at,updated_at")
           .single();
 
         if (error) throw error;
@@ -217,6 +217,13 @@ serve(async (req: Request) => {
             p_entry: body.log,
           });
         }
+
+        await serviceClient.from("mc_worker_heartbeats").upsert({
+          user_id: data.user_id,
+          hostname: workerId,
+          version: "applypass-browser-worker-v2",
+          last_seen: new Date().toISOString(),
+        }, { onConflict: "user_id" });
 
         return jsonResponse({ ok: true, task: data });
       }
