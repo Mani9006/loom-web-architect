@@ -512,10 +512,10 @@ export default function JobTracker() {
           <p className="mt-2 text-sm font-semibold text-rp-ink">Matched jobs</p>
           <p className="mt-0.5 text-xs text-rp-ink-2">Review fit and tailor a resume.</p>
         </button>
-        <button onClick={() => navigate("/auto-apply")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
+        <button onClick={() => navigate("/agent")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
           <Zap className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
-          <p className="mt-2 text-sm font-semibold text-rp-ink">Auto Apply</p>
-          <p className="mt-0.5 text-xs text-rp-ink-2">Supervised queue, answers, and status.</p>
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Agent</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Matches, tailored packets, ATS, and safe queue controls.</p>
         </button>
         <button onClick={() => navigate("/cover-letters")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
           <Mail className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />

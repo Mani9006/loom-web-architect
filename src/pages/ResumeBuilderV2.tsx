@@ -66,6 +66,8 @@ import { createEmptyResumeJSON } from "@/types/resume";
 import type { ResumeJSON, ResumeParseQuality } from "@/types/resume";
 import { useResumeExport } from "@/hooks/use-resume-export";
 import { normalizeResumeSkills } from "@/lib/resume-skills";
+import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 
 // ─── Section registry ──────────────────────────────────────────────────────
 
@@ -132,7 +134,8 @@ export default function ResumeBuilderV2() {
         .eq("user_id", user.id)
         .maybeSingle();
       if (error || !data) {
-        toast.error(error?.message ?? "Resume not found");
+        if (error) void captureIncident(error, { source: "manual", operation: "resume_load" });
+        toast.error("We could not open this résumé. Return to your résumé library and try again.");
         setStatus("error", error?.message ?? "not found");
         return;
       }
@@ -165,7 +168,12 @@ export default function ResumeBuilderV2() {
       const { error } = await table.update(payload as never).eq("id", resumeId).eq("user_id", user.id);
       if (error) {
         setStatus("error", error.message);
-        toast.error(`Save failed: ${error.message}`);
+        void captureIncident(error, { source: "manual", operation: "resume_save" });
+        const safeError = toUserFacingError(error, {
+          operation: "resume_save",
+          defaultMessage: "Your latest edits remain on this screen. Try saving again in a moment.",
+        });
+        toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
         return;
       }
       setStatus("saved");
@@ -173,7 +181,12 @@ export default function ResumeBuilderV2() {
       const { data, error } = await table.insert(payload as never).select("id").maybeSingle();
       if (error || !data) {
         setStatus("error", error?.message ?? "save failed");
-        toast.error(`Save failed: ${error?.message ?? "unknown"}`);
+        if (error) void captureIncident(error, { source: "manual", operation: "resume_create" });
+        const safeError = toUserFacingError(error ?? new Error("Resume create returned no record"), {
+          operation: "resume_create",
+          defaultMessage: "Your résumé remains on this screen. Try saving again in a moment.",
+        });
+        toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
         return;
       }
       setResumeId(data.id);

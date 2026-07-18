@@ -226,7 +226,7 @@ export default function CareerOpsPreferencesPage() {
           Tune the shortlist
         </h1>
         <p className="mt-2 max-w-[64ch] text-[14px] text-muted-foreground leading-relaxed">
-          These preferences control what the scanner surfaces, how the evaluator scores, and whether the auto-submitter engages.
+          Control which jobs appear, how career fit is scored, and whether the Agent may prepare or submit supported applications.
         </p>
       </motion.header>
 
@@ -350,7 +350,7 @@ export default function CareerOpsPreferencesPage() {
               onChange={(e) => setPrefs({ ...prefs, max_stretch_years: Number(e.target.value) })}
               className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
             />
-            <p className="text-[11px] text-muted-foreground mt-1">Block roles asking for more than this many extra years.</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Hold roles asking for more than this many extra years for your review.</p>
           </div>
         </div>
         <div className="grid sm:grid-cols-2 gap-4">
@@ -384,7 +384,7 @@ export default function CareerOpsPreferencesPage() {
         <div className="flex items-center justify-between gap-6">
           <div>
             <p className="text-[14px] font-semibold text-foreground">I need sponsorship</p>
-            <p className="text-[12px] text-muted-foreground">Block postings that explicitly cannot sponsor.</p>
+            <p className="text-[12px] text-muted-foreground">Hold postings that explicitly cannot sponsor.</p>
           </div>
           <button
             type="button"
@@ -423,7 +423,7 @@ export default function CareerOpsPreferencesPage() {
         <div className="flex items-center justify-between gap-6">
           <div>
             <p className="text-[14px] font-semibold text-foreground">Require a disclosed salary</p>
-            <p className="text-[12px] text-muted-foreground">Block roles without a usable compensation range.</p>
+            <p className="text-[12px] text-muted-foreground">Hold roles without a usable compensation range.</p>
           </div>
           <button
             type="button"
@@ -448,8 +448,8 @@ export default function CareerOpsPreferencesPage() {
               Submit to Greenhouse portals <em className="italic font-normal">on your behalf.</em>
             </p>
             <p className="text-[13px] text-muted-foreground mt-1 max-w-[60ch]">
-              When on, high-scoring drafts can be queued to the worker which POSTs to the Greenhouse application endpoint.
-              Lever, Ashby, Workday, LinkedIn are intentionally excluded — account-flag risk outweighs convenience.
+              When on, supported Greenhouse applications above your threshold can enter guarded submission checks.
+              Other portals stay review-only to protect your account and applicant reputation.
             </p>
           </div>
           <button
@@ -468,7 +468,7 @@ export default function CareerOpsPreferencesPage() {
         <div className={cn("grid grid-cols-2 gap-6 pt-4 border-t border-foreground/10", !prefs.auto_apply_enabled && "opacity-50 pointer-events-none")}>
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">Minimum career fit</p>
-            <p className="text-[12px] text-muted-foreground mb-2">0–100 evidence-based gate. Hard filters still win.</p>
+            <p className="text-[12px] text-muted-foreground mb-2">0–100 evidence-based gate. Your non-negotiable rules still win.</p>
             <input
               type="number"
               min="0"

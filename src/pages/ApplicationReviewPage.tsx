@@ -156,7 +156,7 @@ export default function ApplicationReviewPage() {
         msg.includes("422") ? "Portal not supported for auto-submit — use Open portal." :
         msg.includes("429") ? "Daily submit cap hit — try tomorrow." :
         msg.includes("409") ? "Already submitted or in an unsubmittable state." :
-        `Queue failed: ${msg}`
+        "This application could not be queued. Review it and use the employer portal, or try again later."
       );
     } finally {
       setQueueingSubmit(false);
