@@ -28,7 +28,7 @@ import { JOB_ROLES } from "@/data/job-roles";
 import { captureIncident } from "@/lib/incidents";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { JobDescription } from "@/components/JobDescription";
-import { cleanJobDescription, safeMatchText } from "@/lib/job-description";
+import { cleanJobDescription, jobDescriptionPreview, safeMatchText } from "@/lib/job-description";
 
 interface SearchJob {
   id: string;
@@ -1117,7 +1117,7 @@ export default function JobSearchPage() {
                               )}
                             </div>
                             {job.description && (
-                              <p className="text-xs text-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">{job.description}</p>
+                              <p className="text-xs text-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">{jobDescriptionPreview(job.description)}</p>
                             )}
                             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                               {job.role_category && job.role_category !== "Other" && (
