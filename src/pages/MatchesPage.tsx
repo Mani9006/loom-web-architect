@@ -78,6 +78,15 @@ function safeMatchSummary(value: string | null): string | null {
     .replace(/\bblocked\b/gi, "held for review");
 }
 
+function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, operation: string): Promise<T> {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error(`${operation} timed out`)), timeoutMs);
+    }),
+  ]);
+}
+
 export default function MatchesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -97,14 +106,28 @@ export default function MatchesPage() {
     if (!user) return;
     if (announce) setRefreshing(true);
     else setLoading(true);
-    try {
-      const { error: reviewError } = await supabase.functions.invoke("career-profile-review", { body: {} });
-      if (reviewError) {
-        void captureIncident(reviewError, { source: "manual", operation: "career_profile_review" }, "warning");
-      }
-      const { error: bootstrapError } = await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
-      if (bootstrapError) throw bootstrapError;
 
+    const refreshSources = async () => {
+      try {
+        const { error } = await withTimeout(
+          supabase.functions.invoke("career-profile-review", { body: {} }),
+          12_000,
+          "career profile review",
+        );
+        if (error) throw error;
+      } catch (error) {
+        void captureIncident(error, { source: "manual", operation: "career_profile_review" }, "warning");
+      }
+
+      const { error } = await withTimeout(
+        supabase.functions.invoke("career-ops-bootstrap", { body: {} }),
+        12_000,
+        "career match refresh",
+      );
+      if (error) throw error;
+    };
+
+    const readStoredMatches = async () => {
       const [evalRes, prefRes, draftsRes] = await Promise.all([
         supabase
           .from("job_evaluations")
@@ -156,7 +179,26 @@ export default function MatchesPage() {
         daily_apply_cap: 10,
         auto_apply_enabled: false,
       });
-      if (announce) toast.success(`${orderedJobs.length} resume-aligned roles are ready to review.`);
+      return orderedJobs.length;
+    };
+
+    try {
+      if (announce) {
+        try {
+          await refreshSources();
+        } catch (error) {
+          void captureIncident(error, { source: "manual", operation: "career_match_refresh" }, "warning");
+        }
+        const count = await readStoredMatches();
+        toast.success(`${count} resume-aligned roles are ready to review.`);
+      } else {
+        await readStoredMatches();
+        void refreshSources()
+          .then(() => readStoredMatches())
+          .catch((error) => {
+            void captureIncident(error, { source: "manual", operation: "career_match_background_refresh" }, "warning");
+          });
+      }
     } catch (error) {
       void captureIncident(error, { source: "manual", operation: "personalized_matches_load" });
       const safeError = toUserFacingError(error, {
@@ -263,7 +305,8 @@ export default function MatchesPage() {
 
   if (loading) {
     return (
-      <div className="px-6 lg:px-12 py-12 max-w-[1280px] mx-auto">
+      <div className="px-6 lg:px-12 py-12 max-w-[1280px] mx-auto" role="status" aria-live="polite">
+        <p className="mb-5 text-sm text-muted-foreground">Loading your résumé-aligned matches…</p>
         <div className="h-10 w-40 rounded-full bg-foreground/5 animate-pulse mb-8" />
         <div className="space-y-3">
           {[...Array(8)].map((_, i) => (

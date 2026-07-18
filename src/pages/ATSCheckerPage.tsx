@@ -85,7 +85,7 @@ function SectionCard({ config, data, expanded, onToggle }: {
 
   return (
     <Card className="overflow-hidden">
-      <button onClick={onToggle} className="w-full text-left">
+      <button onClick={onToggle} aria-expanded={expanded} className="w-full text-left">
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
@@ -243,7 +243,7 @@ export default function ATSCheckerPage() {
           <div className="max-w-3xl mx-auto p-6 space-y-6">
             {/* Header */}
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={reset} className="shrink-0">
+              <Button variant="ghost" size="icon" aria-label="Back to ATS input" onClick={reset} className="shrink-0">
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <div>

@@ -218,6 +218,7 @@ export default function AppLayout() {
         {isMobile && (
           <button
             onClick={() => setMobileOpen(false)}
+            aria-label="Close navigation"
             className="ml-auto p-1.5 text-rp-ink/45 hover:text-rp-ink transition-colors"
           >
             <X className="w-4 h-4" />
@@ -308,11 +309,19 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 flex items-center gap-3 px-4 sm:px-5 border-b border-rp-rule bg-rp-canvas/95 backdrop-blur-sm shrink-0">
           {isMobile ? (
-            <button onClick={() => setMobileOpen(true)} className="p-1.5 text-rp-ink/55 hover:text-rp-ink">
+            <button
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation"
+              className="p-1.5 text-rp-ink/55 hover:text-rp-ink"
+            >
               <Menu className="w-[18px] h-[18px]" strokeWidth={1.6} />
             </button>
           ) : (
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 text-rp-ink/55 hover:text-rp-ink transition-colors">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label={sidebarOpen ? "Collapse navigation" : "Expand navigation"}
+              className="p-1.5 text-rp-ink/55 hover:text-rp-ink transition-colors"
+            >
               {sidebarOpen ? <PanelLeftClose className="w-[16px] h-[16px]" strokeWidth={1.6} /> : <PanelLeft className="w-[16px] h-[16px]" strokeWidth={1.6} />}
             </button>
           )}
@@ -365,6 +374,7 @@ export default function AppLayout() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
+                  aria-label="Account menu"
                   className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-rp-ink/15 text-rp-ink hover:border-rp-ink/45 transition-colors leading-none"
                   style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "12px", paddingTop: "1px" }}
                 >

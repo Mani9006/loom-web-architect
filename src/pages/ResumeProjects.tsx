@@ -915,7 +915,12 @@ function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimar
           {/* Actions dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Actions for ${resume.title || "Untitled resume"}`}
+                className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>

@@ -163,7 +163,12 @@ function ExperienceCard({
             <Input value={e.location} onChange={(ev) => upd({ location: ev.target.value })} />
           </Field>
         </div>
-        <Button variant="ghost" size="icon" onClick={onRemove}>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Remove experience${e.role || e.company_or_client ? `: ${e.role || e.company_or_client}` : ""}`}
+          onClick={onRemove}
+        >
           <Trash2 className="size-4" />
         </Button>
       </div>
@@ -179,7 +184,12 @@ function ExperienceCard({
               placeholder="Reduced inference cost 42% by quantizing the BERT classifier and migrating to Triton..."
               className="text-sm"
             />
-            <Button variant="ghost" size="icon" onClick={() => rmBullet(i)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Remove bullet ${i + 1}${e.role ? ` from ${e.role}` : ""}`}
+              onClick={() => rmBullet(i)}
+            >
               <Trash2 className="size-3.5" />
             </Button>
           </div>
@@ -316,7 +326,12 @@ export function SkillsEditor() {
               {CANONICAL_SKILL_CATEGORIES.find(({ key }) => key === cat)?.label ?? cat}
               <span className="ml-2 text-xs font-normal text-muted-foreground">{skills[cat].length} skills</span>
             </Label>
-            <Button variant="ghost" size="icon" onClick={() => removeCategory(cat)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Remove ${CANONICAL_SKILL_CATEGORIES.find(({ key }) => key === cat)?.label ?? cat} skills`}
+              onClick={() => removeCategory(cat)}
+            >
               <Trash2 className="size-3.5" />
             </Button>
           </div>

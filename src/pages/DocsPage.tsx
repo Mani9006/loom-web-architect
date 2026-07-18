@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import {
-  FileText, Target, Search, Sparkles, Mail, Wand2, Columns3,
+  FileText, Target, Search, Sparkles, Columns3,
   Bot, Bell,
 } from "lucide-react";
 
@@ -9,7 +9,7 @@ const sections = [
     title: "Home",
     icon: FileText,
     path: "/home",
-    body: "Your workspace dashboard. Shows 6 feature tiles, your latest résumés, and top-scored job matches for the day.",
+    body: "Your workspace dashboard. See fresh matches, recent application packets, verified status counts, and shortcuts into the core workflow.",
   },
   {
     title: "Resume Builder",
@@ -39,19 +39,7 @@ const sections = [
     title: "Applications (Pipeline)",
     icon: Columns3,
     path: "/job-tracker",
-    body: "Kanban board tracking every application from Saved → Applied → Interviewing → Offer (or Rejected).",
-  },
-  {
-    title: "Cover Letters",
-    icon: Mail,
-    path: "/cover-letters",
-    body: "Generate tailored cover letters per job description.",
-  },
-  {
-    title: "AI Toolbox",
-    icon: Wand2,
-    path: "/ai-toolbox",
-    body: "Six writing specialists: LinkedIn headline / about / post, email writer, elevator pitch, brand statement. LinkedIn tools ground on your résumé for consistent voice.",
+    body: "Track every prepared packet, queue decision, employer portal, tailored résumé, and verified outcome. A job is only counted as applied after a submission receipt exists.",
   },
   {
     title: "Agent",
@@ -98,6 +86,7 @@ export default function DocsPage() {
                     {s.path && (
                       <button
                         onClick={() => navigate(s.path!)}
+                        aria-label={`Open ${s.title}`}
                         className="text-[12px] text-foreground hover:text-foreground/70 transition-colors shrink-0"
                       >
                         Open →
