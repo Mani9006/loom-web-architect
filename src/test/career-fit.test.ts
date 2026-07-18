@@ -72,6 +72,44 @@ describe("career fit gate", () => {
     expect(fit.inferred.salaryMax).toBe(170_000);
   });
 
+  it("uses prior client roles and tool evidence instead of only the current title", () => {
+    const candidate = buildCandidateCareerProfile({
+      personal_info: { title: "Business Systems Analyst" },
+      experience: [
+        {
+          role: "Business Systems Analyst",
+          company_or_client: "Current Client",
+          start_date: "Jan 2025",
+          end_date: "Present",
+          bullets: ["Translated reporting requirements for finance stakeholders."],
+        },
+        {
+          role: "Data Engineer",
+          company_or_client: "Prior Client",
+          start_date: "Jan 2020",
+          end_date: "Dec 2024",
+          bullets: ["Built production pipelines with Python, SQL, Airflow, and AWS."],
+          environment: "Python, SQL, Airflow, AWS",
+        },
+      ],
+      skills: { data: ["Python", "SQL", "Airflow"], cloud: ["AWS"] },
+    }, { years_of_experience: 6.5 });
+
+    const fit = evaluateCareerFit(candidate, {
+      title: "Senior Data Engineer",
+      location: "Remote - United States",
+      remotePolicy: "Remote",
+      description: "Build Python and SQL data pipelines using Airflow on AWS. Requires 6+ years of experience.",
+    });
+
+    expect(candidate.roleHistory.map((role) => role.title)).toContain("Data Engineer");
+    expect(candidate.yearsExperience).toBe(6.5);
+    expect(candidate.yearsExperienceSource).toBe("profile");
+    expect(fit.score).toBeGreaterThanOrEqual(80);
+    expect(fit.dimensions.find((dimension) => dimension.key === "role")?.evidence.join(" ")).toMatch(/Prior Client/);
+    expect(fit.dimensions.find((dimension) => dimension.key === "skills")?.evidence.join(" ")).toMatch(/Prior Client/);
+  });
+
   it("blocks a no-sponsorship posting when sponsorship is required", () => {
     const candidate = buildCandidateCareerProfile(fourYearResume, {
       target_roles: ["Software Engineer"],

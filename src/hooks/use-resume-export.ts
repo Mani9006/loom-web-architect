@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- docx and jsPDF expose partially typed dynamic render objects */
 import { useCallback, useState } from "react";
 import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER } from "@/types/resume";
 import { toast } from "sonner";
@@ -889,6 +890,10 @@ export function useResumeExport() {
       const doc = await renderer.render(data);
       const failedSections: string[] = (doc as any).__failedSections || [];
       const pageCount = doc.getNumberOfPages();
+      const bytes = doc.output("arraybuffer");
+      if (!(bytes instanceof ArrayBuffer) || bytes.byteLength < 1_000) {
+        throw new Error("Generated PDF did not pass the file integrity check.");
+      }
       doc.save(`${fileName}.pdf`);
 
       if (failedSections.length > 0) {
@@ -920,6 +925,7 @@ export function useResumeExport() {
   const exportToWord = useCallback(async (data: ResumeJSON, fileName: string) => {
     setIsExporting(true);
     try {
+      validateResumeForExport(data);
       const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ExternalHyperlink } = await import("docx");
       const { saveAs } = await import("file-saver");
 
@@ -1152,6 +1158,9 @@ export function useResumeExport() {
       });
 
       const blob = await Packer.toBlob(doc);
+      if (blob.size < 1_000 || !/wordprocessingml|officedocument/i.test(blob.type)) {
+        throw new Error("Generated Word document did not pass the file integrity check.");
+      }
       saveAs(blob, `${fileName}.docx`);
       toast.success("Resume exported as Word document!");
     } catch (error) {
@@ -1193,5 +1202,47 @@ export function useResumeExport() {
     }
   }, []);
 
-  return { exportToPDF, exportToWord, exportToText, isExporting };
+  const exportToJSON = useCallback(async (data: ResumeJSON, fileName: string) => {
+    setIsExporting(true);
+    try {
+      validateResumeForExport(data);
+      const content = JSON.stringify(data, null, 2);
+      const roundTrip = JSON.parse(content) as ResumeJSON;
+      validateResumeForExport(roundTrip);
+      const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${fileName}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Resume exported as validated JSON!");
+    } catch (error) {
+      console.error("JSON export error:", error);
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`JSON export failed: ${msg}`);
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
+
+  return { exportToPDF, exportToWord, exportToText, exportToJSON, isExporting };
+}
+
+function validateResumeForExport(data: ResumeJSON): void {
+  const issues: string[] = [];
+  if (!data || typeof data !== "object") issues.push("resume data is missing");
+  if (!data?.header || typeof data.header !== "object") issues.push("header is missing");
+  if (!Array.isArray(data?.experience)) issues.push("experience must be a list");
+  if (!Array.isArray(data?.education)) issues.push("education must be a list");
+  if (!data?.skills || typeof data.skills !== "object" || Array.isArray(data.skills)) issues.push("skills must be grouped by category");
+  if (!Array.isArray(data?.projects)) issues.push("projects must be a list");
+  if (!Array.isArray(data?.certifications)) issues.push("certifications must be a list");
+  for (const [index, role] of (data?.experience ?? []).entries()) {
+    if (!role || typeof role !== "object") issues.push(`experience ${index + 1} is invalid`);
+    else if (!Array.isArray(role.bullets)) issues.push(`experience ${index + 1} bullets must be a list`);
+  }
+  if (issues.length > 0) throw new Error(`Resume validation failed: ${issues.join("; ")}`);
 }

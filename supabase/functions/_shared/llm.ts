@@ -59,6 +59,8 @@ const DEFAULT_MAX: Record<Tier, number> = {
 
 export interface LlmCallOptions {
   tier: Tier;
+  /** Narrow workload-specific model override; tier defaults remain unchanged. */
+  model?: string;
   /** Override provider; otherwise uses LLM_DEFAULT_PROVIDER or OpenAI. */
   provider?: Provider;
   /** System prompt — always cached when supported. */
@@ -130,7 +132,7 @@ async function callAnthropic<T>(opts: LlmCallOptions): Promise<LlmCallResult<T>>
 async function callOpenAi<T>(opts: LlmCallOptions): Promise<LlmCallResult<T>> {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
-  const model = openaiModelFor(opts.tier);
+  const model = opts.model ?? openaiModelFor(opts.tier);
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX[opts.tier];
   const isGpt5 = /^gpt-5(?:\.|-|$)/i.test(model);
 

@@ -31,9 +31,20 @@ export interface CandidatePreferences {
 
 export interface CandidateCareerProfile {
   currentTitle: string;
+  /** Every role from the source resume, newest first. */
+  roleHistory: Array<{
+    title: string;
+    company: string;
+    startDate: string;
+    endDate: string;
+    evidenceText: string;
+  }>;
   yearsExperience: number;
+  yearsExperienceSource: "profile" | "resume_timeline";
   seniority: Seniority;
   skills: string[];
+  /** Source-grounded client/role locations for each detected tool. */
+  skillEvidence: Record<string, string[]>;
   preferences: CandidatePreferences;
 }
 
@@ -72,7 +83,7 @@ export interface CareerFitResult {
     salaryMin: number | null;
     salaryMax: number | null;
   };
-  version: "career-fit-v1";
+  version: "career-fit-v2";
 }
 
 type ResumeLike = Record<string, unknown>;
@@ -130,12 +141,29 @@ export function buildCandidateCareerProfile(
   const statedYears = numberOrNull((preferences as Record<string, unknown>).years_of_experience);
   const yearsExperience = statedYears ?? calculatedYears;
   const skills = collectResumeSkills(resume);
+  const roleHistory = experience
+    .map((item) => ({
+      title: firstNonEmpty(stringValue(item.role), stringValue(item.title)),
+      company: firstNonEmpty(stringValue(item.company_or_client), stringValue(item.company), stringValue(item.client)),
+      startDate: stringValue(item.start_date),
+      endDate: stringValue(item.end_date),
+      evidenceText: [
+        ...stringArray(item.bullets),
+        stringValue(item.environment),
+        stringValue(item.responsibilities),
+      ].filter(Boolean).join(" "),
+    }))
+    .filter((item) => item.title || item.evidenceText);
+  const skillEvidence = buildSkillEvidence(skills, roleHistory);
 
   return {
     currentTitle,
+    roleHistory,
     yearsExperience,
+    yearsExperienceSource: statedYears !== null ? "profile" : "resume_timeline",
     seniority: inferCandidateSeniority(currentTitle, yearsExperience),
     skills,
+    skillEvidence,
     preferences,
   };
 }
@@ -166,7 +194,7 @@ export function evaluateCareerFit(candidate: CandidateCareerProfile, job: JobFor
 
   const dimensions: FitDimension[] = [
     scoreRole(candidate, job),
-    scoreSkills(candidateSkills, jobSkills, matchedSkills, missingSkills),
+    scoreSkills(candidate, jobSkills, matchedSkills, missingSkills),
     scoreExperience(candidate, requiredYears, jobSeniority),
     scoreLocation(prefs, job, workMode),
     scoreCompensation(prefs, salary),
@@ -195,7 +223,7 @@ export function evaluateCareerFit(candidate: CandidateCareerProfile, job: JobFor
       salaryMin: salary.min,
       salaryMax: salary.max,
     },
-    version: "career-fit-v1",
+    version: "career-fit-v2",
   };
 }
 
@@ -221,19 +249,27 @@ export function calculateExperienceYears(experience: Array<Record<string, unknow
 }
 
 function scoreRole(candidate: CandidateCareerProfile, job: JobForFit): FitDimension {
-  const targets = unique([...(candidate.preferences.target_roles ?? []), candidate.currentTitle].map(normalize).filter(Boolean));
+  const preferenceTargets = (candidate.preferences.target_roles ?? []).map(normalize).filter(Boolean);
+  const resumeRoles = candidate.roleHistory.map((role) => normalize(role.title)).filter(Boolean);
+  const targets = unique([...preferenceTargets, candidate.currentTitle, ...resumeRoles].map(normalize).filter(Boolean));
   if (targets.length === 0) {
     return dimension("role", "Role alignment", 45, 25, [], ["Add target roles to improve matching confidence."]);
   }
   const title = normalize(job.title);
   const similarities = targets.map((target) => roleSimilarity(target, title));
   const best = Math.max(...similarities);
-  const evidence = best >= 70 ? [`${job.title} aligns with ${targets[similarities.indexOf(best)]}.`] : [];
-  const gaps = best < 70 ? [`Job title is outside the strongest target-role family (${targets.join(", ")}).`] : [];
+  const bestTarget = targets[similarities.indexOf(best)];
+  const matchingHistory = candidate.roleHistory.find((role) => normalize(role.title) === bestTarget);
+  const evidence = best >= 52
+    ? [matchingHistory
+      ? `Prior ${matchingHistory.title} experience${matchingHistory.company ? ` at ${matchingHistory.company}` : ""} supports this role family.`
+      : `${job.title} aligns with the saved target ${bestTarget}.`]
+    : [];
+  const gaps = best < 52 ? ["The job title has limited overlap with demonstrated or selected role families."] : [];
   return dimension("role", "Role alignment", best, 25, evidence, gaps);
 }
 
-function scoreSkills(candidateSkills: string[], jobSkills: string[], matched: string[], missing: string[]): FitDimension {
+function scoreSkills(candidate: CandidateCareerProfile, jobSkills: string[], matched: string[], missing: string[]): FitDimension {
   if (jobSkills.length === 0) {
     return dimension("skills", "Demonstrated skills", 55, 30, [], ["The posting does not expose enough concrete skills for a high-confidence score."]);
   }
@@ -243,13 +279,20 @@ function scoreSkills(candidateSkills: string[], jobSkills: string[], matched: st
     "Demonstrated skills",
     score,
     30,
-    matched.slice(0, 8).map((skill) => `Resume demonstrates ${display(skill)}.`),
+    matched.slice(0, 8).map((skill) => {
+      const sources = candidate.skillEvidence[normalize(skill)] ?? [];
+      return sources.length > 0
+        ? `${display(skill)} is demonstrated in ${sources.slice(0, 2).join(" and ")}.`
+        : `The source resume explicitly lists ${display(skill)}.`;
+    }),
     missing.slice(0, 8).map((skill) => `No resume evidence found for ${display(skill)}.`),
   );
 }
 
 function scoreExperience(candidate: CandidateCareerProfile, requiredYears: number | null, seniority: Seniority): FitDimension {
-  const evidence = [`Resume timeline supports about ${candidate.yearsExperience.toFixed(1)} years of experience.`];
+  const evidence = [candidate.yearsExperienceSource === "profile"
+    ? `Candidate-confirmed total experience is ${candidate.yearsExperience.toFixed(1)} years.`
+    : `Non-overlapping dates across ${candidate.roleHistory.length || "the"} resume ${candidate.roleHistory.length === 1 ? "role" : "roles"} support about ${candidate.yearsExperience.toFixed(1)} years.`];
   const gaps: string[] = [];
   let score = 70;
 
@@ -463,6 +506,21 @@ function collectResumeSkills(resume: ResumeLike): string[] {
   return unique(skills.map((skill) => skill.trim()).filter(Boolean));
 }
 
+function buildSkillEvidence(
+  skills: string[],
+  roles: CandidateCareerProfile["roleHistory"],
+): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const skill of skills) {
+    const normalizedSkill = normalize(skill);
+    const sources = roles
+      .filter((role) => containsTerm(normalize(`${role.title} ${role.evidenceText}`), normalizedSkill))
+      .map((role) => role.company ? `${role.title || "a role"} at ${role.company}` : role.title || "a prior role");
+    result[normalizedSkill] = unique(sources);
+  }
+  return result;
+}
+
 function extractJobSkills(text: string): string[] {
   return SKILL_CATALOG.filter((skill) => containsTerm(text, skill));
 }
@@ -614,6 +672,12 @@ function dimension(
 
 function normalizedList(values: string[] | undefined): string[] {
   return unique((values ?? []).map(normalize).filter(Boolean));
+}
+
+function stringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
+  if (typeof value === "string") return value.split(/\n+/).map((item) => item.trim()).filter(Boolean);
+  return [];
 }
 
 function normalize(value: string): string {

@@ -71,6 +71,75 @@ const QUICK_ROLES = [
   "Cybersecurity Analyst",
 ];
 
+function cleanJobDescription(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  let value = raw.trim();
+  if (!value) return "";
+
+  // Some feeds double-encode the description or wrap it in a JSON field.
+  if ((value.startsWith('"') && value.endsWith('"')) || value.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(value);
+      value = typeof parsed === "string"
+        ? parsed
+        : String(parsed?.description ?? parsed?.content ?? parsed?.text ?? value);
+    } catch {
+      // Keep the original and continue with safe text normalization.
+    }
+  }
+
+  value = value
+    .replace(/\\r\\n|\\n|\\r/g, "\n")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\s*\/p\s*>/gi, "\n\n")
+    .replace(/<\s*\/li\s*>/gi, "\n")
+    .replace(/<\s*li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return value.slice(0, 40_000);
+}
+
+function safeMatchText(raw: unknown): string {
+  return cleanJobDescription(raw)
+    .replace(/blocked by a hard preference:?/gi, "Autopilot review needed:")
+    .replace(/\bblocked\b/gi, "held for review");
+}
+
+function JobDescription({ value }: { value: string }) {
+  const clean = cleanJobDescription(value);
+  if (!clean) return null;
+  const lines = clean.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  return (
+    <div className="space-y-2.5 text-sm leading-6 text-foreground/80">
+      {lines.map((line, index) => {
+        const bullet = line.match(/^(?:[•·▪◦*-]|\d+[.)])\s*(.+)$/);
+        if (bullet) {
+          return (
+            <div key={`${index}-${line.slice(0, 16)}`} className="flex items-start gap-2.5 pl-1">
+              <span aria-hidden="true" className="mt-[0.65rem] size-1 shrink-0 rounded-full bg-foreground/50" />
+              <p>{bullet[1]}</p>
+            </div>
+          );
+        }
+        const heading = line.length <= 72 && (/^[A-Z][A-Za-z0-9 &/+-]+:$/.test(line) || /^[A-Z0-9 &/+-]{4,}$/.test(line));
+        if (heading) return <h4 key={`${index}-${line}`} className="pt-2 text-sm font-semibold text-foreground">{line.replace(/:$/, "")}</h4>;
+        return <p key={`${index}-${line.slice(0, 16)}`}>{line}</p>;
+      })}
+    </div>
+  );
+}
+
 export default function JobSearchPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -364,7 +433,10 @@ export default function JobSearchPage() {
       }
 
       const data = await response.json();
-      const resultJobs = data.jobs || [];
+      const resultJobs = ((data.jobs || []) as SearchJob[]).map((job) => ({
+        ...job,
+        description: cleanJobDescription(job.description),
+      }));
       setJobs(resultJobs);
       setSearchProgress(100);
       setSearchStatus(data.from_db ? `Found ${data.db_total || resultJobs.length} matching jobs!` : data.from_cache ? "Loaded from cache!" : "Done!");
@@ -472,7 +544,10 @@ export default function JobSearchPage() {
 
       if (response.ok) {
         const data = await response.json();
-        const newJobs = (data.jobs || []) as SearchJob[];
+        const newJobs = ((data.jobs || []) as SearchJob[]).map((job) => ({
+          ...job,
+          description: cleanJobDescription(job.description),
+        }));
         if (newJobs.length > 0) {
           // Deduplicate — don't add jobs already in the list
           const existingKeys = new Set(jobs.map((j) => `${j.title}:::${j.company}`.toLowerCase()));
@@ -526,9 +601,10 @@ export default function JobSearchPage() {
     setLocation("");
   };
 
-  // Load matched jobs from DB. On the first empty feed, run the deterministic
-  // zero-token bootstrap once so users do not land on a permanent empty tab.
-  const loadMatchedJobs = useCallback(async (bootstrapIfEmpty = true) => {
+  // Rebuild the resume-evidence feed before loading it. The bootstrap is
+  // zero-token and makes resume edits, experience corrections, and preference
+  // changes visible immediately instead of serving stale generic results.
+  const loadMatchedJobs = useCallback(async (refreshCareerEvidence = true) => {
     if (!user) return;
     setMatchLoading(true);
     setMatchLoadAttempted(true);
@@ -552,26 +628,30 @@ export default function JobSearchPage() {
           )
         `)
           .eq("user_id", user.id)
+          .gte("fit_score", 50)
           .order("fit_score", { ascending: false })
           .limit(100);
 
-      let { data, error } = await fetchEvaluations();
-      if (error) throw error;
-
-      if ((data?.length ?? 0) === 0 && bootstrapIfEmpty) {
+      if (refreshCareerEvidence) {
+        const { error: reviewError } = await supabase.functions.invoke("career-profile-review", { body: {} });
+        if (reviewError) {
+          void captureIncident(reviewError, { source: "manual", operation: "career_profile_review" }, "warning");
+        }
         const { error: bootstrapError } = await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
         if (bootstrapError) throw bootstrapError;
-        ({ data, error } = await fetchEvaluations());
       }
 
+      const { data, error } = await fetchEvaluations();
       if (error) throw error;
       if (data) {
-        const mapped: MatchedJob[] = data.map((m: any) => ({
+        const mapped: MatchedJob[] = data
+          .filter((m: any) => Math.round(m.fit_score ?? Number(m.score || 0) * 20) >= 50)
+          .map((m: any) => ({
           id: m.scanned_job.id,
           title: m.scanned_job.title,
           company: m.scanned_job.company?.name || "Unknown",
           location: m.scanned_job.location || "Remote",
-          description: m.scanned_job.description_md || "",
+          description: cleanJobDescription(m.scanned_job.description_md || ""),
           apply_url: m.scanned_job.apply_url || "",
           salary: m.scanned_job.compensation_text,
           job_type: null,
@@ -586,7 +666,7 @@ export default function JobSearchPage() {
               .map((dimension: any) => [String(dimension.key), Math.round(Number(dimension.score))]),
           ),
           match_id: m.id,
-          match_summary: m.summary || "This role passed your hard preferences and was scored against your source resume.",
+          match_summary: safeMatchText(m.summary || "This role was scored against the complete source resume and saved preferences."),
           match_dimensions: Array.isArray(m.dimension_scores) ? m.dimension_scores : [],
           matched_keywords: Array.isArray(m.keyword_matches) ? m.keyword_matches : [],
           gaps: Array.isArray(m.gaps) ? m.gaps : [],
@@ -1259,9 +1339,7 @@ export default function JobSearchPage() {
                     <div className="border-t pt-5">
                       <h3 className="font-semibold text-base mb-3">About the job</h3>
                       {selectedJob.description ? (
-                        <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">
-                          {selectedJob.description}
-                        </div>
+                        <JobDescription value={selectedJob.description} />
                       ) : (
                         <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
                           <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
@@ -1532,7 +1610,7 @@ export default function JobSearchPage() {
                         <div className="border-t pt-5">
                           <h3 className="font-semibold text-base mb-3">About the job</h3>
                           {selectedJob.description ? (
-                            <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">{selectedJob.description}</div>
+                            <JobDescription value={selectedJob.description} />
                           ) : (
                             <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
                               <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />

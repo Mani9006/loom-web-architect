@@ -55,7 +55,8 @@ function buildResumeText(resume: Record<string, unknown>): string {
     parts.push("## Experience");
     for (const item of experience) {
       const title = stringValue(item.role) || stringValue(item.title);
-      parts.push(`- ${title} @ ${stringValue(item.company)} (${stringValue(item.start_date)} – ${stringValue(item.end_date) || "present"})`);
+      const company = stringValue(item.company_or_client) || stringValue(item.company) || stringValue(item.client);
+      parts.push(`- ${title} @ ${company} (${stringValue(item.start_date)} – ${stringValue(item.end_date) || "present"})`);
       for (const bullet of stringArray(item.bullets)) parts.push(`  • ${bullet}`);
       if (stringArray(item.bullets).length === 0 && stringValue(item.description)) {
         parts.push(`  • ${stringValue(item.description)}`);
@@ -112,7 +113,7 @@ serve(async (req) => {
     if (!body.force) {
       const { data: existing } = await svc.from("job_evaluations")
         .select("*").eq("user_id", user.id).eq("scanned_job_id", body.scanned_job_id).maybeSingle();
-      if (existing?.score_version === "career-fit-v1") {
+      if (existing?.score_version === "career-fit-v2") {
         return jsonResponse({ evaluation: existing, cached: true });
       }
     }
@@ -125,15 +126,15 @@ serve(async (req) => {
         .select("*, company:scan_companies(name)")
         .eq("id", body.scanned_job_id).maybeSingle(),
       svc.from("resumes")
-        .select("*").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(1),
+        .select("*").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(20),
       svc.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
       svc.from("profiles")
-        .select("years_of_experience,seniority_level,desired_roles,desired_locations,preferred_work_type,work_authorization,blacklisted_companies")
+        .select("years_of_experience,seniority_level,desired_roles,desired_locations,preferred_work_type,work_authorization,blacklisted_companies,primary_resume_id")
         .eq("user_id", user.id).maybeSingle(),
     ]);
     if (!job) throw new HttpError(404, "job not found");
 
-    const resume = resumes?.[0] as unknown as Record<string, unknown> | undefined;
+    const resume = selectSourceResume((resumes ?? []) as unknown as Array<Record<string, unknown>>, profile?.primary_resume_id);
     if (!resume) throw new HttpError(412, "no resume found for user");
     const resumeText = buildResumeText(resume);
     if (!resumeText || resumeText.length < 120) throw new HttpError(412, "resume too thin to evaluate");
@@ -170,7 +171,7 @@ serve(async (req) => {
       system: SYSTEM_PROMPT,
       cachedContext: `Candidate resume:\n\n${resumeText}`,
       user:
-        `Authoritative decision: ${fit.eligible ? "ELIGIBLE" : "BLOCKED"}\n` +
+        `Authoritative decision: ${fit.eligible ? "AUTOPILOT_READY" : "REVIEW_REQUIRED"}\n` +
         `Score: ${fit.score}/100\nTier: ${tier}\nConfidence: ${Math.round(fit.confidence * 100)}%\n` +
         `Hard filters: ${fit.hardFilters.length ? fit.hardFilters.join(" | ") : "none"}\n\n` +
         `Dimension evidence:\n${dimensionDigest(fit.dimensions)}\n\n` +
@@ -247,4 +248,17 @@ function companyFromRelation(value: unknown): string {
 
 function unique<T>(items: T[]): T[] {
   return [...new Set(items)];
+}
+
+function selectSourceResume(
+  resumes: Array<Record<string, unknown>>,
+  primaryResumeId: unknown,
+): Record<string, unknown> | undefined {
+  const requested = typeof primaryResumeId === "string"
+    ? resumes.find((resume) => resume.id === primaryResumeId)
+    : undefined;
+  if (requested) return requested;
+  return resumes.find((resume) => typeof resume.source_document_id === "string" && resume.source_document_id)
+    ?? resumes.find((resume) => !/tailored|application copy|job-specific/i.test(stringValue(resume.title)))
+    ?? resumes[0];
 }

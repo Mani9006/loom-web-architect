@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { PageHeader } from "@/components/PageHeader";
@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 
 interface ScannedJob {
   id: string;
@@ -70,6 +71,13 @@ function careerFitScore(evaluation: Evaluation): number {
   return evaluation.fit_score ?? Math.round(evaluation.score * 20);
 }
 
+function safeMatchSummary(value: string | null): string | null {
+  if (!value) return null;
+  return value
+    .replace(/blocked by a hard preference:?/gi, "Autopilot review needed:")
+    .replace(/\bblocked\b/gi, "held for review");
+}
+
 export default function MatchesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -77,27 +85,32 @@ export default function MatchesPage() {
   const [jobs, setJobs] = useState<ScannedJob[]>([]);
   const [evaluations, setEvaluations] = useState<Record<string, Evaluation>>({});
   const [prefs, setPrefs] = useState<UserPrefs | null>(null);
-  const [filter, setFilter] = useState<"all" | "scored" | "unscored" | "top">("all");
+  const [filter, setFilter] = useState<"recommended" | "strong" | "autopilot">("recommended");
+  const [refreshing, setRefreshing] = useState(false);
   const [evaluating, setEvaluating] = useState<string | null>(null);
   const [preparing, setPreparing] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { id: string; status: string }>>({});
 
-  useEffect(() => {
+  const loadMatches = useCallback(async (announce = false) => {
     if (!user) return;
-    (async () => {
-      setLoading(true);
-      const [jobsRes, evalRes, prefRes, draftsRes] = await Promise.all([
-        supabase
-          .from("scanned_jobs")
-          .select("id,title,location,department,remote_policy,compensation_text,apply_url,posted_at,last_seen_at,company:scan_companies(id,name,slug,category)")
-          .eq("is_live", true)
-          .order("last_seen_at", { ascending: false })
-          .limit(200),
+    if (announce) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const { error: reviewError } = await supabase.functions.invoke("career-profile-review", { body: {} });
+      if (reviewError) {
+        void captureIncident(reviewError, { source: "manual", operation: "career_profile_review" }, "warning");
+      }
+      const { error: bootstrapError } = await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+      if (bootstrapError) throw bootstrapError;
+
+      const [evalRes, prefRes, draftsRes] = await Promise.all([
         supabase
           .from("job_evaluations")
           .select("id,scanned_job_id,score,fit_score,fit_confidence,eligible,hard_filters,dimension_scores,score_version,tier,archetype,summary,keyword_matches,gaps,report_md,evaluated_at")
           .eq("user_id", user.id)
-          .order("score", { ascending: false }),
+          .gte("fit_score", 50)
+          .order("fit_score", { ascending: false })
+          .limit(120),
         supabase
           .from("user_job_prefs")
           .select("target_roles,negative_keywords,auto_apply_min_score,auto_apply_min_fit_score,daily_apply_cap,auto_apply_enabled")
@@ -108,13 +121,29 @@ export default function MatchesPage() {
           .select("id,evaluation_id,status")
           .eq("user_id", user.id),
       ]);
-      setJobs((jobsRes.data || []) as unknown as ScannedJob[]);
+      if (evalRes.error) throw evalRes.error;
+
+      const personalized = (evalRes.data || []) as Evaluation[];
+      const ids = personalized.map((evaluation) => evaluation.scanned_job_id);
+      const jobsRes = ids.length > 0
+        ? await supabase
+          .from("scanned_jobs")
+          .select("id,title,location,department,remote_policy,compensation_text,apply_url,posted_at,last_seen_at,company:scan_companies(id,name,slug,category)")
+          .eq("is_live", true)
+          .in("id", ids)
+        : { data: [], error: null };
+      if (jobsRes.error) throw jobsRes.error;
+
       const map: Record<string, Evaluation> = {};
-      for (const e of (evalRes.data || []) as Evaluation[]) map[e.scanned_job_id] = e;
+      for (const evaluation of personalized) map[evaluation.scanned_job_id] = evaluation;
+      const orderedJobs = ((jobsRes.data || []) as unknown as ScannedJob[])
+        .sort((a, b) => careerFitScore(map[b.id]) - careerFitScore(map[a.id]));
+      setJobs(orderedJobs);
       setEvaluations(map);
+
       const draftMap: Record<string, { id: string; status: string }> = {};
-      for (const d of (draftsRes.data || []) as Array<{ id: string; evaluation_id: string; status: string }>) {
-        draftMap[d.evaluation_id] = { id: d.id, status: d.status };
+      for (const draft of (draftsRes.data || []) as Array<{ id: string; evaluation_id: string; status: string }>) {
+        draftMap[draft.evaluation_id] = { id: draft.id, status: draft.status };
       }
       setDrafts(draftMap);
       setPrefs((prefRes.data as UserPrefs | null) ?? {
@@ -122,40 +151,46 @@ export default function MatchesPage() {
         negative_keywords: [],
         auto_apply_min_score: 4.5,
         auto_apply_min_fit_score: 82,
-        daily_apply_cap: 5,
+        daily_apply_cap: 10,
         auto_apply_enabled: false,
       });
+      if (announce) toast.success(`${orderedJobs.length} resume-aligned roles are ready to review.`);
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: "personalized_matches_load" });
+      const safeError = toUserFacingError(error, {
+        operation: "personalized_matches_load",
+        defaultMessage: "Your personalized match feed could not be refreshed. Try again in a moment.",
+      });
+      toast.error(withSupportReference(safeError));
+    } finally {
       setLoading(false);
-    })();
+      setRefreshing(false);
+    }
   }, [user]);
 
+  useEffect(() => {
+    void loadMatches(false);
+  }, [loadMatches]);
+
   const filtered = useMemo(() => {
-    const pos = (prefs?.target_roles ?? []).map((s) => s.toLowerCase()).filter(Boolean);
-    const neg = (prefs?.negative_keywords ?? []).map((s) => s.toLowerCase()).filter(Boolean);
-    const matchPrefs = (j: ScannedJob) => {
-      const t = j.title.toLowerCase();
-      if (neg.some((n) => t.includes(n))) return false;
-      if (pos.length === 0) return true;
-      return pos.some((p) => t.includes(p));
-    };
-    const withEval = jobs.map((j) => ({ job: j, evaluation: evaluations[j.id] }));
-    let rows = withEval.filter((r) => matchPrefs(r.job));
-    if (filter === "scored") rows = rows.filter((r) => r.evaluation);
-    if (filter === "unscored") rows = rows.filter((r) => !r.evaluation);
-    if (filter === "top") rows = rows.filter((r) => r.evaluation && careerFitScore(r.evaluation) >= (prefs?.auto_apply_min_fit_score ?? 82));
+    let rows = jobs
+      .map((job) => ({ job, evaluation: evaluations[job.id] }))
+      .filter((row): row is { job: ScannedJob; evaluation: Evaluation } => Boolean(row.evaluation) && careerFitScore(row.evaluation) >= 50);
+    if (filter === "strong") rows = rows.filter((row) => careerFitScore(row.evaluation) >= 80);
+    if (filter === "autopilot") rows = rows.filter((row) => row.evaluation.eligible && careerFitScore(row.evaluation) >= (prefs?.auto_apply_min_fit_score ?? 82));
     rows.sort((a, b) => (b.evaluation ? careerFitScore(b.evaluation) : -1) - (a.evaluation ? careerFitScore(a.evaluation) : -1));
     return rows;
   }, [jobs, evaluations, filter, prefs]);
 
   const stats = useMemo(() => {
     const scored = Object.values(evaluations);
-    const readyToApply = scored.filter((e) => careerFitScore(e) >= (prefs?.auto_apply_min_fit_score ?? 82));
+    const readyToApply = scored.filter((evaluation) => evaluation.eligible && careerFitScore(evaluation) >= (prefs?.auto_apply_min_fit_score ?? 82));
     return {
-      total: jobs.length,
-      scored: scored.length,
+      total: scored.filter((evaluation) => careerFitScore(evaluation) >= 50).length,
+      scored: scored.filter((evaluation) => careerFitScore(evaluation) >= 70).length,
       top: readyToApply.length,
     };
-  }, [jobs, evaluations, prefs]);
+  }, [evaluations, prefs]);
 
   const prepareApplication = async (evaluationId: string, scannedJobId: string) => {
     setPreparing(evaluationId);
@@ -179,14 +214,12 @@ export default function MatchesPage() {
         : "Application prepared — review before submitting");
       navigate(`/applications/${draft.id}`);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
       void captureIncident(e, { source: "manual", operation: "match_prepare" });
-      toast.error(
-        msg.includes("412") ? "Add a resume first." :
-        msg.includes("429") ? "Daily tailor cap hit — upgrade for more." :
-        msg.includes("402") ? "Account not active." :
-        `Prepare failed: ${msg}`
-      );
+      const safeError = toUserFacingError(e, {
+        operation: "match_prepare",
+        defaultMessage: "This application could not be prepared. Try again in a moment.",
+      });
+      toast.error(withSupportReference(safeError));
     } finally {
       setPreparing(null);
     }
@@ -204,12 +237,11 @@ export default function MatchesPage() {
       const score = careerFitScore(ev);
       toast.success(`${score >= 80 ? "Strong fit" : score >= 60 ? "Possible fit" : "Outside some preferences"} · ${score}%`);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error(msg.includes("412")
-        ? "Add a resume first so we can score against it."
-        : msg.includes("429")
-        ? "Daily evaluation cap hit — upgrade for more."
-        : `Evaluation failed: ${msg}`);
+      const safeError = toUserFacingError(e, {
+        operation: "match_rescore",
+        defaultMessage: "This role could not be rescored. Try again in a moment.",
+      });
+      toast.error(withSupportReference(safeError));
     } finally {
       setEvaluating(null);
     }
@@ -232,26 +264,37 @@ export default function MatchesPage() {
     <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-10">
       <PageHeader
         title="Your job matches"
-        status="fresh jobs · personalized"
-        description="Fresh company-direct roles ranked against your complete resume story, demonstrated skills, experience level, location, and saved preferences."
+        status="resume evidence · 50%+ only"
+        description="Only fresh roles that clear the match threshold appear here. Scores use every client and role, tools demonstrated in context, non-overlapping experience dates, seniority, location, and saved preferences."
       />
+
+      <div className="-mt-6 flex justify-end">
+        <button
+          type="button"
+          onClick={() => void loadMatches(true)}
+          disabled={refreshing}
+          className="inline-flex h-9 items-center rounded-md border border-border px-3.5 text-[12px] font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+        >
+          {refreshing ? "Reviewing resume + jobs…" : "Refresh career matches"}
+        </button>
+      </div>
 
       {/* Stat strip */}
       <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-5 sm:p-6 flex flex-wrap gap-8">
         <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Open roles</p>
+          <p className="text-[11.5px] font-medium text-muted-foreground">Current matches</p>
           <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.total}</div>
         </div>
         <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Scored</p>
+          <p className="text-[11.5px] font-medium text-muted-foreground">Good fits · 70%+</p>
           <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.scored}</div>
         </div>
         <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Strong fits</p>
+          <p className="text-[11.5px] font-medium text-muted-foreground">Autopilot ready</p>
           <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.top}</div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          {(["all", "top", "scored", "unscored"] as const).map((k) => (
+          {(["recommended", "strong", "autopilot"] as const).map((k) => (
             <button
               key={k}
               onClick={() => setFilter(k)}
@@ -262,7 +305,7 @@ export default function MatchesPage() {
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
-              {k === "all" ? "All" : k === "top" ? "Top" : k === "scored" ? "Scored" : "Unscored"}
+              {k === "recommended" ? "Recommended" : k === "strong" ? "Strong · 80%+" : "Autopilot ready"}
             </button>
           ))}
         </div>
@@ -271,9 +314,9 @@ export default function MatchesPage() {
       {/* Table */}
       {filtered.length === 0 ? (
         <div className="glass-card p-12 text-center">
-          <p className="text-[16px] font-semibold text-foreground">No roles match right now.</p>
+          <p className="text-[16px] font-semibold text-foreground">No current role clears the 50% evidence threshold.</p>
           <p className="text-[13px] text-muted-foreground mt-2">
-            Adjust your target roles in preferences or wait for the next hourly scan.
+            Confirm the parsed client history and total experience, adjust only genuine constraints, or wait for the next direct-employer scan.
           </p>
         </div>
       ) : (
@@ -314,8 +357,8 @@ export default function MatchesPage() {
                       {job.company.name}
                       {job.department ? <span className="opacity-60"> · {job.department}</span> : null}
                     </div>
-                    {evaluation?.summary ? (
-                      <div className="text-[12.5px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">{evaluation.summary}</div>
+                    {safeMatchSummary(evaluation?.summary ?? null) ? (
+                      <div className="text-[12.5px] text-muted-foreground mt-1.5 max-w-[60ch] line-clamp-2">{safeMatchSummary(evaluation?.summary ?? null)}</div>
                     ) : null}
                     {evaluation && !evaluation.eligible ? (
                       <div className="text-[11.5px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">
@@ -379,7 +422,7 @@ export default function MatchesPage() {
 
       <div className="flex items-center justify-between text-[12px] text-muted-foreground mt-6">
         <p>
-          Rescans hourly · {Object.keys(evaluations).length}/{prefs?.daily_apply_cap ?? 20} evaluated today
+          Direct-employer sources refresh hourly · manual applications are available for every match shown
         </p>
         <button
           onClick={() => navigate("/career-ops/preferences")}

@@ -362,6 +362,73 @@ async function searchDatabase(
   return { jobs: jobs || [], total: count || 0 };
 }
 
+async function searchScannedJobs(
+  sb: any,
+  query: string,
+  filters: {
+    location?: string;
+    remote_filter?: string;
+    job_type?: string;
+    date_posted?: string;
+  },
+  offset: number,
+  limit: number,
+): Promise<{ jobs: any[]; total: number }> {
+  const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  let dbQuery = sb
+    .from("scanned_jobs")
+    .select("id,title,location,description_md,apply_url,compensation_text,employment_type,remote_policy,posted_at,last_seen_at,company:scan_companies!inner(name,category)", { count: "exact" })
+    .eq("is_live", true);
+
+  for (const term of terms) {
+    const safeTerm = term.replace(/[%_,()]/g, "");
+    if (safeTerm) dbQuery = dbQuery.or(`title.ilike.%${safeTerm}%,description_md.ilike.%${safeTerm}%`);
+  }
+  if (filters.location?.trim()) dbQuery = dbQuery.ilike("location", `%${filters.location.trim()}%`);
+  if (filters.remote_filter === "remote-only") {
+    dbQuery = dbQuery.or("remote_policy.ilike.%remote%,location.ilike.%remote%");
+  } else if (filters.remote_filter === "on-site") {
+    dbQuery = dbQuery.not("remote_policy", "ilike", "%remote%").not("location", "ilike", "%remote%");
+  }
+  if (filters.job_type && filters.job_type !== "all") {
+    dbQuery = dbQuery.ilike("employment_type", `%${filters.job_type.replace(/-/g, "_")}%`);
+  }
+  const cutoff = getDateCutoff(filters.date_posted || "month");
+  if (cutoff) dbQuery = dbQuery.gte("last_seen_at", cutoff);
+
+  const { data, count, error } = await dbQuery
+    .order("posted_at", { ascending: false, nullsFirst: false })
+    .order("last_seen_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (error) {
+    console.error("[SCANNED_DB] Search error:", JSON.stringify(error));
+    return { jobs: [], total: 0 };
+  }
+
+  const jobs = (data || []).flatMap((row: any) => {
+    const company = Array.isArray(row.company) ? row.company[0] : row.company;
+    if (!isAllowedApplyUrl(row.apply_url || "")) return [];
+    const description = row.description_md || "";
+    return [{
+      id: row.id,
+      title: row.title,
+      company: company?.name || "Company",
+      location: row.location || "Location listed on company page",
+      description,
+      apply_url: row.apply_url,
+      salary: row.compensation_text || null,
+      job_type: row.employment_type || null,
+      remote: /remote/i.test(`${row.remote_policy || ""} ${row.location || ""}`),
+      date_posted: sanitizeDatePosted(row.posted_at || row.last_seen_at || "Recent"),
+      source: `${company?.name || "Company"} careers`,
+      role_category: classifyRoleCategory(row.title, description),
+      experience_level: detectExperienceLevel(row.title, description),
+      industry: company?.category || detectIndustry(company?.name || "", description),
+    }];
+  });
+  return { jobs, total: count || jobs.length };
+}
+
 async function persistDirectJobs(sb: any, jobs: any[]): Promise<any[]> {
   const normalized: any[] = [];
   for (const job of jobs) {
@@ -577,6 +644,31 @@ serve(async (req) => {
         console.log(`[STEP1] All ${dateFilteredJobs.length} DB jobs already seen by user, falling through to web search`);
       } else {
         console.log(`[STEP1] No DB results for "${searchQuery}" with filters, falling through to web search`);
+      }
+
+      const scannedResult = await searchScannedJobs(
+        sb,
+        searchQuery,
+        { location, remote_filter, job_type, date_posted },
+        offset,
+        pageSize,
+      );
+      if (scannedResult.jobs.length > 0) {
+        return new Response(
+          JSON.stringify({
+            jobs: scannedResult.jobs,
+            total: scannedResult.total,
+            citations: [],
+            query: searchQuery,
+            elapsed_ms: Date.now() - startTime,
+            from_cache: false,
+            from_db: true,
+            db_total: scannedResult.total,
+            has_more_db: scannedResult.total > offset + pageSize,
+            source_mode: "verified_company_scans",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
     }
 

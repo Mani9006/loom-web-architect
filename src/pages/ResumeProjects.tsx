@@ -41,6 +41,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { TerminalLoader, TerminalText } from "@/components/Terminal";
 
 type ResumeSource = "scratch" | "upload" | "existing";
+type ImportFormatMode = "ats_recommended" | "preserve_source";
 
 async function sha256(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value.normalize("NFKC"));
@@ -98,6 +99,8 @@ export default function ResumeProjects() {
   const [existingDocuments, setExistingDocuments] = useState<any[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [isParsingImport, setIsParsingImport] = useState(false);
+  const [importFormatMode, setImportFormatMode] = useState<ImportFormatMode>("ats_recommended");
+  const [primaryResumeId, setPrimaryResumeId] = useState<string | null>(null);
 
   // ── Fetch all resumes ─────────────────────────────────────────────────
   const fetchResumes = async () => {
@@ -113,6 +116,12 @@ export default function ResumeProjects() {
     if (!error && data) {
       setResumes(data as any as ResumeRow[]);
     }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("primary_resume_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    setPrimaryResumeId((profile as { primary_resume_id?: string | null } | null)?.primary_resume_id ?? null);
     setIsLoading(false);
   };
 
@@ -157,6 +166,7 @@ export default function ResumeProjects() {
     setUploadedDocumentId(null);
     setSelectedDocumentId(null);
     setIsParsingImport(false);
+    setImportFormatMode("ats_recommended");
   };
 
   // ── Create new resume ─────────────────────────────────────────────────
@@ -259,6 +269,7 @@ export default function ResumeProjects() {
           personal_info: {
             ...mapped.personal_info,
             title: newResumeRole.trim() || mapped.personal_info.title,
+            _v2_extras: { import_format_mode: importFormatMode },
           } as any,
           summary: mapped.summary,
           experience: mapped.experience as any,
@@ -281,7 +292,9 @@ export default function ResumeProjects() {
         if (quality.status === "passed") {
           toast({
             title: `Source coverage ${quality.score}%`,
-            description: "The import passed the lossless extraction quality gate.",
+            description: importFormatMode === "preserve_source"
+              ? "The original remains your application master; the structured copy is ready for matching and review."
+              : "The import passed the lossless extraction gate and is ready in the recommended ATS layout.",
           });
         } else {
           toast({
@@ -323,9 +336,33 @@ export default function ResumeProjects() {
       return;
     }
 
+    if (resumeSource !== "scratch") {
+      const importedId = (newResume as unknown as { id: string }).id;
+      const { error: primaryError } = await supabase
+        .from("profiles")
+        .update({ primary_resume_id: importedId } as never)
+        .eq("user_id", user.id);
+      if (!primaryError) setPrimaryResumeId(importedId);
+    }
+
     setCreateOpen(false);
     resetCreateDialog();
     navigate(`/resume-builder/${(newResume as any).id}`);
+  };
+
+  const handleSetPrimaryResume = async (resumeId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ primary_resume_id: resumeId } as never)
+      .eq("user_id", user.id);
+    if (error) {
+      toast({ title: "Could not change matching resume", description: "Try again in a moment.", variant: "destructive" });
+      return;
+    }
+    setPrimaryResumeId(resumeId);
+    toast({ title: "Matching resume updated", description: "Job matches will now use this complete resume history." });
   };
 
   // ── Clone resume ──────────────────────────────────────────────────────
@@ -537,6 +574,8 @@ export default function ResumeProjects() {
               onClick={() => navigate(`/resume-builder/${resume.id}`)}
               onClone={() => handleClone(resume.id)}
               onDelete={() => setDeleteConfirmId(resume.id)}
+              isPrimary={primaryResumeId === resume.id}
+              onSetPrimary={() => void handleSetPrimaryResume(resume.id)}
             />
           ))}
         </div>
@@ -651,6 +690,33 @@ export default function ResumeProjects() {
                 )}
               </div>
             )}
+
+            {resumeSource !== "scratch" && (
+              <div className="space-y-3 rounded-lg border border-rp-rule bg-rp-paper p-3.5">
+                <div>
+                  <p className="text-sm font-semibold text-rp-ink">Choose the format workflow</p>
+                  <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">
+                    Source coverage is verified after import. Your wording is preserved in either path.
+                  </p>
+                </div>
+                <RadioGroup value={importFormatMode} onValueChange={(value) => setImportFormatMode(value as ImportFormatMode)} className="grid gap-2">
+                  <label htmlFor="format-ats" className="flex cursor-pointer items-start gap-3 rounded-md border border-rp-rule bg-rp-canvas p-3">
+                    <RadioGroupItem value="ats_recommended" id="format-ats" className="mt-0.5" />
+                    <span>
+                      <span className="block text-sm font-medium text-rp-ink">Use recommended ATS layout</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-rp-ink-2">Convert the extracted content into the clean editable template used for PDF, Word, and JSON exports.</span>
+                    </span>
+                  </label>
+                  <label htmlFor="format-source" className="flex cursor-pointer items-start gap-3 rounded-md border border-rp-rule bg-rp-canvas p-3">
+                    <RadioGroupItem value="preserve_source" id="format-source" className="mt-0.5" />
+                    <span>
+                      <span className="block text-sm font-medium text-rp-ink">Keep original as application master</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-rp-ink-2">Retain the uploaded file unchanged in Documents. The editor creates a structured analysis copy for matching and tailoring.</span>
+                    </span>
+                  </label>
+                </RadioGroup>
+              </div>
+            )}
           </div>
           {/* Terminal-style loader while parsing — visible right above
               the footer when the AI parse is running. */}
@@ -730,9 +796,11 @@ interface ResumeCardProps {
   onClick: () => void;
   onClone: () => void;
   onDelete: () => void;
+  isPrimary: boolean;
+  onSetPrimary: () => void;
 }
 
-function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
+function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimary }: ResumeCardProps) {
   const resumeData = useMemo(() => mapRowToResumeJSON(resume), [resume]);
   const atsScore = useMemo(() => calculateATSScore(resumeData), [resumeData]);
 
@@ -770,6 +838,11 @@ function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
         <div className={`absolute top-3 right-3 ${scoreColor} text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md`}>
           {atsScore.overall}%
         </div>
+        {isPrimary && (
+          <div className="absolute left-3 top-3 rounded-full bg-rp-ink px-2.5 py-1 text-[10px] font-semibold text-rp-canvas shadow-md">
+            Matching resume
+          </div>
+        )}
 
         {/* Hover overlay — dark pill against the white resume thumbnail */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
@@ -812,6 +885,9 @@ function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onClone} className="gap-2">
                 <Copy className="h-4 w-4" /> Clone
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onSetPrimary} disabled={isPrimary} className="gap-2">
+                <CheckCircle className="h-4 w-4" /> {isPrimary ? "Used for matching" : "Use for job matching"}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onDelete} className="gap-2 text-destructive focus:text-destructive">
                 <Trash2 className="h-4 w-4" /> Delete

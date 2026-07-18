@@ -29,6 +29,10 @@ import {
   Code2,
   ShieldCheck,
   TriangleAlert,
+  Download,
+  FileText,
+  Braces,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,6 +46,7 @@ import {
 } from "@/components/ui/accordion";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -59,6 +64,7 @@ import {
 import { AiTailorPanel } from "@/components/resume-v2/AiTailorPanel";
 import { createEmptyResumeJSON } from "@/types/resume";
 import type { ResumeJSON, ResumeParseQuality } from "@/types/resume";
+import { useResumeExport } from "@/hooks/use-resume-export";
 
 // ─── Section registry ──────────────────────────────────────────────────────
 
@@ -96,7 +102,10 @@ export default function ResumeBuilderV2() {
   const [aiOpen, setAiOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState<"preview" | "json">("preview");
   const [parseQuality, setParseQuality] = useState<ResumeParseQuality | null>(null);
+  const [importFormatMode, setImportFormatMode] = useState<"ats_recommended" | "preserve_source">("ats_recommended");
+  const [sourceDocumentId, setSourceDocumentId] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
+  const { exportToPDF, exportToWord, exportToJSON, isExporting } = useResumeExport();
 
   // ─── load ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -130,6 +139,14 @@ export default function ResumeBuilderV2() {
       setResumeId(data.id);
       setResumeName(data.title ?? "Untitled resume");
       setParseQuality(isParseQuality(rawData.parse_quality) ? rawData.parse_quality : null);
+      const personal = rawData.personal_info && typeof rawData.personal_info === "object"
+        ? rawData.personal_info as Record<string, unknown>
+        : {};
+      const extras = personal._v2_extras && typeof personal._v2_extras === "object"
+        ? personal._v2_extras as Record<string, unknown>
+        : {};
+      setImportFormatMode(extras.import_format_mode === "preserve_source" ? "preserve_source" : "ats_recommended");
+      setSourceDocumentId(typeof rawData.source_document_id === "string" ? rawData.source_document_id : null);
       setStatus("idle");
     })();
   }, [resumeId, user, setResume, setStatus, setResumeId, reset]);
@@ -138,7 +155,7 @@ export default function ResumeBuilderV2() {
   const save = useCallback(async () => {
     if (!user) return;
     setStatus("saving");
-    const payload = resumeJSONToRow(resume, resumeName, user.id);
+    const payload = resumeJSONToRow(resume, resumeName, user.id, importFormatMode, sourceDocumentId);
     const table = supabase.from("resumes") as ReturnType<typeof supabase.from>;
     if (resumeId) {
       const { error } = await table.update(payload as never).eq("id", resumeId).eq("user_id", user.id);
@@ -159,21 +176,21 @@ export default function ResumeBuilderV2() {
       navigate(`/resume-builder/v2/${data.id}`, { replace: true });
       setStatus("saved");
     }
-  }, [resume, resumeName, resumeId, user, setStatus, setResumeId, navigate]);
+  }, [resume, resumeName, resumeId, user, setStatus, setResumeId, navigate, importFormatMode, sourceDocumentId]);
 
   useEffect(() => {
     if (!initialLoadDone.current || !user) return;
     const t = setTimeout(() => void save(), 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resume, resumeName]);
+  }, [resume, resumeName, importFormatMode]);
 
   const createTailoredVersion = useCallback(async (tailored: ResumeJSON) => {
     if (!user) throw new Error("Sign in before creating a tailored version.");
 
     const sourceTitle = resumeName.trim() || "Untitled resume";
     const tailoredTitle = `${sourceTitle.replace(/\s+— tailored$/i, "")} — tailored`;
-    const payload = resumeJSONToRow(tailored, tailoredTitle, user.id);
+    const payload = resumeJSONToRow(tailored, tailoredTitle, user.id, "ats_recommended", null);
     const table = supabase.from("resumes") as ReturnType<typeof supabase.from>;
     const { data, error } = await table.insert(payload as never).select("id").maybeSingle();
     if (error || !data) {
@@ -196,7 +213,10 @@ export default function ResumeBuilderV2() {
         status={status}
         onBack={() => navigate("/resume-builder")}
         onSave={() => void save()}
-        onPrint={() => window.print()}
+        onExportPDF={() => void exportToPDF(resume, safeFileName(resumeName))}
+        onExportWord={() => void exportToWord(resume, safeFileName(resumeName))}
+        onExportJSON={() => void exportToJSON(resume, safeFileName(resumeName))}
+        isExporting={isExporting}
         previewMode={previewMode}
         onPreviewModeChange={setPreviewMode}
         aiOpen={aiOpen}
@@ -216,6 +236,9 @@ export default function ResumeBuilderV2() {
             </p>
 
             {parseQuality && <ParseQualityCard quality={parseQuality} />}
+            {sourceDocumentId && (
+              <FormatWorkflowCard mode={importFormatMode} onChange={setImportFormatMode} />
+            )}
 
             <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-2">
               {SECTIONS.map((s) => (
@@ -287,7 +310,10 @@ function TopBar({
   status,
   onBack,
   onSave,
-  onPrint,
+  onExportPDF,
+  onExportWord,
+  onExportJSON,
+  isExporting,
   previewMode,
   onPreviewModeChange,
   aiOpen,
@@ -298,7 +324,10 @@ function TopBar({
   status: ReturnType<typeof useResumeStore.getState>["status"];
   onBack: () => void;
   onSave: () => void;
-  onPrint: () => void;
+  onExportPDF: () => void;
+  onExportWord: () => void;
+  onExportJSON: () => void;
+  isExporting: boolean;
   previewMode: "preview" | "json";
   onPreviewModeChange: (v: "preview" | "json") => void;
   aiOpen: boolean;
@@ -330,9 +359,25 @@ function TopBar({
       <Button variant="outline" size="sm" onClick={onSave}>
         <Save className="size-4 mr-1" /> Save
       </Button>
-      <Button size="sm" onClick={onPrint}>
-        <Printer className="size-4 mr-1" /> Export PDF
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" disabled={isExporting}>
+            {isExporting ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Download className="size-4 mr-1.5" />}
+            Export <ChevronDown className="ml-1 size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={onExportPDF}>
+            <Printer className="mr-2 size-4" /> PDF · ATS text
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onExportWord}>
+            <FileText className="mr-2 size-4" /> Word · editable DOCX
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onExportJSON}>
+            <Braces className="mr-2 size-4" /> JSON · structured data
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -552,6 +597,46 @@ function ParseQualityCard({ quality }: { quality: ResumeParseQuality }) {
   );
 }
 
+function FormatWorkflowCard({
+  mode,
+  onChange,
+}: {
+  mode: "ats_recommended" | "preserve_source";
+  onChange: (mode: "ats_recommended" | "preserve_source") => void;
+}) {
+  const preserving = mode === "preserve_source";
+  return (
+    <div className="mb-5 rounded-lg border border-rp-rule bg-rp-paper px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-md">
+          <p className="text-sm font-semibold text-rp-ink">Format workflow</p>
+          <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">
+            {preserving
+              ? "The uploaded file remains the application master. This editor is the structured analysis copy used for matching and tailoring."
+              : "Exports use the recommended single-column ATS layout with selectable text and validated PDF, DOCX, and JSON output."}
+          </p>
+        </div>
+        <div className="inline-flex rounded-md border border-rp-rule bg-rp-canvas p-0.5 text-[11px]">
+          <button
+            type="button"
+            onClick={() => onChange("ats_recommended")}
+            className={`rounded px-2.5 py-1.5 ${!preserving ? "bg-rp-ink text-rp-canvas" : "text-rp-ink-2"}`}
+          >
+            ATS layout
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange("preserve_source")}
+            className={`rounded px-2.5 py-1.5 ${preserving ? "bg-rp-ink text-rp-canvas" : "text-rp-ink-2"}`}
+          >
+            Original master
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── DB row mapping ────────────────────────────────────────────────────────
 // The `resumes` table stores per-section JSONB columns. Map between that
 // shape and ResumeJSON. The migration 20260512230000 adds proper volunteer/
@@ -588,7 +673,13 @@ function rowToResumeJSON(row: ResumeRow): ResumeJSON {
   };
 }
 
-function resumeJSONToRow(r: ResumeJSON, title: string, userId: string) {
+function resumeJSONToRow(
+  r: ResumeJSON,
+  title: string,
+  userId: string,
+  importFormatMode: "ats_recommended" | "preserve_source",
+  sourceDocumentId: string | null,
+) {
   return {
     user_id: userId,
     title,
@@ -599,6 +690,7 @@ function resumeJSONToRow(r: ResumeJSON, title: string, userId: string) {
       email: r.header.email,
       phone: r.header.phone,
       linkedin: r.header.linkedin,
+      _v2_extras: { import_format_mode: importFormatMode },
     },
     summary: r.summary,
     experience: r.experience,
@@ -611,7 +703,13 @@ function resumeJSONToRow(r: ResumeJSON, title: string, userId: string) {
     awards: r.awards ?? [],
     custom_sections: r.customSections ?? [],
     section_order: r.section_order ?? null,
+    source_document_id: sourceDocumentId,
   };
+}
+
+function safeFileName(value: string): string {
+  const sanitized = value.trim().replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "");
+  return sanitized || "resume";
 }
 
 function arr<T>(v: unknown): T[] | null {
