@@ -137,11 +137,12 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
           ) : (
             <>
               <p className="text-xs text-muted-foreground">
-                Link Gmail with read-only permission to capture application confirmations, short-lived codes,
+                Use the same Google account you use for ResumePreps. Google will ask once for a separate,
+                read-only Gmail permission to capture application confirmations, short-lived codes,
                 interview requests, assessments, offers, and status changes in one place.
               </p>
               <Button size="sm" onClick={connect} disabled={busy} className="mt-3">
-                Connect inbox
+                Connect Gmail with Google
               </Button>
             </>
           )}

@@ -27,6 +27,11 @@ submitted until the portal returns a receipt.
 - Gmail is read-only. It is used to classify application messages and to supply
   one short-lived verification code to the matching worker task. OAuth tokens
   remain encrypted server-side and never enter the browser payload.
+- Google sign-in and Gmail access intentionally use separate consent steps. The
+  existing Supabase Google sign-in requests identity scopes; the Gmail connector
+  requests only `gmail.readonly` after the user is already signed in. The two
+  flows can use the same Google Cloud OAuth client, but the Gmail edge functions
+  still need that client ID and secret configured in the dev project.
 
 ## What we can add next
 
@@ -39,4 +44,3 @@ submitted until the portal returns a receipt.
 4. For providers that authorize it, replace browser submission with a signed
    server-side API adapter and retain the same receipt verification and Gmail
    status bridge.
-

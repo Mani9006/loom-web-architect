@@ -183,7 +183,7 @@ export default function InboxPage() {
         /> : (
           <Card className="p-5">
             <p className="text-sm font-semibold">Connect your application email</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Your private application workspace is prepared automatically. Gmail still requires your one-time consent.</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Your private application workspace is prepared automatically. Gmail uses the same Google account as sign-in and still requires one-time read-only consent.</p>
             <Button className="mt-4" size="sm" onClick={createWorkspace} disabled={creating}>{creating ? "Preparing…" : "Retry setup"}</Button>
           </Card>
         )}
