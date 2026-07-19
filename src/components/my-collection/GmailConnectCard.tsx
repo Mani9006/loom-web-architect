@@ -12,7 +12,7 @@ interface Connection {
   gmail_email: string;
   enabled: boolean;
   last_polled_at: string | null;
-  token_expires_at: string;
+  token_expires_at: string | null;
 }
 
 interface GmailConnectCardProps {
@@ -26,15 +26,26 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
   const [conn, setConn] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
+    setLoadError(false);
     const { data } = await supabase
       .from("mc_gmail_connections")
       .select("id,gmail_email,enabled,last_polled_at,token_expires_at")
       .eq("session_id", sessionId)
+      .eq("enabled", true)
       .maybeSingle();
+    if (!data) {
+      const { error } = await supabase
+        .from("mc_gmail_connections")
+        .select("id")
+        .eq("session_id", sessionId)
+        .limit(1);
+      if (error) setLoadError(true);
+    }
     setConn(data as Connection | null);
-    onConnectionChange?.(Boolean(data));
+    onConnectionChange?.(Boolean(data?.enabled));
     setLoading(false);
   }, [onConnectionChange, sessionId]);
 
@@ -46,10 +57,11 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
     setBusy(true);
     try {
       const { data, error } = await supabase.functions.invoke("mc-gmail-connect", {
-        body: { session_id: sessionId },
+        body: { session_id: sessionId, return_to: `${window.location.origin}/inbox` },
       });
       if (error) throw error;
-      if (data?.auth_url) window.location.href = data.auth_url;
+      if (!data?.auth_url) throw new Error("Inbox connection could not be started");
+      window.location.assign(data.auth_url);
     } catch (e) {
       const safeError = toUserFacingError(e, {
         operation: "connect_application_inbox",
@@ -63,7 +75,13 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
   async function disconnect() {
     if (!conn) return;
     if (!confirm("Disconnect Gmail from this session? Auto-status updates from email will stop.")) return;
-    await supabase.from("mc_gmail_connections").delete().eq("id", conn.id);
+    setBusy(true);
+    const { error } = await supabase.from("mc_gmail_connections").delete().eq("id", conn.id);
+    setBusy(false);
+    if (error) {
+      toast({ title: "Couldn't disconnect inbox", description: "Try again in a moment.", variant: "destructive" });
+      return;
+    }
     setConn(null);
     onConnectionChange?.(false);
   }
@@ -95,6 +113,20 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
   }
 
   if (loading) return null;
+
+  if (loadError) {
+    return (
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h4 className="font-medium text-sm">Application inbox</h4>
+            <p className="mt-1 text-xs text-muted-foreground">The connection status could not be loaded.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => void load()}>Retry</Button>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-4">

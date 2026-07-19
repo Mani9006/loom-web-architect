@@ -13,6 +13,24 @@ const json = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "content-type": "application/json" },
   });
 
+function resolveReturnTo(candidate: unknown, fallback: string): string {
+  if (typeof candidate !== "string" || !candidate.trim()) return fallback;
+  try {
+    const parsed = new URL(candidate);
+    const trustedHost = parsed.hostname === "resumepreps.com" ||
+      parsed.hostname === "www.resumepreps.com" ||
+      parsed.hostname === "localhost" ||
+      parsed.hostname === "127.0.0.1" ||
+      parsed.hostname.endsWith(".vercel.app");
+    const trustedProtocol = parsed.protocol === "https:" ||
+      ((parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") && parsed.protocol === "http:");
+    if (!trustedHost || !trustedProtocol) return fallback;
+    return `${parsed.origin}/inbox`;
+  } catch {
+    return fallback;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -57,6 +75,7 @@ serve(async (req) => {
       user_id: user.id,
       exp: Math.floor(Date.now() / 1000) + 10 * 60,
       nonce: crypto.randomUUID(),
+      return_to: resolveReturnTo(body?.return_to, Deno.env.get("APP_BASE_URL") || "https://www.resumepreps.com"),
     }, stateSecret);
 
     const params = new URLSearchParams({

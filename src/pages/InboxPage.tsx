@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- inbox verification fields are deployed ahead of generated client types */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Check, CheckCheck, Clipboard, Inbox, MailOpen, RefreshCw, Search, ShieldCheck } from "lucide-react";
 
@@ -49,6 +49,7 @@ export default function InboxPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,6 +62,43 @@ export default function InboxPage() {
   const [gmailConnected, setGmailConnected] = useState(false);
   const pollingRef = useRef(false);
   const automaticWorkspaceAttempt = useRef(false);
+  const connectionResult = searchParams.get("inbox");
+
+  useEffect(() => {
+    if (!connectionResult) return;
+    const resultMessages: Record<string, { title: string; description: string; variant?: "destructive" }> = {
+      connected: {
+        title: "Gmail connected",
+        description: "Your application inbox is ready. We’ll only surface job-related messages here.",
+      },
+      cancelled: {
+        title: "Gmail connection cancelled",
+        description: "No access was granted. You can connect Gmail whenever you’re ready.",
+      },
+      connect_failed: {
+        title: "Gmail connection didn’t finish",
+        description: "Google could not complete the connection. Please try Connect Gmail again.",
+        variant: "destructive",
+      },
+      unavailable: {
+        title: "Gmail connection unavailable",
+        description: "The inbox connection is not ready yet. Please try again shortly.",
+        variant: "destructive",
+      },
+      invalid_link: {
+        title: "Gmail connection expired",
+        description: "For your security, this connection link is no longer valid. Start again from this page.",
+        variant: "destructive",
+      },
+    };
+    const message = resultMessages[connectionResult];
+    if (message) toast(message);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("inbox");
+      return next;
+    }, { replace: true });
+  }, [connectionResult, setSearchParams, toast]);
 
   const load = useCallback(async () => {
     if (!user) return;

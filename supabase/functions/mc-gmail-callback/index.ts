@@ -7,10 +7,16 @@ interface OAuthState {
   user_id: string;
   exp: number;
   nonce: string;
+  return_to?: string;
 }
 
 function safeRedirect(baseUrl: string, path: string, params: Record<string, string>): Response {
-  const url = new URL(path, baseUrl);
+  let url: URL;
+  try {
+    url = new URL(path, baseUrl);
+  } catch {
+    url = new URL(path, "https://www.resumepreps.com");
+  }
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
   return Response.redirect(url.toString(), 302);
 }
@@ -38,10 +44,17 @@ serve(async (req) => {
     return safeRedirect(appBaseUrl, "/inbox", { inbox: "unavailable" });
   }
 
-  const state = await verifySignedState<OAuthState>(stateRaw, encryptionKey);
+  let state: OAuthState | null = null;
+  try {
+    state = await verifySignedState<OAuthState>(stateRaw, encryptionKey);
+  } catch (error) {
+    console.error("mc-gmail-callback state", error);
+  }
   if (!state?.session_id || !state?.user_id || !state?.nonce) {
     return safeRedirect(appBaseUrl, "/inbox", { inbox: "invalid_link" });
   }
+
+  const redirectBase = state.return_to || appBaseUrl;
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   const { data: session } = await admin
@@ -67,8 +80,27 @@ serve(async (req) => {
     if (!tokenResponse.ok) throw new Error(`oauth_exchange_${tokenResponse.status}`);
 
     const tokens = await tokenResponse.json();
-    if (!tokens.access_token || !tokens.refresh_token || !tokens.expires_in) {
+    if (!tokens.access_token || !tokens.expires_in) {
       throw new Error("oauth_tokens_incomplete");
+    }
+
+    // Google can omit refresh_token when the user has already granted this
+    // client access. Reuse the encrypted refresh token from the existing
+    // connection instead of requiring a destructive disconnect/reconnect.
+    let existingRefreshCiphertext: string | null = null;
+    if (!tokens.refresh_token) {
+      const { data: existingConnection } = await admin
+        .from("mc_gmail_connections")
+        .select("id")
+        .eq("session_id", state.session_id)
+        .maybeSingle();
+      if (existingConnection?.id) {
+        const { data: existingTokens } = await admin.rpc("mc_get_gmail_tokens", {
+          p_connection_id: existingConnection.id,
+        });
+        existingRefreshCiphertext = existingTokens?.[0]?.refresh_ciphertext || null;
+      }
+      if (!existingRefreshCiphertext) throw new Error("oauth_refresh_token_missing");
     }
 
     const profileResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -95,7 +127,9 @@ serve(async (req) => {
 
     const [accessCiphertext, refreshCiphertext] = await Promise.all([
       encryptSecret(tokens.access_token, encryptionKey),
-      encryptSecret(tokens.refresh_token, encryptionKey),
+      tokens.refresh_token
+        ? encryptSecret(tokens.refresh_token, encryptionKey)
+        : Promise.resolve(existingRefreshCiphertext),
     ]);
     const { error: tokenStoreError } = await admin.rpc("mc_store_gmail_tokens", {
       p_connection_id: connection.id,
@@ -107,9 +141,9 @@ serve(async (req) => {
       throw new Error("token_store_failed");
     }
 
-    return safeRedirect(appBaseUrl, "/inbox", { inbox: "connected" });
+    return safeRedirect(redirectBase, "/inbox", { inbox: "connected" });
   } catch (error) {
     console.error("mc-gmail-callback", error);
-    return safeRedirect(appBaseUrl, "/inbox", { inbox: "connect_failed" });
+    return safeRedirect(redirectBase, "/inbox", { inbox: "connect_failed" });
   }
 });
