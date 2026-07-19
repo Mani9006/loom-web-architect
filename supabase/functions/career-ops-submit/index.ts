@@ -115,7 +115,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
   // Load prefs
   const { data: prefs } = await svc
     .from("user_job_prefs")
-    .select("auto_apply_enabled, auto_apply_portals, daily_apply_cap")
+    .select("auto_apply_enabled, auto_apply_portals, daily_apply_cap, requires_sponsorship, work_authorization")
     .eq("user_id", userId)
     .maybeSingle();
   if (!prefs?.auto_apply_enabled) {
@@ -156,12 +156,19 @@ async function enqueueSubmit(userId: string, draftId: string) {
     phone: asString(storedProfile.phone) || asString(personalInfo.phone),
     location: asString(storedProfile.location) || asString(personalInfo.location),
     currentTitle: asString(storedProfile.currentTitle) || asString(personalInfo.title) || asString(asRecord(experience[0]).role),
+    currentCompany: asString(storedProfile.currentCompany)
+      || asString(asRecord(experience[0]).company_or_client)
+      || asString(asRecord(experience[0]).company),
     yearsExperience: asString(storedProfile.yearsExperience),
     linkedinUrl: asString(storedProfile.linkedinUrl) || asString(personalInfo.linkedin),
     portfolioUrl: asString(storedProfile.portfolioUrl),
     expectedSalary: asString(storedProfile.expectedSalary),
-    workAuthorization: asString(storedProfile.workAuthorization),
+    workAuthorization: asString(storedProfile.workAuthorization) || asString(prefs?.work_authorization),
+    requiresSponsorship: typeof storedProfile.requiresSponsorship === "boolean"
+      ? storedProfile.requiresSponsorship
+      : prefs?.requires_sponsorship === true,
     noticePeriod: asString(storedProfile.noticePeriod),
+    discoverySource: "ResumePreps job search",
   };
 
   const queuedAt = new Date().toISOString();

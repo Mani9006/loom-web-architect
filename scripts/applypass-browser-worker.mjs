@@ -35,6 +35,173 @@ function normalize(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function matchingMemoryAnswer(answerMemory, label) {
+  const labelTokens = normalize(label).split(" ").filter((token) => token.length > 3);
+  let bestAnswer = "";
+  let bestScore = 0;
+  for (const [question, answer] of Object.entries(answerMemory || {})) {
+    const response = String(answer || "").trim();
+    if (!response) continue;
+    const questionText = normalize(question);
+    const score = labelTokens.reduce((total, token) => total + (questionText.includes(token) ? 1 : 0), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestAnswer = response;
+    }
+  }
+  return bestScore >= 2 ? bestAnswer : "";
+}
+
+function inferCountry(location) {
+  const value = normalize(location);
+  if (!value) return "";
+  if (/\b(united states|u\.?s\.?a?|usa)\b/i.test(value)) return "United States";
+  const stateNames = /(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming)/i;
+  const stateCodes = /(?:,|\s)\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)(?:\s|,|$)/i;
+  return stateNames.test(value) || stateCodes.test(value) ? "United States" : "";
+}
+
+function inferAuthorizationAnswers(profile, answerMemory) {
+  const relevantMemory = Object.entries(answerMemory || {})
+    .filter(([question]) => /(authoriz|sponsor|visa|work permit)/i.test(question))
+    .map(([, answer]) => String(answer || ""));
+  const text = normalize([profile?.workAuthorization, ...relevantMemory].filter(Boolean).join(". "));
+  let workAuthorized = "";
+  let sponsorshipRequired = "";
+
+  if (/(not|no)\s+(currently\s+)?authorized|cannot\s+work/i.test(text)) workAuthorized = "No";
+  else if (/authoriz|citizen|permanent resident|green card|\bead\b/i.test(text)) workAuthorized = "Yes";
+
+  if (typeof profile?.requiresSponsorship === "boolean") {
+    sponsorshipRequired = profile.requiresSponsorship ? "Yes" : "No";
+  } else if (/(do not|don.t|without|no)\s+(currently\s+)?(require|need)[^.;]{0,30}sponsor|no sponsorship/i.test(text)) {
+    sponsorshipRequired = "No";
+  } else if (/(require|need)[^.;]{0,30}sponsor|sponsorship required/i.test(text)) {
+    sponsorshipRequired = "Yes";
+  }
+  return { workAuthorized, sponsorshipRequired };
+}
+
+async function chooseVisibleOption(page, input, desired, { allowFirstMatch = false, typeSequentially = false, searchValue = "" } = {}) {
+  if (!desired) return false;
+  const committed = async () => await input.evaluate((element) => {
+    const selectedText = (element.parentElement?.parentElement?.innerText || "").replace(/\s+/g, " ").trim();
+    return Boolean(selectedText) && !/^(select|choose|search)(\.\.\.)?$/i.test(selectedText);
+  }).catch(() => false);
+  await input.scrollIntoViewIfNeeded();
+  await input.click();
+  if (allowFirstMatch) {
+    await input.fill("");
+    const query = searchValue || desired;
+    if (typeSequentially) await input.pressSequentially(query, { delay: 35 });
+    else await input.fill(query);
+  }
+  await page.waitForTimeout(120);
+
+  const options = page.locator('[role="option"]:visible');
+  await options.first().waitFor({ state: "visible", timeout: allowFirstMatch ? 2500 : 1000 }).catch(() => {});
+  const count = await options.count();
+  const target = normalize(desired);
+  let fallback = null;
+  for (let index = 0; index < count; index += 1) {
+    const option = options.nth(index);
+    const optionText = normalize(await option.textContent());
+    if (!optionText) continue;
+    if (optionText === target || optionText.startsWith(`${target} `) || optionText.startsWith(`${target}+`)) {
+      await option.click();
+      return await committed();
+    }
+    if (!fallback && (optionText.includes(target) || target.includes(optionText))) fallback = option;
+  }
+  if (fallback) {
+    await fallback.click();
+    return await committed();
+  }
+  if (allowFirstMatch && count > 0) {
+    await options.first().click();
+    return await committed();
+  }
+  if (allowFirstMatch) {
+    await input.press("ArrowDown").catch(() => {});
+    await input.press("Enter").catch(() => {});
+    if (await committed()) return true;
+  }
+  await page.keyboard.press("Escape");
+  return false;
+}
+
+async function fillCustomFields(page, profile = {}, answerMemory = {}, approved = false) {
+  const { workAuthorized, sponsorshipRequired } = inferAuthorizationAnswers(profile, answerMemory);
+  const descriptors = await page.locator('input[role="combobox"][aria-required="true"]').evaluateAll((elements) => elements.map((element) => {
+    const id = element.getAttribute("id") || "";
+    const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
+    return { id, label: label.replace(/\s+/g, " ").trim() };
+  }));
+  let filledCount = 0;
+  let demographicFields = 0;
+  let declinedDemographicFields = 0;
+
+  for (const descriptor of descriptors) {
+    if (!descriptor.id) continue;
+    const input = page.locator(`input[id="${descriptor.id.replaceAll('"', '\\"')}"]`).first();
+    const label = normalize(descriptor.label);
+    let desired = "";
+    let allowFirstMatch = false;
+    let typeSequentially = false;
+    let searchValue = "";
+
+    if (descriptor.id === "country" || /^country\b/.test(label)) {
+      desired = inferCountry(profile.location);
+      allowFirstMatch = true;
+    } else if (descriptor.id === "candidate-location" || /location.*city|city.*location/.test(label)) {
+      desired = String(profile.location || "").trim();
+      allowFirstMatch = true;
+      typeSequentially = true;
+      searchValue = desired.split(",")[0]?.trim() || desired;
+    } else if (/currently authorized|authorized to work/.test(label)) {
+      desired = workAuthorized;
+    } else if (/sponsor|immigration/.test(label)) {
+      desired = sponsorshipRequired;
+    } else if (/privacy policy|selecting.*agree|i agree/.test(label)) {
+      desired = approved ? "I agree" : "";
+    } else if (/gender|transgender|sexual orientation|disabilit|veteran|military|ethnicit|race/.test(label)) {
+      demographicFields += 1;
+      desired = approved ? "I don't wish to answer" : "";
+    } else {
+      desired = matchingMemoryAnswer(answerMemory, descriptor.label);
+    }
+
+    if (await chooseVisibleOption(page, input, desired, { allowFirstMatch, typeSequentially, searchValue })) {
+      filledCount += 1;
+      if (/gender|transgender|sexual orientation|disabilit|veteran|military|ethnicit|race/.test(label)) {
+        declinedDemographicFields += 1;
+      }
+    }
+  }
+
+  // A required demographic consent is acknowledged only when the applicant
+  // approved submission and every demographic response was explicitly
+  // declined. This avoids inventing sensitive attributes.
+  if (approved && demographicFields > 0 && declinedDemographicFields === demographicFields) {
+    const requiredCheckboxes = page.locator('input[type="checkbox"][required], input[type="checkbox"][aria-required="true"]');
+    const checkboxCount = await requiredCheckboxes.count();
+    for (let index = 0; index < checkboxCount; index += 1) {
+      const checkbox = requiredCheckboxes.nth(index);
+      const metadata = normalize(await checkbox.evaluate((element) => {
+        const id = element.getAttribute("id") || "";
+        const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
+        return [label, element.closest("label")?.textContent || ""].join(" ");
+      }));
+      if (/consent|demographic/.test(metadata) && !(await checkbox.isChecked())) {
+        await checkbox.check();
+        filledCount += 1;
+      }
+    }
+  }
+
+  return { filledCount, workAuthorizedKnown: Boolean(workAuthorized), sponsorshipKnown: Boolean(sponsorshipRequired) };
+}
+
 async function queueCall(payload, workerId = WORKER_ID) {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/applypass-agent-queue`, {
     method: "POST",
@@ -94,143 +261,93 @@ async function maybeScreenshot(page, taskId, jobId) {
 }
 
 async function fillCommonFields(page, profile = {}, answerMemory = {}) {
-  return await page.evaluate(({ profileData, memoryData }) => {
-    const profile = profileData || {};
-    const nameParts = String(profile.fullName || "").trim().split(/\s+/).filter(Boolean);
-    const firstName = nameParts[0] || "";
-    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
-    const answerEntries = Object.entries(memoryData || {})
-      .map(([k, v]) => [String(k).toLowerCase(), String(v)])
-      .filter(([, v]) => v.trim().length > 0);
+  const nameParts = String(profile.fullName || "").trim().split(/\s+/).filter(Boolean);
+  const firstName = nameParts[0] || "";
+  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+  const mappings = [
+    { keys: ["first name", "given name"], value: firstName },
+    { keys: ["last name", "family name", "surname"], value: lastName },
+    { keys: ["full name", "legal name"], value: profile.fullName || "" },
+    { keys: ["email", "e-mail"], value: profile.email || "" },
+    { keys: ["phone", "mobile", "contact"], value: profile.phone || "" },
+    { keys: ["linkedin"], value: profile.linkedinUrl || "" },
+    { keys: ["portfolio", "website", "github"], value: profile.portfolioUrl || "" },
+    { keys: ["location", "city", "address"], value: profile.location || "" },
+    { keys: ["salary", "compensation", "expected pay"], value: profile.expectedSalary || "" },
+    { keys: ["notice", "joining", "start date"], value: profile.noticePeriod || "" },
+    { keys: ["experience", "years"], value: profile.yearsExperience || "" },
+    { keys: ["title", "current role", "designation"], value: profile.currentTitle || "" },
+    { keys: ["current company", "recent company", "most recent company", "most recent", "name of your current"], value: profile.currentCompany || "" },
+    { keys: ["how did you hear", "how you heard", "job source"], value: profile.discoverySource || "" },
+  ].filter((item) => String(item.value || "").trim().length > 0);
 
-    const fieldMappings = [
-      { keys: ["first name", "given name"], value: firstName },
-      { keys: ["last name", "family name", "surname"], value: lastName },
-      { keys: ["full name", "legal name"], value: profile.fullName || "" },
-      { keys: ["email", "e-mail"], value: profile.email || "" },
-      { keys: ["phone", "mobile", "contact"], value: profile.phone || "" },
-      { keys: ["linkedin"], value: profile.linkedinUrl || "" },
-      { keys: ["portfolio", "website", "github"], value: profile.portfolioUrl || "" },
-      { keys: ["location", "city", "address"], value: profile.location || "" },
-      { keys: ["salary", "compensation", "expected pay"], value: profile.expectedSalary || "" },
-      { keys: ["authorization", "sponsorship", "work permit", "visa"], value: profile.workAuthorization || "" },
-      { keys: ["notice", "joining", "start date"], value: profile.noticePeriod || "" },
-      { keys: ["experience", "years"], value: profile.yearsExperience || "" },
-      { keys: ["title", "current role", "designation"], value: profile.currentTitle || "" },
-    ].filter((item) => String(item.value || "").trim().length > 0);
+  const handles = await page.locator("input, textarea, select").elementHandles();
+  let filledCount = 0;
+  let totalFields = 0;
 
-    function findLabelText(el) {
-      const id = el.getAttribute("id");
-      if (id) {
-        const label = document.querySelector(`label[for="${id}"]`);
-        if (label) return label.textContent || "";
+  for (const handle of handles) {
+    const details = await handle.evaluate((element) => {
+      const id = element.getAttribute("id") || "";
+      const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
+      const metadata = [
+        element.getAttribute("name") || "",
+        id,
+        element.getAttribute("placeholder") || "",
+        element.getAttribute("aria-label") || "",
+        label,
+        element.closest("label")?.textContent || "",
+      ].join(" ").toLowerCase().replace(/\s+/g, " ").trim();
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return {
+        metadata,
+        tag: element.tagName.toLowerCase(),
+        type: element.getAttribute("type") || "",
+        role: element.getAttribute("role") || "",
+        usable: style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+          && !element.hasAttribute("disabled") && !element.hasAttribute("readonly"),
+        empty: !("value" in element) || !String(element.value || "").trim(),
+      };
+    });
+    if (!details.usable || !details.metadata) continue;
+    totalFields += 1;
+    if (!details.empty || details.role === "combobox" || ["file", "radio", "checkbox", "hidden", "submit", "button"].includes(details.type)) continue;
+
+    let value = "";
+    for (const mapping of mappings) {
+      if (mapping.keys.some((key) => details.metadata.includes(key))) {
+        value = String(mapping.value || "").trim();
+        if (value) break;
       }
-      const parentLabel = el.closest("label");
-      if (parentLabel) return parentLabel.textContent || "";
-      const parent = el.parentElement;
-      if (parent) {
-        const siblingLabel = parent.querySelector("label");
-        if (siblingLabel) return siblingLabel.textContent || "";
-      }
-      return "";
     }
-
-    function metadata(el) {
-      const parts = [
-        el.getAttribute("name") || "",
-        el.getAttribute("id") || "",
-        el.getAttribute("placeholder") || "",
-        el.getAttribute("aria-label") || "",
-        findLabelText(el),
-      ];
-      return parts.join(" ").toLowerCase().replace(/\s+/g, " ").trim();
+    if (!value && ["input", "textarea"].includes(details.tag)) {
+      value = matchingMemoryAnswer(answerMemory, details.metadata);
     }
+    if (!value) continue;
 
-    function isUsableField(el) {
-      const style = window.getComputedStyle(el);
-      if (style.display === "none" || style.visibility === "hidden") return false;
-      if (el.hasAttribute("disabled") || el.hasAttribute("readonly")) return false;
-      const rect = el.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0;
-    }
-
-    function fillElement(el, value) {
-      if (!value) return false;
-      if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && !el.value.trim()) {
-        el.focus();
-        el.value = value;
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-        return true;
-      }
-      if (el instanceof HTMLSelectElement && !el.value) {
-        const target = value.toLowerCase();
-        let matched = false;
-        for (const option of Array.from(el.options)) {
-          if (option.value.toLowerCase() === target || option.textContent?.toLowerCase().includes(target)) {
-            el.value = option.value;
-            matched = true;
-            break;
-          }
+    try {
+      if (details.tag === "select") {
+        const options = await handle.evaluate((element) => Array.from(element.options || []).map((option) => ({
+          value: option.value,
+          label: option.textContent || "",
+        })));
+        const target = normalize(value);
+        const match = options.find((option) => normalize(option.value) === target || normalize(option.label).includes(target));
+        if (match) {
+          await handle.selectOption(match.value);
+          filledCount += 1;
         }
-        if (matched) {
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          return true;
-        }
+      } else {
+        await handle.fill(value);
+        filledCount += 1;
       }
-      return false;
+    } catch {
+      // A framework may replace a field while another answer is committed.
+      // Readiness inspection below will surface it instead of guessing.
     }
+  }
 
-    function bestMemoryAnswer(meta) {
-      let best = "";
-      let bestScore = 0;
-
-      for (const [q, a] of answerEntries) {
-        const qTokens = q.split(" ").filter((t) => t.length > 3);
-        if (qTokens.length === 0) continue;
-        let score = 0;
-        for (const token of qTokens) {
-          if (meta.includes(token)) score += 1;
-        }
-        if (score > bestScore) {
-          bestScore = score;
-          best = a;
-        }
-      }
-
-      return bestScore >= 2 ? best : "";
-    }
-
-    const fields = Array.from(document.querySelectorAll("input, textarea, select"));
-    let filledCount = 0;
-
-    for (const node of fields) {
-      const el = node;
-      if (!isUsableField(el)) continue;
-      const meta = metadata(el);
-      if (!meta) continue;
-
-      let filled = false;
-      for (const map of fieldMappings) {
-        if (map.keys.some((k) => meta.includes(k))) {
-          filled = fillElement(el, String(map.value || ""));
-          if (filled) break;
-        }
-      }
-
-      if (!filled && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && (el.type === "text" || el.type === "search")))) {
-        const answer = bestMemoryAnswer(meta);
-        filled = fillElement(el, answer);
-      }
-
-      if (filled) filledCount += 1;
-    }
-
-    return { filledCount, totalFields: fields.length };
-  }, {
-    profileData: profile,
-    memoryData: answerMemory,
-  });
+  return { filledCount, totalFields };
 }
 
 async function findVerificationField(page) {
@@ -313,16 +430,18 @@ async function downloadResumeFile(payload) {
 
 async function uploadResume(page, filePath) {
   const inputs = page.locator('input[type="file"]');
-  const count = await inputs.count();
+  // Keep stable element handles. Greenhouse re-renders its upload controls
+  // after a file is selected, so iterating a live locator by index can make a
+  // previously counted input disappear between iterations.
+  const handles = await inputs.elementHandles();
+  const count = handles.length;
   if (count === 0) return { fileInputs: 0, resumeInputs: 0, uploaded: 0, requiredMissing: false };
 
-  let resumeInputs = 0;
-  let uploaded = 0;
+  const candidates = [];
   let requiredMissing = false;
 
-  for (let index = 0; index < count; index += 1) {
-    const input = inputs.nth(index);
-    const details = await input.evaluate((element) => {
+  for (const handle of handles) {
+    const details = await handle.evaluate((element) => {
       const id = element.getAttribute("id") || "";
       const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
       const parentText = element.closest("label")?.textContent || element.parentElement?.textContent || "";
@@ -344,33 +463,72 @@ async function uploadResume(page, filePath) {
       if (details.required) requiredMissing = true;
       continue;
     }
-
-    resumeInputs += 1;
-    if (filePath) {
-      await input.setInputFiles(filePath);
-      uploaded += 1;
-    } else if (details.required) {
-      requiredMissing = true;
-    }
+    candidates.push({ handle, required: details.required });
   }
 
-  if (resumeInputs > 0 && uploaded === 0) requiredMissing = true;
-  return { fileInputs: count, resumeInputs, uploaded, requiredMissing };
+  if (candidates.length === 0) {
+    return { fileInputs: count, resumeInputs: 0, uploaded: 0, requiredMissing };
+  }
+
+  if (!filePath) {
+    if (candidates.some((candidate) => candidate.required)) requiredMissing = true;
+    return { fileInputs: count, resumeInputs: candidates.length, uploaded: 0, requiredMissing };
+  }
+
+  // One résumé upload is sufficient. Uploading to every matching control can
+  // attach the résumé as a cover letter on forms with ambiguous labels.
+  await candidates[0].handle.setInputFiles(filePath);
+  return { fileInputs: count, resumeInputs: candidates.length, uploaded: 1, requiredMissing };
 }
 
 async function inspectReadiness(page) {
   return await page.evaluate(() => {
     const required = Array.from(document.querySelectorAll("input[required], textarea[required], select[required], [aria-required='true']"));
-    const incomplete = required.filter((node) => {
+    const visible = required.filter((node) => {
+      if (!(node instanceof HTMLElement) || node.hasAttribute("disabled")) return false;
+      if (node instanceof HTMLInputElement
+        && !node.id
+        && !node.name
+        && !node.getAttribute("aria-label")
+        && !node.getAttribute("role")
+        && !["checkbox", "radio", "file"].includes(node.type)) return false;
+      const style = window.getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    });
+    const seenRadioGroups = new Set();
+    const incomplete = visible.filter((node) => {
       if (node instanceof HTMLInputElement) {
-        if (["checkbox", "radio"].includes(node.type)) return !node.checked;
+        if (node.getAttribute("role") === "combobox") {
+          const selectedText = (node.parentElement?.parentElement?.innerText || "").replace(/\s+/g, " ").trim();
+          return !selectedText || /^(select|choose|search)(\.\.\.)?$/i.test(selectedText);
+        }
+        if (node.type === "radio") {
+          const groupName = node.name || node.id;
+          if (seenRadioGroups.has(groupName)) return false;
+          seenRadioGroups.add(groupName);
+          const escaped = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(node.name) : node.name;
+          return node.name
+            ? !document.querySelector(`input[type="radio"][name="${escaped}"]:checked`)
+            : !node.checked;
+        }
+        if (node.type === "checkbox") return !node.checked;
         if (node.type === "file") return !node.files?.length;
         return !node.value.trim();
       }
       if (node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) return !node.value.trim();
       return false;
     });
-    return { requiredFields: required.length, incompleteRequired: incomplete.length };
+    const missingFields = incomplete.slice(0, 25).map((node) => {
+      const id = node.getAttribute("id") || "";
+      const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
+      return {
+        id,
+        type: node instanceof HTMLInputElement ? node.type || node.getAttribute("role") || "input" : node.tagName.toLowerCase(),
+        label: label.replace(/\s+/g, " ").trim().slice(0, 180),
+      };
+    });
+    return { requiredFields: visible.length, incompleteRequired: incomplete.length, missingFields };
   });
 }
 
@@ -390,17 +548,58 @@ async function detectSubmitButton(page) {
 }
 
 async function confirmSubmission(page, previousUrl) {
-  await page.waitForTimeout(1800);
-  const pageState = await page.evaluate(() => ({
-    text: document.body?.innerText?.slice(0, 8000).toLowerCase() || "",
-    invalidFields: document.querySelectorAll(':invalid, [aria-invalid="true"]').length,
-  }));
-  const confirmed = /(application (?:has been )?(?:received|submitted)|thank you for applying|thanks for applying|submission confirmed)/i.test(pageState.text);
+  const deadline = Date.now() + 12000;
+  let pageState = { text: "", invalidFields: 0, formPresent: true, visibleAlerts: [] };
+  let confirmed = false;
+  while (Date.now() < deadline) {
+    pageState = await page.evaluate(() => ({
+      text: document.body?.innerText?.toLowerCase() || "",
+      invalidFields: document.querySelectorAll(':invalid, [aria-invalid="true"]').length,
+      formPresent: Boolean(document.querySelector("#application-form, form.application--form")),
+      visibleAlerts: Array.from(document.querySelectorAll('[role="alert"], .error, .field-error'))
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        })
+        .map((element) => (element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240))
+        .filter(Boolean)
+        .slice(0, 5),
+    }));
+    confirmed = /(application (?:has been )?(?:received|submitted)|thank you(?:!| for applying)|thanks for applying|submission confirmed|we(?:'|’)ve received your application|application complete)/i.test(pageState.text)
+      || /(?:thank.?you|confirmation|submitted)/i.test(page.url());
+    if (confirmed) break;
+    await page.waitForTimeout(500);
+  }
   return {
     confirmed,
     urlChanged: page.url() !== previousUrl,
     invalidFields: pageState.invalidFields,
+    formPresent: pageState.formPresent,
+    visibleAlerts: pageState.visibleAlerts,
   };
+}
+
+async function inspectSubmissionResponse(response) {
+  if (!response) return { status: null, path: null, confirmed: false };
+  const status = response.status();
+  let pathName = null;
+  try {
+    pathName = new URL(response.url()).pathname;
+  } catch {
+    pathName = null;
+  }
+  const body = await response.text().catch(() => "");
+  let explicitSuccess = false;
+  try {
+    const parsed = JSON.parse(body);
+    explicitSuccess = parsed?.success === true
+      || parsed?.submitted === true
+      || normalize(parsed?.status) === "success";
+  } catch {
+    explicitSuccess = false;
+  }
+  const receiptText = /(application (?:has been )?(?:received|submitted)|thank you for applying|submission confirmed|we(?:'|’)ve received your application)/i.test(body);
+  return { status, path: pathName, confirmed: response.ok() && (explicitSuccess || receiptText) };
 }
 
 async function processJob(browser, taskId, job, payload, resumeFilePath, workerId) {
@@ -417,6 +616,10 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     submitted: false,
     resumeUploaded: false,
     verificationHandled: false,
+    missingFields: [],
+    submissionResponseStatus: null,
+    submissionResponsePath: null,
+    handoffReason: null,
     screenshotPath: null,
     error: null,
     durationMs: 0,
@@ -436,12 +639,19 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.waitForTimeout(1200);
 
-    const filled = await fillCommonFields(page, payload?.candidateProfile || {}, payload?.answerMemory || {});
-    result.filledCount = Number(filled?.filledCount || 0);
-    result.totalFields = Number(filled?.totalFields || 0);
+    const approval = job?.approvalReceipt || payload?.approvalReceipts?.[result.jobId];
+    const approved = approval?.approved === true && typeof approval?.reviewedAt === "string";
 
+    // File uploads and custom dropdowns can re-render Greenhouse forms. Do
+    // those first, then fill ordinary React-controlled inputs last so their
+    // values remain committed in the framework state.
     const upload = await uploadResume(page, resumeFilePath);
     result.resumeUploaded = upload.uploaded > 0;
+
+    const customFilled = await fillCustomFields(page, payload?.candidateProfile || {}, payload?.answerMemory || {}, approved);
+    const filled = await fillCommonFields(page, payload?.candidateProfile || {}, payload?.answerMemory || {});
+    result.filledCount = Number(filled?.filledCount || 0) + Number(customFilled?.filledCount || 0);
+    result.totalFields = Number(filled?.totalFields || 0);
 
     const verification = await handleApplicationVerification(page, taskId, result.jobId, workerId);
     result.verificationHandled = verification.completed;
@@ -449,10 +659,8 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     const submitButton = await detectSubmitButton(page);
     result.submitButton = submitButton?.label || null;
 
-    const approval = job?.approvalReceipt || payload?.approvalReceipts?.[result.jobId];
-    const approved = approval?.approved === true && typeof approval?.reviewedAt === "string";
-
     const readiness = await inspectReadiness(page);
+    result.missingFields = readiness.missingFields || [];
     const blocked = upload.requiredMissing || readiness.incompleteRequired > 0 || (verification.requested && !verification.completed);
 
     const stillAuthorized = submitButton && AUTO_SUBMIT && approved && !blocked
@@ -462,12 +670,35 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     if (submitButton && AUTO_SUBMIT && approved && !blocked && stillAuthorized) {
       const previousUrl = page.url();
       const finalButtons = page.locator('button, input[type="submit"]');
+      const responsePromise = page.waitForResponse((response) => {
+        const request = response.request();
+        if (!["POST", "PUT", "PATCH"].includes(request.method())) return false;
+        try {
+          return new URL(response.url()).hostname.endsWith("greenhouse.io");
+        } catch {
+          return false;
+        }
+      }, { timeout: 15000 }).catch(() => null);
       await finalButtons.nth(submitButton.index).click({ timeout: 10000 });
-      const confirmation = await confirmSubmission(page, previousUrl);
-      result.submitted = confirmation.confirmed;
-      result.status = confirmation.confirmed ? "submitted" : "needs_review";
-      if (!confirmation.confirmed) {
-        result.error = `Final click did not produce a verifiable receipt (${confirmation.invalidFields} invalid fields).`;
+      const [confirmation, submissionResponse] = await Promise.all([
+        confirmSubmission(page, previousUrl),
+        responsePromise,
+      ]);
+      const transport = await inspectSubmissionResponse(submissionResponse);
+      result.submissionResponseStatus = transport.status;
+      result.submissionResponsePath = transport.path;
+      result.submitted = confirmation.confirmed || transport.confirmed;
+      result.status = result.submitted ? "submitted" : "needs_review";
+      if (!result.submitted) {
+        const visibleAlert = confirmation.visibleAlerts?.[0];
+        if (transport.status === 428) {
+          result.handoffReason = "employer_verification";
+          result.error = "Employer verification is required. Open the employer portal to complete the final check; your résumé and answers are ready.";
+        } else {
+          result.error = visibleAlert
+            ? `The employer form did not accept the submission: ${visibleAlert}`
+            : `The employer did not confirm submission. Open the prepared application to review the final step.`;
+        }
       }
     } else if (submitButton) {
       result.status = AUTO_SUBMIT && approved && !blocked && !stillAuthorized
