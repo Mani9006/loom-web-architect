@@ -401,6 +401,13 @@ serve(async (req) => {
     if (!baseResume) throw new HttpError(412, "no resume found for user");
 
     const companyName = (job as any).company?.name ?? "the company";
+    const { data: preferenceRow } = await svc.from("user_job_prefs")
+      .select("tailoring_mode")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const tailoringMode = preferenceRow?.tailoring_mode === "coverage_boost"
+      ? "coverage_boost"
+      : "evidence_only";
     const result = await callLlmWithFallback<TailorPayload>({
       tier: "standard",
       system: SYSTEM_PROMPT,
@@ -412,7 +419,10 @@ serve(async (req) => {
         `Compensation: ${job.compensation_text ?? "not disclosed"}\n\n` +
         `JD:\n${truncate(job.description_md, MAX_DESC)}\n\n` +
         `Prior evaluation strengths: ${(ev.keyword_matches || []).join(", ")}. ` +
-        `Gaps: ${(ev.gaps || []).join(", ")}.`,
+        `Gaps: ${(ev.gaps || []).join(", ")}.\n\n` +
+        `Tailoring policy: ${tailoringMode === "coverage_boost"
+          ? "coverage_boost — foreground and reorder job terms only when the source résumé already supports them; never add unsupported skills, employers, dates, or metrics."
+          : "evidence_only — preserve the candidate story and use only directly supported language; do not add job terms that are not evidenced in the source résumé."}`,
       maxTokens: 3500,
       temperature: 0.3,
       parseJson: true,

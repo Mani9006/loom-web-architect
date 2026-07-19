@@ -35,7 +35,7 @@ const SCORING_PROMPT = `You are an advanced ATS (Applicant Tracking System) anal
 
 ## Scoring Criteria
 
-### 1. Formatting (20% weight)
+### 1. Formatting (15% weight)
 - Clean section headers (Education, Experience, Skills, etc.)
 - No tables, images, columns, or fancy formatting that ATS can't parse
 - Standard fonts and bullet points
@@ -52,7 +52,7 @@ const SCORING_PROMPT = `You are an advanced ATS (Applicant Tracking System) anal
 - Action verbs alignment
 - Score based on % of JD keywords found in resume
 
-### 3. Experience Relevance (20% weight)
+### 3. Experience Relevance (25% weight)
 - Years of experience match
 - Role progression/seniority alignment
 - Industry relevance
@@ -65,13 +65,13 @@ const SCORING_PROMPT = `You are an advanced ATS (Applicant Tracking System) anal
 - Tools and platform proficiency
 - Language/framework alignment
 
-### 5. Education (10% weight)
+### 5. Education (5% weight)
 - Degree level match
 - Field of study relevance
 - Certifications and continuing education
 - Relevant coursework
 
-### 6. Impact & Achievements (10% weight)
+### 6. Impact & Achievements (15% weight)
 - Quantified results (numbers, percentages, dollar amounts)
 - Action verbs usage (Led, Developed, Increased, etc.)
 - STAR method indicators
@@ -121,7 +121,7 @@ You MUST respond with ONLY a valid JSON object matching this exact schema. No ma
 }
 
 The overallScore should be a weighted average:
-formatting * 0.20 + keywords * 0.25 + experience * 0.20 + skills * 0.15 + education * 0.10 + impact * 0.10
+formatting * 0.15 + keywords * 0.25 + experience * 0.25 + skills * 0.15 + education * 0.05 + impact * 0.15
 
 Be honest and critical. Real ATS systems are strict. A perfect resume for a matching job might score 85-95. An average resume scores 50-70. A poor match scores below 50.`;
 
@@ -163,12 +163,12 @@ function normalizeResult(value: unknown): ATSScoreResult {
     impact: genericSection("impact"),
   };
   const overallScore = Math.round(
-    normalized.formatting.score * 0.2 +
+    normalized.formatting.score * 0.15 +
     normalized.keywords.score * 0.25 +
-    normalized.experience.score * 0.2 +
+    normalized.experience.score * 0.25 +
     normalized.skills.score * 0.15 +
-    normalized.education.score * 0.1 +
-    normalized.impact.score * 0.1
+    normalized.education.score * 0.05 +
+    normalized.impact.score * 0.15
   );
   return {
     overallScore,

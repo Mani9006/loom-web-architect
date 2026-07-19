@@ -42,6 +42,8 @@ interface AgentControls {
   auto_apply_enabled: boolean;
   review_mode: ReviewMode;
   auto_apply_min_fit_score: number;
+  auto_apply_min_ats_score: number;
+  tailoring_mode: "evidence_only" | "coverage_boost";
   daily_apply_cap: number;
   agent_max_actions_per_day: number;
   agent_actions_today: number;
@@ -135,6 +137,8 @@ const DEFAULT_CONTROLS: AgentControls = {
   auto_apply_enabled: false,
   review_mode: "always",
   auto_apply_min_fit_score: 82,
+  auto_apply_min_ats_score: 85,
+  tailoring_mode: "evidence_only",
   daily_apply_cap: 60,
   agent_max_actions_per_day: 240,
   agent_actions_today: 0,
@@ -189,7 +193,7 @@ export default function AgentPage() {
     const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes, workerRes] = await Promise.all([
       supabase
         .from("user_job_prefs")
-        .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,daily_apply_cap,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
+        .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,auto_apply_min_ats_score,tailoring_mode,daily_apply_cap,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
         .eq("user_id", user.id)
         .maybeSingle(),
       supabase
@@ -247,12 +251,12 @@ export default function AgentPage() {
       if (showSpinner) toast.error("Some Agent data could not be refreshed.");
     }
 
-    if (prefsRes.data) {
-      const row = prefsRes.data;
+    if (prefsRes.data && !('error' in prefsRes.data)) {
+      const row = prefsRes.data as unknown as Partial<AgentControls>;
       setControls({
         ...DEFAULT_CONTROLS,
         ...row,
-        review_mode: ["always", "low_confidence", "eligible_only"].includes(row.review_mode)
+        review_mode: ["always", "low_confidence", "eligible_only"].includes(String(row.review_mode))
           ? row.review_mode as ReviewMode
           : "always",
       });
@@ -384,6 +388,8 @@ export default function AgentPage() {
         body: {
           action,
           auto_apply_min_fit_score: controls.auto_apply_min_fit_score,
+          auto_apply_min_ats_score: controls.auto_apply_min_ats_score,
+          tailoring_mode: controls.tailoring_mode,
           daily_apply_cap: controls.daily_apply_cap,
           agent_max_actions_per_day: controls.agent_max_actions_per_day,
         },
@@ -439,6 +445,8 @@ export default function AgentPage() {
       auto_apply_enabled: controls.auto_apply_enabled,
       review_mode: controls.review_mode === "eligible_only" ? "eligible_only" : "always",
       auto_apply_min_fit_score: Math.min(100, Math.max(60, controls.auto_apply_min_fit_score)),
+      auto_apply_min_ats_score: Math.min(95, Math.max(70, controls.auto_apply_min_ats_score)),
+      tailoring_mode: controls.tailoring_mode === "coverage_boost" ? "coverage_boost" : "evidence_only",
       daily_apply_cap: Math.min(75, Math.max(1, controls.daily_apply_cap)),
       agent_max_actions_per_day: Math.min(300, Math.max(30, controls.agent_max_actions_per_day)),
     };
@@ -448,6 +456,8 @@ export default function AgentPage() {
       auto_apply_enabled: normalized.auto_apply_enabled,
       review_mode: normalized.review_mode,
       auto_apply_min_fit_score: normalized.auto_apply_min_fit_score,
+      auto_apply_min_ats_score: normalized.auto_apply_min_ats_score,
+      tailoring_mode: normalized.tailoring_mode,
       daily_apply_cap: normalized.daily_apply_cap,
       agent_max_actions_per_day: normalized.agent_max_actions_per_day,
       auto_apply_portals: ["greenhouse", "ashby", "lever"],
@@ -699,12 +709,12 @@ export default function AgentPage() {
                   >
                     <Send className="h-4 w-4 text-rp-accent" />
                     <p className="mt-3 text-sm font-semibold text-rp-ink">Apply strong matches automatically</p>
-                    <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Prepare and queue supported jobs above your fit threshold. Missing answers, sensitive questions, and portal challenges move to Needs attention instead of being guessed.</p>
+                  <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Prepare and queue supported jobs above both your career-fit and ATS thresholds. Missing answers, sensitive questions, and portal challenges move to Needs attention instead of being guessed.</p>
                   </button>
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-3 gap-4 border-t border-rp-rule pt-5">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-rp-rule pt-5">
                 <label className="space-y-2">
                   <span className="text-xs font-semibold text-rp-ink">Minimum fit score</span>
                   <input
@@ -737,6 +747,33 @@ export default function AgentPage() {
                     onChange={(event) => setControls((current) => ({ ...current, agent_max_actions_per_day: Number(event.target.value) }))}
                     className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
                   />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-semibold text-rp-ink">Minimum ATS score</span>
+                  <input
+                    type="number"
+                    min="70"
+                    max="95"
+                    value={controls.auto_apply_min_ats_score}
+                    onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_ats_score: Number(event.target.value) }))}
+                    className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
+                  />
+                  <span className="block text-[11px] leading-relaxed text-rp-ink-3">Separate résumé-readiness gate; default 85.</span>
+                </label>
+              </div>
+
+              <div className="border-t border-rp-rule pt-5">
+                <label className="space-y-2">
+                  <span className="text-xs font-semibold text-rp-ink">Tailoring policy</span>
+                  <select
+                    value={controls.tailoring_mode}
+                    onChange={(event) => setControls((current) => ({ ...current, tailoring_mode: event.target.value === "coverage_boost" ? "coverage_boost" : "evidence_only" }))}
+                    className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
+                  >
+                    <option value="evidence_only">Genuine · source evidence only</option>
+                    <option value="coverage_boost">Coverage boost · source-grounded JD terms</option>
+                  </select>
+                  <span className="block text-[11px] leading-relaxed text-rp-ink-3">Coverage boost can reorder and foreground terms already supported by your résumé. It never invents skills, employers, dates, or results.</span>
                 </label>
               </div>
 

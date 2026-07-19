@@ -41,12 +41,12 @@ interface ATSResult {
 }
 
 const SECTION_CONFIG = [
-  { key: "formatting" as const, label: "Formatting & Structure", icon: Layout, weight: "20%", color: "blue" },
+  { key: "formatting" as const, label: "Formatting & Structure", icon: Layout, weight: "15%", color: "blue" },
   { key: "keywords" as const, label: "Keyword Match", icon: Key, weight: "25%", color: "purple" },
-  { key: "experience" as const, label: "Experience Relevance", icon: Briefcase, weight: "20%", color: "orange" },
+  { key: "experience" as const, label: "Experience Relevance", icon: Briefcase, weight: "25%", color: "orange" },
   { key: "skills" as const, label: "Skills Coverage", icon: Sparkles, weight: "15%", color: "cyan" },
-  { key: "education" as const, label: "Education", icon: GraduationCap, weight: "10%", color: "green" },
-  { key: "impact" as const, label: "Impact & Achievements", icon: TrendingUp, weight: "10%", color: "pink" },
+  { key: "education" as const, label: "Education", icon: GraduationCap, weight: "5%", color: "green" },
+  { key: "impact" as const, label: "Impact & Achievements", icon: TrendingUp, weight: "15%", color: "pink" },
 ];
 
 function ScoreRing({ score, size = 120, strokeWidth = 10 }: { score: number; size?: number; strokeWidth?: number }) {
@@ -248,8 +248,12 @@ export default function ATSCheckerPage() {
               </Button>
               <div>
                 <h1 className="text-xl font-bold">ATS Analysis Results</h1>
-                <p className="text-sm text-muted-foreground">Detailed compatibility breakdown</p>
+                <p className="text-sm text-muted-foreground">Detailed résumé-readiness breakdown</p>
               </div>
+            </div>
+
+            <div className="rounded-lg border bg-background px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+              This is the standalone ATS résumé-readiness estimate. Job matching uses a separate career-fit score that also considers role, experience level, location, compensation, and authorization; the two percentages should not be added together or treated as the same score.
             </div>
 
             {/* Overall Score Card */}

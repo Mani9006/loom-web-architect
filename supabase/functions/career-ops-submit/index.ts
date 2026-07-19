@@ -165,6 +165,23 @@ async function enqueueSubmit(userId: string, draftId: string) {
   };
 
   const queuedAt = new Date().toISOString();
+  let resumeFileUrl = asString((draft as any).tailored_cv_pdf_url);
+  if (draft.tailored_resume_id) {
+    const renderResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/mc-render-resume`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ resume_id: draft.tailored_resume_id, format: "pdf", user_id: userId }),
+    });
+    const renderBody = await renderResponse.json().catch(() => ({}));
+    if (!renderResponse.ok || !renderBody?.url) {
+      throw new Error("The job-specific résumé PDF could not be generated; the application was not queued.");
+    }
+    resumeFileUrl = String(renderBody.url);
+    await svc.from("draft_applications").update({ tailored_cv_pdf_url: resumeFileUrl }).eq("id", draft.id).eq("user_id", userId);
+  }
   let trackedJobId: string | null = null;
 
   // Keep Agent submissions in the same application workspace that powers
@@ -253,7 +270,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
       },
     }],
     resumeId: draft.tailored_resume_id,
-    resumeFileUrl: draft.tailored_cv_pdf_url,
+    resumeFileUrl,
     tailoredResumeMarkdown: draft.tailored_cv_md,
     candidateProfile,
     answerMemory: answersToMemory(draft.answers),

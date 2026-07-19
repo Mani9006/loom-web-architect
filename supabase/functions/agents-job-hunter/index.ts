@@ -23,6 +23,8 @@ interface UserPrefs {
   excluded_companies: string[];
   work_modes: string[];
   auto_apply_min_fit_score: number;
+  auto_apply_min_ats_score: number;
+  tailoring_mode: "evidence_only" | "coverage_boost";
   auto_apply_enabled: boolean;
   auto_apply_portals: string[];
   review_mode: "always" | "low_confidence" | "eligible_only";
@@ -276,10 +278,11 @@ async function runAgent(userId: string, runId: string) {
               scanned_job_id: evaluation.scanned_job_id,
             });
             const ats = asRecord(atsResponse.ats);
+            const atsOverall = Number(ats.overall ?? 0);
             actions.push({
               tool: "score_ats",
               input: { resume_id: tailoredResumeId, scanned_job_id: evaluation.scanned_job_id },
-              result: { ats_score_id: ats.id, overall: ats.overall },
+              result: { ats_score_id: ats.id, overall: atsOverall, minimum_required: prefs.auto_apply_min_ats_score ?? 85 },
               ts: new Date().toISOString(),
             });
             atsScored += 1;
@@ -298,9 +301,14 @@ async function runAgent(userId: string, runId: string) {
         // "Auto-send eligible only" is a true service-side policy. It queues
         // only supported simple-form applications; multi-page portals remain
         // review/manual and is never silently treated as submitted.
+        const latestAts = actions
+          .filter((action) => action.tool === "score_ats" && action.input.resume_id === tailoredResumeId && action.input.scanned_job_id === evaluation.scanned_job_id)
+          .at(-1);
+        const tailoredAtsScore = Number(latestAts?.result?.overall ?? 0);
         const shouldAutoQueue = submissionsRemaining > 0
           && prefs.auto_apply_enabled
           && prefs.review_mode === "eligible_only"
+          && tailoredAtsScore >= (prefs.auto_apply_min_ats_score ?? 85)
           && typeof evaluation.portal === "string"
           && ["greenhouse", "ashby", "lever"].includes(evaluation.portal)
           && prefs.auto_apply_portals.includes(evaluation.portal);
@@ -328,6 +336,13 @@ async function runAgent(userId: string, runId: string) {
             failed += 1;
           }
           remaining -= 1;
+        } else if (prefs.auto_apply_enabled && prefs.review_mode === "eligible_only" && tailoredAtsScore < (prefs.auto_apply_min_ats_score ?? 85)) {
+          actions.push({
+            tool: "queue_submit",
+            input: { draft_id: draftId, portal: evaluation.portal },
+            result: { status: "needs_review", reason: "tailored ATS score is below the automatic submission threshold", ats_score: tailoredAtsScore, minimum_required: prefs.auto_apply_min_ats_score ?? 85 },
+            ts: new Date().toISOString(),
+          });
         }
       } catch (error) {
         actions.push({

@@ -13,6 +13,8 @@ interface ControlBody {
   action?: ControlAction;
   evaluation_id?: string;
   auto_apply_min_fit_score?: number;
+  auto_apply_min_ats_score?: number;
+  tailoring_mode?: "evidence_only" | "coverage_boost";
   daily_apply_cap?: number;
   agent_max_actions_per_day?: number;
 }
@@ -100,6 +102,8 @@ serve(async (req) => {
     const dailyCap = clamp(body.daily_apply_cap, 1, 75, 60);
     const dailyActions = clamp(body.agent_max_actions_per_day, 30, 300, 240);
     const minFit = clamp(body.auto_apply_min_fit_score, 50, 100, 82);
+    const minAts = clamp(body.auto_apply_min_ats_score, 70, 95, 85);
+    const tailoringMode = body.tailoring_mode === "coverage_boost" ? "coverage_boost" : "evidence_only";
 
     const { error: prefsError } = await client.from("user_job_prefs").upsert({
       user_id: user.id,
@@ -107,6 +111,8 @@ serve(async (req) => {
       auto_apply_enabled: true,
       review_mode: "eligible_only",
       auto_apply_min_fit_score: minFit,
+      auto_apply_min_ats_score: minAts,
+      tailoring_mode: tailoringMode,
       daily_apply_cap: dailyCap,
       agent_max_actions_per_day: dailyActions,
       auto_apply_portals: ["greenhouse", "ashby", "lever"],

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Activity, AlertTriangle, Check, Copy as CopyIcon, ExternalLink, FileCheck2, FileText, Loader2, MessageSquareText, RefreshCw, Send } from "lucide-react";
+import { Activity, AlertTriangle, Check, Copy as CopyIcon, Download, ExternalLink, FileCheck2, FileText, Loader2, MessageSquareText, RefreshCw, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -19,6 +19,7 @@ interface Draft {
   evaluation_id: string;
   tailored_resume_id: string | null;
   tailored_cv_md: string | null;
+  tailored_cv_pdf_url: string | null;
   answers: Answer[];
   status: DraftStatus;
   applypass_task_id: string | null;
@@ -29,6 +30,7 @@ interface Draft {
   evaluation: {
     score: number;
     fit_score: number | null;
+    dimension_scores: Array<{ label: string; score: number; weight: number }> | null;
     tier: string;
     summary: string | null;
     scanned_job: { id: string; title: string; apply_url: string; company: { name: string } };
@@ -97,12 +99,13 @@ export default function ApplicationReviewPage() {
   const [queueing, setQueueing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [rendering, setRendering] = useState(false);
 
   const load = useCallback(async (initial = false) => {
     if (!user || !id) return;
     const { data, error } = await supabase.from("draft_applications")
-      .select(`id,evaluation_id,tailored_resume_id,tailored_cv_md,answers,status,applypass_task_id,error_message,submitted_at,created_at,updated_at,
-        evaluation:job_evaluations(score,fit_score,tier,summary,scanned_job:scanned_jobs(id,title,apply_url,company:scan_companies(name)))`)
+      .select(`id,evaluation_id,tailored_resume_id,tailored_cv_md,tailored_cv_pdf_url,answers,status,applypass_task_id,error_message,submitted_at,created_at,updated_at,
+        evaluation:job_evaluations(score,fit_score,dimension_scores,tier,summary,scanned_job:scanned_jobs(id,title,apply_url,company:scan_companies(name)))`)
       .eq("id", id).eq("user_id", user.id).maybeSingle();
     if (error || !data) {
       toast.error("Application record not found");
@@ -184,12 +187,31 @@ export default function ApplicationReviewPage() {
     else { toast.success("Application marked submitted"); await load(); }
   }
 
+  async function downloadPdf() {
+    if (!draft?.tailored_resume_id) return;
+    setRendering(true);
+    const { data, error } = await supabase.functions.invoke("mc-render-resume", {
+      body: { resume_id: draft.tailored_resume_id, format: "pdf" },
+    });
+    setRendering(false);
+    if (error || !data?.url) {
+      toast.error("The tailored résumé PDF could not be generated. The text preview is unchanged.");
+      return;
+    }
+    window.open(String(data.url), "_blank", "noopener,noreferrer");
+    setDraft((current) => current ? { ...current, tailored_cv_pdf_url: String(data.url) } : current);
+  }
+
   if (loading || !draft) return <div className="flex min-h-80 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>;
   const job = draft.evaluation.scanned_job;
   const fit = Math.round(draft.evaluation.fit_score ?? draft.evaluation.score * 20);
   const activePhase = lifecycleIndex(draft.status);
   const phases = ["Optimize", "Review", "Submit", "Done"];
   const logs = Array.isArray(task?.run_log) ? task.run_log as Array<Record<string, unknown>> : [];
+  const fitDimensions = Array.isArray(draft.evaluation.dimension_scores) ? draft.evaluation.dimension_scores : [];
+  const keywordMatches = Array.isArray(ats?.matched_keywords) ? ats.matched_keywords.length : 0;
+  const keywordMissing = Array.isArray(ats?.missing_keywords) ? ats.missing_keywords.length : 0;
+  const keywordTotal = keywordMatches + keywordMissing;
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 lg:px-10 pt-10 pb-16">
@@ -199,9 +221,13 @@ export default function ApplicationReviewPage() {
         <div className="flex flex-wrap items-center gap-2"><div className="mr-2 text-center"><p className="text-2xl font-bold tabular-nums">{fit}%</p><p className="text-[10px] uppercase tracking-wide text-muted-foreground">career fit</p></div><Button asChild><a href={job.apply_url} target="_blank" rel="noreferrer noopener"><ExternalLink className="mr-2 h-4 w-4" />Employer portal</a></Button>{!(["submitted", "queued"] as DraftStatus[]).includes(draft.status) && <><Button variant="outline" onClick={refreshPacket} disabled={refreshing}><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />{refreshing ? "Refreshing…" : "Refresh packet"}</Button><Button variant="outline" onClick={queueApplication} disabled={queueing}><Send className="mr-2 h-4 w-4" />{queueing ? "Queueing…" : "Queue application"}</Button><Button variant="ghost" onClick={markSubmitted} disabled={marking}>{marking ? "Saving…" : "Mark submitted"}</Button></>}</div>
       </header>
 
+      <p className="mt-2 text-xs text-muted-foreground">Career fit is a deterministic match across role, demonstrated skills, experience/level, location, compensation, and authorization. It is separate from the ATS résumé-readiness score below.</p>
+
       <section className="mt-7 border border-rp-rule bg-rp-paper p-5" aria-label="Application progress"><div className="grid grid-cols-4">{phases.map((phase, index) => <div key={phase} className="relative flex flex-col items-center text-center"><div className={cn("absolute left-0 right-0 top-3 h-px", index === 0 ? "left-1/2" : index === 3 ? "right-1/2" : "", index <= activePhase ? "bg-primary" : "bg-border")} /><span className={cn("relative z-10 flex h-6 w-6 items-center justify-center rounded-full border text-[10px]", index < activePhase || draft.status === "submitted" ? "border-primary bg-primary text-primary-foreground" : index === activePhase ? "border-primary bg-background text-primary" : "border-border bg-background text-muted-foreground")}>{index < activePhase || draft.status === "submitted" ? <Check className="h-3.5 w-3.5" /> : index + 1}</span><span className="mt-2 text-[11px] font-medium">{phase}</span></div>)}</div>{draft.status === "failed" && <div className="mt-4 flex gap-2 border border-rose-500/20 bg-rose-500/5 p-3 text-xs text-rose-700 dark:text-rose-300"><AlertTriangle className="h-4 w-4 shrink-0" /><span>{draft.error_message || task?.error_message || "Submission needs review. Your packet and employer link remain available."}</span></div>}</section>
 
-      {ats && <section className="mt-5 border border-rp-rule bg-rp-canvas p-5"><div className="grid gap-5 lg:grid-cols-[190px_1fr]"><div className="flex items-center gap-4"><div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-[7px] border-primary/20"><span className="text-xl font-bold">{Math.round(ats.overall)}%</span><span className="text-[9px] uppercase">ATS</span></div><div><p className="text-sm font-semibold">Job-specific score</p><p className="mt-1 text-xs text-muted-foreground">For this exact résumé and job.</p></div></div><div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{dimensions.map((dimension) => { const value = Number(ats[dimension.key] || 0); return <div key={dimension.key}><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{dimension.label}</span><span>{Math.round(value)}%</span></div><Progress value={value} className="h-1.5" /></div>; })}</div></div></section>}
+      {fitDimensions.length > 0 && <section className="mt-5 border border-rp-rule bg-rp-paper p-5" aria-label="Career fit calculation"><div className="flex items-start justify-between gap-3"><div><h2 className="text-sm font-semibold">Career fit calculation</h2><p className="mt-1 text-xs text-muted-foreground">The headline percentage is the weighted total of these evidence-backed dimensions. It is not keyword coverage.</p></div><span className="text-lg font-bold tabular-nums">{fit}%</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{fitDimensions.map((dimension) => <div key={dimension.label}><div className="mb-1 flex justify-between text-xs"><span>{dimension.label}</span><span className="tabular-nums">{Math.round(Number(dimension.score) || 0)}% · {Math.round(Number(dimension.weight) * 100)}%</span></div><Progress value={Math.max(0, Math.min(100, Number(dimension.score) || 0))} className="h-1.5" /></div>)}</div></section>}
+
+      {ats && <section className="mt-5 border border-rp-rule bg-rp-canvas p-5"><div className="grid gap-5 lg:grid-cols-[190px_1fr]"><div className="flex items-center gap-4"><div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-[7px] border-primary/20"><span className="text-xl font-bold">{Math.round(ats.overall)}%</span><span className="text-[9px] uppercase">ATS</span></div><div><p className="text-sm font-semibold">ATS résumé readiness</p><p className="mt-1 text-xs text-muted-foreground">A weighted check of this tailored résumé against this job. Different from career fit.</p>{keywordTotal > 0 && <p className="mt-2 text-[11px] text-muted-foreground">Keyword coverage: {keywordMatches}/{keywordTotal} terms matched ({Math.round(ats.dim_keywords)}%).</p>}</div></div><div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{dimensions.map((dimension) => { const value = Number(ats[dimension.key] || 0); const label = dimension.key === "dim_keywords" ? "Keyword coverage" : dimension.label; return <div key={dimension.key}><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{label}</span><span>{Math.round(value)}%</span></div><Progress value={value} className="h-1.5" /></div>; })}</div></div></section>}
 
       <div className="mt-6 flex flex-wrap gap-1 border-b border-rp-rule">{[
         { id: "form" as const, label: "Submitted form", icon: FileCheck2 }, { id: "resume" as const, label: "Résumé", icon: FileText },
@@ -210,7 +236,7 @@ export default function ApplicationReviewPage() {
 
       <section className="min-h-80 border border-t-0 border-rp-rule bg-rp-paper p-5 sm:p-6">
         {tab === "form" && <div><div className="flex items-center justify-between"><div><h2 className="text-base font-semibold">Application answers</h2><p className="mt-1 text-xs text-muted-foreground">The exact reusable answers prepared for this employer.</p></div></div>{formAnswers.length ? <ol className="mt-6 divide-y divide-rp-rule">{formAnswers.map((answer, index) => <li key={`${answer.question}-${index}`} className="grid gap-2 py-4 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)_auto]"><p className="text-xs font-semibold">{answer.question}</p><p className="text-sm leading-relaxed text-muted-foreground">{answer.answer}</p><CopyButton value={answer.answer} /></li>)}</ol> : <Empty text="No additional employer questions were saved for this application." />}</div>}
-        {tab === "resume" && <div><div className="flex items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Tailored résumé</h2><p className="mt-1 text-xs text-muted-foreground">Grounded in your source résumé and aligned to this job.</p></div>{draft.tailored_resume_id && <Button variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}>Open editor</Button>}</div>{draft.tailored_cv_md ? <pre className="mt-6 max-h-[700px] overflow-y-auto whitespace-pre-wrap border border-rp-rule bg-background p-6 font-sans text-sm leading-relaxed">{draft.tailored_cv_md}</pre> : <Empty text="No tailored résumé was generated." />}</div>}
+        {tab === "resume" && <div><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Tailored résumé</h2><p className="mt-1 text-xs text-muted-foreground">The text below is an audit preview. The application uses the generated, ATS-friendly PDF artifact.</p></div><div className="flex gap-2">{draft.tailored_resume_id && <Button variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}>Open editor</Button>}{draft.tailored_resume_id && <Button size="sm" onClick={() => void downloadPdf()} disabled={rendering}><Download className="mr-2 h-4 w-4" />{rendering ? "Rendering…" : "Download PDF"}</Button>}</div></div>{draft.tailored_cv_md ? <pre className="mt-6 max-h-[700px] overflow-y-auto whitespace-pre-wrap border border-rp-rule bg-background p-6 font-sans text-sm leading-relaxed">{draft.tailored_cv_md}</pre> : <Empty text="No tailored résumé was generated." />}</div>}
         {tab === "cover" && <div><h2 className="text-base font-semibold">Cover note</h2><p className="mt-1 text-xs text-muted-foreground">Generated only when useful or requested by the employer.</p>{coverNote ? <div className="mt-6 border border-rp-rule bg-background p-6"><div className="flex justify-end"><CopyButton value={coverNote.answer} /></div><p className="whitespace-pre-wrap text-sm leading-relaxed">{coverNote.answer}</p></div> : <Empty text="No cover note is attached to this application." />}</div>}
         {tab === "activity" && <div><h2 className="text-base font-semibold">Application activity</h2><p className="mt-1 text-xs text-muted-foreground">Preparation, queue attempts, worker checks, and outcome for this job.</p><div className="mt-6 space-y-3"><ActivityRow title="Packet prepared" date={draft.created_at} detail="Tailored résumé and application answers created." />{task && <ActivityRow title={`Submission ${task.status}`} date={task.completed_at || task.started_at || task.created_at} detail={`Attempt ${task.attempt_count} of ${task.max_attempts}${task.error_message ? ` · ${task.error_message}` : ""}`} />}{logs.map((entry, index) => <ActivityRow key={index} title={String(entry.step || entry.status || entry.event || `Worker event ${index + 1}`)} date={typeof entry.at === "string" ? entry.at : typeof entry.timestamp === "string" ? entry.timestamp : null} detail={String(entry.message || entry.detail || "Application check recorded.")} />)}{draft.submitted_at && <ActivityRow title="Submitted" date={draft.submitted_at} detail="Submission recorded successfully." />}{!task && !draft.submitted_at && <ActivityRow title="Awaiting your decision" date={draft.updated_at} detail="Review the packet, queue supported automation, or open the employer portal." />}</div></div>}
       </section>
