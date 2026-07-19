@@ -43,6 +43,17 @@ const ASHBY_BOARDS = [
   { board: "ramp", company: "Ramp" },
 ] as const;
 
+// Lever's public Postings API is another no-key read layer. Applications are
+// still submitted only by the controlled worker after the user's profile and
+// approval policy pass; discovery never needs an employer API credential.
+const LEVER_BOARDS = [
+  { board: "peerspace", company: "Peerspace" },
+  { board: "applydigital", company: "Apply Digital" },
+  { board: "docsumo", company: "Docsumo" },
+  { board: "bonedry", company: "Bone Dry Roofing" },
+  { board: "dnb", company: "Dun & Bradstreet" },
+] as const;
+
 const NON_US = /\b(?:europe|india|canada|united kingdom|uk|germany|france|australia|singapore|japan|china|brazil|mexico|ireland|netherlands|poland|spain|italy|sweden|israel|dubai|bangalore|hyderabad|mumbai|delhi|pune|chennai|toronto|vancouver|london|berlin|paris|sydney|melbourne|tokyo)\b/i;
 const US_SIGNAL = /\b(?:united states|u\.s\.|usa|remote|north america|al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy|dc)\b/i;
 
@@ -183,10 +194,42 @@ async function fetchAshby(
   });
 }
 
+async function fetchLever(
+  source: (typeof LEVER_BOARDS)[number],
+  options: SearchOptions,
+): Promise<Array<DirectJob & { relevance: number }>> {
+  const data = await fetchJson(`https://api.lever.co/v0/postings/${source.board}?mode=json`);
+  return (Array.isArray(data) ? data : []).flatMap((entry: any) => {
+    if (entry.categories?.commitment && /volunteer|internship/i.test(String(entry.categories.commitment))) return [];
+    const description = plainText(entry.descriptionPlain || entry.description || entry.requirements || "");
+    const title = entry.text || entry.title || "";
+    const location = entry.categories?.location || entry.categories?.allLocations || "Remote (US)";
+    const score = relevance(title, description, options.query);
+    if (score <= 0) return [];
+    const job: DirectJob & { relevance: number } = {
+      title,
+      company: source.company,
+      location: String(location),
+      description,
+      apply_url: entry.applyUrl || entry.hostedUrl || "",
+      salary: entry.salaryRange?.currency
+        ? `${entry.salaryRange.min ?? ""}-${entry.salaryRange.max ?? ""} ${entry.salaryRange.currency}`
+        : null,
+      job_type: entry.categories?.commitment || null,
+      remote: /\bremote\b/i.test(`${location} ${description}`),
+      date_posted: entry.createdAt ? new Date(Number(entry.createdAt)).toISOString() : new Date().toISOString(),
+      source: `${source.company} careers`,
+      relevance: score,
+    };
+    return filterOptions(job, options) ? [job] : [];
+  });
+}
+
 export async function searchDirectJobSources(options: SearchOptions): Promise<DirectJob[]> {
   const settled = await Promise.allSettled([
     ...GREENHOUSE_BOARDS.map((source) => fetchGreenhouse(source, options)),
     ...ASHBY_BOARDS.map((source) => fetchAshby(source, options)),
+    ...LEVER_BOARDS.map((source) => fetchLever(source, options)),
   ]);
   const all = settled.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const seen = new Set<string>();
@@ -202,4 +245,3 @@ export async function searchDirectJobSources(options: SearchOptions): Promise<Di
     .slice(0, limit)
     .map(({ relevance: _relevance, ...job }) => job);
 }
-

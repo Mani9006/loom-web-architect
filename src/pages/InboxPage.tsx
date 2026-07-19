@@ -58,6 +58,8 @@ export default function InboxPage() {
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
   const [query, setQuery] = useState("");
   const [loadedAt, setLoadedAt] = useState(0);
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const pollingRef = useRef(false);
   const automaticWorkspaceAttempt = useRef(false);
 
   const load = useCallback(async () => {
@@ -104,6 +106,24 @@ export default function InboxPage() {
       toast({ title: "Couldn't load inbox", description: safe.message, variant: "destructive" });
     }).finally(() => setLoading(false));
   }, [load, toast]);
+
+  // Keep the visible inbox current while the user is on this page. The
+  // server-side worker also polls immediately when a portal requests a code;
+  // this interval is only for the human-facing message list.
+  useEffect(() => {
+    if (!gmailConnected || !sessionId) return;
+    const timer = window.setInterval(async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
+      try {
+        const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+        if (!error) await load();
+      } finally {
+        pollingRef.current = false;
+      }
+    }, 120_000);
+    return () => window.clearInterval(timer);
+  }, [gmailConnected, load, sessionId]);
 
   const unread = useMemo(() => messages.filter((message) => !message.is_read).length, [messages]);
   const visible = useMemo(() => {
@@ -156,7 +176,11 @@ export default function InboxPage() {
       <PageHeader title="Application inbox." status={`${unread} unread`} description="Confirmations, verification codes, interviews, assessments, offers, and status changes—separated from personal email." />
 
       <div className="mt-7 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        {sessionId ? <GmailConnectCard sessionId={sessionId} /> : (
+        {sessionId ? <GmailConnectCard
+          sessionId={sessionId}
+          onConnectionChange={setGmailConnected}
+          onPollComplete={load}
+        /> : (
           <Card className="p-5">
             <p className="text-sm font-semibold">Connect your application email</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Your private application workspace is prepared automatically. Gmail still requires your one-time consent.</p>

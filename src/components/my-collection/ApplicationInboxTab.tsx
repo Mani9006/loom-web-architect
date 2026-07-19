@@ -107,7 +107,7 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   return (
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <GmailConnectCard sessionId={sessionId} />
+        <GmailConnectCard sessionId={sessionId} onPollComplete={load} />
         <Card className="p-4">
           <div className="flex items-start gap-3">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />

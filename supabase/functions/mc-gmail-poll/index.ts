@@ -182,7 +182,9 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
         from_email: fromEmail,
         to_email: connection.gmail_email,
         subject,
-        body_preview: (message.snippet || bodyText).slice(0, 600),
+        // Keep the dedicated short-lived code field as the only place where a
+        // code is exposed. Gmail snippets frequently include the OTP itself.
+        body_preview: redactVerificationCode((message.snippet || bodyText).slice(0, 600), activeCode),
         body_full: null,
         classification: classification.classification,
         classification_confidence: classification.confidence,
@@ -275,6 +277,15 @@ function normalizeBody(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 12_000);
+}
+
+function redactVerificationCode(value: string, code: string | null): string {
+  if (!value || !code) return value;
+  return value.replace(new RegExp(escapeRegExp(code), "gi"), "[verification code]");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function deterministicClassification(text: string): ClassifiedEmail | null {

@@ -15,7 +15,13 @@ interface Connection {
   token_expires_at: string;
 }
 
-export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
+interface GmailConnectCardProps {
+  sessionId: string;
+  onConnectionChange?: (connected: boolean) => void;
+  onPollComplete?: () => void | Promise<void>;
+}
+
+export default function GmailConnectCard({ sessionId, onConnectionChange, onPollComplete }: GmailConnectCardProps) {
   const { toast } = useToast();
   const [conn, setConn] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,8 +34,9 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
       .eq("session_id", sessionId)
       .maybeSingle();
     setConn(data as Connection | null);
+    onConnectionChange?.(Boolean(data));
     setLoading(false);
-  }, [sessionId]);
+  }, [onConnectionChange, sessionId]);
 
   useEffect(() => {
     void load();
@@ -58,6 +65,7 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
     if (!confirm("Disconnect Gmail from this session? Auto-status updates from email will stop.")) return;
     await supabase.from("mc_gmail_connections").delete().eq("id", conn.id);
     setConn(null);
+    onConnectionChange?.(false);
   }
 
   async function pollNow() {
@@ -74,6 +82,7 @@ export default function GmailConnectCard({ sessionId }: { sessionId: string }) {
           : "No new application messages were found.",
       });
       await load();
+      await onPollComplete?.();
     } catch (e) {
       const safeError = toUserFacingError(e, {
         operation: "poll_application_inbox",
