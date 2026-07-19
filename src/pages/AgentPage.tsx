@@ -436,7 +436,7 @@ export default function AgentPage() {
     setSaving(true);
     const normalized: AgentControls = {
       ...controls,
-      auto_apply_enabled: true,
+      auto_apply_enabled: controls.auto_apply_enabled,
       review_mode: controls.review_mode === "eligible_only" ? "eligible_only" : "always",
       auto_apply_min_fit_score: Math.min(100, Math.max(60, controls.auto_apply_min_fit_score)),
       daily_apply_cap: Math.min(75, Math.max(1, controls.daily_apply_cap)),

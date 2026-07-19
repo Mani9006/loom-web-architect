@@ -539,10 +539,10 @@ async function processTask(task, workerId) {
       jobResults.push(result);
 
       await heartbeat(taskId, {
-        level: ["processed", "ready_for_review", "needs_review", "submitted"].includes(result.status) ? "info" : "warn",
+        level: ["processed", "ready_for_review", "needs_review", "submitted", "stopped"].includes(result.status) ? "info" : "warn",
         workerId,
         at: nowIso(),
-        message: ["processed", "ready_for_review", "needs_review", "submitted"].includes(result.status)
+        message: ["processed", "ready_for_review", "needs_review", "submitted", "stopped"].includes(result.status)
           ? `${result.status}: ${result.title}`
           : `Failed ${result.title}: ${result.error}`,
         jobId: result.jobId,
@@ -562,7 +562,7 @@ async function processTask(task, workerId) {
     if (resumeFile.directory) await rm(resumeFile.directory, { recursive: true, force: true });
   }
 
-  const success = jobResults.filter((r) => ["processed", "ready_for_review", "needs_review", "submitted"].includes(r.status)).length;
+  const success = jobResults.filter((r) => ["processed", "ready_for_review", "needs_review", "submitted", "stopped"].includes(r.status)).length;
   const failed = jobResults.length - success;
 
   const summary = {
