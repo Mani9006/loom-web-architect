@@ -93,6 +93,19 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
       if (error) throw error;
       const processed = Number(data?.processed || 0);
       const updates = Number(data?.status_updates || 0);
+      const failureCodes = Array.isArray(data?.failure_codes) ? data.failure_codes.map(String) : [];
+      if (failureCodes.includes("INBOX_RECONNECT_REQUIRED")) {
+        await load();
+        toast({
+          title: "Reconnect Gmail",
+          description: "Your previous read-only Gmail permission can no longer be used. Connect it again to continue application verification.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (Number(data?.failed || 0) > 0) {
+        throw new Error("Inbox check did not complete");
+      }
       toast({
         title: "Inbox checked",
         description: processed

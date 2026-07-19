@@ -220,19 +220,22 @@ async function enqueueSubmit(userId: string, draftId: string) {
   // to the exact job without scanning unrelated personal messages.
   const { data: gmailConnection } = await svc
     .from("mc_gmail_connections")
-    .select("session_id")
+    .select("session_id,gmail_email")
     .eq("user_id", userId)
     .eq("enabled", true)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (asString(gmailConnection?.gmail_email)) {
+    candidateProfile.email = asString(gmailConnection?.gmail_email);
+  }
   let applicationSession: { id: string } | null = gmailConnection?.session_id
     ? { id: gmailConnection.session_id }
     : null;
   if (!applicationSession) {
     const { data: latestSession } = await svc
       .from("mc_sessions")
-      .select("id")
+      .select("id,status")
       .eq("user_id", userId)
       .eq("status", "active")
       .order("updated_at", { ascending: false })
@@ -254,34 +257,34 @@ async function enqueueSubmit(userId: string, draftId: string) {
   }
 
   if (applicationSession?.id) {
-    const { data: existingTracked } = await svc
+    const { data: existingTracked, error: trackedLookupError } = await svc
       .from("mc_tracked_jobs")
-      .select("id")
+      .select("id,status")
       .eq("user_id", userId)
       .eq("scanned_job_id", job.id)
-      .is("deleted_at", null)
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (trackedLookupError) throw new Error("The application inbox could not be linked to this job.");
     if (existingTracked?.id) {
       trackedJobId = existingTracked.id;
-      await svc.from("mc_tracked_jobs").update({
+      const { error: trackedUpdateError } = await svc.from("mc_tracked_jobs").update({
         session_id: applicationSession.id,
         status: ["discovered", "saved"].includes(existingTracked.status) ? "saved" : existingTracked.status,
         apply_url: job.apply_url,
-        tailored_resume_id: draft.tailored_resume_id,
       }).eq("id", existingTracked.id);
+      if (trackedUpdateError) throw new Error("The application inbox could not be linked to this job.");
     } else {
-      const { data: createdTracked } = await svc.from("mc_tracked_jobs").insert({
+      const { data: createdTracked, error: trackedCreateError } = await svc.from("mc_tracked_jobs").insert({
         user_id: userId,
         session_id: applicationSession.id,
         scanned_job_id: job.id,
         job_title: job.title,
         company: company.name,
         apply_url: job.apply_url,
-        tailored_resume_id: draft.tailored_resume_id,
         status: "saved",
       }).select("id").single();
+      if (trackedCreateError) throw new Error("The application inbox could not be linked to this job.");
       trackedJobId = createdTracked?.id || null;
     }
   }

@@ -71,6 +71,7 @@ serve(async (req) => {
   let processed = 0;
   let statusUpdates = 0;
   let failed = 0;
+  const failureCodes: string[] = [];
   for (const connection of connections ?? []) {
     try {
       const result = await pollOne(admin, connection, encryptionKey);
@@ -79,6 +80,21 @@ serve(async (req) => {
     } catch (pollError) {
       failed += 1;
       console.error("mc-gmail-poll connection", connection.id, pollError);
+      const message = pollError instanceof Error ? pollError.message : String(pollError);
+      const code = /secure_tokens_missing|decrypt|operationerror|gmail_list_(401|403)/i.test(message)
+        ? "INBOX_RECONNECT_REQUIRED"
+        : /gmail_list_429/i.test(message)
+          ? "INBOX_RATE_LIMITED"
+          : "INBOX_CHECK_FAILED";
+      if (code === "INBOX_RECONNECT_REQUIRED") {
+        // Do not keep presenting an unusable OAuth grant as connected. The
+        // next Inbox visit will offer the normal Google reconnect flow.
+        await admin
+          .from("mc_gmail_connections")
+          .update({ enabled: false })
+          .eq("id", connection.id);
+      }
+      if (!failureCodes.includes(code)) failureCodes.push(code);
     }
   }
 
@@ -90,7 +106,7 @@ serve(async (req) => {
   if (userId) expiryQuery = expiryQuery.eq("user_id", userId);
   await expiryQuery;
 
-  return json({ checked: connections?.length ?? 0, processed, status_updates: statusUpdates, failed });
+  return json({ checked: connections?.length ?? 0, processed, status_updates: statusUpdates, failed, failure_codes: failureCodes });
 });
 
 async function pollOne(admin: any, connection: any, encryptionKey: string) {

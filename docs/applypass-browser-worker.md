@@ -17,7 +17,7 @@ can progress at the same time.
 
 ## Required environment variables
 - `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
+- `SUPABASE_ANON_KEY` or `SUPABASE_PUBLISHABLE_KEY`
 - `APPLYPASS_WORKER_TOKEN` (or the shared `WORKER_AUTH_TOKEN`)
 
 ## Optional environment variables

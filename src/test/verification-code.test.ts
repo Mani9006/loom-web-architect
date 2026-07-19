@@ -7,6 +7,7 @@ describe("application verification-code extraction", () => {
     ["927401 is your one-time code", "927401"],
     ["OTP: AX7K2Q", "AX7K2Q"],
     ["Security PIN - 77304", "77304"],
+    ["A verification code was sent. Enter the code: m8sFkBBe", "m8sFkBBe"],
   ])("extracts supported job-portal code wording", (message, expected) => {
     expect(extractVerificationCode(message)).toBe(expected);
   });

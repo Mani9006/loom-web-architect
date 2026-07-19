@@ -235,6 +235,23 @@ These are experiment prices, not promises. Daily safety limits should remain eve
 
 Start with Greenhouse, then add Lever and Ashby behind adapter contract tests. Workday should remain assisted/reviewed until its flows and account constraints are proven reliable.
 
+### Tsenta-parity release gate
+
+ResumePreps does not call the core workflow complete until a paid user can:
+
+1. upload one source resume and receive a provenance-linked structured profile;
+2. see only eligible, resume-grounded matches with understandable fit dimensions;
+3. choose review-first or continuous application policy, then start or stop it immediately;
+4. generate a truthful job-specific resume, preserve the selected layout, and attach a verified PDF;
+5. fill every supported ATS field from profile answers without guessing sensitive responses;
+6. receive and consume a matching short-lived verification code through the read-only application inbox;
+7. reach a real employer confirmation page or receipt before the product records `submitted`;
+8. inspect in-flight, needs-attention, failed, skipped, and receipt-verified outcomes from one dashboard;
+9. paste an eligible employer job URL and run the same match, tailor, review, submit, and receipt pipeline; and
+10. have application email update the inbox and tracker without exposing codes, tokens, or internal service errors.
+
+The first live Greenhouse test has verified field mapping, custom combobox handling, resume upload, and detection of Greenhouse's post-submit email-verification step. Receipt verification remains blocked until the QA Gmail OAuth grant is reconnected; the application stays `needs_review` and is never counted as submitted.
+
 ### Then: differentiation
 
 - outcome-calibrated ranking per candidate, not generic match scoring;

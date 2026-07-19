@@ -6,7 +6,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY
+  || process.env.SUPABASE_PUBLISHABLE_KEY
+  || process.env.VITE_SUPABASE_ANON_KEY
+  || process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const WORKER_TOKEN = process.env.APPLYPASS_WORKER_TOKEN || process.env.WORKER_AUTH_TOKEN;
 const WORKER_ID = process.env.APPLYPASS_WORKER_ID || `applypass-worker-${os.hostname()}`;
 const POLL_MS = Number(process.env.APPLYPASS_WORKER_POLL_MS || 5000);
@@ -19,7 +22,7 @@ const maxTasksArg = process.argv.find((arg) => arg.startsWith("--max-tasks="));
 const maxTasks = maxTasksArg ? Number(maxTasksArg.split("=")[1]) : Number(process.env.APPLYPASS_MAX_TASKS || 0);
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !WORKER_TOKEN) {
-  console.error("Missing required env: SUPABASE_URL, SUPABASE_ANON_KEY, and APPLYPASS_WORKER_TOKEN or WORKER_AUTH_TOKEN");
+  console.error("Missing required env: SUPABASE_URL, a Supabase anon/publishable key, and APPLYPASS_WORKER_TOKEN or WORKER_AUTH_TOKEN");
   process.exit(1);
 }
 
@@ -242,7 +245,10 @@ async function failTask(taskId, errorMessage, result, log, workerId) {
 
 async function requestVerificationCode(taskId, jobId, workerId) {
   const response = await queueCall({ action: "verification-code", taskId, jobId, workerId }, workerId);
-  return response?.available && typeof response?.code === "string" ? response.code : null;
+  return {
+    code: response?.available && typeof response?.code === "string" ? response.code : null,
+    inboxStatus: typeof response?.inbox_status === "string" ? response.inbox_status : "INBOX_CHECK_FAILED",
+  };
 }
 
 async function submissionAuthorized(taskId, jobId, workerId) {
@@ -353,6 +359,7 @@ async function fillCommonFields(page, profile = {}, answerMemory = {}) {
 async function findVerificationField(page) {
   return await page.evaluate(() => {
     const candidates = Array.from(document.querySelectorAll("input"));
+    const oneCharacterFields = [];
     for (let index = 0; index < candidates.length; index += 1) {
       const input = candidates[index];
       const id = input.getAttribute("id") || "";
@@ -368,10 +375,13 @@ async function findVerificationField(page) {
       ].join(" ").toLowerCase();
       const rect = input.getBoundingClientRect();
       const visible = rect.width > 0 && rect.height > 0 && !input.disabled && !input.readOnly;
+      if (visible && input.maxLength === 1 && !input.value) oneCharacterFields.push(index);
       if (visible && /(one[- ]?time|verification|security|authentication|passcode|\botp\b)/i.test(metadata)) {
         return { index };
       }
     }
+    const pageRequestsCode = /(verification code was sent|enter the .*code|security code|confirm you(?:'|’)re human)/i.test(document.body?.innerText || "");
+    if (pageRequestsCode && oneCharacterFields.length >= 4) return { index: oneCharacterFields[0] };
     return null;
   });
 }
@@ -379,8 +389,17 @@ async function findVerificationField(page) {
 async function fillVerificationCode(page, fieldIndex, code) {
   const inputs = page.locator("input");
   const input = inputs.nth(fieldIndex);
-  await input.fill(code);
-  await input.dispatchEvent("change");
+  const singleCharacterInputs = page.locator('input[maxlength="1"]:visible');
+  const singleCount = await singleCharacterInputs.count();
+  if (singleCount >= code.length) {
+    for (let index = 0; index < code.length; index += 1) {
+      await singleCharacterInputs.nth(index).fill(code[index]);
+    }
+  } else {
+    await input.click();
+    await input.pressSequentially(code, { delay: 75 });
+  }
+  await input.dispatchEvent("change").catch(() => {});
 }
 
 async function handleApplicationVerification(page, taskId, jobId, workerId) {
@@ -390,10 +409,13 @@ async function handleApplicationVerification(page, taskId, jobId, workerId) {
   // The worker stays active only while this application is waiting for a
   // code. The code is consumed server-side after one successful retrieval.
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const code = await requestVerificationCode(taskId, jobId, workerId);
+    const { code, inboxStatus } = await requestVerificationCode(taskId, jobId, workerId);
     if (code) {
       await fillVerificationCode(page, field.index, code);
       return { requested: true, completed: true };
+    }
+    if (["INBOX_RECONNECT_REQUIRED", "INBOX_UNAVAILABLE", "JOB_INBOX_NOT_LINKED"].includes(inboxStatus)) {
+      return { requested: true, completed: false, reason: inboxStatus };
     }
     if (attempt > 0 && attempt % 3 === 0) {
       await heartbeat(taskId, {
@@ -406,7 +428,7 @@ async function handleApplicationVerification(page, taskId, jobId, workerId) {
     }
     await sleep(5000);
   }
-  return { requested: true, completed: false };
+  return { requested: true, completed: false, reason: "CODE_NOT_RECEIVED" };
 }
 
 async function downloadResumeFile(payload) {
@@ -534,7 +556,7 @@ async function inspectReadiness(page) {
 
 async function detectSubmitButton(page) {
   return await page.evaluate(() => {
-    const accepted = new Set(["submit", "submit application", "send application"]);
+    const accepted = new Set(["submit", "submit application", "send application", "verify", "verify code", "confirm application"]);
     const elements = Array.from(document.querySelectorAll('button, input[type="submit"]'));
     for (let index = 0; index < elements.length; index += 1) {
       const element = elements[index];
@@ -549,13 +571,14 @@ async function detectSubmitButton(page) {
 
 async function confirmSubmission(page, previousUrl) {
   const deadline = Date.now() + 12000;
-  let pageState = { text: "", invalidFields: 0, formPresent: true, visibleAlerts: [] };
+  let pageState = { text: "", invalidFields: 0, formPresent: true, verificationRequired: false, visibleAlerts: [] };
   let confirmed = false;
   while (Date.now() < deadline) {
     pageState = await page.evaluate(() => ({
       text: document.body?.innerText?.toLowerCase() || "",
       invalidFields: document.querySelectorAll(':invalid, [aria-invalid="true"]').length,
       formPresent: Boolean(document.querySelector("#application-form, form.application--form")),
+      verificationRequired: /(verification code was sent|enter the .*code|security code|confirm you(?:'|’)re human)/i.test(document.body?.innerText || ""),
       visibleAlerts: Array.from(document.querySelectorAll('[role="alert"], .error, .field-error'))
         .filter((element) => {
           const rect = element.getBoundingClientRect();
@@ -568,6 +591,7 @@ async function confirmSubmission(page, previousUrl) {
     confirmed = /(application (?:has been )?(?:received|submitted)|thank you(?:!| for applying)|thanks for applying|submission confirmed|we(?:'|’)ve received your application|application complete)/i.test(pageState.text)
       || /(?:thank.?you|confirmation|submitted)/i.test(page.url());
     if (confirmed) break;
+    if (pageState.verificationRequired) break;
     await page.waitForTimeout(500);
   }
   return {
@@ -575,6 +599,7 @@ async function confirmSubmission(page, previousUrl) {
     urlChanged: page.url() !== previousUrl,
     invalidFields: pageState.invalidFields,
     formPresent: pageState.formPresent,
+    verificationRequired: pageState.verificationRequired,
     visibleAlerts: pageState.visibleAlerts,
   };
 }
@@ -602,6 +627,26 @@ async function inspectSubmissionResponse(response) {
   return { status, path: pathName, confirmed: response.ok() && (explicitSuccess || receiptText) };
 }
 
+async function submitCurrentForm(page, submitButton) {
+  const previousUrl = page.url();
+  const responsePromise = page.waitForResponse((response) => {
+    const request = response.request();
+    if (!["POST", "PUT", "PATCH"].includes(request.method())) return false;
+    try {
+      return new URL(response.url()).hostname.endsWith("greenhouse.io");
+    } catch {
+      return false;
+    }
+  }, { timeout: 15000 }).catch(() => null);
+  const finalButtons = page.locator('button, input[type="submit"]');
+  await finalButtons.nth(submitButton.index).click({ timeout: 10000 });
+  const [confirmation, submissionResponse] = await Promise.all([
+    confirmSubmission(page, previousUrl),
+    responsePromise,
+  ]);
+  return { confirmation, transport: await inspectSubmissionResponse(submissionResponse) };
+}
+
 async function processJob(browser, taskId, job, payload, resumeFilePath, workerId) {
   const startedAt = Date.now();
   const result = {
@@ -616,6 +661,7 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     submitted: false,
     resumeUploaded: false,
     verificationHandled: false,
+    verificationReason: null,
     missingFields: [],
     submissionResponseStatus: null,
     submissionResponsePath: null,
@@ -655,6 +701,7 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
 
     const verification = await handleApplicationVerification(page, taskId, result.jobId, workerId);
     result.verificationHandled = verification.completed;
+    result.verificationReason = verification.reason || null;
 
     const submitButton = await detectSubmitButton(page);
     result.submitButton = submitButton?.label || null;
@@ -668,32 +715,41 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
       : false;
 
     if (submitButton && AUTO_SUBMIT && approved && !blocked && stillAuthorized) {
-      const previousUrl = page.url();
-      const finalButtons = page.locator('button, input[type="submit"]');
-      const responsePromise = page.waitForResponse((response) => {
-        const request = response.request();
-        if (!["POST", "PUT", "PATCH"].includes(request.method())) return false;
-        try {
-          return new URL(response.url()).hostname.endsWith("greenhouse.io");
-        } catch {
-          return false;
-        }
-      }, { timeout: 15000 }).catch(() => null);
-      await finalButtons.nth(submitButton.index).click({ timeout: 10000 });
-      const [confirmation, submissionResponse] = await Promise.all([
-        confirmSubmission(page, previousUrl),
-        responsePromise,
-      ]);
-      const transport = await inspectSubmissionResponse(submissionResponse);
+      let { confirmation, transport } = await submitCurrentForm(page, submitButton);
       result.submissionResponseStatus = transport.status;
       result.submissionResponsePath = transport.path;
       result.submitted = confirmation.confirmed || transport.confirmed;
+
+      if (!result.submitted && (transport.status === 428 || confirmation.verificationRequired)) {
+        const postSubmitVerification = await handleApplicationVerification(page, taskId, result.jobId, workerId);
+        result.verificationHandled = postSubmitVerification.completed;
+        result.verificationReason = postSubmitVerification.reason || null;
+        if (postSubmitVerification.completed) {
+          const verificationButton = await detectSubmitButton(page);
+          const remainsAuthorized = verificationButton
+            ? await submissionAuthorized(taskId, result.jobId, workerId)
+            : false;
+          if (verificationButton && remainsAuthorized) {
+            ({ confirmation, transport } = await submitCurrentForm(page, verificationButton));
+            result.submissionResponseStatus = transport.status;
+            result.submissionResponsePath = transport.path;
+            result.submitted = confirmation.confirmed || transport.confirmed;
+          }
+        }
+      }
+
       result.status = result.submitted ? "submitted" : "needs_review";
       if (!result.submitted) {
         const visibleAlert = confirmation.visibleAlerts?.[0];
         if (transport.status === 428) {
           result.handoffReason = "employer_verification";
-          result.error = "Employer verification is required. Open the employer portal to complete the final check; your résumé and answers are ready.";
+          result.error = result.verificationHandled
+            ? "The employer did not confirm the verification code. Open the prepared application to review the final step."
+            : result.verificationReason === "INBOX_RECONNECT_REQUIRED"
+              ? "Reconnect Gmail to continue employer verification. Your prepared application is unchanged."
+              : result.verificationReason === "JOB_INBOX_NOT_LINKED"
+                ? "The application inbox is not linked to this job. Open the prepared application to complete verification."
+                : "The employer verification code did not arrive in the connected inbox. Open the prepared application to complete the final check.";
         } else {
           result.error = visibleAlert
             ? `The employer form did not accept the submission: ${visibleAlert}`

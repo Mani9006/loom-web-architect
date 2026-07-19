@@ -192,8 +192,9 @@ serve(async (req: Request) => {
         // enter the worker payload, browser context, logs, or frontend.
         const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
         const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+        let inboxStatus = "INBOX_CHECKED";
         if (supabaseUrl && serviceRole) {
-          await fetch(`${supabaseUrl}/functions/v1/mc-gmail-poll`, {
+          const pollResponse = await fetch(`${supabaseUrl}/functions/v1/mc-gmail-poll`, {
             method: "POST",
             headers: {
               apikey: serviceRole,
@@ -202,10 +203,21 @@ serve(async (req: Request) => {
             },
             body: JSON.stringify({ user_id: task.user_id }),
           }).catch(() => null);
+          if (!pollResponse) {
+            inboxStatus = "INBOX_CHECK_FAILED";
+          } else {
+            const pollBody = await pollResponse.json().catch(() => ({}));
+            const failureCodes = Array.isArray(pollBody?.failure_codes) ? pollBody.failure_codes : [];
+            if (!pollResponse.ok || Number(pollBody?.failed || 0) > 0) {
+              inboxStatus = String(failureCodes[0] || "INBOX_CHECK_FAILED");
+            }
+          }
+        } else {
+          inboxStatus = "INBOX_UNAVAILABLE";
         }
 
         const trackedJobId = String(taskJob.trackedJobId || taskPayload.tracked_job_id || "").trim();
-        if (!trackedJobId) return jsonResponse({ ok: true, available: false });
+        if (!trackedJobId) return jsonResponse({ ok: true, available: false, inbox_status: "JOB_INBOX_NOT_LINKED" });
         let codeQuery = serviceClient
           .from("mc_inbound_emails")
           .select("id,verification_code,verification_code_expires_at")
@@ -217,7 +229,7 @@ serve(async (req: Request) => {
         codeQuery = codeQuery.eq("tracked_job_id", trackedJobId);
         const { data: codeRows } = await codeQuery;
         const codeRow = codeRows?.[0];
-        if (!codeRow?.verification_code) return jsonResponse({ ok: true, available: false });
+        if (!codeRow?.verification_code) return jsonResponse({ ok: true, available: false, inbox_status: inboxStatus });
 
         await serviceClient.from("mc_inbound_emails").update({
           verification_code: null,
@@ -226,7 +238,7 @@ serve(async (req: Request) => {
           is_read: true,
         }).eq("id", codeRow.id);
 
-        return jsonResponse({ ok: true, available: true, code: codeRow.verification_code });
+        return jsonResponse({ ok: true, available: true, code: codeRow.verification_code, inbox_status: "CODE_AVAILABLE" });
       }
 
       if (action === "heartbeat") {
