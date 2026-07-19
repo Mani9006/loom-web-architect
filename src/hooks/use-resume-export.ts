@@ -357,7 +357,7 @@ export class PDFResumeRenderer {
   private renderHeader(h: ResumeJSON["header"]) {
     const cx = PAGE.width / 2;
     const nameH = this.lh(FS.name);
-    this.text(h.name || "Your Name", cx, this.y + nameH, FS.name, "bold", "center");
+    this.text(h.name || "", cx, this.y + nameH, FS.name, "bold", "center");
     this.y += nameH;
 
     if (h.title) {
@@ -803,7 +803,7 @@ export function generatePlainText(data: ResumeJSON): string {
   };
 
   // Header
-  lines.push(centerText(data.header.name || "Your Name"));
+  lines.push(centerText(data.header.name || ""));
   const contactParts: string[] = [];
   if (data.header.title) contactParts.push(data.header.title);
   if (data.header.location) contactParts.push(data.header.location);
@@ -1009,7 +1009,7 @@ export function useResumeExport() {
           alignment: AlignmentType.CENTER,
           children: [
             new TextRun({
-              text: data.header.name || "Your Name",
+              text: data.header.name || "",
               bold: true,
               size: 36, // 18pt (matching PDF/template)
               font: "Calibri",

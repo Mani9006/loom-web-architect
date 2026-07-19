@@ -346,6 +346,11 @@ export default function AgentPage() {
     })();
   }, [loading, matches.length, matchSetup, plan, resume, user]);
 
+  // Pipeline counters — single definition shared with the Applications page
+  // (JobTracker automationCounts): prepared = packets in status draft/ready,
+  // queued = status queued, etc. These reflect CURRENT draft_applications
+  // state; the "Last Agent run" summary instead counts only that run's new
+  // actions, so the two can legitimately differ (see agents-job-hunter).
   const counts = useMemo(() => {
     const value = { prepared: 0, queued: 0, submitted: 0, failed: 0, skipped: 0 };
     for (const draft of drafts) {
@@ -529,7 +534,9 @@ export default function AgentPage() {
     setBatchPreparing(false);
     setBatchProgress(null);
     const reviewReady = Math.max(0, prepared - queued);
-    toast.success(`${prepared} application packet${prepared === 1 ? "" : "s"} prepared · ${queued} queued · ${reviewReady + needsAttention} ready for review`);
+    // "prepared" counts packets built or refreshed in this batch; existing
+    // packets are reused, so the pipeline tiles may not grow by this amount.
+    toast.success(`${prepared} application packet${prepared === 1 ? "" : "s"} prepared or refreshed · ${queued} queued · ${reviewReady + needsAttention} ready for review`);
   };
 
   const prepareTopMatches = async () => prepareMatches(matches.filter((match) => fitScore(match) >= 50).slice(0, 5));
@@ -992,6 +999,7 @@ export default function AgentPage() {
                   <span className="text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(lastRun.started_at), { addSuffix: true })}</span>
                 </div>
                 <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">{lastRun.summary || "No summary was recorded."}</p>
+                <p className="mt-2 text-[10px] leading-relaxed text-rp-ink-3">Run summaries count only that run’s new actions. The workspace tiles above show your full current pipeline, including packets prepared in earlier runs.</p>
               </>
             ) : (
               <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">No runs yet. Your latest résumé now supplies the first role targets automatically; you can refine them any time.</p>

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
+import { pickAdapter } from "./ats-adapters/index.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY
@@ -21,6 +22,8 @@ const once = process.argv.includes("--once");
 const maxTasksArg = process.argv.find((arg) => arg.startsWith("--max-tasks="));
 const maxTasks = maxTasksArg ? Number(maxTasksArg.split("=")[1]) : Number(process.env.APPLYPASS_MAX_TASKS || 0);
 
+const HANDLED_STATUSES = ["processed", "ready_for_review", "needs_review", "needs_attention", "submitted", "stopped"];
+
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !WORKER_TOKEN) {
   console.error("Missing required env: SUPABASE_URL, a Supabase anon/publishable key, and APPLYPASS_WORKER_TOKEN or WORKER_AUTH_TOKEN");
   process.exit(1);
@@ -36,173 +39,6 @@ function nowIso() {
 
 function normalize(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function matchingMemoryAnswer(answerMemory, label) {
-  const labelTokens = normalize(label).split(" ").filter((token) => token.length > 3);
-  let bestAnswer = "";
-  let bestScore = 0;
-  for (const [question, answer] of Object.entries(answerMemory || {})) {
-    const response = String(answer || "").trim();
-    if (!response) continue;
-    const questionText = normalize(question);
-    const score = labelTokens.reduce((total, token) => total + (questionText.includes(token) ? 1 : 0), 0);
-    if (score > bestScore) {
-      bestScore = score;
-      bestAnswer = response;
-    }
-  }
-  return bestScore >= 2 ? bestAnswer : "";
-}
-
-function inferCountry(location) {
-  const value = normalize(location);
-  if (!value) return "";
-  if (/\b(united states|u\.?s\.?a?|usa)\b/i.test(value)) return "United States";
-  const stateNames = /(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming)/i;
-  const stateCodes = /(?:,|\s)\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)(?:\s|,|$)/i;
-  return stateNames.test(value) || stateCodes.test(value) ? "United States" : "";
-}
-
-function inferAuthorizationAnswers(profile, answerMemory) {
-  const relevantMemory = Object.entries(answerMemory || {})
-    .filter(([question]) => /(authoriz|sponsor|visa|work permit)/i.test(question))
-    .map(([, answer]) => String(answer || ""));
-  const text = normalize([profile?.workAuthorization, ...relevantMemory].filter(Boolean).join(". "));
-  let workAuthorized = "";
-  let sponsorshipRequired = "";
-
-  if (/(not|no)\s+(currently\s+)?authorized|cannot\s+work/i.test(text)) workAuthorized = "No";
-  else if (/authoriz|citizen|permanent resident|green card|\bead\b/i.test(text)) workAuthorized = "Yes";
-
-  if (typeof profile?.requiresSponsorship === "boolean") {
-    sponsorshipRequired = profile.requiresSponsorship ? "Yes" : "No";
-  } else if (/(do not|don.t|without|no)\s+(currently\s+)?(require|need)[^.;]{0,30}sponsor|no sponsorship/i.test(text)) {
-    sponsorshipRequired = "No";
-  } else if (/(require|need)[^.;]{0,30}sponsor|sponsorship required/i.test(text)) {
-    sponsorshipRequired = "Yes";
-  }
-  return { workAuthorized, sponsorshipRequired };
-}
-
-async function chooseVisibleOption(page, input, desired, { allowFirstMatch = false, typeSequentially = false, searchValue = "" } = {}) {
-  if (!desired) return false;
-  const committed = async () => await input.evaluate((element) => {
-    const selectedText = (element.parentElement?.parentElement?.innerText || "").replace(/\s+/g, " ").trim();
-    return Boolean(selectedText) && !/^(select|choose|search)(\.\.\.)?$/i.test(selectedText);
-  }).catch(() => false);
-  await input.scrollIntoViewIfNeeded();
-  await input.click();
-  if (allowFirstMatch) {
-    await input.fill("");
-    const query = searchValue || desired;
-    if (typeSequentially) await input.pressSequentially(query, { delay: 35 });
-    else await input.fill(query);
-  }
-  await page.waitForTimeout(120);
-
-  const options = page.locator('[role="option"]:visible');
-  await options.first().waitFor({ state: "visible", timeout: allowFirstMatch ? 2500 : 1000 }).catch(() => {});
-  const count = await options.count();
-  const target = normalize(desired);
-  let fallback = null;
-  for (let index = 0; index < count; index += 1) {
-    const option = options.nth(index);
-    const optionText = normalize(await option.textContent());
-    if (!optionText) continue;
-    if (optionText === target || optionText.startsWith(`${target} `) || optionText.startsWith(`${target}+`)) {
-      await option.click();
-      return await committed();
-    }
-    if (!fallback && (optionText.includes(target) || target.includes(optionText))) fallback = option;
-  }
-  if (fallback) {
-    await fallback.click();
-    return await committed();
-  }
-  if (allowFirstMatch && count > 0) {
-    await options.first().click();
-    return await committed();
-  }
-  if (allowFirstMatch) {
-    await input.press("ArrowDown").catch(() => {});
-    await input.press("Enter").catch(() => {});
-    if (await committed()) return true;
-  }
-  await page.keyboard.press("Escape");
-  return false;
-}
-
-async function fillCustomFields(page, profile = {}, answerMemory = {}, approved = false) {
-  const { workAuthorized, sponsorshipRequired } = inferAuthorizationAnswers(profile, answerMemory);
-  const descriptors = await page.locator('input[role="combobox"][aria-required="true"]').evaluateAll((elements) => elements.map((element) => {
-    const id = element.getAttribute("id") || "";
-    const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
-    return { id, label: label.replace(/\s+/g, " ").trim() };
-  }));
-  let filledCount = 0;
-  let demographicFields = 0;
-  let declinedDemographicFields = 0;
-
-  for (const descriptor of descriptors) {
-    if (!descriptor.id) continue;
-    const input = page.locator(`input[id="${descriptor.id.replaceAll('"', '\\"')}"]`).first();
-    const label = normalize(descriptor.label);
-    let desired = "";
-    let allowFirstMatch = false;
-    let typeSequentially = false;
-    let searchValue = "";
-
-    if (descriptor.id === "country" || /^country\b/.test(label)) {
-      desired = inferCountry(profile.location);
-      allowFirstMatch = true;
-    } else if (descriptor.id === "candidate-location" || /location.*city|city.*location/.test(label)) {
-      desired = String(profile.location || "").trim();
-      allowFirstMatch = true;
-      typeSequentially = true;
-      searchValue = desired.split(",")[0]?.trim() || desired;
-    } else if (/currently authorized|authorized to work/.test(label)) {
-      desired = workAuthorized;
-    } else if (/sponsor|immigration/.test(label)) {
-      desired = sponsorshipRequired;
-    } else if (/privacy policy|selecting.*agree|i agree/.test(label)) {
-      desired = approved ? "I agree" : "";
-    } else if (/gender|transgender|sexual orientation|disabilit|veteran|military|ethnicit|race/.test(label)) {
-      demographicFields += 1;
-      desired = approved ? "I don't wish to answer" : "";
-    } else {
-      desired = matchingMemoryAnswer(answerMemory, descriptor.label);
-    }
-
-    if (await chooseVisibleOption(page, input, desired, { allowFirstMatch, typeSequentially, searchValue })) {
-      filledCount += 1;
-      if (/gender|transgender|sexual orientation|disabilit|veteran|military|ethnicit|race/.test(label)) {
-        declinedDemographicFields += 1;
-      }
-    }
-  }
-
-  // A required demographic consent is acknowledged only when the applicant
-  // approved submission and every demographic response was explicitly
-  // declined. This avoids inventing sensitive attributes.
-  if (approved && demographicFields > 0 && declinedDemographicFields === demographicFields) {
-    const requiredCheckboxes = page.locator('input[type="checkbox"][required], input[type="checkbox"][aria-required="true"]');
-    const checkboxCount = await requiredCheckboxes.count();
-    for (let index = 0; index < checkboxCount; index += 1) {
-      const checkbox = requiredCheckboxes.nth(index);
-      const metadata = normalize(await checkbox.evaluate((element) => {
-        const id = element.getAttribute("id") || "";
-        const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
-        return [label, element.closest("label")?.textContent || ""].join(" ");
-      }));
-      if (/consent|demographic/.test(metadata) && !(await checkbox.isChecked())) {
-        await checkbox.check();
-        filledCount += 1;
-      }
-    }
-  }
-
-  return { filledCount, workAuthorizedKnown: Boolean(workAuthorized), sponsorshipKnown: Boolean(sponsorshipRequired) };
 }
 
 async function queueCall(payload, workerId = WORKER_ID) {
@@ -266,171 +102,6 @@ async function maybeScreenshot(page, taskId, jobId) {
   return filePath;
 }
 
-async function fillCommonFields(page, profile = {}, answerMemory = {}) {
-  const nameParts = String(profile.fullName || "").trim().split(/\s+/).filter(Boolean);
-  const firstName = nameParts[0] || "";
-  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
-  const mappings = [
-    { keys: ["first name", "given name"], value: firstName },
-    { keys: ["last name", "family name", "surname"], value: lastName },
-    { keys: ["full name", "legal name"], value: profile.fullName || "" },
-    { keys: ["email", "e-mail"], value: profile.email || "" },
-    { keys: ["phone", "mobile", "contact"], value: profile.phone || "" },
-    { keys: ["linkedin"], value: profile.linkedinUrl || "" },
-    { keys: ["portfolio", "website", "github"], value: profile.portfolioUrl || "" },
-    { keys: ["location", "city", "address"], value: profile.location || "" },
-    { keys: ["salary", "compensation", "expected pay"], value: profile.expectedSalary || "" },
-    { keys: ["notice", "joining", "start date"], value: profile.noticePeriod || "" },
-    { keys: ["experience", "years"], value: profile.yearsExperience || "" },
-    { keys: ["title", "current role", "designation"], value: profile.currentTitle || "" },
-    { keys: ["current company", "recent company", "most recent company", "most recent", "name of your current"], value: profile.currentCompany || "" },
-    { keys: ["how did you hear", "how you heard", "job source"], value: profile.discoverySource || "" },
-  ].filter((item) => String(item.value || "").trim().length > 0);
-
-  const handles = await page.locator("input, textarea, select").elementHandles();
-  let filledCount = 0;
-  let totalFields = 0;
-
-  for (const handle of handles) {
-    const details = await handle.evaluate((element) => {
-      const id = element.getAttribute("id") || "";
-      const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
-      const metadata = [
-        element.getAttribute("name") || "",
-        id,
-        element.getAttribute("placeholder") || "",
-        element.getAttribute("aria-label") || "",
-        label,
-        element.closest("label")?.textContent || "",
-      ].join(" ").toLowerCase().replace(/\s+/g, " ").trim();
-      const style = window.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      return {
-        metadata,
-        tag: element.tagName.toLowerCase(),
-        type: element.getAttribute("type") || "",
-        role: element.getAttribute("role") || "",
-        usable: style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
-          && !element.hasAttribute("disabled") && !element.hasAttribute("readonly"),
-        empty: !("value" in element) || !String(element.value || "").trim(),
-      };
-    });
-    if (!details.usable || !details.metadata) continue;
-    totalFields += 1;
-    if (!details.empty || details.role === "combobox" || ["file", "radio", "checkbox", "hidden", "submit", "button"].includes(details.type)) continue;
-
-    let value = "";
-    for (const mapping of mappings) {
-      if (mapping.keys.some((key) => details.metadata.includes(key))) {
-        value = String(mapping.value || "").trim();
-        if (value) break;
-      }
-    }
-    if (!value && ["input", "textarea"].includes(details.tag)) {
-      value = matchingMemoryAnswer(answerMemory, details.metadata);
-    }
-    if (!value) continue;
-
-    try {
-      if (details.tag === "select") {
-        const options = await handle.evaluate((element) => Array.from(element.options || []).map((option) => ({
-          value: option.value,
-          label: option.textContent || "",
-        })));
-        const target = normalize(value);
-        const match = options.find((option) => normalize(option.value) === target || normalize(option.label).includes(target));
-        if (match) {
-          await handle.selectOption(match.value);
-          filledCount += 1;
-        }
-      } else {
-        await handle.fill(value);
-        filledCount += 1;
-      }
-    } catch {
-      // A framework may replace a field while another answer is committed.
-      // Readiness inspection below will surface it instead of guessing.
-    }
-  }
-
-  return { filledCount, totalFields };
-}
-
-async function findVerificationField(page) {
-  return await page.evaluate(() => {
-    const candidates = Array.from(document.querySelectorAll("input"));
-    const oneCharacterFields = [];
-    for (let index = 0; index < candidates.length; index += 1) {
-      const input = candidates[index];
-      const id = input.getAttribute("id") || "";
-      const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
-      const metadata = [
-        input.getAttribute("name") || "",
-        id,
-        input.getAttribute("placeholder") || "",
-        input.getAttribute("aria-label") || "",
-        input.getAttribute("autocomplete") || "",
-        label,
-        input.closest("label")?.textContent || "",
-      ].join(" ").toLowerCase();
-      const rect = input.getBoundingClientRect();
-      const visible = rect.width > 0 && rect.height > 0 && !input.disabled && !input.readOnly;
-      if (visible && input.maxLength === 1 && !input.value) oneCharacterFields.push(index);
-      if (visible && /(one[- ]?time|verification|security|authentication|passcode|\botp\b)/i.test(metadata)) {
-        return { index };
-      }
-    }
-    const pageRequestsCode = /(verification code was sent|enter the .*code|security code|confirm you(?:'|’)re human)/i.test(document.body?.innerText || "");
-    if (pageRequestsCode && oneCharacterFields.length >= 4) return { index: oneCharacterFields[0] };
-    return null;
-  });
-}
-
-async function fillVerificationCode(page, fieldIndex, code) {
-  const inputs = page.locator("input");
-  const input = inputs.nth(fieldIndex);
-  const singleCharacterInputs = page.locator('input[maxlength="1"]:visible');
-  const singleCount = await singleCharacterInputs.count();
-  if (singleCount >= code.length) {
-    for (let index = 0; index < code.length; index += 1) {
-      await singleCharacterInputs.nth(index).fill(code[index]);
-    }
-  } else {
-    await input.click();
-    await input.pressSequentially(code, { delay: 75 });
-  }
-  await input.dispatchEvent("change").catch(() => {});
-}
-
-async function handleApplicationVerification(page, taskId, jobId, workerId) {
-  const field = await findVerificationField(page);
-  if (!field) return { requested: false, completed: false };
-
-  // The worker stays active only while this application is waiting for a
-  // code. The code is consumed server-side after one successful retrieval.
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const { code, inboxStatus } = await requestVerificationCode(taskId, jobId, workerId);
-    if (code) {
-      await fillVerificationCode(page, field.index, code);
-      return { requested: true, completed: true };
-    }
-    if (["INBOX_RECONNECT_REQUIRED", "INBOX_UNAVAILABLE", "JOB_INBOX_NOT_LINKED"].includes(inboxStatus)) {
-      return { requested: true, completed: false, reason: inboxStatus };
-    }
-    if (attempt > 0 && attempt % 3 === 0) {
-      await heartbeat(taskId, {
-        level: "info",
-        workerId,
-        at: nowIso(),
-        message: "Waiting for application email verification",
-        jobId,
-      }, workerId);
-    }
-    await sleep(5000);
-  }
-  return { requested: true, completed: false, reason: "CODE_NOT_RECEIVED" };
-}
-
 async function downloadResumeFile(payload) {
   const url = String(payload?.resumeFileUrl || "").trim();
   if (!url.startsWith("https://")) return { directory: null, filePath: null };
@@ -448,160 +119,6 @@ async function downloadResumeFile(payload) {
   const filePath = path.join(directory, `tailored-resume${extension}`);
   await writeFile(filePath, bytes);
   return { directory, filePath };
-}
-
-async function uploadResume(page, filePath) {
-  const inputs = page.locator('input[type="file"]');
-  // Keep stable element handles. Greenhouse re-renders its upload controls
-  // after a file is selected, so iterating a live locator by index can make a
-  // previously counted input disappear between iterations.
-  const handles = await inputs.elementHandles();
-  const count = handles.length;
-  if (count === 0) return { fileInputs: 0, resumeInputs: 0, uploaded: 0, requiredMissing: false };
-
-  const candidates = [];
-  let requiredMissing = false;
-
-  for (const handle of handles) {
-    const details = await handle.evaluate((element) => {
-      const id = element.getAttribute("id") || "";
-      const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
-      const parentText = element.closest("label")?.textContent || element.parentElement?.textContent || "";
-      const metadata = [
-        element.getAttribute("name") || "",
-        id,
-        element.getAttribute("aria-label") || "",
-        label,
-        parentText,
-      ].join(" ").toLowerCase();
-      return {
-        isResume: /\b(resume|résumé|cv|curriculum vitae)\b/i.test(metadata),
-        required: element.hasAttribute("required") || element.getAttribute("aria-required") === "true",
-      };
-    });
-
-    const isResumeInput = details.isResume || count === 1;
-    if (!isResumeInput) {
-      if (details.required) requiredMissing = true;
-      continue;
-    }
-    candidates.push({ handle, required: details.required });
-  }
-
-  if (candidates.length === 0) {
-    return { fileInputs: count, resumeInputs: 0, uploaded: 0, requiredMissing };
-  }
-
-  if (!filePath) {
-    if (candidates.some((candidate) => candidate.required)) requiredMissing = true;
-    return { fileInputs: count, resumeInputs: candidates.length, uploaded: 0, requiredMissing };
-  }
-
-  // One résumé upload is sufficient. Uploading to every matching control can
-  // attach the résumé as a cover letter on forms with ambiguous labels.
-  await candidates[0].handle.setInputFiles(filePath);
-  return { fileInputs: count, resumeInputs: candidates.length, uploaded: 1, requiredMissing };
-}
-
-async function inspectReadiness(page) {
-  return await page.evaluate(() => {
-    const required = Array.from(document.querySelectorAll("input[required], textarea[required], select[required], [aria-required='true']"));
-    const visible = required.filter((node) => {
-      if (!(node instanceof HTMLElement) || node.hasAttribute("disabled")) return false;
-      if (node instanceof HTMLInputElement
-        && !node.id
-        && !node.name
-        && !node.getAttribute("aria-label")
-        && !node.getAttribute("role")
-        && !["checkbox", "radio", "file"].includes(node.type)) return false;
-      const style = window.getComputedStyle(node);
-      const rect = node.getBoundingClientRect();
-      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-    });
-    const seenRadioGroups = new Set();
-    const incomplete = visible.filter((node) => {
-      if (node instanceof HTMLInputElement) {
-        if (node.getAttribute("role") === "combobox") {
-          const selectedText = (node.parentElement?.parentElement?.innerText || "").replace(/\s+/g, " ").trim();
-          return !selectedText || /^(select|choose|search)(\.\.\.)?$/i.test(selectedText);
-        }
-        if (node.type === "radio") {
-          const groupName = node.name || node.id;
-          if (seenRadioGroups.has(groupName)) return false;
-          seenRadioGroups.add(groupName);
-          const escaped = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(node.name) : node.name;
-          return node.name
-            ? !document.querySelector(`input[type="radio"][name="${escaped}"]:checked`)
-            : !node.checked;
-        }
-        if (node.type === "checkbox") return !node.checked;
-        if (node.type === "file") return !node.files?.length;
-        return !node.value.trim();
-      }
-      if (node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) return !node.value.trim();
-      return false;
-    });
-    const missingFields = incomplete.slice(0, 25).map((node) => {
-      const id = node.getAttribute("id") || "";
-      const label = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "" : "";
-      return {
-        id,
-        type: node instanceof HTMLInputElement ? node.type || node.getAttribute("role") || "input" : node.tagName.toLowerCase(),
-        label: label.replace(/\s+/g, " ").trim().slice(0, 180),
-      };
-    });
-    return { requiredFields: visible.length, incompleteRequired: incomplete.length, missingFields };
-  });
-}
-
-async function detectSubmitButton(page) {
-  return await page.evaluate(() => {
-    const accepted = new Set(["submit", "submit application", "send application", "verify", "verify code", "confirm application"]);
-    const elements = Array.from(document.querySelectorAll('button, input[type="submit"]'));
-    for (let index = 0; index < elements.length; index += 1) {
-      const element = elements[index];
-      const label = (element.textContent || element.getAttribute("value") || "").toLowerCase().replace(/\s+/g, " ").trim();
-      const rect = element.getBoundingClientRect();
-      const disabled = element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true";
-      if (accepted.has(label) && rect.width > 0 && rect.height > 0 && !disabled) return { index, label };
-    }
-    return null;
-  });
-}
-
-async function confirmSubmission(page, previousUrl) {
-  const deadline = Date.now() + 12000;
-  let pageState = { text: "", invalidFields: 0, formPresent: true, verificationRequired: false, visibleAlerts: [] };
-  let confirmed = false;
-  while (Date.now() < deadline) {
-    pageState = await page.evaluate(() => ({
-      text: document.body?.innerText?.toLowerCase() || "",
-      invalidFields: document.querySelectorAll(':invalid, [aria-invalid="true"]').length,
-      formPresent: Boolean(document.querySelector("#application-form, form.application--form")),
-      verificationRequired: /(verification code was sent|enter the .*code|security code|confirm you(?:'|’)re human)/i.test(document.body?.innerText || ""),
-      visibleAlerts: Array.from(document.querySelectorAll('[role="alert"], .error, .field-error'))
-        .filter((element) => {
-          const rect = element.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
-        })
-        .map((element) => (element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240))
-        .filter(Boolean)
-        .slice(0, 5),
-    }));
-    confirmed = /(application (?:has been )?(?:received|submitted)|thank you(?:!| for applying)|thanks for applying|submission confirmed|we(?:'|’)ve received your application|application complete)/i.test(pageState.text)
-      || /(?:thank.?you|confirmation|submitted)/i.test(page.url());
-    if (confirmed) break;
-    if (pageState.verificationRequired) break;
-    await page.waitForTimeout(500);
-  }
-  return {
-    confirmed,
-    urlChanged: page.url() !== previousUrl,
-    invalidFields: pageState.invalidFields,
-    formPresent: pageState.formPresent,
-    verificationRequired: pageState.verificationRequired,
-    visibleAlerts: pageState.visibleAlerts,
-  };
 }
 
 async function inspectSubmissionResponse(response) {
@@ -627,8 +144,13 @@ async function inspectSubmissionResponse(response) {
   return { status, path: pathName, confirmed: response.ok() && (explicitSuccess || receiptText) };
 }
 
-async function submitCurrentForm(page, submitButton) {
+// Perform one submit attempt through the active adapter and gather both the
+// adapter's DOM receipt and the transport-level ATS response. The adapter's
+// submit() enforces the env gate + approval refusal internally; the worker
+// still re-checks continuous-apply authorization immediately before calling.
+async function submitViaAdapter(page, adapter, ctx, submitButton) {
   const previousUrl = page.url();
+  // Watch for the ATS submission response while the adapter performs the click.
   const responsePromise = page.waitForResponse((response) => {
     const request = response.request();
     if (!["POST", "PUT", "PATCH"].includes(request.method())) return false;
@@ -638,13 +160,20 @@ async function submitCurrentForm(page, submitButton) {
       return false;
     }
   }, { timeout: 15000 }).catch(() => null);
-  const finalButtons = page.locator('button, input[type="submit"]');
-  await finalButtons.nth(submitButton.index).click({ timeout: 10000 });
-  const [confirmation, submissionResponse] = await Promise.all([
-    confirmSubmission(page, previousUrl),
-    responsePromise,
-  ]);
-  return { confirmation, transport: await inspectSubmissionResponse(submissionResponse) };
+
+  const submission = await adapter.submit(page, { ...ctx, submitButton });
+  let receipt;
+  let submissionResponse = null;
+  if (submission?.clicked) {
+    [receipt, submissionResponse] = await Promise.all([
+      adapter.verifyReceipt(page, { ...ctx, previousUrl }),
+      responsePromise,
+    ]);
+  } else {
+    receipt = { confirmed: false, evidence: { reason: submission?.reason || "submit refused" } };
+  }
+  const transport = await inspectSubmissionResponse(submissionResponse);
+  return { receipt, transport };
 }
 
 async function processJob(browser, taskId, job, payload, resumeFilePath, workerId) {
@@ -655,6 +184,7 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     company: String(job?.company || ""),
     url: String(job?.url || ""),
     status: "failed",
+    adapter: null,
     filledCount: 0,
     totalFields: 0,
     submitButton: null,
@@ -662,10 +192,12 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     resumeUploaded: false,
     verificationHandled: false,
     verificationReason: null,
+    requiredMissing: [],
     missingFields: [],
     submissionResponseStatus: null,
     submissionResponsePath: null,
     handoffReason: null,
+    receipt: null,
     screenshotPath: null,
     error: null,
     durationMs: 0,
@@ -685,62 +217,110 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.waitForTimeout(1200);
 
+    const adapter = await pickAdapter(url, page);
+    result.adapter = adapter.metadata.name;
+    const handleVerification = typeof adapter.handleVerification === "function"
+      ? (p, c) => adapter.handleVerification(p, c)
+      : null;
+
+    // Approval is resolved up-front because adapters need it while filling
+    // (consent options and demographic declines are only committed when the
+    // applicant approved this job for submission).
     const approval = job?.approvalReceipt || payload?.approvalReceipts?.[result.jobId];
     const approved = approval?.approved === true && typeof approval?.reviewedAt === "string";
 
-    // File uploads and custom dropdowns can re-render Greenhouse forms. Do
-    // those first, then fill ordinary React-controlled inputs last so their
-    // values remain committed in the framework state.
-    const upload = await uploadResume(page, resumeFilePath);
-    result.resumeUploaded = upload.uploaded > 0;
+    // Adapters never talk to the queue directly; capabilities are injected so
+    // the env gate + approval + continuous-authorization checks stay here.
+    // requestVerificationCode returns { code, inboxStatus } so adapters can
+    // surface inbox handoff reasons (reconnect / not linked / not received).
+    const ctx = {
+      profile: payload?.candidateProfile || {},
+      answers: payload?.answerMemory || {},
+      documents: { resumePath: resumeFilePath || null, coverLetterPath: null },
+      autoSubmit: AUTO_SUBMIT,
+      approved,
+      taskId,
+      jobId: result.jobId,
+      workerId,
+      requestVerificationCode: () => requestVerificationCode(taskId, result.jobId, workerId),
+      heartbeat: (log) => heartbeat(taskId, log, workerId),
+    };
 
-    const customFilled = await fillCustomFields(page, payload?.candidateProfile || {}, payload?.answerMemory || {}, approved);
-    const filled = await fillCommonFields(page, payload?.candidateProfile || {}, payload?.answerMemory || {});
-    result.filledCount = Number(filled?.filledCount || 0) + Number(customFilled?.filledCount || 0);
+    const prep = await adapter.prepare(page, ctx);
+    if (prep?.blocked) {
+      // CAPTCHA / login walls are never bypassed: a human has to take over.
+      result.status = "needs_attention";
+      result.error = prep.blocked.message || `Blocked by ${prep.blocked.kind || "page challenge"}; submission was not attempted.`;
+      result.screenshotPath = await maybeScreenshot(page, taskId, result.jobId);
+      result.durationMs = Date.now() - startedAt;
+      return result;
+    }
+
+    // Adapters upload documents and fill custom dropdowns before plain
+    // inputs (framework forms can re-render after uploads).
+    const filled = await adapter.fillFields(page, ctx);
+    result.filledCount = Number(filled?.filledCount || 0);
     result.totalFields = Number(filled?.totalFields || 0);
 
-    const verification = await handleApplicationVerification(page, taskId, result.jobId, workerId);
+    const upload = filled?.upload || { fileInputs: 0, resumeInputs: 0, uploaded: 0, requiredMissing: false };
+    result.resumeUploaded = upload.uploaded > 0;
+
+    const verification = filled?.verification || { requested: false, completed: false };
     result.verificationHandled = verification.completed;
     result.verificationReason = verification.reason || null;
 
-    const submitButton = await detectSubmitButton(page);
+    const submitButton = await adapter.findSubmitButton(page);
     result.submitButton = submitButton?.label || null;
 
-    const readiness = await inspectReadiness(page);
-    result.missingFields = readiness.missingFields || [];
-    const blocked = upload.requiredMissing || readiness.incompleteRequired > 0 || (verification.requested && !verification.completed);
+    const review = await adapter.reviewState(page);
+    const requiredMissing = Array.isArray(review?.requiredMissing) ? review.requiredMissing : [];
+    result.requiredMissing = requiredMissing;
+    result.missingFields = Array.isArray(review?.missingFields)
+      ? review.missingFields
+      : requiredMissing.map((label) => ({ id: "", type: "input", label }));
+    const incompleteRequired = Number(review?.incompleteRequired ?? requiredMissing.length);
+    const blocked = upload.requiredMissing || requiredMissing.length > 0 || (verification.requested && !verification.completed);
 
+    // Continuous-authorization re-check immediately before any final submit.
     const stillAuthorized = submitButton && AUTO_SUBMIT && approved && !blocked
       ? await submissionAuthorized(taskId, result.jobId, workerId)
       : false;
 
     if (submitButton && AUTO_SUBMIT && approved && !blocked && stillAuthorized) {
-      let { confirmation, transport } = await submitCurrentForm(page, submitButton);
+      let { receipt, transport } = await submitViaAdapter(page, adapter, ctx, submitButton);
       result.submissionResponseStatus = transport.status;
       result.submissionResponsePath = transport.path;
-      result.submitted = confirmation.confirmed || transport.confirmed;
+      result.submitted = receipt.confirmed === true || transport.confirmed === true;
+      result.receipt = receipt.evidence || null;
 
-      if (!result.submitted && (transport.status === 428 || confirmation.verificationRequired)) {
-        const postSubmitVerification = await handleApplicationVerification(page, taskId, result.jobId, workerId);
+      // Post-submit employer verification handoff: some ATS forms (Greenhouse
+      // security-code step) only reveal the emailed verification field AFTER
+      // the first submit click, answering with a 428 or an on-page prompt.
+      if (!result.submitted
+        && handleVerification
+        && (transport.status === 428 || receipt?.evidence?.verificationRequired)) {
+        const postSubmitVerification = await handleVerification(page, ctx);
         result.verificationHandled = postSubmitVerification.completed;
         result.verificationReason = postSubmitVerification.reason || null;
         if (postSubmitVerification.completed) {
-          const verificationButton = await detectSubmitButton(page);
+          const verificationButton = await adapter.findSubmitButton(page);
+          // Re-check continuous-apply authorization before the second submit.
           const remainsAuthorized = verificationButton
             ? await submissionAuthorized(taskId, result.jobId, workerId)
             : false;
           if (verificationButton && remainsAuthorized) {
-            ({ confirmation, transport } = await submitCurrentForm(page, verificationButton));
+            ({ receipt, transport } = await submitViaAdapter(page, adapter, ctx, verificationButton));
             result.submissionResponseStatus = transport.status;
             result.submissionResponsePath = transport.path;
-            result.submitted = confirmation.confirmed || transport.confirmed;
+            result.submitted = receipt.confirmed === true || transport.confirmed === true;
+            result.receipt = receipt.evidence || null;
           }
         }
       }
 
       result.status = result.submitted ? "submitted" : "needs_review";
       if (!result.submitted) {
-        const visibleAlert = confirmation.visibleAlerts?.[0];
+        const visibleAlert = receipt?.evidence?.visibleAlerts?.[0];
         if (transport.status === 428) {
           result.handoffReason = "employer_verification";
           result.error = result.verificationHandled
@@ -759,7 +339,9 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     } else if (submitButton) {
       result.status = AUTO_SUBMIT && approved && !blocked && !stillAuthorized
         ? "stopped"
-        : blocked ? "needs_review" : "ready_for_review";
+        : blocked
+          ? (review?.recommendation === "needs_attention" ? "needs_attention" : "needs_review")
+          : "ready_for_review";
       if (result.status === "stopped") {
         result.error = "Continuous Apply was stopped before final submission.";
       } else if (blocked) {
@@ -767,7 +349,7 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
           ? "A required attachment is missing; submission was not attempted."
           : verification.requested && !verification.completed
             ? "Email verification is required. Connect the application inbox or request a new code, then retry."
-          : `${readiness.incompleteRequired} required field(s) still need review; submission was not attempted.`;
+          : `${incompleteRequired} required field(s) still need review; submission was not attempted.`;
       }
     }
 
@@ -826,10 +408,10 @@ async function processTask(task, workerId) {
       jobResults.push(result);
 
       await heartbeat(taskId, {
-        level: ["processed", "ready_for_review", "needs_review", "submitted", "stopped"].includes(result.status) ? "info" : "warn",
+        level: HANDLED_STATUSES.includes(result.status) ? "info" : "warn",
         workerId,
         at: nowIso(),
-        message: ["processed", "ready_for_review", "needs_review", "submitted", "stopped"].includes(result.status)
+        message: HANDLED_STATUSES.includes(result.status)
           ? `${result.status}: ${result.title}`
           : `Failed ${result.title}: ${result.error}`,
         jobId: result.jobId,
@@ -849,7 +431,7 @@ async function processTask(task, workerId) {
     if (resumeFile.directory) await rm(resumeFile.directory, { recursive: true, force: true });
   }
 
-  const success = jobResults.filter((r) => ["processed", "ready_for_review", "needs_review", "submitted", "stopped"].includes(r.status)).length;
+  const success = jobResults.filter((r) => HANDLED_STATUSES.includes(r.status)).length;
   const failed = jobResults.length - success;
 
   const summary = {

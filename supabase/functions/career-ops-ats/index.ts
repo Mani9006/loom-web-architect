@@ -16,6 +16,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { truncate } from "../_shared/ai.ts";
 import { callLlmWithFallback } from "../_shared/llm.ts";
 import {
+  collectImpactBullets, computeImpactScore, extractEntryBullets, IMPACT_FULL_CREDIT_RATIO,
+} from "../_shared/ats-impact.ts";
+import {
   corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
 } from "../_shared/guards.ts";
@@ -81,8 +84,9 @@ function deterministicAnalysis(resume: any): DetReport {
   const allBullets: string[] = [];
   if (hasExperience) {
     for (const x of resume.experience) {
-      const bullets: string[] = Array.isArray(x.bullets) ? x.bullets
-        : x.description ? [x.description] : [];
+      // Defensive extraction: handles string arrays, editor objects, and
+      // multi-line description/responsibilities blocks (see _shared/ats-impact.ts).
+      const bullets = extractEntryBullets(x);
       for (const b of bullets) {
         allBullets.push(b);
         const a = analyseBullet(b);
@@ -97,11 +101,13 @@ function deterministicAnalysis(resume: any): DetReport {
   }
   const bulletAvg = bulletScores.length ? bulletScores.reduce((s, n) => s + n, 0) / bulletScores.length : 0;
 
-  // Impact = bullets with numbers
-  const quantified = allBullets.filter((b) => /\d/.test(b)).length;
-  const impactScore = allBullets.length ? Math.round((quantified / allBullets.length) * 100) : 0;
-  if (impactScore < 40 && allBullets.length > 0) {
-    issues.push({ scope: "impact", where: "experience", message: `only ${quantified}/${allBullets.length} bullets are quantified` });
+  // Impact = quantified achievement coverage across experience AND projects.
+  // Full credit once 40% of bullets carry a metric (IMPACT_FULL_CREDIT_RATIO)
+  // — the same bar the issue below asks users to reach — instead of mapping
+  // the raw ratio onto 0-100, which dragged strong resumes to single digits.
+  const impact = computeImpactScore(collectImpactBullets(resume));
+  if (impact.total > 0 && impact.quantified / impact.total < IMPACT_FULL_CREDIT_RATIO) {
+    issues.push({ scope: "impact", where: "experience", message: `only ${impact.quantified}/${impact.total} bullets are quantified` });
   }
 
   return {
@@ -109,7 +115,7 @@ function deterministicAnalysis(resume: any): DetReport {
     experience: Math.max(0, Math.min(100, Math.round(bulletAvg))),
     education: hasEducation ? 90 : 40,
     skills: hasSkills ? Math.min(100, skillList.length * 8) : 0,
-    impact: impactScore,
+    impact: impact.score,
     issues,
     bullets: allBullets,
   };

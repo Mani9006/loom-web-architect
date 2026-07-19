@@ -48,7 +48,7 @@ const SYSTEM_PROMPT = `You are a senior résumé editor and application coach. G
 2. A one-paragraph cover note (3-4 sentences, "I'm choosing you" tone, specific proof points, no fluff).
 3. Draft answers to five standard ATS questions:
    a. Why are you interested in this role?
-   b. Why do you want to work at {company}?
+   b. Why do you want to work at the company? (Write the actual company name from the job details into the question text; never output a literal "{company}" placeholder.)
    c. Tell us about a relevant project or achievement.
    d. What makes you a good fit for this position?
    e. Work authorization / when can you start?
@@ -205,11 +205,21 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function safeApplicationAnswers(value: unknown, workAuthorization: string): Array<{ question: string; answer: string }> {
+function fillCompanyPlaceholders(text: string, companyName: string): string {
+  // The LLM occasionally echoes template placeholders like "{company}" from
+  // the question list verbatim. Interpolate the real company name so the
+  // placeholder never leaks into stored, user-visible question labels.
+  if (!text || !companyName) return text;
+  return text
+    .replace(/\{+\s*company(?:[_\s]?name)?\s*\}+/gi, companyName)
+    .replace(/\[\s*company(?:[_\s]?name)?\s*\]/gi, companyName);
+}
+
+function safeApplicationAnswers(value: unknown, workAuthorization: string, companyName: string): Array<{ question: string; answer: string }> {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
     const answer = asRecord(item);
-    const question = asString(answer.question);
+    const question = fillCompanyPlaceholders(asString(answer.question), companyName);
     if (!question) return [];
     if (/work authorization|when can you start|start date/i.test(question)) {
       return [{
@@ -219,7 +229,7 @@ function safeApplicationAnswers(value: unknown, workAuthorization: string): Arra
           : "I can confirm my work-authorization status, documentation, and accurate start date directly with the recruiter. I do not want to infer or overstate those details in an automated answer.",
       }];
     }
-    return [{ question, answer: asString(answer.answer) }];
+    return [{ question, answer: fillCompanyPlaceholders(asString(answer.answer), companyName) }];
   }).filter(({ answer }) => answer.length > 0);
 }
 
@@ -359,6 +369,12 @@ serve(async (req) => {
       throw new HttpError(412, "job is outside the saved autopilot preferences");
     }
 
+    const { data: job } = await svc.from("scanned_jobs")
+      .select("id,title,location,compensation_text,description_md,apply_url,company:scan_companies(name)")
+      .eq("id", ev.scanned_job_id).maybeSingle();
+    if (!job) throw new HttpError(404, "job not found");
+    const companyName = (job as any).company?.name ?? "the company";
+
     const { data: existingDraft } = await svc.from("draft_applications")
       .select("*")
       .eq("user_id", user.id)
@@ -367,14 +383,14 @@ serve(async (req) => {
     // Preparing is idempotent. Returning the existing application packet keeps
     // repeat clicks from creating a new resume for every attempt.
     if (existingDraft?.tailored_resume_id && ["queued", "submitted"].includes(existingDraft.status)) {
-      const answers = safeApplicationAnswers(existingDraft.answers, workAuthorization);
+      const answers = safeApplicationAnswers(existingDraft.answers, workAuthorization, companyName);
       if (JSON.stringify(answers) !== JSON.stringify(existingDraft.answers)) {
         await svc.from("draft_applications").update({ answers }).eq("id", existingDraft.id);
       }
       return jsonResponse({ draft: { ...existingDraft, answers }, reused: true });
     }
     if (existingDraft?.tailored_resume_id && existingDraft.status === "ready" && !body.force) {
-      const answers = safeApplicationAnswers(existingDraft.answers, workAuthorization);
+      const answers = safeApplicationAnswers(existingDraft.answers, workAuthorization, companyName);
       if (JSON.stringify(answers) !== JSON.stringify(existingDraft.answers)) {
         await svc.from("draft_applications").update({ answers }).eq("id", existingDraft.id);
       }
@@ -382,11 +398,6 @@ serve(async (req) => {
     }
 
     await enforceDailyCap(svc, user.id, "tailor", isPro);
-
-    const { data: job } = await svc.from("scanned_jobs")
-      .select("id,title,location,compensation_text,description_md,apply_url,company:scan_companies(name)")
-      .eq("id", ev.scanned_job_id).maybeSingle();
-    if (!job) throw new HttpError(404, "job not found");
 
     let baseResume: any = null;
     if (ev.resume_id) {
@@ -400,7 +411,6 @@ serve(async (req) => {
     }
     if (!baseResume) throw new HttpError(412, "no resume found for user");
 
-    const companyName = (job as any).company?.name ?? "the company";
     const { data: preferenceRow } = await svc.from("user_job_prefs")
       .select("tailoring_mode")
       .eq("user_id", user.id)
@@ -483,7 +493,7 @@ serve(async (req) => {
       tailored_resume_id: (child as any).id,
       tailored_cv_md,
       answers: [
-        ...safeApplicationAnswers(payload.answers, workAuthorization),
+        ...safeApplicationAnswers(payload.answers, workAuthorization, companyName),
         { question: "Cover note", answer: payload.cover_note },
       ],
       status: "ready",

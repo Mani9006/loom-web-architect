@@ -297,7 +297,7 @@ export const ResumeTemplate = forwardRef<HTMLDivElement, ResumeTemplateProps>(({
         }}
       >
         <h1 style={{ fontSize: template.layout.headerFontSize, fontWeight: 700, letterSpacing: "0.03em", margin: 0 }}>
-          {cleanData.header.name || "Your Name"}
+          {cleanData.header.name || ""}
         </h1>
         {cleanData.header.title && (
           <p style={{ fontSize: template.layout.titleFontSize, fontWeight: 600, margin: "2pt 0 0 0", color: titleAccentColor }}>{cleanData.header.title}</p>

@@ -48,6 +48,38 @@ interface SearchJob {
   industry?: string;
 }
 
+/**
+ * Resilience fallback: when the perplexity-job-search edge function fails,
+ * query the hourly-scanned direct job feeds (scanned_jobs, populated from
+ * _shared/direct-job-sources.ts) straight from the client — same table the
+ * Matches page reads — instead of dead-ending with an error toast.
+ */
+async function fetchDirectFeedJobs(q: string): Promise<SearchJob[]> {
+  const terms = q.trim().split(/\s+/).filter(Boolean).slice(0, 3);
+  let request = supabase
+    .from("scanned_jobs")
+    .select("id,title,location,description_md,apply_url,compensation_text,employment_type,remote_policy,posted_at,company:scan_companies(name)")
+    .eq("is_live", true);
+  for (const term of terms) request = request.ilike("title", `%${term}%`);
+  const { data, error } = await request
+    .order("posted_at", { ascending: false, nullsFirst: false })
+    .limit(40);
+  if (error) throw error;
+  return ((data || []) as any[]).map((row) => ({
+    id: row.id,
+    title: row.title,
+    company: row.company?.name || "",
+    location: row.location || "",
+    description: cleanJobDescription(row.description_md || ""),
+    apply_url: row.apply_url,
+    salary: row.compensation_text ?? null,
+    job_type: row.employment_type ?? null,
+    remote: /remote/i.test(`${row.remote_policy || ""} ${row.location || ""}`),
+    date_posted: row.posted_at || "",
+    source: "direct_feed",
+  }));
+}
+
 interface MatchedJob extends SearchJob {
   match_score: number;
   match_reasons: Record<string, number>;
@@ -411,15 +443,37 @@ export default function JobSearchPage() {
       } else {
         console.error("Search failed:", err);
         void captureIncident(err, { source: "manual", operation: "job_search" });
-        const safeError = toUserFacingError(err, {
-          operation: "job_search",
-          defaultMessage: "Job discovery is temporarily unavailable. Try again in a moment.",
-        });
-        toast({
-          title: safeError.title,
-          description: withSupportReference(safeError),
-          variant: "destructive",
-        });
+        // Before dead-ending, fall back to the direct job feeds we already
+        // scan hourly into scanned_jobs.
+        let recovered = false;
+        try {
+          const fallbackJobs = filterJobsForSearchIntent(await fetchDirectFeedJobs(q), q);
+          if (fallbackJobs.length > 0) {
+            recovered = true;
+            setJobs(fallbackJobs);
+            setSelectedJob(fallbackJobs[0]);
+            setSearchProgress(100);
+            setFromCache(true);
+            setSearchStatus(`Live search is unavailable — showing ${fallbackJobs.length} recent roles from our direct job feeds.`);
+            toast({
+              title: "Showing jobs from our direct feeds",
+              description: "Live job discovery is temporarily unavailable, so these results come from our hourly company scans. Retry in a moment for full results.",
+            });
+          }
+        } catch (fallbackErr) {
+          console.error("Direct-feed fallback failed:", fallbackErr);
+        }
+        if (!recovered) {
+          const safeError = toUserFacingError(err, {
+            operation: "job_search",
+            defaultMessage: "Job discovery is temporarily unavailable. Try again in a moment.",
+          });
+          toast({
+            title: safeError.title,
+            description: withSupportReference(safeError),
+            variant: "destructive",
+          });
+        }
       }
     } finally {
       if (progressIntervalRef.current) {

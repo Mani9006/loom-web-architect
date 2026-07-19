@@ -118,6 +118,7 @@ const App = () => {
                     <Route path="/job-tracker" element={<JobTracker />} />
                     <Route path="/inbox" element={<InboxPage />} />
                     <Route path="/matches" element={<MatchesPage />} />
+                    <Route path="/applications" element={<Navigate to="/job-tracker" replace />} />
                     <Route path="/applications/:id" element={<ApplicationReviewPage />} />
                     <Route path="/career-ops/preferences" element={<CareerOpsPreferencesPage />} />
                     <Route path="/feedback" element={<FeedbackPage />} />

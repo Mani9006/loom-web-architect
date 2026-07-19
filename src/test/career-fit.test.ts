@@ -207,6 +207,58 @@ describe("career fit gate", () => {
     expect(fit.hardFilters.join(" ")).toMatch(/country|canada/i);
   });
 
+  it("blocks location-bound foreign jobs when the profile has no country signal", () => {
+    // QA regression: with an EMPTY profile country/location/authorization, a
+    // London onsite role scored 79-88% and passed as eligible. Country
+    // eligibility is a hard gate — unknown candidate country must block
+    // location-bound roles in a detected country, not silently pass them.
+    const candidate = buildCandidateCareerProfile(fourYearResume, {
+      target_roles: ["Software Engineer"],
+    });
+    const fit = evaluateCareerFit(candidate, {
+      title: "Software Engineer",
+      location: "London, UK",
+      remotePolicy: "Hybrid - 3 days per week in office",
+      description: "Build React and TypeScript products on AWS. Requires 4+ years of experience.",
+    });
+
+    expect(fit.inferred.country).toBe("united kingdom");
+    expect(fit.eligible).toBe(false);
+    expect(fit.hardFilters.join(" ")).toMatch(/country eligibility is unverified/i);
+    expect(fit.hardFilters.join(" ")).toMatch(/set your country/i);
+    expect(fit.dimensions.find((dimension) => dimension.key === "location")?.score).toBeLessThanOrEqual(35);
+  });
+
+  it("still evaluates fully remote roles when the profile has no country signal", () => {
+    const candidate = buildCandidateCareerProfile(fourYearResume, {
+      target_roles: ["Software Engineer"],
+    });
+    const fit = evaluateCareerFit(candidate, {
+      title: "Software Engineer",
+      location: "Remote - United States",
+      remotePolicy: "Remote",
+      description: "Build React and TypeScript products on AWS. Requires 4+ years of experience.",
+    });
+
+    expect(fit.hardFilters.join(" ")).not.toMatch(/country eligibility is unverified/i);
+    expect(fit.eligible).toBe(true);
+  });
+
+  it("does not raise the unverified-country gate once the profile has a country signal", () => {
+    const candidate = buildCandidateCareerProfile(fourYearResume, {
+      target_roles: ["Software Engineer"],
+      target_countries: ["United Kingdom"],
+    });
+    const fit = evaluateCareerFit(candidate, {
+      title: "Software Engineer",
+      location: "London, UK",
+      remotePolicy: "Hybrid - 3 days per week in office",
+      description: "Build React and TypeScript products on AWS. Requires 4+ years of experience.",
+    });
+
+    expect(fit.hardFilters.join(" ")).not.toMatch(/country eligibility is unverified/i);
+  });
+
   it("recognizes city-only international locations before applying country preferences", () => {
     const candidate = buildCandidateCareerProfile(fourYearResume, {
       target_roles: ["Software Engineer"],

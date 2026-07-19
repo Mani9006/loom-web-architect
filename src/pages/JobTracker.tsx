@@ -31,6 +31,10 @@ interface Job {
   created_at: string;
 }
 
+// Pipeline counters below use the same definition as the Agent page tiles:
+// Prepared = status draft/ready, Queued = status queued, Submitted/Failed/
+// Skipped map 1:1. Agent run summaries count per-run actions instead, so a
+// run can report "prepared 0" while these totals stay non-zero.
 type DraftApplicationStatus = "draft" | "ready" | "queued" | "submitted" | "skipped" | "failed";
 
 const EMPTY_AUTOMATION_COUNTS: Record<DraftApplicationStatus, number> = {

@@ -211,7 +211,7 @@ export function evaluateCareerFit(candidate: CandidateCareerProfile, job: JobFor
   applyNegativeKeywordGate(prefs, combined, hardFilters);
   applyCompanyGate(prefs, job.company, hardFilters);
   applyWorkModeGate(prefs, workMode, hardFilters);
-  applyCountryGate(prefs, country, hardFilters);
+  applyCountryGate(prefs, country, workMode, hardFilters);
   applySeniorityGate(candidate, jobSeniority, requiredYears, hardFilters);
   applyExperiencePreferenceGate(prefs, requiredYears, hardFilters);
   applyAuthorizationGate(prefs, combined, hardFilters);
@@ -376,6 +376,10 @@ function scoreLocation(prefs: CandidatePreferences, job: JobForFit, mode: WorkMo
       gaps.push(`${display(country)} is outside the selected countries.`);
     }
   }
+  if (countries.length === 0 && country && mode !== "remote" && !hasCountrySignal(prefs)) {
+    score = Math.min(score, 35);
+    gaps.push(`Country eligibility for ${display(country)} is unverified — add your country and work authorization to your profile.`);
+  }
   if (locations.length > 0 && mode !== "remote") {
     const locationMatch = locations.some((preferred) => location.includes(preferred) || preferred.includes(location));
     if (locationMatch) {
@@ -435,11 +439,27 @@ function applyWorkModeGate(prefs: CandidatePreferences, mode: WorkMode, filters:
   }
 }
 
-function applyCountryGate(prefs: CandidatePreferences, country: string | null, filters: string[]) {
+function applyCountryGate(prefs: CandidatePreferences, country: string | null, workMode: WorkMode, filters: string[]) {
   const allowed = normalizedList(prefs.target_countries).map(canonicalCountry);
   if (country && allowed.length > 0 && !allowed.includes(country)) {
     filters.push(`${display(country)} is outside selected countries.`);
+    return;
   }
+  // Hard gate (product-rescue blueprint): country eligibility must be checked
+  // before a role is prepared. When the candidate supplies NO country signal
+  // (no target countries, no preferred locations, no work authorization), a
+  // location-bound role in a detected country cannot be verified as eligible,
+  // so it must not silently pass — it is blocked until the profile says where
+  // the candidate can work. Fully remote roles stay scoreable.
+  if (country && workMode !== "remote" && !hasCountrySignal(prefs)) {
+    filters.push(`Country eligibility is unverified for ${display(country)} — set your country and work authorization in your profile before this role can be prepared.`);
+  }
+}
+
+function hasCountrySignal(prefs: CandidatePreferences): boolean {
+  return normalizedList(prefs.target_countries).length > 0 ||
+    normalizedList(prefs.locations).length > 0 ||
+    Boolean((prefs.work_authorization ?? "").trim());
 }
 
 function applySeniorityGate(

@@ -296,6 +296,16 @@ export default function ResumeProjects() {
         }
 
         const mapped = mapParsedToResumePayload(parsedData);
+        if (!mapped.personal_info.name) {
+          // The parser could not extract the candidate's name. Fall back to
+          // the profile full_name so we never render a "Your Name" literal.
+          const { data: nameProfile } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          mapped.personal_info.name = (nameProfile?.full_name ?? "").trim();
+        }
         const sourceHash = await sha256(preparedText);
 
         payload = {

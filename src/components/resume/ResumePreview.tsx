@@ -117,7 +117,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
             className="font-bold tracking-wide"
             style={{ fontSize: "19pt" }}
           >
-            {data.header.name || "Your Name"}
+            {data.header.name || ""}
           </h1>
           
           {data.header.title && (

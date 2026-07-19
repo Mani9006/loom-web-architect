@@ -15,6 +15,52 @@ can progress at the same time.
 - Optionally clicks submit (`APPLYPASS_AUTO_SUBMIT=true`).
 - Writes progress heartbeats and final results back to queue.
 
+## Adapters
+
+The worker routes every job URL through a per-ATS adapter layer in
+`scripts/ats-adapters/` (the same pattern mature auto-apply products use to
+get portal-level reliability):
+
+- `contract.mjs` — the adapter interface (`detect`, `prepare`, `fillFields`,
+  `reviewState`, `findSubmitButton`, `submit`, `verifyReceipt`,
+  `handleVerification`, `metadata`)
+  plus the shared submit-refusal guard.
+- `greenhouse.mjs` — Greenhouse boards (`boards.greenhouse.io`,
+  `job-boards.greenhouse.io`, `*.greenhouse.io` embedded/iframe). Standard
+  fields, resume upload, label-driven custom questions, the emailed
+  security-code step (reusing the worker verification loop), and
+  "Thank you for applying" / confirmation-container receipt detection.
+- `lever.mjs` — `jobs.lever.co` postings (`/apply` form, `name`/`email`/
+  `phone`/`org`/`urls[...]` fields, custom cards, `/thanks` or
+  `.confirmation` receipt detection).
+- `generic.mjs` — the original generic autofill/submit-detection behavior,
+  unchanged, used for every unknown ATS.
+- `index.mjs` — `pickAdapter(url, page)` tries Greenhouse, then Lever, then
+  falls back to generic. Next per the capability matrix: Ashby.
+
+Adapter policies (enforced in code, see `scripts/ats-adapters/adapters.test.mjs`):
+
+- Custom questions are answered only on a strong fuzzy match against the
+  user's answer memory; unmatched REQUIRED questions are reported as
+  `requiredMissing` and the job is recorded `needs_attention` instead of
+  guessing.
+- Consent checkboxes are ticked only when answer memory contains an explicit
+  affirmative for that question. Unknown consents are never auto-accepted.
+- CAPTCHAs and login walls are never bypassed; detection routes the job to
+  `needs_attention` with a reason.
+- `submit()` refuses unless `APPLYPASS_AUTO_SUBMIT=true` AND a per-job
+  approval receipt exists, and the worker re-checks the account's Continuous
+  Apply authorization immediately before the final click.
+- `verifyReceipt()` uses ATS-specific confirmation signals (confirmation
+  container/URL, application id, confirmation text) so `submitted` is only
+  reported with evidence.
+
+Run the adapter unit tests (no browser needed):
+
+```bash
+node --test scripts/ats-adapters/adapters.test.mjs
+```
+
 ## Required environment variables
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY` or `SUPABASE_PUBLISHABLE_KEY`

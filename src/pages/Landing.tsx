@@ -98,7 +98,7 @@ export default function Landing() {
           <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0}>
             <div className="inline-flex items-center gap-2 h-7 px-3 rounded-full border border-border text-[11.5px] text-muted-foreground mb-7">
               <Sparkles className="w-3 h-3 text-foreground" strokeWidth={2} />
-              AI career platform \u00b7 from résumé to offer letter
+              AI career platform · from résumé to offer letter
             </div>
           </motion.div>
 

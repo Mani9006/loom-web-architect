@@ -113,7 +113,11 @@ async function listUnpreparedEvaluations(
   userId: string,
   minFitScore: number,
   limit: number,
-): Promise<Array<{ id: string; scanned_job_id: string; fit_score: number; title: string; portal: string | null }>> {
+): Promise<{
+  evaluations: Array<{ id: string; scanned_job_id: string; fit_score: number; title: string; portal: string | null }>;
+  /** Eligible matches skipped because an application packet already exists. */
+  alreadyPrepared: number;
+}> {
   const { data: evaluations } = await client.from("job_evaluations")
     .select("id,scanned_job_id,fit_score,scanned_jobs(title,company:scan_companies(api_type))")
     .eq("user_id", userId)
@@ -126,8 +130,10 @@ async function listUnpreparedEvaluations(
   const { data: drafts } = await client.from("draft_applications").select("evaluation_id").eq("user_id", userId);
   const drafted = new Set((drafts ?? []).map((row: { evaluation_id: string }) => row.evaluation_id));
 
-  return (evaluations ?? [])
-    .filter((evaluation: { id: string }) => !drafted.has(evaluation.id))
+  const pending = (evaluations ?? [])
+    .filter((evaluation: { id: string }) => !drafted.has(evaluation.id));
+  const alreadyPrepared = (evaluations ?? []).length - pending.length;
+  const mapped = pending
     .slice(0, limit)
     .map((evaluation: {
       id: string;
@@ -141,6 +147,7 @@ async function listUnpreparedEvaluations(
       title: evaluation.scanned_jobs?.title ?? "Unknown role",
       portal: evaluation.scanned_jobs?.company?.api_type ?? null,
     }));
+  return { evaluations: mapped, alreadyPrepared };
 }
 
 async function callEdgeFunction(name: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -176,6 +183,7 @@ async function runAgent(userId: string, runId: string) {
   const actions: AgentAction[] = [];
   let scored = 0;
   let prepared = 0;
+  let alreadyPrepared = 0;
   let atsScored = 0;
   let queued = 0;
   let failed = 0;
@@ -245,12 +253,14 @@ async function runAgent(userId: string, runId: string) {
       .in("status", ["queued", "submitted"])
       .gte("updated_at", dayStart.toISOString());
     let submissionsRemaining = Math.max(0, (prefs.daily_apply_cap ?? 10) - (queuedToday ?? 0));
-    const evaluations = await listUnpreparedEvaluations(
+    const unprepared = await listUnpreparedEvaluations(
       client,
       userId,
       prefs.auto_apply_min_fit_score ?? 82,
       Math.min(10, remaining),
     );
+    alreadyPrepared = unprepared.alreadyPrepared;
+    const evaluations = unprepared.evaluations;
     for (const evaluation of evaluations) {
       if (remaining <= 0) break;
       const input = { user_id: userId, evaluation_id: evaluation.id };
@@ -358,9 +368,19 @@ async function runAgent(userId: string, runId: string) {
   }
 
   const used = actions.length;
+  // Counter semantics (keep aligned with the UI):
+  // - This summary counts only NEW actions taken during THIS run. Matches that
+  //   already have a packet are deduplicated (see listUnpreparedEvaluations),
+  //   so "prepared" here can be 0 while the Agent-page tiles and the
+  //   Applications page show more: those surfaces count the CURRENT
+  //   draft_applications pipeline (prepared = status draft/ready,
+  //   queued = status queued).
+  const preparedNote = alreadyPrepared > 0
+    ? ` (${alreadyPrepared} match${alreadyPrepared === 1 ? " was" : "es were"} already prepared earlier)`
+    : "";
   const summary = used === 0
     ? "No fresh or eligible work was available this hour."
-    : `Scored ${scored} fresh job${scored === 1 ? "" : "s"}, prepared ${prepared} draft${prepared === 1 ? "" : "s"}, ATS-checked ${atsScored}, queued ${queued}, and recorded ${failed} failed action${failed === 1 ? "" : "s"}.`;
+    : `This run scored ${scored} fresh job${scored === 1 ? "" : "s"}, prepared ${prepared} new draft${prepared === 1 ? "" : "s"}${preparedNote}, ATS-checked ${atsScored}, queued ${queued}, and recorded ${failed} failed action${failed === 1 ? "" : "s"}.`;
   return finalize(client, runId, "completed", summary, actions, used);
 }
 
