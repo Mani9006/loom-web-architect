@@ -85,7 +85,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
   // Load draft + evaluation + job + company
   const { data: draft, error: draftErr } = await svc
     .from("draft_applications")
-    .select(`id, user_id, evaluation_id, tailored_resume_id, tailored_cv_md, tailored_cv_pdf_url, answers, status,
+    .select(`id, user_id, evaluation_id, tailored_resume_id, tailored_cv_md, tailored_cv_pdf_url, answers, status, error_message, applypass_task_id,
       evaluation:job_evaluations(
         scanned_job:scanned_jobs(
           id, title, apply_url, external_id,
@@ -100,6 +100,10 @@ async function enqueueSubmit(userId: string, draftId: string) {
   }
   if (!["ready", "failed"].includes(draft.status)) {
     const e = new Error(`draft not in submittable state (${draft.status})`); (e as any).status = 409; throw e;
+  }
+  if (/employer verification is required|complete the final check/i.test(asString(draft.error_message))) {
+    const e = new Error("Employer verification is required before this application can be submitted.");
+    (e as any).status = 409; throw e;
   }
 
   const job = (draft as any).evaluation?.scanned_job;
@@ -123,6 +127,26 @@ async function enqueueSubmit(userId: string, draftId: string) {
   }
   if (!prefs.auto_apply_portals?.includes(portal)) {
     const e = new Error("This employer portal is not enabled in your application rules."); (e as any).status = 403; throw e;
+  }
+
+  // Treat queueing as an idempotent command. UI retries, double-clicks, and
+  // scheduled agent overlap must all resolve to the same active task.
+  const { data: existingActive } = await svc
+    .from("applypass_tasks")
+    .select("id,status")
+    .eq("user_id", userId)
+    .eq("task_type", "career_ops_submit")
+    .contains("payload", { draft_application_id: draft.id })
+    .in("status", ["pending", "running"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existingActive) {
+    await svc.from("draft_applications")
+      .update({ status: "queued", applypass_task_id: existingActive.id, error_message: null })
+      .eq("id", draft.id)
+      .eq("user_id", userId);
+    return { task: existingActive, draft_status: "queued", already_queued: true };
   }
 
   // Daily cap: count today's applypass_tasks for this user with career_ops_submit task_type
@@ -299,7 +323,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
     answers: draft.answers,
   };
 
-  const { data: task, error: taskErr } = await svc
+  const { data: insertedTask, error: taskErr } = await svc
     .from("applypass_tasks")
     .insert({
       user_id: userId,
@@ -309,12 +333,28 @@ async function enqueueSubmit(userId: string, draftId: string) {
     })
     .select("id, status")
     .single();
-  if (taskErr) throw new Error(`enqueue: ${taskErr.message}`);
+  let task = insertedTask;
+  if (taskErr?.code === "23505") {
+    const { data: racedTask } = await svc
+      .from("applypass_tasks")
+      .select("id,status")
+      .eq("user_id", userId)
+      .eq("task_type", "career_ops_submit")
+      .contains("payload", { draft_application_id: draft.id })
+      .in("status", ["pending", "running"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    task = racedTask;
+  } else if (taskErr) {
+    throw new Error(`enqueue: ${taskErr.message}`);
+  }
+  if (!task) throw new Error("The application could not be added to the queue.");
 
   // Mark draft queued + link the task
   await svc
     .from("draft_applications")
-    .update({ status: "queued", applypass_task_id: (task as any).id })
+    .update({ status: "queued", applypass_task_id: (task as any).id, error_message: null })
     .eq("id", draft.id);
 
   return { task, draft_status: "queued" };
