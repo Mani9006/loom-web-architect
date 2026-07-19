@@ -59,6 +59,15 @@ Stop applying command cancels pending and in-flight work safely.
 4. Scale browser slots horizontally; never move Playwright into Vercel request handlers.
 4. Alerts: trigger when `status = failed` or stale `heartbeat_at`.
 
+## Free dev runner
+
+`.github/workflows/continuous-apply-worker-dev.yml` runs a four-slot safe
+worker on GitHub-hosted runners. It is scheduled for a long run every four
+hours and can also be started manually from Actions. The staging secrets must
+exist before the workflow can start. It intentionally keeps
+`APPLYPASS_AUTO_SUBMIT=false`; this validates queue throughput without sending
+QA data to employers.
+
 ## Safety mode recommendation
 - Keep `APPLYPASS_AUTO_SUBMIT=false` initially.
 - Review logs/screenshots and then enable auto-submit per trusted domains.
