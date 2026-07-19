@@ -65,3 +65,10 @@ verify_jwt = false
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+[functions.mc-gmail-callback]
+# Hit by the browser following Google's OAuth redirect — there is no
+# Authorization header on that request (Google doesn't send one), so the
+# platform JWT gate must be off here. The function verifies the request
+# itself via the single-use opaque state token exchanged in mc-gmail-connect.
+verify_jwt = false

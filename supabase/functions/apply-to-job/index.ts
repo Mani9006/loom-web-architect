@@ -115,42 +115,23 @@ function validateInput(body: unknown): {
   };
 }
 
-// Extract and validate JWT token from Authorization header
-function extractUserIdFromToken(authHeader: string | null): string | null {
-  if (!authHeader) {
+// Verify the caller's JWT against Supabase Auth (validates the signature —
+// this function has verify_jwt=false at the platform level, so it MUST do
+// its own verification here) and return the authenticated user id.
+//
+// A prior version of this function decoded the JWT payload with atob() and
+// trusted the unverified `sub` claim, which let anyone forge a token with an
+// arbitrary `sub` and have the endpoint act as that user. auth.getUser()
+// verifies the signature against Supabase Auth before trusting any claim.
+async function getAuthedUserId(
+  supabase: ReturnType<typeof createClient>
+): Promise<string | null> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user) {
+    if (error) console.error("JWT verification failed:", error.message);
     return null;
   }
-
-  try {
-    // Extract Bearer token
-    const token = authHeader.replace("Bearer ", "");
-
-    // Decode JWT payload (base64)
-    const parts = token.split(".");
-    if (parts.length !== 3) {
-      console.error("Invalid JWT format");
-      return null;
-    }
-
-    // Decode payload (second part)
-    const payload = parts[1];
-    const decoded = JSON.parse(
-      new TextDecoder().decode(
-        Uint8Array.from(atob(payload), (c) => c.charCodeAt(0))
-      )
-    );
-
-    // Extract user ID from 'sub' claim (standard JWT claim for subject)
-    if (decoded.sub && typeof decoded.sub === "string") {
-      return decoded.sub;
-    }
-
-    console.error("No 'sub' claim in JWT");
-    return null;
-  } catch (err) {
-    console.error("JWT parsing error:", err);
-    return null;
-  }
+  return data.user.id;
 }
 
 // Main request handler
@@ -180,9 +161,34 @@ async function handleRequest(req: Request): Promise<Response> {
   let inputData: ApplyJobInput | null = null;
 
   try {
-    // Step 1: Extract and validate user ID from JWT
+    // Step 1: Initialize a Supabase client scoped to the caller's own JWT so
+    // both auth verification and every subsequent query below run under RLS
+    // as this specific user (never anonymous, never another user).
     const authHeader = req.headers.get("Authorization");
-    userId = extractUserIdFromToken(authHeader);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("Missing Supabase environment variables");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: "Server configuration error",
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader ?? "" } },
+      auth: { persistSession: false },
+    });
+
+    // Step 2: Verify the JWT's signature and extract the authenticated user id.
+    userId = await getAuthedUserId(supabase);
 
     if (!userId) {
       console.warn("Authorization failed: No valid user ID in token");
@@ -200,7 +206,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
     console.log(`Processing application request for user: ${userId}`);
 
-    // Step 2: Parse and validate request body
+    // Step 3: Parse and validate request body
     const body = await req.json();
     const validation = validateInput(body);
 
@@ -220,26 +226,6 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     inputData = validation.data!;
-
-    // Step 3: Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.error("Missing Supabase environment variables");
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: "Server configuration error",
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
     // Step 4: Verify user owns the resume document
     console.log(`Verifying resume ownership for resume_id: ${inputData.resume_id}`);

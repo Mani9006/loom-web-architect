@@ -22,15 +22,34 @@ serve(async (req) => {
     return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=missing_params`, 302);
   }
 
-  let session_id: string;
-  let jwt: string;
-  try {
-    const decoded = JSON.parse(atob(stateRaw));
-    session_id = decoded.session_id;
-    jwt = decoded.jwt;
-  } catch {
+  // `state` is the single-use opaque token minted by mc-gmail-connect —
+  // look it up (and consume it) to recover which user/session this
+  // authorization is for. Using the service role here is intentional and
+  // safe: the token itself, not a bearer JWT, is the proof of ownership,
+  // and it can only be spent once.
+  const svc = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  const { data: stateRow, error: stateErr } = await svc
+    .from("mc_gmail_oauth_state")
+    .select("user_id, session_id, expires_at")
+    .eq("token", stateRaw)
+    .maybeSingle();
+
+  // Consume immediately so the token can't be replayed even if something
+  // below fails.
+  if (stateRow) {
+    await svc.from("mc_gmail_oauth_state").delete().eq("token", stateRaw);
+  }
+
+  if (stateErr || !stateRow || new Date(stateRow.expires_at).getTime() < Date.now()) {
     return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=bad_state`, 302);
   }
+
+  const session_id: string = stateRow.session_id;
+  const user_id: string = stateRow.user_id;
 
   // 1. Exchange code for tokens
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -59,23 +78,16 @@ serve(async (req) => {
   });
   const profile = await profileRes.json();
 
-  // 3. Persist via Supabase as the authenticated user
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: `Bearer ${jwt}` } } }
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=not_authenticated`, 302);
-  }
-
+  // 3. Persist. The token lookup above already proved ownership of
+  // user_id/session_id, so writing via the service role client here (rather
+  // than needing a bearer JWT for this unauthenticated redirect request) is
+  // safe.
   const expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
-  const { error: dbError } = await supabase
+  const { error: dbError } = await svc
     .from("mc_gmail_connections")
     .upsert({
-      user_id: user.id,
+      user_id,
       session_id,
       gmail_email: profile.email,
       access_token: tokens.access_token,

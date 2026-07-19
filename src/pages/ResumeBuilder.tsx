@@ -322,16 +322,27 @@ export default function ResumeBuilder() {
         section_order: resumeJson.section_order as any,
         template: selectedTemplate,
       };
+      // Supabase query errors resolve on `error`, they don't throw — without
+      // checking it, a failed write still marked the resume "Saved" below,
+      // so users could lose edits with no warning.
       if (currentResumeId) {
-        await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
+        const { error } = await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
+        if (error) throw error;
       } else {
-        const { data: newResume } = await supabase.from("resumes" as any).insert(payload).select("id").single();
+        const { data: newResume, error } = await supabase.from("resumes" as any).insert(payload).select("id").single();
+        if (error) throw error;
         if (newResume) setCurrentResumeId((newResume as any).id);
       }
       setLastSaved(new Date());
-    } catch {}
+    } catch (err) {
+      toast({
+        title: "Couldn't save",
+        description: err instanceof Error ? err.message : "Your latest changes may not be saved. Try again.",
+        variant: "destructive",
+      });
+    }
     setIsSaving(false);
-  }, [currentResumeId, selectedTemplate]);
+  }, [currentResumeId, selectedTemplate, toast]);
 
   useEffect(() => {
     if (!isLoaded) return;

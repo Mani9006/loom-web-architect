@@ -36,6 +36,57 @@ async function getUserEmail(supabase: any, userId: string): Promise<string | nul
   return data?.user?.email || null;
 }
 
+// ── Stripe signature verification ───────────────────────────────────────
+// Without this, anyone who finds this endpoint's URL can POST a hand-crafted
+// "checkout.session.completed" event with an arbitrary user_id in metadata
+// and grant that account a free Premium subscription (or fake a
+// subscription.deleted to downgrade someone else). Verifying the
+// `stripe-signature` header against STRIPE_WEBHOOK_SECRET is what proves the
+// event actually came from Stripe.
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+
+async function verifyStripeSignature(
+  payload: string,
+  sigHeader: string | null,
+  secret: string,
+  toleranceSeconds = 300,
+): Promise<boolean> {
+  if (!sigHeader) return false;
+
+  const parts: Record<string, string> = {};
+  for (const kv of sigHeader.split(",")) {
+    const [k, v] = kv.split("=");
+    if (k && v) parts[k] = v;
+  }
+  const timestamp = parts["t"];
+  const v1 = parts["v1"];
+  if (!timestamp || !v1) return false;
+
+  const timestampNum = Number(timestamp);
+  if (!Number.isFinite(timestampNum)) return false;
+  if (Math.abs(Date.now() / 1000 - timestampNum) > toleranceSeconds) return false;
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(`${timestamp}.${payload}`));
+  const expectedHex = Array.from(new Uint8Array(sigBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  return timingSafeEqual(expectedHex, v1);
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -46,7 +97,22 @@ serve(async (req: Request) => {
     const sig = req.headers.get("stripe-signature");
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
-    // For now, parse the event directly (in production, verify signature)
+    if (!webhookSecret) {
+      console.error("[StripeWebhook] STRIPE_WEBHOOK_SECRET is not configured — refusing to process");
+      return new Response(JSON.stringify({ error: "Webhook not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!(await verifyStripeSignature(body, sig, webhookSecret))) {
+      console.error("[StripeWebhook] Signature verification failed — rejecting request");
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const event = JSON.parse(body);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
