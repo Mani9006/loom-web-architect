@@ -1,0 +1,44 @@
+name: Dev continuous application scheduler
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-continuous-application-scheduler
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Run enabled Continuous Apply accounts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    steps:
+      - name: Validate configuration
+        env:
+          DEV_SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
+          DEV_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+          DEV_WORKER_AUTH_TOKEN: ${{ secrets.DEV_WORKER_AUTH_TOKEN }}
+        run: |
+          test -n "$DEV_SUPABASE_URL"
+          test -n "$DEV_SUPABASE_ANON_KEY"
+          test -n "$DEV_WORKER_AUTH_TOKEN"
+
+      - name: Dispatch enabled accounts
+        env:
+          DEV_SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
+          DEV_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+          DEV_WORKER_AUTH_TOKEN: ${{ secrets.DEV_WORKER_AUTH_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 420 \
+            -X POST "$DEV_SUPABASE_URL/functions/v1/agents-orchestrator" \
+            -H "apikey: $DEV_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $DEV_WORKER_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"source":"github-continuous-schedule"}' \
+            | jq '{dispatched, failed, total_eligible, skipped_unentitled}'

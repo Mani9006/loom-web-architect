@@ -176,7 +176,7 @@ export default function MatchesPage() {
         negative_keywords: [],
         auto_apply_min_score: 4.5,
         auto_apply_min_fit_score: 82,
-        daily_apply_cap: 10,
+        daily_apply_cap: 60,
         auto_apply_enabled: false,
       });
       return orderedJobs.length;

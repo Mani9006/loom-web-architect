@@ -13,11 +13,14 @@ import {
   Layers3,
   Lock,
   Mail,
+  Play,
   Radar,
   RefreshCcw,
   Send,
   Settings2,
   ShieldCheck,
+  Square,
+  X,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -93,6 +96,17 @@ interface AgentRun {
   completed_at: string | null;
 }
 
+interface DraftStatusRow {
+  status: string;
+  submitted_at: string | null;
+}
+
+interface WorkerHeartbeat {
+  last_seen: string;
+  hostname: string | null;
+  version: string | null;
+}
+
 interface GmailConnection {
   gmail_email: string;
   enabled: boolean;
@@ -121,8 +135,8 @@ const DEFAULT_CONTROLS: AgentControls = {
   auto_apply_enabled: false,
   review_mode: "always",
   auto_apply_min_fit_score: 82,
-  daily_apply_cap: 10,
-  agent_max_actions_per_day: 60,
+  daily_apply_cap: 60,
+  agent_max_actions_per_day: 240,
   agent_actions_today: 0,
   last_agent_run_at: null,
 };
@@ -154,12 +168,14 @@ export default function AgentPage() {
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [latestAts, setLatestAts] = useState<AtsScore | null>(null);
   const [resume, setResume] = useState<ResumeSummary | null>(null);
-  const [draftStatuses, setDraftStatuses] = useState<string[]>([]);
+  const [drafts, setDrafts] = useState<DraftStatusRow[]>([]);
   const [lastRun, setLastRun] = useState<AgentRun | null>(null);
   const [gmailConnection, setGmailConnection] = useState<GmailConnection | null>(null);
+  const [workerHeartbeat, setWorkerHeartbeat] = useState<WorkerHeartbeat | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [controlBusy, setControlBusy] = useState(false);
   const [batchPreparing, setBatchPreparing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [matchSetup, setMatchSetup] = useState<"idle" | "building" | "complete" | "error">("idle");
@@ -170,7 +186,7 @@ export default function AgentPage() {
     if (!user) return;
     if (showSpinner) setRefreshing(true);
 
-    const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes] = await Promise.all([
+    const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes, workerRes] = await Promise.all([
       supabase
         .from("user_job_prefs")
         .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,daily_apply_cap,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
@@ -180,6 +196,7 @@ export default function AgentPage() {
         .from("job_evaluations")
         .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
         .eq("user_id", user.id)
+        .is("dismissed_at", null)
         .order("fit_score", { ascending: false })
         .limit(5),
       migratedTables
@@ -198,7 +215,7 @@ export default function AgentPage() {
         .maybeSingle(),
       supabase
         .from("draft_applications")
-        .select("status")
+        .select("status,submitted_at")
         .eq("user_id", user.id),
       supabase
         .from("agent_runs")
@@ -215,9 +232,14 @@ export default function AgentPage() {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from("mc_worker_heartbeats")
+        .select("last_seen,hostname,version")
+        .eq("user_id", user.id)
+        .maybeSingle(),
     ]);
 
-    const loadError = [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes]
+    const loadError = [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes, workerRes]
       .map((result) => result.error)
       .find(Boolean);
     if (loadError) {
@@ -238,9 +260,10 @@ export default function AgentPage() {
     setMatches((matchRes.data || []) as unknown as MatchRow[]);
     setLatestAts((atsRes.data as unknown as AtsScore | null) ?? null);
     setResume((resumeRes.data as ResumeSummary | null) ?? null);
-    setDraftStatuses((draftsRes.data || []).map((row) => row.status));
+    setDrafts((draftsRes.data || []) as DraftStatusRow[]);
     setLastRun((runsRes.data as AgentRun | null) ?? null);
     setGmailConnection((gmailRes.data as GmailConnection | null) ?? null);
+    setWorkerHeartbeat((workerRes.data as WorkerHeartbeat | null) ?? null);
     setLoading(false);
     setRefreshing(false);
   }, [user]);
@@ -305,6 +328,7 @@ export default function AgentPage() {
           .from("job_evaluations")
           .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
           .eq("user_id", user.id)
+          .is("dismissed_at", null)
           .gte("fit_score", 50)
           .order("fit_score", { ascending: false })
           .limit(5);
@@ -320,7 +344,8 @@ export default function AgentPage() {
 
   const counts = useMemo(() => {
     const value = { prepared: 0, queued: 0, submitted: 0, failed: 0, skipped: 0 };
-    for (const status of draftStatuses) {
+    for (const draft of drafts) {
+      const status = draft.status;
       if (["draft", "ready"].includes(status)) value.prepared += 1;
       else if (status === "queued") value.queued += 1;
       else if (status === "submitted") value.submitted += 1;
@@ -328,7 +353,78 @@ export default function AgentPage() {
       else if (status === "skipped") value.skipped += 1;
     }
     return value;
-  }, [draftStatuses]);
+  }, [drafts]);
+
+  const usage = useMemo(() => {
+    const now = new Date();
+    const weekStart = new Date(now);
+    const daysFromMonday = (weekStart.getUTCDay() + 6) % 7;
+    weekStart.setUTCDate(weekStart.getUTCDate() - daysFromMonday);
+    weekStart.setUTCHours(0, 0, 0, 0);
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const submitted = drafts.filter((draft) => draft.status === "submitted" && draft.submitted_at);
+    return {
+      weekly: submitted.filter((draft) => new Date(draft.submitted_at as string) >= weekStart).length,
+      monthly: submitted.filter((draft) => new Date(draft.submitted_at as string) >= monthStart).length,
+    };
+  }, [drafts]);
+
+  const workerOnline = workerHeartbeat
+    ? Date.now() - new Date(workerHeartbeat.last_seen).getTime() < 90_000
+    : false;
+
+  const setContinuousApply = async (action: "start" | "stop") => {
+    if (!hasAutoApply) {
+      navigate("/pricing");
+      return;
+    }
+    setControlBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("career-agent-control", {
+        body: {
+          action,
+          auto_apply_min_fit_score: controls.auto_apply_min_fit_score,
+          daily_apply_cap: controls.daily_apply_cap,
+          agent_max_actions_per_day: controls.agent_max_actions_per_day,
+        },
+      });
+      if (error) throw error;
+      setControls((current) => ({
+        ...current,
+        agent_enabled: action === "start",
+        auto_apply_enabled: action === "start",
+        review_mode: action === "start" ? "eligible_only" : current.review_mode,
+      }));
+      await loadWorkspace();
+      if (action === "start") {
+        toast.success("Continuous Apply started. Matching and preparation now continue in the background.");
+      } else {
+        toast.success(`${Number(data?.canceled || 0)} queued application${Number(data?.canceled || 0) === 1 ? " was" : "s were"} stopped before submission.`);
+      }
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: `continuous_apply_${action}` });
+      const safeError = toUserFacingError(error, {
+        operation: `continuous_apply_${action}`,
+        defaultMessage: action === "start"
+          ? "Continuous Apply could not start. Your current settings are unchanged."
+          : "Continuous Apply could not be stopped. Try again immediately.",
+      });
+      toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
+    } finally {
+      setControlBusy(false);
+    }
+  };
+
+  const passMatch = async (match: MatchRow) => {
+    setMatches((current) => current.filter((item) => item.id !== match.id));
+    const { error } = await supabase.functions.invoke("career-agent-control", {
+      body: { action: "pass", evaluation_id: match.id },
+    });
+    if (error) {
+      await loadWorkspace();
+      toast.error("That job could not be removed from your feed.");
+    }
+  };
 
   const saveControls = async () => {
     if (!user) return;
@@ -343,8 +439,8 @@ export default function AgentPage() {
       auto_apply_enabled: true,
       review_mode: controls.review_mode === "eligible_only" ? "eligible_only" : "always",
       auto_apply_min_fit_score: Math.min(100, Math.max(60, controls.auto_apply_min_fit_score)),
-      daily_apply_cap: Math.min(25, Math.max(1, controls.daily_apply_cap)),
-      agent_max_actions_per_day: Math.min(120, Math.max(10, controls.agent_max_actions_per_day)),
+      daily_apply_cap: Math.min(75, Math.max(1, controls.daily_apply_cap)),
+      agent_max_actions_per_day: Math.min(300, Math.max(30, controls.agent_max_actions_per_day)),
     };
     const { error } = await supabase.from("user_job_prefs").upsert({
       user_id: user.id,
@@ -354,7 +450,7 @@ export default function AgentPage() {
       auto_apply_min_fit_score: normalized.auto_apply_min_fit_score,
       daily_apply_cap: normalized.daily_apply_cap,
       agent_max_actions_per_day: normalized.agent_max_actions_per_day,
-      auto_apply_portals: ["greenhouse"],
+      auto_apply_portals: ["greenhouse", "ashby", "lever"],
     }, { onConflict: "user_id" });
     setSaving(false);
 
@@ -371,12 +467,12 @@ export default function AgentPage() {
     toast.success(normalized.agent_enabled ? "Agent controls saved" : "Agent paused");
   };
 
-  const prepareTopMatches = async () => {
+  const prepareMatches = async (selectedMatches: MatchRow[]) => {
     if (!hasAutoApply) {
       navigate("/pricing");
       return;
     }
-    const selected = matches.filter((match) => fitScore(match) >= 50).slice(0, 5);
+    const selected = selectedMatches.filter((match) => fitScore(match) >= 50).slice(0, 5);
     if (!selected.length) {
       toast.error("No matches above 50% are ready to prepare yet.");
       return;
@@ -426,6 +522,8 @@ export default function AgentPage() {
     toast.success(`${prepared} application packet${prepared === 1 ? "" : "s"} prepared · ${queued} queued · ${reviewReady + needsAttention} ready for review`);
   };
 
+  const prepareTopMatches = async () => prepareMatches(matches.filter((match) => fitScore(match) >= 50).slice(0, 5));
+
   const planName = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
   const agentStatus = controls.agent_enabled && hasAutoApply ? "monitoring" : "paused";
 
@@ -449,9 +547,73 @@ export default function AgentPage() {
         description="Your continuous application workspace: fresh matches, truthful job-specific resumes, ATS checks, queued submissions, and clear outcomes in one place."
       />
 
-      <section className="mt-7 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Agent workspace status">
+      <section className={cn(
+        "mt-7 border p-5 sm:p-6 transition-colors",
+        controls.agent_enabled && hasAutoApply
+          ? "border-emerald-500/40 bg-emerald-500/[0.06]"
+          : "border-rp-rule bg-rp-paper",
+      )} aria-label="Continuous Apply control">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex items-center gap-2">
+              <span className={cn(
+                "h-2.5 w-2.5 rounded-full",
+                controls.agent_enabled && hasAutoApply ? "bg-emerald-500 animate-pulse" : "bg-rp-ink-3",
+              )} />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rp-ink-3">
+                {controls.agent_enabled && hasAutoApply ? "Running continuously" : "Stopped"}
+              </p>
+            </div>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-rp-ink">
+              {controls.agent_enabled && hasAutoApply ? "Continuous Apply is working for you" : "Start Continuous Apply"}
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
+              {controls.agent_enabled && hasAutoApply
+                ? "ResumePreps keeps matching fresh roles, tailoring each résumé, checking ATS fit, and queuing supported applications until you press Stop applying. You can close this page."
+                : "One command starts recurring matching and guarded submission. Jobs with missing answers, sensitive questions, or unsupported employer steps pause for review instead of being guessed."}
+            </p>
+          </div>
+          <Button
+            size="lg"
+            disabled={controlBusy}
+            onClick={() => void setContinuousApply(controls.agent_enabled && hasAutoApply ? "stop" : "start")}
+            className={cn(
+              "min-w-[210px]",
+              controls.agent_enabled && hasAutoApply && "bg-red-600 text-white hover:bg-red-700",
+            )}
+          >
+            {controls.agent_enabled && hasAutoApply ? <Square className="mr-2 h-4 w-4 fill-current" /> : <Play className="mr-2 h-4 w-4 fill-current" />}
+            {controlBusy ? "Updating…" : controls.agent_enabled && hasAutoApply ? "Stop applying" : "Start continuous apply"}
+          </Button>
+        </div>
+
+        <div className="mt-6 grid gap-4 border-t border-rp-rule pt-5 md:grid-cols-2 xl:grid-cols-[1fr_1fr_auto] xl:items-center">
+          <div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium text-rp-ink">This week</span>
+              <span className="tabular-nums text-rp-ink-2">{usage.weekly} / 400 submitted</span>
+            </div>
+            <Progress value={Math.min(100, (usage.weekly / 400) * 100)} className="mt-2 h-2" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium text-rp-ink">This month</span>
+              <span className="tabular-nums text-rp-ink-2">{usage.monthly} / 1,600 submitted</span>
+            </div>
+            <Progress value={Math.min(100, (usage.monthly / 1600) * 100)} className="mt-2 h-2" />
+          </div>
+          <div className="flex items-center gap-2 text-xs text-rp-ink-2 xl:justify-end">
+            <span className={cn("h-2 w-2 rounded-full", counts.queued === 0 || workerOnline ? "bg-emerald-500" : "bg-amber-500")} />
+            {counts.queued === 0
+              ? "Queue ready · waiting for the next eligible match"
+              : workerOnline ? "Submission worker processing" : "Queued safely · worker not connected"}
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Agent workspace status">
         {[
-          { label: "New matches", value: matches.length, icon: Radar, note: plan === "free" ? "personalized feed" : "refreshed hourly" },
+          { label: "New matches", value: matches.length, icon: Radar, note: plan === "free" ? "personalized feed" : "checked every 10 minutes" },
           { label: "Latest ATS", value: latestAts ? `${Math.round(latestAts.overall)}%` : "—", icon: FileCheck2, note: latestAts ? "exact resume check" : "run first check" },
           { label: "Review ready", value: counts.prepared, icon: ShieldCheck, note: `${counts.queued} queued` },
           { label: "Submitted", value: counts.submitted, icon: Send, note: counts.failed + counts.skipped > 0 ? `${counts.failed + counts.skipped} need attention` : "verified receipts" },
@@ -477,7 +639,7 @@ export default function AgentPage() {
                   <h2 className="text-lg font-semibold text-rp-ink">Career Agent controls</h2>
                 </div>
                 <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2 max-w-2xl">
-                  Autopilot checks fresh company-direct roles every hour, ranks the complete resume story and skills, then prepares or queues applications according to the policy below.
+                  Autopilot checks the fresh company-direct inventory every ten minutes, ranks the complete résumé story and skills, then prepares or queues applications according to the policy below.
                 </p>
               </div>
               <button
@@ -559,7 +721,7 @@ export default function AgentPage() {
                   <input
                     type="number"
                     min="1"
-                    max="25"
+                    max="75"
                     value={controls.daily_apply_cap}
                     onChange={(event) => setControls((current) => ({ ...current, daily_apply_cap: Number(event.target.value) }))}
                     className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
@@ -569,8 +731,8 @@ export default function AgentPage() {
                   <span className="text-xs font-semibold text-rp-ink">Daily agent actions</span>
                   <input
                     type="number"
-                    min="10"
-                    max="120"
+                    min="30"
+                    max="300"
                     value={controls.agent_max_actions_per_day}
                     onChange={(event) => setControls((current) => ({ ...current, agent_max_actions_per_day: Number(event.target.value) }))}
                     className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
@@ -580,7 +742,7 @@ export default function AgentPage() {
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rp-rule pt-5">
                 <p className="text-xs text-rp-ink-2">
-                  {controls.agent_actions_today}/{controls.agent_max_actions_per_day} workflow steps today · up to 100 verified submissions per month
+                  {controls.agent_actions_today}/{controls.agent_max_actions_per_day} workflow steps today · 400 weekly / 1,600 monthly application allowance
                 </p>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => navigate("/career-ops/preferences")}>
@@ -602,7 +764,7 @@ export default function AgentPage() {
                   <h2 className="text-base font-semibold text-rp-ink">Matches for you</h2>
                   {plan !== "free" && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>}
                 </div>
-                <p className="mt-1 text-xs text-rp-ink-2">Autopilot refreshes this feed hourly, even when you are signed out.</p>
+                <p className="mt-1 text-xs text-rp-ink-2">Job sources refresh hourly; Autopilot processes eligible work every ten minutes, even when you are signed out.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" onClick={prepareTopMatches} disabled={batchPreparing || matches.length === 0}>
@@ -649,28 +811,32 @@ export default function AgentPage() {
                   const score = fitScore(match);
                   const company = match.scanned_job?.company?.name ?? "Unknown company";
                   return (
-                    <button
-                      key={match.id}
-                      onClick={() => navigate("/matches")}
-                      className="grid w-full grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-4 p-4 text-left hover:bg-rp-paper transition-colors"
-                    >
+                    <div key={match.id} className="grid w-full grid-cols-[52px_minmax(0,1fr)] items-center gap-4 p-4 transition-colors hover:bg-rp-paper lg:grid-cols-[52px_minmax(0,1fr)_auto]">
                       <div>
                         <div className={cn("text-xl font-semibold tabular-nums", scoreTone(score))}>{score}%</div>
                         <p className="mt-0.5 text-[9px] uppercase tracking-wide text-rp-ink-3">
                           {score >= 80 ? "Strong" : score >= 60 ? "Possible" : "Low"}
                         </p>
                       </div>
-                      <div className="min-w-0">
+                      <button type="button" onClick={() => navigate("/matches")} className="min-w-0 text-left">
                         <p className="truncate text-sm font-semibold text-rp-ink">{match.scanned_job?.title ?? "Job match"}</p>
                         <p className="mt-0.5 truncate text-xs text-rp-ink-2">{company}{match.scanned_job?.location ? ` · ${match.scanned_job.location}` : ""}</p>
                         {match.summary && <p className="mt-1 line-clamp-1 text-xs text-rp-ink-2">{match.summary}</p>}
                         <Progress value={score} className="mt-2 h-1.5" aria-label={`${score}% career fit`} />
+                      </button>
+                      <div className="col-span-2 flex items-center justify-end gap-2 lg:col-span-1">
+                        <div className="mr-2 hidden text-right xl:block">
+                          <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">Career fit</span>
+                          <p className="mt-1 text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(match.evaluated_at), { addSuffix: true })}</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => void passMatch(match)} disabled={batchPreparing}>
+                          <X className="mr-1.5 h-3.5 w-3.5" /> Pass
+                        </Button>
+                        <Button size="sm" onClick={() => void prepareMatches([match])} disabled={batchPreparing}>
+                          <Send className="mr-1.5 h-3.5 w-3.5" /> Apply
+                        </Button>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">Career fit</span>
-                        <p className="mt-1 text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(match.evaluated_at), { addSuffix: true })}</p>
-                      </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>

@@ -67,13 +67,16 @@ verify_jwt = false
 verify_jwt = false
 
 # These endpoints accept either a user JWT that is verified inside the handler
-# or the service-role credential used by the hourly career-ops worker. Keeping
+# or the service-role credential used by the scheduled career-ops worker. Keeping
 # gateway verification off is required for service credentials that are not
 # user JWTs; each handler performs an explicit credential/identity check.
 [functions.agents-orchestrator]
 verify_jwt = false
 
 [functions.agents-job-hunter]
+verify_jwt = false
+
+[functions.career-agent-control]
 verify_jwt = false
 
 [functions.career-ops-evaluate]

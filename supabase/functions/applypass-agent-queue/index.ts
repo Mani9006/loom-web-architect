@@ -16,6 +16,7 @@ type QueueAction =
   | "cancel"
   | "claim-next"
   | "heartbeat"
+  | "authorization-status"
   | "verification-code"
   | "complete"
   | "fail";
@@ -115,7 +116,7 @@ serve(async (req: Request) => {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const action = String(body?.action || "enqueue") as QueueAction;
 
-    const workerActions = new Set<QueueAction>(["claim-next", "heartbeat", "verification-code", "complete", "fail"]);
+    const workerActions = new Set<QueueAction>(["claim-next", "heartbeat", "authorization-status", "verification-code", "complete", "fail"]);
     if (workerActions.has(action)) {
       if (!workerAuthorized(req, body)) {
         return jsonResponse({ error: "Unauthorized worker action." }, 401);
@@ -140,6 +141,34 @@ serve(async (req: Request) => {
       const taskId = String(body?.taskId || "").trim();
       if (!taskId) {
         return jsonResponse({ error: "taskId is required" }, 400);
+      }
+
+      if (action === "authorization-status") {
+        const { data: task } = await serviceClient
+          .from("applypass_tasks")
+          .select("id,user_id,status,task_type")
+          .eq("id", taskId)
+          .maybeSingle();
+        if (!task) return jsonResponse({ ok: true, authorized: false, reason: "task_not_active" });
+
+        const { data: prefs } = await serviceClient
+          .from("user_job_prefs")
+          .select("agent_enabled,auto_apply_enabled,review_mode")
+          .eq("user_id", task.user_id)
+          .maybeSingle();
+        const continuousTask = task.task_type === "career_ops_submit";
+        const authorized = task.status === "running" && (
+          !continuousTask || (
+            prefs?.agent_enabled === true
+            && prefs?.auto_apply_enabled === true
+            && prefs?.review_mode === "eligible_only"
+          )
+        );
+        return jsonResponse({
+          ok: true,
+          authorized,
+          reason: authorized ? "authorized" : task.status !== "running" ? "task_stopped" : "agent_stopped",
+        });
       }
 
       if (action === "verification-code") {

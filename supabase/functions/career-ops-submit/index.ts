@@ -1,13 +1,13 @@
 /**
- * career-ops-submit — Opt-in Greenhouse auto-submit.
+ * career-ops-submit — Opt-in supported-portal auto-submit.
  *
  * Takes a `draft_application_id`, verifies:
  *   - Draft belongs to caller (RLS-bound + service-role re-check)
  *   - User has user_job_prefs.auto_apply_enabled = true
- *   - `greenhouse` is in user_job_prefs.auto_apply_portals
+ *   - The job portal is enabled in user_job_prefs.auto_apply_portals
  *   - Today's submissions < user_job_prefs.daily_apply_cap
  *   - Draft status = 'ready' (not already submitted / failed)
- *   - scanned_jobs.company.api_type = 'greenhouse' (only portal supported)
+ *   - scanned_jobs.company.api_type is a guarded simple-form adapter
  *
  * Then enqueues a task into the existing `applypass_tasks` queue so the
  * existing worker infrastructure can process it asynchronously. This keeps
@@ -19,8 +19,8 @@
  *   - The worker is responsible for the actual HTTP submission. See
  *     supabase/functions/applypass-browser-session/index.ts + the
  *     career-ops-greenhouse payload type below.
- *   - Lever / Ashby / Workday / LinkedIn Easy Apply auto-submit is NOT
- *     enabled. ToS + account-flag risk at scale is too high.
+ *   - Workday / Oracle / iCIMS multi-page flows remain review-only until a
+ *     dedicated adapter has receipt-level integration tests.
  *   - `daily_apply_cap` is enforced at enqueue time (optimistic counting
  *     from `applications` + today's `applypass_tasks` with status=running).
  */
@@ -105,8 +105,10 @@ async function enqueueSubmit(userId: string, draftId: string) {
   const job = (draft as any).evaluation?.scanned_job;
   const company = job?.company;
   if (!job || !company) throw new Error("associated job missing");
-  if (company.api_type !== "greenhouse") {
-    const e = new Error(`auto-submit only supported for Greenhouse portals (this is ${company.api_type}). Submit manually.`);
+  const portal = asString(company.api_type).toLowerCase();
+  const supportedPortals = new Set(["greenhouse", "ashby", "lever"]);
+  if (!supportedPortals.has(portal)) {
+    const e = new Error("This employer portal still needs review before submission.");
     (e as any).status = 422; throw e;
   }
 
@@ -119,8 +121,8 @@ async function enqueueSubmit(userId: string, draftId: string) {
   if (!prefs?.auto_apply_enabled) {
     const e = new Error("auto-apply is not enabled in your preferences"); (e as any).status = 403; throw e;
   }
-  if (!prefs.auto_apply_portals?.includes("greenhouse")) {
-    const e = new Error("Greenhouse is not enabled in your auto-apply portals"); (e as any).status = 403; throw e;
+  if (!prefs.auto_apply_portals?.includes(portal)) {
+    const e = new Error("This employer portal is not enabled in your application rules."); (e as any).status = 403; throw e;
   }
 
   // Daily cap: count today's applypass_tasks for this user with career_ops_submit task_type
@@ -257,7 +259,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
     answerMemory: answersToMemory(draft.answers),
     source: "career_agent",
     createdAt: queuedAt,
-    portal: "greenhouse",
+    portal,
     company_slug: company.slug,
     company_name: company.name,
     api_identifier: company.api_identifier,

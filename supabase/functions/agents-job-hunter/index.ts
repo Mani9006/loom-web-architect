@@ -1,5 +1,5 @@
 /**
- * agents-job-hunter — deterministic hourly career-ops worker.
+ * agents-job-hunter — deterministic continuous career-ops worker.
  *
  * Choosing "score fresh jobs, then prepare eligible high-fit jobs" does not
  * require a reasoning model. Removing the old multi-turn Sonnet tool loop makes
@@ -117,6 +117,7 @@ async function listUnpreparedEvaluations(
     .eq("user_id", userId)
     .eq("eligible", true)
     .eq("score_version", "career-fit-v2")
+    .is("dismissed_at", null)
     .gte("fit_score", minFitScore)
     .order("fit_score", { ascending: false })
     .limit(30);
@@ -179,7 +180,7 @@ async function runAgent(userId: string, runId: string) {
 
   // Refresh the full resume-and-preference match story first. This is a
   // deterministic zero-token pass over current company-direct roles, so the
-  // hourly worker does not waste language-model calls deciding what to score.
+  // scheduled worker does not waste language-model calls deciding what to score.
   try {
     const bootstrap = await callEdgeFunction("career-ops-bootstrap", { user_id: userId });
     actions.push({
@@ -246,7 +247,7 @@ async function runAgent(userId: string, runId: string) {
       client,
       userId,
       prefs.auto_apply_min_fit_score ?? 82,
-      Math.min(3, remaining),
+      Math.min(10, remaining),
     );
     for (const evaluation of evaluations) {
       if (remaining <= 0) break;
@@ -295,13 +296,14 @@ async function runAgent(userId: string, runId: string) {
         }
 
         // "Auto-send eligible only" is a true service-side policy. It queues
-        // only supported Greenhouse applications; every other portal remains
+        // only supported simple-form applications; multi-page portals remain
         // review/manual and is never silently treated as submitted.
         const shouldAutoQueue = submissionsRemaining > 0
           && prefs.auto_apply_enabled
           && prefs.review_mode === "eligible_only"
-          && prefs.auto_apply_portals.includes("greenhouse")
-          && evaluation.portal === "greenhouse";
+          && typeof evaluation.portal === "string"
+          && ["greenhouse", "ashby", "lever"].includes(evaluation.portal)
+          && prefs.auto_apply_portals.includes(evaluation.portal);
         if (remaining > 0 && shouldAutoQueue && draftId) {
           try {
             const submitResponse = await callEdgeFunction("career-ops-submit", {

@@ -15,7 +15,7 @@ const PLAN_CATALOG = {
   },
   autopilot: {
     name: "ResumePreps Autopilot",
-    description: "100 supported-portal submissions with review and status receipts per month",
+    description: "Continuous Apply with up to 400 supported attempts per week and verified status receipts",
     amount: "9900",
   },
 } as const;

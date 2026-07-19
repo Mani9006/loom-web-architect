@@ -202,7 +202,7 @@ Do not keep the current isolated `$120/month` Auto Apply paywall as the primary 
 |---|---:|---|
 | Free | $0 | Canonical profile, job search, explainable matches, tracker, manual portal apply, 3 tailored application packets/month |
 | Career Pro | $39/month | 30 tailored application packets and 100 fit evaluations/month, resume versions, ATS checks, interview packs, follow-up drafts |
-| Autopilot | $99/month | Everything in Pro plus 100 supported-portal submissions/month, review controls, verified receipts, and priority adapters |
+| Autopilot | $99/month | Everything in Pro plus Continuous Apply, up to 400 supported attempts/week and 1,600/month, review controls, verified receipts, and priority adapters |
 
 These are experiment prices, not promises. Daily safety limits should remain even on paid plans. Measure retained subscribers, interview rate, verified submissions, support cost, and AI/automation cost per subscriber before changing quotas. Never sell “unlimited applications” until reliability, employer-platform rules, and abuse controls are proven.
 
@@ -216,7 +216,7 @@ These are experiment prices, not promises. Daily safety limits should remain eve
 - fit score, confidence, evidence, and hard-filter persistence;
 - profile schema fix for the live failure;
 - low-cost OpenAI routing defaults with fallback;
-- deterministic hourly orchestration;
+- deterministic ten-minute orchestration plus an immediate start command;
 - safe service-to-service user context;
 - browser worker consent and receipt verification guard;
 - dependency vulnerabilities reduced to zero;

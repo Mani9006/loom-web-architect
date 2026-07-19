@@ -56,10 +56,10 @@ const DEFAULT: Prefs = {
   auto_apply_enabled: false,
   auto_apply_min_score: 4.5,
   auto_apply_min_fit_score: 82,
-  daily_apply_cap: 5,
-  auto_apply_portals: ["greenhouse"],
+  daily_apply_cap: 60,
+  auto_apply_portals: ["greenhouse", "ashby", "lever"],
   agent_enabled: false,
-  agent_max_actions_per_day: 20,
+  agent_max_actions_per_day: 240,
 };
 
 interface AgentRun {
@@ -456,11 +456,11 @@ export default function CareerOpsPreferencesPage() {
           <div>
             <p className="text-[13px] font-semibold text-foreground">Auto-submit</p>
             <p className="text-[14px] font-semibold text-foreground mt-2">
-              Submit to Greenhouse portals <em className="italic font-normal">on your behalf.</em>
+              Submit supported simple-form applications <em className="italic font-normal">on your behalf.</em>
             </p>
             <p className="text-[13px] text-muted-foreground mt-1 max-w-[60ch]">
-              When on, supported Greenhouse applications above your threshold can enter guarded submission checks.
-              Other portals stay review-only to protect your account and applicant reputation.
+              Greenhouse, Ashby, and Lever applications above your threshold can enter guarded submission checks.
+              Multi-page or uncertain portals stay review-only until they pass receipt-level validation.
             </p>
           </div>
           <button
@@ -498,7 +498,7 @@ export default function CareerOpsPreferencesPage() {
               aria-label="Daily submission cap"
               type="number"
               min="0"
-              max="50"
+              max="75"
               value={prefs.daily_apply_cap}
               onChange={(e) => setPrefs({ ...prefs, daily_apply_cap: Number(e.target.value) })}
               className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
@@ -528,7 +528,7 @@ export default function CareerOpsPreferencesPage() {
             <div className="flex gap-2 flex-wrap mt-2">
               {(["greenhouse", "ashby", "lever"] as const).map((p) => {
                 const active = prefs.auto_apply_portals.includes(p);
-                const available = p === "greenhouse";
+                const available = true;
                 return (
                   <button
                     type="button"
@@ -565,7 +565,7 @@ export default function CareerOpsPreferencesPage() {
               Let the Job Hunter agent run for you.
             </p>
             <p className="text-[13px] text-muted-foreground mt-1 max-w-[60ch]">
-              Every hour, an autonomous agent scans new matches against your prefs, scores them, and prepares the high-scoring ones — so you walk in to a queue of ready-to-review applications instead of doing it manually. It never submits without your approval.
+              Every ten minutes, the Agent scans new matches against your preferences, scores them, and prepares high-fit roles. In Continuous Apply mode, supported jobs can submit under your saved policy until you press Stop applying.
             </p>
           </div>
           <button

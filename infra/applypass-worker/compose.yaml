@@ -1,0 +1,15 @@
+services:
+  application-worker:
+    build:
+      context: ../..
+      dockerfile: infra/applypass-worker/Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.worker
+    environment:
+      APPLYPASS_WORKER_ID: resumepreps-dev
+      APPLYPASS_WORKER_CONCURRENCY: "4"
+      APPLYPASS_WORKER_POLL_MS: "2500"
+      APPLYPASS_AUTO_SUBMIT: "false"
+    shm_size: "1gb"

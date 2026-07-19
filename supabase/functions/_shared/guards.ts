@@ -126,30 +126,46 @@ export async function enforceMonthlyAutoApplyExecutionCap(
   userId: string,
   requestedJobs: number,
 ): Promise<void> {
-  const limit = Math.max(1, Number(Deno.env.get("AUTOPILOT_MONTHLY_EXECUTION_CAP") || 120));
+  const monthlyLimit = Math.max(1, Number(Deno.env.get("AUTOPILOT_MONTHLY_EXECUTION_CAP") || 1600));
+  const weeklyLimit = Math.max(1, Number(Deno.env.get("AUTOPILOT_WEEKLY_EXECUTION_CAP") || 400));
+  const weekStart = new Date();
+  const daysFromMonday = (weekStart.getUTCDay() + 6) % 7;
+  weekStart.setUTCDate(weekStart.getUTCDate() - daysFromMonday);
+  weekStart.setUTCHours(0, 0, 0, 0);
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
 
   const { data, error } = await svc
     .from("applypass_tasks")
-    .select("task_type,payload,status")
+    .select("task_type,payload,status,created_at")
     .eq("user_id", userId)
-    .gte("created_at", monthStart.toISOString())
+    .gte("created_at", weekStart < monthStart ? weekStart.toISOString() : monthStart.toISOString())
     .neq("status", "canceled")
-    .limit(500);
-  if (error) throw new HttpError(500, "unable to verify monthly auto-apply usage");
+    .limit(2000);
+  if (error) throw new HttpError(500, "unable to verify application usage");
 
-  const used = (data || []).reduce((total, task) => {
-    if (task.task_type === "career_ops_submit") return total + 1;
+  const units = (task: { task_type: string; payload: unknown }) => {
+    if (task.task_type === "career_ops_submit") return 1;
     const payload = task.payload && typeof task.payload === "object" && !Array.isArray(task.payload)
       ? task.payload as Record<string, unknown>
       : {};
-    return total + (Array.isArray(payload.jobs) ? payload.jobs.length : 1);
+    return Array.isArray(payload.jobs) ? Math.max(1, payload.jobs.length) : 1;
+  };
+  const weeklyUsed = (data || []).reduce((total, task) => {
+    const createdAt = "created_at" in task ? new Date(String(task.created_at)) : monthStart;
+    return createdAt >= weekStart ? total + units(task) : total;
+  }, 0);
+  const monthlyUsed = (data || []).reduce((total, task) => {
+    const createdAt = "created_at" in task ? new Date(String(task.created_at)) : weekStart;
+    return createdAt >= monthStart ? total + units(task) : total;
   }, 0);
 
-  if (used + requestedJobs > limit) {
-    throw new HttpError(429, `monthly auto-apply execution cap reached (${limit})`);
+  if (weeklyUsed + requestedJobs > weeklyLimit) {
+    throw new HttpError(429, `weekly application allowance reached (${weeklyLimit})`);
+  }
+  if (monthlyUsed + requestedJobs > monthlyLimit) {
+    throw new HttpError(429, `monthly application allowance reached (${monthlyLimit})`);
   }
 }
 

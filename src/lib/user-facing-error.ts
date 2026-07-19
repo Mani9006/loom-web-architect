@@ -60,7 +60,7 @@ export function toUserFacingError(error: unknown, options: ErrorOptions): UserFa
     };
   }
 
-  if (/429|rate limit|usage limit|daily cap|monthly cap|quota/.test(normalized)) {
+  if (/429|rate limit|usage limit|daily cap|weekly (?:cap|application allowance)|monthly (?:cap|application allowance)|quota/.test(normalized)) {
     return {
       title: "Usage limit reached",
       message: "This action is temporarily paused. Try again later or review your plan limits.",
@@ -86,4 +86,3 @@ export function toUserFacingError(error: unknown, options: ErrorOptions): UserFa
 export function withSupportReference(error: UserFacingError): string {
   return `${error.message} Reference: ${error.reference}`;
 }
-

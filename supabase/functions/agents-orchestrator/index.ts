@@ -2,11 +2,11 @@
  * agents-orchestrator — Hourly fan-out for autopilot agents.
  *
  * Picks users with `agent_enabled=true` whose last_agent_run_at is older
- * than ~55 minutes (or null) and dispatches `agents-job-hunter` for each,
+ * than ~9 minutes (or null) and dispatches `agents-job-hunter` for each,
  * with bounded concurrency so downstream evaluation and tailoring stay within
  * provider and database limits.
  *
- * Triggered by pg_cron every hour at minute :13. Manual admin kicks via
+ * Triggered by pg_cron every ten minutes. Manual admin kicks via
  * POST { source: "admin" } with the service role bearer.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -18,7 +18,7 @@ const corsHeaders = {
 };
 
 const CONCURRENCY = 4;
-const STALE_MINUTES = 55;
+const STALE_MINUTES = 9;
 const MAX_USERS_PER_RUN = 200;
 
 function svc() {

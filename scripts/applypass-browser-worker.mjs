@@ -10,6 +10,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPA
 const WORKER_TOKEN = process.env.APPLYPASS_WORKER_TOKEN || process.env.WORKER_AUTH_TOKEN;
 const WORKER_ID = process.env.APPLYPASS_WORKER_ID || `applypass-worker-${os.hostname()}`;
 const POLL_MS = Number(process.env.APPLYPASS_WORKER_POLL_MS || 5000);
+const CONFIGURED_CONCURRENCY = Math.min(12, Math.max(1, Number(process.env.APPLYPASS_WORKER_CONCURRENCY || 4)));
 const AUTO_SUBMIT = String(process.env.APPLYPASS_AUTO_SUBMIT || "false").toLowerCase() === "true";
 const SCREENSHOT_DIR = process.env.APPLYPASS_SCREENSHOT_DIR || "";
 
@@ -34,7 +35,7 @@ function normalize(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-async function queueCall(payload) {
+async function queueCall(payload, workerId = WORKER_ID) {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/applypass-agent-queue`, {
     method: "POST",
     headers: {
@@ -42,7 +43,7 @@ async function queueCall(payload) {
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       "x-applypass-worker-token": WORKER_TOKEN,
-      "x-worker-id": WORKER_ID,
+      "x-worker-id": workerId,
     },
     body: JSON.stringify(payload),
   });
@@ -55,26 +56,31 @@ async function queueCall(payload) {
   return response.json();
 }
 
-async function claimNextTask() {
-  const payload = await queueCall({ action: "claim-next", workerId: WORKER_ID });
+async function claimNextTask(workerId) {
+  const payload = await queueCall({ action: "claim-next", workerId }, workerId);
   return payload?.task || null;
 }
 
-async function heartbeat(taskId, log) {
-  return await queueCall({ action: "heartbeat", taskId, log });
+async function heartbeat(taskId, log, workerId) {
+  return await queueCall({ action: "heartbeat", taskId, log, workerId }, workerId);
 }
 
-async function completeTask(taskId, result, log) {
-  return await queueCall({ action: "complete", taskId, result, log });
+async function completeTask(taskId, result, log, workerId) {
+  return await queueCall({ action: "complete", taskId, result, log, workerId }, workerId);
 }
 
-async function failTask(taskId, errorMessage, result, log) {
-  return await queueCall({ action: "fail", taskId, errorMessage, result, log });
+async function failTask(taskId, errorMessage, result, log, workerId) {
+  return await queueCall({ action: "fail", taskId, errorMessage, result, log, workerId }, workerId);
 }
 
-async function requestVerificationCode(taskId, jobId) {
-  const response = await queueCall({ action: "verification-code", taskId, jobId });
+async function requestVerificationCode(taskId, jobId, workerId) {
+  const response = await queueCall({ action: "verification-code", taskId, jobId, workerId }, workerId);
   return response?.available && typeof response?.code === "string" ? response.code : null;
+}
+
+async function submissionAuthorized(taskId, jobId, workerId) {
+  const response = await queueCall({ action: "authorization-status", taskId, jobId, workerId }, workerId);
+  return response?.authorized === true;
 }
 
 async function maybeScreenshot(page, taskId, jobId) {
@@ -260,14 +266,14 @@ async function fillVerificationCode(page, fieldIndex, code) {
   await input.dispatchEvent("change");
 }
 
-async function handleApplicationVerification(page, taskId, jobId) {
+async function handleApplicationVerification(page, taskId, jobId, workerId) {
   const field = await findVerificationField(page);
   if (!field) return { requested: false, completed: false };
 
   // The worker stays active only while this application is waiting for a
   // code. The code is consumed server-side after one successful retrieval.
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const code = await requestVerificationCode(taskId, jobId);
+    const code = await requestVerificationCode(taskId, jobId, workerId);
     if (code) {
       await fillVerificationCode(page, field.index, code);
       return { requested: true, completed: true };
@@ -275,11 +281,11 @@ async function handleApplicationVerification(page, taskId, jobId) {
     if (attempt > 0 && attempt % 3 === 0) {
       await heartbeat(taskId, {
         level: "info",
-        workerId: WORKER_ID,
+        workerId,
         at: nowIso(),
         message: "Waiting for application email verification",
         jobId,
-      });
+      }, workerId);
     }
     await sleep(5000);
   }
@@ -397,7 +403,7 @@ async function confirmSubmission(page, previousUrl) {
   };
 }
 
-async function processJob(browser, taskId, job, payload, resumeFilePath) {
+async function processJob(browser, taskId, job, payload, resumeFilePath, workerId) {
   const startedAt = Date.now();
   const result = {
     jobId: String(job?.id || ""),
@@ -437,7 +443,7 @@ async function processJob(browser, taskId, job, payload, resumeFilePath) {
     const upload = await uploadResume(page, resumeFilePath);
     result.resumeUploaded = upload.uploaded > 0;
 
-    const verification = await handleApplicationVerification(page, taskId, result.jobId);
+    const verification = await handleApplicationVerification(page, taskId, result.jobId, workerId);
     result.verificationHandled = verification.completed;
 
     const submitButton = await detectSubmitButton(page);
@@ -449,7 +455,11 @@ async function processJob(browser, taskId, job, payload, resumeFilePath) {
     const readiness = await inspectReadiness(page);
     const blocked = upload.requiredMissing || readiness.incompleteRequired > 0 || (verification.requested && !verification.completed);
 
-    if (submitButton && AUTO_SUBMIT && approved && !blocked) {
+    const stillAuthorized = submitButton && AUTO_SUBMIT && approved && !blocked
+      ? await submissionAuthorized(taskId, result.jobId, workerId)
+      : false;
+
+    if (submitButton && AUTO_SUBMIT && approved && !blocked && stillAuthorized) {
       const previousUrl = page.url();
       const finalButtons = page.locator('button, input[type="submit"]');
       await finalButtons.nth(submitButton.index).click({ timeout: 10000 });
@@ -460,8 +470,12 @@ async function processJob(browser, taskId, job, payload, resumeFilePath) {
         result.error = `Final click did not produce a verifiable receipt (${confirmation.invalidFields} invalid fields).`;
       }
     } else if (submitButton) {
-      result.status = blocked ? "needs_review" : "ready_for_review";
-      if (blocked) {
+      result.status = AUTO_SUBMIT && approved && !blocked && !stillAuthorized
+        ? "stopped"
+        : blocked ? "needs_review" : "ready_for_review";
+      if (result.status === "stopped") {
+        result.error = "Continuous Apply was stopped before final submission.";
+      } else if (blocked) {
         result.error = upload.requiredMissing
           ? "A required attachment is missing; submission was not attempted."
           : verification.requested && !verification.completed
@@ -483,7 +497,7 @@ async function processJob(browser, taskId, job, payload, resumeFilePath) {
   }
 }
 
-async function processTask(task) {
+async function processTask(task, workerId) {
   const taskId = String(task?.id || "");
   const payload = task?.payload || {};
   const jobs = Array.isArray(payload?.jobs) ? payload.jobs : [];
@@ -495,10 +509,10 @@ async function processTask(task) {
   if (jobs.length === 0) {
     await failTask(taskId, "Task has no jobs.", { jobs: [] }, {
       level: "error",
-      workerId: WORKER_ID,
+      workerId,
       at: nowIso(),
       message: "Task payload missing jobs",
-    });
+    }, workerId);
     return;
   }
 
@@ -508,40 +522,40 @@ async function processTask(task) {
     resumeFile = await downloadResumeFile(payload);
     await heartbeat(taskId, {
       level: "info",
-      workerId: WORKER_ID,
+      workerId,
       at: nowIso(),
       message: `Started task with ${jobs.length} jobs`,
-    });
+    }, workerId);
 
     for (const job of jobs) {
       await heartbeat(taskId, {
         level: "info",
-        workerId: WORKER_ID,
+        workerId,
         at: nowIso(),
         message: `Processing job: ${String(job?.title || "Unknown")}`,
-      });
+      }, workerId);
 
-      const result = await processJob(browser, taskId, job, payload, resumeFile.filePath);
+      const result = await processJob(browser, taskId, job, payload, resumeFile.filePath, workerId);
       jobResults.push(result);
 
       await heartbeat(taskId, {
         level: ["processed", "ready_for_review", "needs_review", "submitted"].includes(result.status) ? "info" : "warn",
-        workerId: WORKER_ID,
+        workerId,
         at: nowIso(),
         message: ["processed", "ready_for_review", "needs_review", "submitted"].includes(result.status)
           ? `${result.status}: ${result.title}`
           : `Failed ${result.title}: ${result.error}`,
         jobId: result.jobId,
-      });
+      }, workerId);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown worker error";
     await failTask(taskId, message, { jobs: jobResults }, {
       level: "error",
-      workerId: WORKER_ID,
+      workerId,
       at: nowIso(),
       message,
-    });
+    }, workerId);
     return;
   } finally {
     await browser.close();
@@ -552,7 +566,7 @@ async function processTask(task) {
   const failed = jobResults.length - success;
 
   const summary = {
-    workerId: WORKER_ID,
+    workerId,
     startedAt: started,
     completedAt: nowIso(),
     autoSubmit: AUTO_SUBMIT,
@@ -564,29 +578,27 @@ async function processTask(task) {
   if (success === 0) {
     await failTask(taskId, "All jobs failed in worker run", summary, {
       level: "error",
-      workerId: WORKER_ID,
+      workerId,
       at: nowIso(),
       message: "Worker run finished with zero successful jobs",
-    });
+    }, workerId);
   } else {
     await completeTask(taskId, summary, {
       level: "info",
-      workerId: WORKER_ID,
+      workerId,
       at: nowIso(),
       message: `Worker completed task. Success: ${success}, Failed: ${failed}`,
-    });
+    }, workerId);
   }
 }
 
-async function run() {
-  console.log(`[ApplyPass Worker] Started as ${WORKER_ID}. once=${once} maxTasks=${maxTasks || "unlimited"}`);
-  console.log(`[ApplyPass Worker] Auto submit: ${AUTO_SUBMIT ? "ON" : "OFF"}`);
-
+async function runSlot(slotIndex) {
+  const workerId = `${WORKER_ID}:${slotIndex + 1}`;
   let processed = 0;
 
   while (true) {
     try {
-      const task = await claimNextTask();
+      const task = await claimNextTask(workerId);
 
       if (!task) {
         if (once) break;
@@ -595,19 +607,27 @@ async function run() {
         continue;
       }
 
-      console.log(`[ApplyPass Worker] Claimed task ${task.id}`);
-      await processTask(task);
+      console.log(`[ApplyPass Worker] ${workerId} claimed task ${task.id}`);
+      await processTask(task, workerId);
       processed += 1;
 
       if (once) break;
       if (maxTasks > 0 && processed >= maxTasks) break;
     } catch (error) {
-      console.error(`[ApplyPass Worker] Error: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`[ApplyPass Worker] ${workerId} error: ${error instanceof Error ? error.message : String(error)}`);
       if (once) break;
       await sleep(POLL_MS);
     }
   }
+  return processed;
+}
 
+async function run() {
+  const concurrency = once || maxTasks > 0 ? 1 : CONFIGURED_CONCURRENCY;
+  console.log(`[ApplyPass Worker] Started as ${WORKER_ID}. slots=${concurrency} once=${once} maxTasks=${maxTasks || "unlimited"}`);
+  console.log(`[ApplyPass Worker] Auto submit: ${AUTO_SUBMIT ? "ON" : "OFF"}`);
+  const totals = await Promise.all(Array.from({ length: concurrency }, (_, index) => runSlot(index)));
+  const processed = totals.reduce((sum, value) => sum + value, 0);
   console.log(`[ApplyPass Worker] Exiting. processed=${processed}`);
 }
 
