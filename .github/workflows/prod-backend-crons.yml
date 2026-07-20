@@ -1,0 +1,61 @@
+name: Prod backend crons
+
+# Serverless replacement for the pg_cron jobs that require
+# app.settings.* GUCs (only settable by dashboard superuser).
+# Every 15 minutes: Gmail inbox poll + agents orchestrator fan-out.
+# Hourly (every 4th tick, and on manual dispatch): career-ops job scan.
+# Auth: functions accept WORKER_AUTH_TOKEN as a trusted caller.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: prod-backend-crons
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PROD_SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
+      PROD_SUPABASE_ANON_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
+      PROD_WORKER_AUTH_TOKEN: ${{ secrets.PROD_WORKER_AUTH_TOKEN }}
+    steps:
+      - name: Guard required secrets
+        run: |
+          test -n "$PROD_SUPABASE_URL" || { echo "::error::PROD_SUPABASE_URL missing"; exit 1; }
+          test -n "$PROD_WORKER_AUTH_TOKEN" || { echo "::error::PROD_WORKER_AUTH_TOKEN missing"; exit 1; }
+
+      - name: mc-gmail-poll (inbox + OTP ingestion)
+        continue-on-error: true
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 120 \
+            -X POST "$PROD_SUPABASE_URL/functions/v1/mc-gmail-poll" \
+            -H "apikey: $PROD_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $PROD_WORKER_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{}'
+
+      - name: agents-orchestrator (fan-out to per-user job hunters)
+        continue-on-error: true
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 360 \
+            -X POST "$PROD_SUPABASE_URL/functions/v1/agents-orchestrator" \
+            -H "apikey: $PROD_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $PROD_WORKER_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{}'
+
+      - name: career-ops-scan (hourly job-board refresh)
+        if: ${{ github.run_number % 4 == 1 || github.event_name == 'workflow_dispatch' }}
+        continue-on-error: true
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 300 \
+            -X POST "$PROD_SUPABASE_URL/functions/v1/career-ops-scan" \
+            -H "apikey: $PROD_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $PROD_WORKER_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{}'

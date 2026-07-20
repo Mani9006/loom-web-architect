@@ -49,7 +49,8 @@ serve(async (req) => {
 
   const authorization = req.headers.get("authorization") || "";
   const token = authorization.replace(/^Bearer\s+/i, "");
-  const isWorker = Boolean(token) && token === serviceKey;
+  const workerToken = Deno.env.get("WORKER_AUTH_TOKEN") || "";
+  const isWorker = Boolean(token) && (token === serviceKey || (workerToken !== "" && token === workerToken));
   let userId: string | null = null;
   if (isWorker) {
     const body = await req.json().catch(() => ({}));
