@@ -22,6 +22,7 @@ import {
   corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
 } from "../_shared/guards.ts";
+import { jdHash, readJdKeywordCache, writeJdKeywordCache } from "../_shared/jd-cache.ts";
 
 // ── Deterministic analyzers ────────────────────────────────────
 
@@ -241,23 +242,34 @@ serve(async (req) => {
     let tokens_in = 0, tokens_out = 0;
 
     if (jdText && jdText.trim().length > 100) {
-      const result = await callLlmWithFallback<KeywordPayload>({
-        tier: "cheap",
-        system: KW_SYSTEM,
-        user: `Job description:\n${truncate(jdText, 10_000)}`,
-        maxTokens: 600,
-        parseJson: true,
-        temperature: 0.1,
-      });
-      const kp = result.text;
+      // Read-through cache: keyword extraction is deterministic per normalized
+      // JD, so repeat scores of the same posting skip the LLM entirely.
+      const hash = jdHash(jdText, "ats-kw");
+      const cached = await readJdKeywordCache<KeywordPayload>(svc, hash);
+      let kp: KeywordPayload;
+      if (cached && Array.isArray((cached.keywords as KeywordPayload | null)?.jd_keywords)) {
+        kp = cached.keywords;
+        model = `cache:${cached.model || "unknown"}`;
+      } else {
+        const result = await callLlmWithFallback<KeywordPayload>({
+          tier: "cheap",
+          system: KW_SYSTEM,
+          user: `Job description:\n${truncate(jdText, 10_000)}`,
+          maxTokens: 600,
+          parseJson: true,
+          temperature: 0.1,
+        });
+        kp = result.text;
+        model = result.model;
+        tokens_in = result.tokens_in;
+        tokens_out = result.tokens_out;
+        await writeJdKeywordCache(svc, hash, kp, model);
+      }
       const m = computeKeywordScore(resumeText, kp.jd_keywords ?? []);
       keywordScore = m.score;
       matched = m.matched;
       missing = m.missing;
       suggestions = kp.suggestions ?? [];
-      model = result.model;
-      tokens_in = result.tokens_in;
-      tokens_out = result.tokens_out;
     } else {
       // No JD — skip keyword scoring, use generic guidance.
       keywordScore = 0;

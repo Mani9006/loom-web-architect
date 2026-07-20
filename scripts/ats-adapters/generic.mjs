@@ -10,8 +10,11 @@
 import { defineAdapter, submitRefusal } from "./contract.mjs";
 import {
   classifyBlockers,
+  fuzzyMatchAnswer,
   inferAuthorizationAnswers,
   inferCountry,
+  isAffirmativeAnswer,
+  looksLikeConsentLabel,
   matchingMemoryAnswer,
   normalizeText,
 } from "./helpers.mjs";
@@ -406,10 +409,12 @@ export async function chooseVisibleOption(target, input, desired, { allowFirstMa
  * Fill required ARIA comboboxes (country, location, work authorization,
  * sponsorship, consent, demographics) plus the demographic-consent checkbox.
  *
- * Safety: demographic questions are only answered — with an explicit "I
- * don't wish to answer" decline — when the applicant approved submission;
- * consent options are only selected when `approved` is true. Unknown
- * questions fall back to answer memory or stay blank.
+ * Safety: privacy/consent options are only selected from an explicit stored
+ * affirmative in answer memory — job approval alone is not consent.
+ * Demographic questions use the user's explicitly stored EEO answers when
+ * present, otherwise an explicit "I don't wish to answer" decline (only when
+ * the applicant approved submission); sensitive attributes are never
+ * invented. Unknown questions fall back to answer memory or stay blank.
  */
 export async function fillCustomFields(target, profile = {}, answerMemory = {}, approved = false) {
   const { workAuthorized, sponsorshipRequired } = inferAuthorizationAnswers(profile, answerMemory);
@@ -420,7 +425,7 @@ export async function fillCustomFields(target, profile = {}, answerMemory = {}, 
   }));
   let filledCount = 0;
   let demographicFields = 0;
-  let declinedDemographicFields = 0;
+  let answeredDemographicFields = 0;
 
   for (const descriptor of descriptors) {
     if (!descriptor.id) continue;
@@ -432,8 +437,11 @@ export async function fillCustomFields(target, profile = {}, answerMemory = {}, 
     let searchValue = "";
 
     if (descriptor.id === "country" || /^country\b/.test(label)) {
+      // Greenhouse searchable dropdown (react-select): focus, type the
+      // country, pick the matching option (chooseVisibleOption below).
       desired = inferCountry(profile.location);
       allowFirstMatch = true;
+      typeSequentially = true;
     } else if (descriptor.id === "candidate-location" || /location.*city|city.*location/.test(label)) {
       desired = String(profile.location || "").trim();
       allowFirstMatch = true;
@@ -444,26 +452,37 @@ export async function fillCustomFields(target, profile = {}, answerMemory = {}, 
     } else if (/sponsor|immigration/.test(label)) {
       desired = sponsorshipRequired;
     } else if (/privacy policy|selecting.*agree|i agree/.test(label)) {
-      desired = approved ? "I agree" : "";
+      // Consent is only affirmed from an explicit stored answer ("I agree" is
+      // synthesized into answer memory solely when the user stored consent).
+      // Approving the job submission is not legal consent to privacy terms.
+      desired = fuzzyMatchAnswer(descriptor.label, answerMemory)?.answer
+        || matchingMemoryAnswer(answerMemory, descriptor.label);
     } else if (/gender|transgender|sexual orientation|disabilit|veteran|military|ethnicit|race/.test(label)) {
       demographicFields += 1;
-      desired = approved ? "I don't wish to answer" : "";
+      // An explicitly stored EEO answer is the user's own data and wins over
+      // the decline default. Unset attributes are declined, never invented.
+      desired = fuzzyMatchAnswer(descriptor.label, answerMemory)?.answer
+        || matchingMemoryAnswer(answerMemory, descriptor.label)
+        || (approved ? "I don't wish to answer" : "");
     } else {
-      desired = matchingMemoryAnswer(answerMemory, descriptor.label);
+      desired = matchingMemoryAnswer(answerMemory, descriptor.label)
+        || fuzzyMatchAnswer(descriptor.label, answerMemory)?.answer
+        || "";
     }
 
     if (await chooseVisibleOption(target, input, desired, { allowFirstMatch, typeSequentially, searchValue })) {
       filledCount += 1;
       if (/gender|transgender|sexual orientation|disabilit|veteran|military|ethnicit|race/.test(label)) {
-        declinedDemographicFields += 1;
+        answeredDemographicFields += 1;
       }
     }
   }
 
   // A required demographic consent is acknowledged only when the applicant
   // approved submission and every demographic response was explicitly
-  // declined. This avoids inventing sensitive attributes.
-  if (approved && demographicFields > 0 && declinedDemographicFields === demographicFields) {
+  // answered (stored value or decline). This avoids inventing sensitive
+  // attributes.
+  if (approved && demographicFields > 0 && answeredDemographicFields === demographicFields) {
     const requiredCheckboxes = target.locator('input[type="checkbox"][required], input[type="checkbox"][aria-required="true"]');
     const checkboxCount = await requiredCheckboxes.count();
     for (let index = 0; index < checkboxCount; index += 1) {
@@ -491,9 +510,12 @@ export async function fillCommonFields(target, profile = {}, answerMemory = {}) 
   const nameParts = String(profile.fullName || "").trim().split(/\s+/).filter(Boolean);
   const firstName = nameParts[0] || "";
   const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+  // Mononym profiles: reuse the single name for a required last-name field
+  // instead of leaving it blank (ATS forms reject empty last names).
+  const lastNameFallback = lastName || firstName;
   const mappings = [
     { keys: ["first name", "given name"], value: firstName },
-    { keys: ["last name", "family name", "surname"], value: lastName },
+    { keys: ["last name", "family name", "surname"], value: lastNameFallback },
     { keys: ["full name", "legal name"], value: profile.fullName || "" },
     { keys: ["email", "e-mail"], value: profile.email || "" },
     { keys: ["phone", "mobile", "contact"], value: profile.phone || "" },
@@ -538,7 +560,34 @@ export async function fillCommonFields(target, profile = {}, answerMemory = {}) 
     });
     if (!details.usable || !details.metadata) continue;
     totalFields += 1;
-    if (!details.empty || details.role === "combobox" || ["file", "radio", "checkbox", "hidden", "submit", "button"].includes(details.type)) continue;
+
+    // Consent checkboxes: tick only when the stored answers contain an
+    // explicit affirmative for that specific question — never auto-accept
+    // unknown terms.
+    if (details.type === "checkbox") {
+      if (looksLikeConsentLabel(details.metadata)) {
+        const match = fuzzyMatchAnswer(details.metadata, answerMemory);
+        if (match && isAffirmativeAnswer(match.answer)) {
+          try {
+            const ticked = await handle.evaluate((element) => {
+              if (element.checked) return false;
+              element.click();
+              if (!element.checked) {
+                element.checked = true;
+                element.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+              return true;
+            });
+            if (ticked) filledCount += 1;
+          } catch {
+            // Left unchecked; readiness inspection surfaces it for review.
+          }
+        }
+      }
+      continue;
+    }
+
+    if (!details.empty || details.role === "combobox" || ["file", "radio", "hidden", "submit", "button"].includes(details.type)) continue;
 
     let value = "";
     for (const mapping of mappings) {
@@ -547,8 +596,10 @@ export async function fillCommonFields(target, profile = {}, answerMemory = {}) 
         if (value) break;
       }
     }
-    if (!value && ["input", "textarea"].includes(details.tag)) {
-      value = matchingMemoryAnswer(answerMemory, details.metadata);
+    if (!value && ["input", "textarea", "select"].includes(details.tag)) {
+      value = matchingMemoryAnswer(answerMemory, details.metadata)
+        || fuzzyMatchAnswer(details.metadata, answerMemory)?.answer
+        || "";
     }
     if (!value) continue;
 
