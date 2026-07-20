@@ -318,10 +318,17 @@ async function markStale(db: ReturnType<typeof svc>) {
 
 async function runScan() {
   const db = svc();
+  // Batch per invocation: the stalest N sources only. With many enabled
+  // boards, scanning all at once exceeds the edge-function compute limit
+  // (WORKER_RESOURCE_LIMIT). Ordered stalest-first, every source is covered
+  // across successive scheduled runs.
+  const BATCH_SIZE = Number(Deno.env.get("SCAN_BATCH_SIZE") || 15);
   const { data: companies, error } = await db
     .from("scan_companies")
-    .select("id,slug,name,api_type,api_identifier,enabled")
-    .eq("enabled", true);
+    .select("id,slug,name,api_type,api_identifier,enabled,last_scanned_at")
+    .eq("enabled", true)
+    .order("last_scanned_at", { ascending: true, nullsFirst: true })
+    .limit(BATCH_SIZE);
   if (error) throw new Error(`load companies: ${error.message}`);
   const queue: ScanCompany[] = (companies || []) as ScanCompany[];
 
