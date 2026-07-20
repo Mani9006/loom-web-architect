@@ -81,7 +81,8 @@ function standardValueFor(field, profile) {
   const firstName = nameParts[0] || "";
   const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
   if (/first[_ ]?name/.test(key)) return firstName;
-  if (/last[_ ]?name/.test(key)) return lastName;
+  // Mononym profiles: reuse the single name; Greenhouse rejects empty last names.
+  if (/last[_ ]?name/.test(key)) return lastName || firstName;
   if (/\bemail\b/.test(key) && field.type !== "checkbox") return profile.email || "";
   if (/\bphone\b/.test(key)) return profile.phone || "";
   if (/location|candidate[_ ]?location/.test(key)) return profile.location || "";

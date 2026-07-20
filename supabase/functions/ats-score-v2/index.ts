@@ -33,6 +33,7 @@ import {
   enforceDailyCap,
 } from "../_shared/guards.ts";
 import { callLlm } from "../_shared/llm.ts";
+import { jdHash, readJdKeywordCache, writeJdKeywordCache } from "../_shared/jd-cache.ts";
 
 interface RequestBody {
   resume?: unknown;
@@ -297,17 +298,34 @@ Return ONLY a JSON object: { "required": ["Python", "PyTorch", "5+ years ML expe
 - Exclude generic soft skills ("team player", "communication") unless explicitly emphasized.
 - Exclude company-specific perks.`;
 
-  const { text, tokens_in, tokens_out, model } = await callLlm<{ required: string[] }>({
-    tier: "cheap",
-    system,
-    user: jd,
-    maxTokens: 600,
-    temperature: 0,
-    parseJson: true,
-    usage: { svc, userId, kind: "ats" },
-  });
+  // Read-through cache: same normalized JD -> same extraction, so repeat
+  // scores of a posting skip the LLM call (this is what makes "same input ->
+  // same score" cheap, per the module docstring).
+  const hash = jdHash(jd, "jd-match");
+  const cached = await readJdKeywordCache<{ required: string[] }>(svc, hash);
 
-  const required = Array.isArray(text?.required) ? text.required.filter((x) => typeof x === "string") : [];
+  let required: string[] = [];
+  let tokens_in = 0, tokens_out = 0, model: string;
+  if (cached && Array.isArray((cached.keywords as { required?: unknown } | null)?.required)) {
+    required = cached.keywords.required.filter((x): x is string => typeof x === "string");
+    model = `cache:${cached.model || "unknown"}`;
+  } else {
+    const r = await callLlm<{ required: string[] }>({
+      tier: "cheap",
+      system,
+      user: jd,
+      maxTokens: 600,
+      temperature: 0,
+      parseJson: true,
+      usage: { svc, userId, kind: "ats" },
+    });
+    required = Array.isArray(r.text?.required) ? r.text.required.filter((x) => typeof x === "string") : [];
+    tokens_in = r.tokens_in;
+    tokens_out = r.tokens_out;
+    model = r.model;
+    await writeJdKeywordCache(svc, hash, { required }, model);
+  }
+
   const resumeText = JSON.stringify(resume).toLowerCase();
 
   const matched: string[] = [];

@@ -64,6 +64,112 @@ function answersToMemory(value: unknown): Record<string, string> {
   return Object.fromEntries(entries);
 }
 
+/**
+ * STANDARD ANSWER MEMORY — one-time profile answers to the screening
+ * questions nearly every ATS asks, synthesized at enqueue time so submissions
+ * complete without asking the user anything mid-flight.
+ *
+ * Honesty guards:
+ *   - An answer is only emitted when the underlying value is explicitly set in
+ *     the user's profile/preferences. Unknowns stay unanswered so the adapter
+ *     surfaces them for review instead of guessing.
+ *   - EEO demographics are copied verbatim from the stored eeo sub-object —
+ *     never defaulted, never invented.
+ *   - Privacy-policy consent is affirmed only when the user stored an explicit
+ *     privacyConsent === true.
+ *   - Degree/experience screening questions ("advanced degree in <fields>",
+ *     "Masters and 5+ years") are deliberately NOT synthesized here: they stay
+ *     with the tailor's evidence-based answers or remain unanswered.
+ *
+ * Keys are written as the canonical question texts Greenhouse/Ashby/Lever use;
+ * adapter fuzzy matching maps decorated labels ("Gender *", "Race/Ethnicity")
+ * onto them. Tailor draft answers keep priority on question-text collisions
+ * (spread order at the merge site).
+ */
+function buildStandardAnswerMemory(
+  candidateProfile: Record<string, unknown>,
+  storedEeo: Record<string, unknown>,
+  opts: { privacyConsent: boolean; sponsorshipKnown: boolean },
+): Record<string, string> {
+  const memory: Record<string, string> = {};
+  const put = (value: unknown, ...questions: string[]) => {
+    const answer = asString(value);
+    if (!answer) return;
+    for (const question of questions) memory[question] = answer;
+  };
+  const eeoValue = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = asString(storedEeo[key]);
+      if (value) return value;
+    }
+    return "";
+  };
+
+  put(candidateProfile.discoverySource,
+    "How did you hear about this job?",
+    "How did you hear about us?",
+    "How did you hear about this position?");
+
+  const workAuthorization = asString(candidateProfile.workAuthorization);
+  if (workAuthorization) {
+    const normalized = workAuthorization.toLowerCase();
+    const indicatesAuthorized = /(authoriz|citizen|permanent resident|green card|\bead\b|\bgc\b)/.test(normalized)
+      && !/(not|un)\s*-?\s*authoriz/.test(normalized);
+    put(indicatesAuthorized ? "Yes" : workAuthorization,
+      "Are you currently authorized to work in the U.S.?",
+      "Are you authorized to work in the United States?",
+      "Are you legally authorized to work in the United States?",
+      "Are you authorized to work in the country where this role is located?");
+  }
+
+  if (opts.sponsorshipKnown) {
+    put(candidateProfile.requiresSponsorship === true ? "Yes" : "No",
+      "Do you now, or will you in the future, require immigration sponsorship?",
+      "Will you now or in the future require sponsorship for employment visa status?",
+      "Do you require sponsorship?");
+  }
+
+  put(candidateProfile.currentCompany,
+    "What is your current (or most recent) company?",
+    "Current company",
+    "Most recent company",
+    "Current or most recent employer");
+  put(candidateProfile.yearsExperience,
+    "How many years of experience do you have?",
+    "Years of experience",
+    "How many years of relevant experience do you have?");
+  put(candidateProfile.expectedSalary,
+    "What is your expected salary?",
+    "What are your compensation expectations?",
+    "Expected compensation",
+    "Desired salary");
+  put(candidateProfile.linkedinUrl,
+    "LinkedIn",
+    "LinkedIn Profile",
+    "LinkedIn URL");
+
+  if (opts.privacyConsent) {
+    put("I agree",
+      "I have read and agree to the Privacy Policy",
+      "I agree to the Privacy Policy",
+      "Do you agree to the privacy policy?",
+      "Privacy Policy consent",
+      "I acknowledge the privacy policy");
+  }
+
+  // Order matters: fuzzy matching returns the first containment hit, so the
+  // more specific keys come before their substrings ("transgender" contains
+  // "gender"; "sexual orientation" is distinct).
+  put(eeoValue("transgender"), "Are you transgender?", "Do you identify as transgender?");
+  put(eeoValue("sexualOrientation", "sexual_orientation"), "Sexual orientation", "What is your sexual orientation?");
+  put(eeoValue("gender", "genderIdentity"), "Gender identity", "Gender", "What is your gender?");
+  put(eeoValue("disability", "disabilityStatus", "disability_status"), "Disability status", "Do you have a disability?");
+  put(eeoValue("veteran", "veteranStatus", "veteran_status"), "Veteran status", "Are you a veteran?", "Protected veteran status");
+  put(eeoValue("ethnicity", "race", "raceEthnicity", "ethnicity_race"), "Race", "Ethnicity", "Race/Ethnicity", "What is your race or ethnicity?");
+
+  return memory;
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -171,7 +277,14 @@ async function enqueueSubmit(userId: string, draftId: string) {
       : Promise.resolve({ data: null }),
   ]);
 
-  const storedProfile = asRecord(asRecord(asRecord(profile?.job_preferences).applypass).profile);
+  const applypass = asRecord(asRecord(profile?.job_preferences).applypass);
+  const storedProfile = asRecord(applypass.profile);
+  // One-time screening answers may live as applypass sub-objects (newer
+  // profile UI) or nested inside the profile object itself. Read both;
+  // profile-nested values win. Anything unset stays unset — never invented.
+  const storedEeo = { ...asRecord(applypass.eeo), ...asRecord(storedProfile.eeo) };
+  const storedConsent = { ...asRecord(applypass.consent), ...asRecord(storedProfile.consent) };
+  const storedScreening = { ...asRecord(applypass.screening), ...asRecord(storedProfile.screening) };
   const personalInfo = asRecord(tailoredResume?.personal_info);
   const experience = Array.isArray(tailoredResume?.experience) ? tailoredResume.experience : [];
   const candidateProfile = {
@@ -192,8 +305,25 @@ async function enqueueSubmit(userId: string, draftId: string) {
       ? storedProfile.requiresSponsorship
       : prefs?.requires_sponsorship === true,
     noticePeriod: asString(storedProfile.noticePeriod),
-    discoverySource: "ResumePreps job search",
+    discoverySource: asString(storedScreening.discoverySource)
+      || asString(storedProfile.discoverySource)
+      || "ResumePreps job search",
   };
+
+  // Synthesize the standard screening answers and merge them under the
+  // tailor's draft answers (draft keeps priority on question-text
+  // collisions). Privacy consent and sponsorship are only answered when the
+  // user explicitly stored them — never assumed.
+  const standardAnswerMemory = buildStandardAnswerMemory(
+    candidateProfile,
+    storedEeo,
+    {
+      privacyConsent: storedProfile.privacyConsent === true || storedConsent.privacyConsent === true,
+      sponsorshipKnown: typeof storedProfile.requiresSponsorship === "boolean"
+        || typeof prefs?.requires_sponsorship === "boolean",
+    },
+  );
+  const answerMemory = { ...standardAnswerMemory, ...answersToMemory(draft.answers) };
 
   const queuedAt = new Date().toISOString();
   let resumeFileUrl = asString((draft as any).tailored_cv_pdf_url);
@@ -307,7 +437,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
     resumeFileUrl,
     tailoredResumeMarkdown: draft.tailored_cv_md,
     candidateProfile,
-    answerMemory: answersToMemory(draft.answers),
+    answerMemory,
     source: "career_agent",
     createdAt: queuedAt,
     portal,
