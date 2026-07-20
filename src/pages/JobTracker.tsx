@@ -277,8 +277,13 @@ export default function JobTracker() {
       });
       setLoading(false);
     };
-    load();
-  }, [navigate]);
+    load().catch((err) => {
+      // Without this, a thrown error left the skeleton board up forever.
+      console.error("Tracker load failed:", err);
+      toast({ title: "Couldn't load applications", description: "Refresh to try again.", variant: "destructive" });
+      setLoading(false);
+    });
+  }, [navigate, toast]);
 
   const addJob = async () => {
     if (!newJob.title.trim() || !userId) return;
@@ -339,8 +344,13 @@ export default function JobTracker() {
   };
 
   const deleteSavedJobDetail = async (savedJob: SavedJobDetail) => {
-    // Remove from saved_jobs
-    await supabase.from("saved_jobs").delete().eq("id", savedJob.id);
+    // Remove from saved_jobs — bail out with an error toast instead of a
+    // false "removed" success when the delete fails.
+    const { error } = await supabase.from("saved_jobs").delete().eq("id", savedJob.id);
+    if (error) {
+      toast({ title: "Error", description: "Failed to remove saved job", variant: "destructive" });
+      return;
+    }
     // Also remove matching tracked_job if status is "Saved"
     if (userId) {
       await supabase
