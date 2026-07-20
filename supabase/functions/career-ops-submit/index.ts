@@ -110,6 +110,15 @@ function buildStandardAnswerMemory(
     "How did you hear about us?",
     "How did you hear about this position?");
 
+  put(candidateProfile.noticePeriod || "2 weeks",
+    "When can you start a new role?",
+    "When can you start?",
+    "When could you start?",
+    "What is your earliest start date?",
+    "When are you available to start?",
+    "What is your notice period?",
+    "How soon can you start?");
+
   const workAuthorization = asString(candidateProfile.workAuthorization);
   if (workAuthorization) {
     const normalized = workAuthorization.toLowerCase();
