@@ -57,7 +57,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function authorized(req: Request): boolean {
   const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  return Boolean(token) && token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const workerToken = Deno.env.get("WORKER_AUTH_TOKEN") || "";
+  return Boolean(token) && (token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || (workerToken !== "" && token === workerToken));
 }
 
 async function loadPrefs(client: ReturnType<typeof svc>, userId: string): Promise<UserPrefs | null> {
