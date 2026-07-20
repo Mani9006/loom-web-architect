@@ -121,6 +121,8 @@ function buildStandardAnswerMemory(
     contactEmployer: boolean;
     previouslyEmployed: boolean | null;
     hasExperience: boolean;
+    companyName?: string;
+    experienceEmployers?: string[];
   },
 ): Record<string, string> {
   const memory: Record<string, string> = {};
@@ -149,6 +151,21 @@ function buildStandardAnswerMemory(
       "I certify that my answers are true and complete to the best of my knowledge",
       "I agree to the terms and conditions",
       "I acknowledge and agree");
+  }
+
+  // "Have you worked here before?" — answered from the resume's own employer
+  // list (evidence-backed, never a guess).
+  if (opts.companyName) {
+    const normalizedCompany = opts.companyName.toLowerCase().trim();
+    const employers = (opts.experienceEmployers || []).map((name) => name.toLowerCase());
+    const workedHere = employers.some((name) => name && (normalizedCompany.includes(name) || name.includes(normalizedCompany)));
+    put(workedHere ? "Yes" : "No",
+      `Have you ever worked for ${opts.companyName} before, as an employee or a contractor/consultant?`,
+      `Have you ever worked for ${opts.companyName} before?`,
+      `Have you worked for ${opts.companyName} before?`,
+      `Have you been employed by ${opts.companyName}, or any subsidiary, affiliate, or business unit of ${opts.companyName}, in the past (whether on a full-time or part-time basis)?`,
+      "Have you been employed by this company in the past?",
+      "Have you previously worked at this company?");
   }
 
   put(candidateProfile.noticePeriod || "2 weeks",
@@ -409,6 +426,10 @@ async function enqueueSubmit(userId: string, draftId: string) {
           ? storedProfile.previouslyEmployed
           : null,
       hasExperience: (candidateProfile.experience as unknown[]).length > 0,
+      companyName: asString(company.name),
+      experienceEmployers: experience.map((entry) =>
+        asString(asRecord(entry).company_or_client) || asString(asRecord(entry).company)
+      ).filter(Boolean),
     },
   );
   const answerMemory = { ...standardAnswerMemory, ...answersToMemory(draft.answers) };
