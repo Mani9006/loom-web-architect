@@ -99,8 +99,26 @@ interface AgentRun {
 }
 
 interface DraftStatusRow {
+  id: string;
   status: string;
+  error_message: string | null;
+  updated_at: string;
   submitted_at: string | null;
+  applypass_task_id: string | null;
+  evaluation: {
+    scanned_job: {
+      title: string;
+      company: { name: string } | null;
+    } | null;
+  } | null;
+}
+
+interface SubmitTaskRow {
+  id: string;
+  status: string;
+  error_message: string | null;
+  run_log: unknown;
+  updated_at: string;
 }
 
 interface WorkerHeartbeat {
@@ -173,6 +191,7 @@ export default function AgentPage() {
   const [latestAts, setLatestAts] = useState<AtsScore | null>(null);
   const [resume, setResume] = useState<ResumeSummary | null>(null);
   const [drafts, setDrafts] = useState<DraftStatusRow[]>([]);
+  const [submitTasks, setSubmitTasks] = useState<SubmitTaskRow[]>([]);
   const [lastRun, setLastRun] = useState<AgentRun | null>(null);
   const [gmailConnection, setGmailConnection] = useState<GmailConnection | null>(null);
   const [workerHeartbeat, setWorkerHeartbeat] = useState<WorkerHeartbeat | null>(null);
@@ -190,7 +209,7 @@ export default function AgentPage() {
     if (!user) return;
     if (showSpinner) setRefreshing(true);
 
-    const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes, workerRes] = await Promise.all([
+    const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, tasksRes, runsRes, gmailRes, workerRes] = await Promise.all([
       supabase
         .from("user_job_prefs")
         .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,auto_apply_min_ats_score,tailoring_mode,daily_apply_cap,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
@@ -219,8 +238,15 @@ export default function AgentPage() {
         .maybeSingle(),
       supabase
         .from("draft_applications")
-        .select("status,submitted_at")
+        .select("id,status,error_message,updated_at,submitted_at,applypass_task_id,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
         .eq("user_id", user.id),
+      supabase
+        .from("applypass_tasks")
+        .select("id,status,error_message,run_log,updated_at")
+        .eq("user_id", user.id)
+        .eq("task_type", "career_ops_submit")
+        .order("updated_at", { ascending: false })
+        .limit(10),
       supabase
         .from("agent_runs")
         .select("id,status,summary,started_at,completed_at")
@@ -243,7 +269,7 @@ export default function AgentPage() {
         .maybeSingle(),
     ]);
 
-    const loadError = [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes, workerRes]
+    const loadError = [prefsRes, matchRes, atsRes, resumeRes, draftsRes, tasksRes, runsRes, gmailRes, workerRes]
       .map((result) => result.error)
       .find(Boolean);
     if (loadError) {
@@ -264,7 +290,8 @@ export default function AgentPage() {
     setMatches((matchRes.data || []) as unknown as MatchRow[]);
     setLatestAts((atsRes.data as unknown as AtsScore | null) ?? null);
     setResume((resumeRes.data as ResumeSummary | null) ?? null);
-    setDrafts((draftsRes.data || []) as DraftStatusRow[]);
+    setDrafts((draftsRes.data || []) as unknown as DraftStatusRow[]);
+    setSubmitTasks((tasksRes.data || []) as SubmitTaskRow[]);
     setLastRun((runsRes.data as AgentRun | null) ?? null);
     setGmailConnection((gmailRes.data as GmailConnection | null) ?? null);
     setWorkerHeartbeat((workerRes.data as WorkerHeartbeat | null) ?? null);
@@ -281,6 +308,7 @@ export default function AgentPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "job_evaluations", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
       .on("postgres_changes", { event: "*", schema: "public", table: "ats_scores", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
       .on("postgres_changes", { event: "*", schema: "public", table: "draft_applications", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
+      .on("postgres_changes", { event: "*", schema: "public", table: "applypass_tasks", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
       .subscribe();
 
     // Realtime may be unavailable in a preview project; this bounded fallback
@@ -377,6 +405,62 @@ export default function AgentPage() {
       monthly: submitted.filter((draft) => new Date(draft.submitted_at as string) >= monthStart).length,
     };
   }, [drafts]);
+
+  // Per-draft live submission pipeline: queued → applying → submitted/failed.
+  // Status comes from draft_applications; the in-flight step and failure
+  // reason come from the linked applypass_tasks row and its worker run_log.
+  const liveSubmissions = useMemo(() => {
+    const taskById = new Map(submitTasks.map((task) => [task.id, task]));
+    return drafts
+      .filter((draft) => ["queued", "submitted", "failed"].includes(draft.status))
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 6)
+      .map((draft) => {
+        const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
+        const logs = Array.isArray(task?.run_log) ? task.run_log as Array<Record<string, unknown>> : [];
+        const lastMessage = [...logs].reverse().find((entry) => typeof entry?.message === "string")?.message;
+        const title = draft.evaluation?.scanned_job?.title ?? "Application";
+        const company = draft.evaluation?.scanned_job?.company?.name ?? "";
+        if (draft.status === "queued") {
+          const applying = task?.status === "running";
+          return {
+            id: draft.id,
+            title,
+            company,
+            label: applying ? "Applying" : "Queued",
+            tone: applying
+              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+              : "bg-rp-paper-2 text-rp-ink-2",
+            detail: applying
+              ? String(lastMessage ?? "The submission worker is on the employer form.")
+              : "Waiting for the submission worker.",
+            detailTone: "text-rp-ink-2",
+          };
+        }
+        if (draft.status === "submitted") {
+          return {
+            id: draft.id,
+            title,
+            company,
+            label: "Submitted",
+            tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+            detail: draft.submitted_at
+              ? `Receipt confirmed ${formatDistanceToNow(new Date(draft.submitted_at), { addSuffix: true })}`
+              : "Receipt confirmed.",
+            detailTone: "text-rp-ink-2",
+          };
+        }
+        return {
+          id: draft.id,
+          title,
+          company,
+          label: "Failed",
+          tone: "bg-red-500/10 text-red-600 dark:text-red-400",
+          detail: draft.error_message ?? task?.error_message ?? "Submission failed — open the application for details.",
+          detailTone: "text-red-600 dark:text-red-400",
+        };
+      });
+  }, [drafts, submitTasks]);
 
   const workerOnline = workerHeartbeat
     ? Date.now() - new Date(workerHeartbeat.last_seen).getTime() < 90_000
@@ -586,8 +670,8 @@ export default function AgentPage() {
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
               {controls.agent_enabled && hasAutoApply
-                ? "ResumePreps keeps matching fresh roles, tailoring each résumé, checking ATS fit, and queuing supported applications until you press Stop applying. You can close this page."
-                : "One command starts recurring matching and guarded submission. Jobs with missing answers, sensitive questions, or unsupported employer steps pause for review instead of being guessed."}
+                ? "ResumePreps keeps matching fresh roles, tailoring each résumé, checking ATS fit, and automatically submitting eligible supported applications — no per-job clicks — until you press Stop applying. You can close this page."
+                : "One command starts recurring matching and automatic submission: eligible matches that pass your fit and ATS thresholds are applied to for you. Jobs with missing answers, sensitive questions, or unsupported employer steps pause for review instead of being guessed."}
             </p>
           </div>
           <Button
@@ -935,6 +1019,29 @@ export default function AgentPage() {
         </div>
 
         <aside className="space-y-4">
+          {liveSubmissions.length > 0 && (
+            <section className="border border-rp-rule bg-rp-paper p-5" aria-label="Live submission status">
+              <div className="flex items-center gap-2">
+                <Send className="h-4 w-4 text-rp-accent" />
+                <h2 className="text-sm font-semibold text-rp-ink">Live submissions</h2>
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>
+              </div>
+              <ul className="mt-4 space-y-3">
+                {liveSubmissions.map((item) => (
+                  <li key={item.id} className="border-b border-rp-rule pb-3 last:border-0 last:pb-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="min-w-0 truncate text-xs font-medium text-rp-ink">
+                        {item.title}{item.company ? <span className="text-rp-ink-3"> · {item.company}</span> : null}
+                      </p>
+                      <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", item.tone)}>{item.label}</span>
+                    </div>
+                    <p className={cn("mt-1 text-[11px] leading-relaxed", item.detailTone)}>{item.detail}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <section className="border border-rp-rule bg-rp-paper p-5">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-rp-accent" />
