@@ -217,6 +217,9 @@ async function submitViaAdapter(page, adapter, ctx, submitButton) {
     }
   }, { timeout: 15000 }).catch(() => null);
 
+  // Brief human-like dwell before the final click; instant fill-and-fire is
+  // the strongest automation tell for ATS spam filters.
+  await page.waitForTimeout(1500 + Math.floor(Math.random() * 2500));
   const submission = await adapter.submit(page, { ...ctx, submitButton });
   let receipt;
   let submissionResponse = null;
@@ -433,9 +436,11 @@ async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath,
                 ? "The application inbox is not linked to this job. Open the prepared application to complete verification."
                 : "The employer verification code did not arrive in the connected inbox. Open the prepared application to complete the final check.";
         } else {
-          result.error = visibleAlert
-            ? `The employer form did not accept the submission: ${visibleAlert}`
-            : `The employer did not confirm submission. Open the prepared application to review the final step.`;
+          result.error = receipt?.evidence?.spamFlagged
+            ? "The employer's spam filter rejected this submission (flagged as possible spam)."
+            : visibleAlert
+              ? `The employer form did not accept the submission: ${visibleAlert}`
+              : `The employer did not confirm submission. Open the prepared application to review the final step.`;
         }
       }
     } else if (submitButton) {
