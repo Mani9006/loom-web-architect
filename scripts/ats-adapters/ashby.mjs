@@ -423,6 +423,22 @@ export const ashbyAdapter = defineAdapter({
       if (await setFieldValueByIndex(page, option.index, "true")) filledCount += 1;
     }
 
+    // Yes/No button clicks and EEOC radio picks re-render Ashby's SPA and can
+    // WIPE text inputs filled earlier (observed live: "2 weeks" vanished after
+    // the sponsorship buttons were clicked). Final pass: re-collect and refill
+    // any text field that ended up empty.
+    const finalFields = await collectAshbyFields(page);
+    for (const field of finalFields) {
+      if (!field.visible) continue;
+      if (["file", "hidden", "submit", "button", "radio", "checkbox"].includes(field.type)) continue;
+      if (String(field.value || "").trim().length > 0) continue;
+      const label = field.label || field.ariaLabel || field.placeholder || field.name;
+      const value = ashbyStandardValueFor(field, profile)
+        || fuzzyMatchAnswer(label, answers)?.answer
+        || "";
+      if (value && (await setFieldValueByIndex(page, field.index, value))) filledCount += 1;
+    }
+
     return {
       filledCount,
       totalFields: fields.length,
