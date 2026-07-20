@@ -26,6 +26,12 @@ import {
 import { Link } from "react-router-dom";
 import { useSubscription } from "@/components/SubscriptionGate";
 import { cn } from "@/lib/utils";
+import {
+  streamAIText,
+  parseAIResponse,
+  mapParsedToResumePayload,
+  prepareResumeTextForParsing,
+} from "@/lib/ai-resume-parser";
 import LocationAutocomplete from "@/components/LocationAutocomplete";
 import { JOB_ROLES, COMMON_SKILLS } from "@/data/job-roles";
 
@@ -174,20 +180,28 @@ export default function AutoApplyPage() {
   // ─── Resume Upload + Parse ───
   const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
     setResumeFile(file);
     setResumeParsing(true);
 
     try {
-      // Read file as text
-      const text = await file.text();
-
-      // Call parse-document edge function
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
+      if (!token) throw new Error("Not signed in");
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
-      const response = await fetch(
+      // parse-document extracts text from a file already sitting in Storage —
+      // it takes a filePath, not raw text, so upload first (same pattern as
+      // src/components/shared/DocumentUpload.tsx).
+      const timestamp = Date.now();
+      const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const filePath = `${user.id}/${timestamp}_${sanitizedName}`;
+      const { error: uploadError } = await supabase.storage
+        .from("documents")
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
+      if (uploadError) throw uploadError;
+
+      const parseResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-document`,
         {
           method: "POST",
@@ -195,44 +209,47 @@ export default function AutoApplyPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token || anonKey}`,
           },
-          body: JSON.stringify({ text, type: "resume" }),
+          body: JSON.stringify({ filePath, streaming: false }),
         }
       );
 
-      if (response.ok) {
-        const parsed = await response.json();
-        // Auto-fill profile from parsed resume
-        if (parsed.personal_info) {
-          setProfile((prev) => ({
-            ...prev,
-            full_name: parsed.personal_info.name || prev.full_name,
-            email: parsed.personal_info.email || prev.email,
-            phone: parsed.personal_info.phone || prev.phone,
-            location: parsed.personal_info.location || prev.location,
-            linkedin_url: parsed.personal_info.linkedin || prev.linkedin_url,
-            target_role: parsed.personal_info.jobTitle || prev.target_role,
-          }));
-        }
-        if (parsed.skills && Array.isArray(parsed.skills)) {
-          const allSkills = parsed.skills.flatMap((s: any) =>
-            typeof s === "string" ? [s] : s.items || []
-          );
-          setProfile((prev) => ({ ...prev, skills: [...new Set([...(prev.skills || []), ...allSkills])] }));
-        }
-        if (parsed.education && Array.isArray(parsed.education) && parsed.education.length > 0) {
-          const edu = parsed.education[0];
-          setProfile((prev) => ({ ...prev, education_level: edu.degree || prev.education_level }));
-        }
-        setProfile((prev) => ({ ...prev, resume_json: parsed }));
-        toast({ title: "Resume parsed!", description: "Profile fields auto-filled from your resume" });
-      } else {
-        // Fallback: just store raw text
-        setProfile((prev) => ({ ...prev, resume_json: { raw_text: text } }));
-        toast({ title: "Resume uploaded", description: "Could not auto-parse. Please fill in fields manually." });
+      if (!parseResponse.ok) {
+        const errBody = await parseResponse.json().catch(() => ({}));
+        throw new Error(errBody?.error || "Could not extract text from this file");
       }
+      const { text } = (await parseResponse.json()) as { text: string };
+
+      // parse-document only extracts raw text — turn it into structured
+      // fields the same way Resume Builder's import flow does.
+      const preparedText = prepareResumeTextForParsing(text);
+      const aiContent = await streamAIText(
+        token,
+        [{ role: "user", content: `Parse this resume:\n\n${preparedText}` }],
+        "resume_parse",
+      );
+      const parsedData = parseAIResponse(aiContent);
+      if (!parsedData) throw new Error("Could not extract structured data from the resume");
+
+      const mapped = mapParsedToResumePayload(parsedData);
+      setProfile((prev) => ({
+        ...prev,
+        full_name: mapped.personal_info.name || prev.full_name,
+        email: mapped.personal_info.email || prev.email,
+        phone: mapped.personal_info.phone || prev.phone,
+        location: mapped.personal_info.location || prev.location,
+        linkedin_url: mapped.personal_info.linkedin || prev.linkedin_url,
+        target_role: mapped.personal_info.title || prev.target_role,
+        skills: [
+          ...new Set([...(prev.skills || []), ...Object.values(mapped.skills).flat()]),
+        ] as string[],
+        education_level: mapped.education[0]?.degree || prev.education_level,
+        resume_json: mapped,
+      }));
+      toast({ title: "Resume parsed!", description: "Profile fields auto-filled from your resume" });
     } catch (err) {
       console.error("Resume parse error:", err);
-      toast({ title: "Upload failed", description: "Please try again", variant: "destructive" });
+      const message = err instanceof Error ? err.message : "Please try again";
+      toast({ title: "Upload failed", description: message, variant: "destructive" });
     } finally {
       setResumeParsing(false);
     }
@@ -455,7 +472,13 @@ export default function AutoApplyPage() {
     }
   };
 
-  // ─── Auto Apply ───
+  // ─── Mark as Applied ───
+  // NOTE: this only records that you applied — it does not submit anything
+  // to the employer. job_applications is a plain bookkeeping table with no
+  // automation behind it (unlike the real browser-automation pipeline used
+  // elsewhere in this app, e.g. supabase/functions/apply-to-job +
+  // scripts/applypass-browser-worker.mjs). Apply on the employer's site
+  // first, then use this to track that you did.
   const handleAutoApply = async (job: MatchedJob) => {
     if (!user) return;
     setApplyingJobId(job.id);
@@ -474,14 +497,23 @@ export default function AutoApplyPage() {
       // below, telling the user they'd applied when nothing was saved.
       if (error) throw error;
 
+      // Dismiss the underlying match too, or it resurfaces in Available
+      // Jobs on the next "Refresh Matches"/reload (loadJobs only excludes
+      // dismissed=true) and can be "applied" to again.
+      await supabase
+        .from("job_matches")
+        .update({ dismissed: true })
+        .eq("user_id", user.id)
+        .eq("job_id", job.id);
+
       // Move job from available to applied
       setMatchedJobs((prev) => prev.filter((j) => j.id !== job.id));
       setAppliedJobs((prev) => [{ ...job, applied: true }, ...prev]);
 
-      toast({ title: "Application submitted!", description: `Applied to ${job.title} at ${job.company}` });
+      toast({ title: "Marked as applied", description: `${job.title} at ${job.company} added to your tracker` });
     } catch (err) {
       console.error("Apply error:", err);
-      toast({ title: "Application failed", variant: "destructive" });
+      toast({ title: "Couldn't save", variant: "destructive" });
     } finally {
       setApplyingJobId(null);
     }
@@ -956,7 +988,7 @@ export default function AutoApplyPage() {
               <div className="text-center py-12">
                 <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
                 <h4 className="font-medium">No matching jobs yet</h4>
-                <p className="text-sm text-muted-foreground mt-1">Make sure your profile is complete, then click "Refresh Matches"</p>
+                <p className="text-sm text-muted-foreground mt-1">Make sure your profile is complete, then click "Refresh Matches". Apply on the employer's site, then mark it here to track it.</p>
               </div>
             )}
 
@@ -975,7 +1007,7 @@ export default function AutoApplyPage() {
                         </div>
                         <Button size="sm" className="gap-1.5 shrink-0" onClick={() => handleAutoApply(job)} disabled={applyingJobId === job.id}>
                           {applyingJobId === job.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                          Apply Automatically
+                          Mark as Applied
                         </Button>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-2">
@@ -1000,13 +1032,13 @@ export default function AutoApplyPage() {
 
           {/* ═══ APPLIED JOBS TAB ═══ */}
           <TabsContent value="applied" className="space-y-4 mt-4">
-            <h3 className="font-medium">{appliedJobs.length} applications submitted</h3>
+            <h3 className="font-medium">{appliedJobs.length} applications tracked</h3>
 
             {appliedJobs.length === 0 && (
               <div className="text-center py-12">
                 <ClipboardList className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
                 <h4 className="font-medium">No applications yet</h4>
-                <p className="text-sm text-muted-foreground mt-1">Go to Available Jobs and click "Apply Automatically"</p>
+                <p className="text-sm text-muted-foreground mt-1">Go to Available Jobs and click "Mark as Applied" after you apply</p>
               </div>
             )}
 

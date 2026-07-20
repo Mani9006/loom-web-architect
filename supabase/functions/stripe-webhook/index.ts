@@ -126,12 +126,25 @@ serve(async (req: Request) => {
           .single();
 
         if (plans) {
+          const status = subscription.status === "active" ? "active" : subscription.status;
           await supabase.from("subscription_plans").update({
-            status: subscription.status === "active" ? "active" : subscription.status,
+            status,
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
             updated_at: new Date().toISOString(),
           }).eq("stripe_subscription_id", subscription.id);
+
+          // Keep the actual access gate (user_access_controls.purchase_state,
+          // checked by supabase/functions/_shared/guards.ts) in sync too — a
+          // dunning retry that succeeds fires this event with status back to
+          // "active" and must restore access, same as a canceled/unpaid
+          // subscription firing this event must revoke it.
+          const purchaseState =
+            status === "active" ? "active" : status === "past_due" ? "past_due" : "canceled";
+          await supabase.from("user_access_controls").update({
+            purchase_state: purchaseState,
+            updated_at: new Date().toISOString(),
+          }).eq("user_id", plans.user_id);
         }
         break;
       }
@@ -191,10 +204,31 @@ serve(async (req: Request) => {
       case "invoice.payment_failed": {
         const invoice = event.data.object;
         if (invoice.subscription) {
+          const { data: plan } = await supabase
+            .from("subscription_plans")
+            .select("user_id")
+            .eq("stripe_subscription_id", invoice.subscription)
+            .single();
+
           await supabase.from("subscription_plans").update({
             status: "past_due",
             updated_at: new Date().toISOString(),
           }).eq("stripe_subscription_id", invoice.subscription);
+
+          // Revoke gated access immediately on a failed charge — previously
+          // only subscription_plans.status was set to "past_due" while
+          // user_access_controls.purchase_state (the field the AI-feature
+          // guard actually checks, see supabase/functions/_shared/guards.ts)
+          // stayed "active", so a declined card kept full paid access
+          // through the whole Stripe dunning cycle. Access is restored
+          // automatically by customer.subscription.updated above once a
+          // retry succeeds.
+          if (plan?.user_id) {
+            await supabase.from("user_access_controls").update({
+              purchase_state: "past_due",
+              updated_at: new Date().toISOString(),
+            }).eq("user_id", plan.user_id);
+          }
 
           // Send payment failed notification
           if (invoice.customer_email) {

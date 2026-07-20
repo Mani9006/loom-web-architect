@@ -89,7 +89,9 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
   async function pollNow() {
     setBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("mc-gmail-poll", {});
+      const { data, error } = await supabase.functions.invoke("mc-gmail-poll", {
+        body: { session_id: sessionId },
+      });
       if (error) throw error;
       const processed = Number(data?.processed || 0);
       const updates = Number(data?.status_updates || 0);

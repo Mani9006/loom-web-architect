@@ -93,7 +93,7 @@ export default function SettingsPage() {
         },
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
-    void supabase.from("user_job_prefs").upsert({
+    const prefsResult = await supabase.from("user_job_prefs").upsert({
         user_id: user.id,
         agent_enabled: hasAutoApply ? settings.agent_enabled : false,
         auto_apply_enabled: hasAutoApply ? settings.auto_apply_enabled : false,
@@ -105,6 +105,17 @@ export default function SettingsPage() {
     setSaving(false);
     if (profileResult.error) {
       toast({ title: "Settings weren't saved", description: "Your previous settings are unchanged. Try again.", variant: "destructive" });
+      return;
+    }
+    // user_job_prefs is the table the auto-apply agent actually enforces
+    // (daily cap, review mode, min fit score) — a silent failure here would
+    // leave the live policy stale while this toast claims it's up to date.
+    if (prefsResult.error) {
+      toast({
+        title: "Policy may not be fully saved",
+        description: "Your display settings saved, but the auto-apply policy update failed. Try saving again.",
+        variant: "destructive",
+      });
       return;
     }
     toast({ title: "Settings saved", description: "New applications will follow this policy." });

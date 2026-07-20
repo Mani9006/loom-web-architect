@@ -51,9 +51,20 @@ serve(async (req) => {
   const token = authorization.replace(/^Bearer\s+/i, "");
   const workerToken = Deno.env.get("WORKER_AUTH_TOKEN") || "";
   const isWorker = Boolean(token) && (token === serviceKey || (workerToken !== "" && token === workerToken));
+  // Parsed once up front so both the worker and user-JWT paths can read an
+  // optional session_id. Callers scoped to a single workspace (the "Check
+  // inbox" button on a session's Inbox tab, GmailConnectCard's "Check now")
+  // pass it so this poll only touches that session's Gmail connection —
+  // each session has its own connection (UNIQUE(session_id)) per
+  // supabase/migrations/20260427120100_my_collection_gmail.sql. Callers that
+  // want the aggregate cross-session view (InboxPage, the cron sweep, the
+  // applypass worker's OTP check) omit it and every enabled connection for
+  // the resolved user is polled, same as before.
+  const body = await req.json().catch(() => ({}));
+  const requestedSessionId =
+    typeof body?.session_id === "string" && body.session_id.trim() ? body.session_id.trim() : null;
   let userId: string | null = null;
   if (isWorker) {
-    const body = await req.json().catch(() => ({}));
     userId = typeof body?.user_id === "string" && body.user_id.trim() ? body.user_id.trim() : null;
   } else {
     const authClient = createClient(supabaseUrl, anonKey, {
@@ -68,6 +79,7 @@ serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   let query = admin.from("mc_gmail_connections").select("*").eq("enabled", true);
   if (userId) query = query.eq("user_id", userId);
+  if (requestedSessionId) query = query.eq("session_id", requestedSessionId);
   const { data: connections, error } = await query;
   if (error) {
     console.error("mc-gmail-poll load", error);

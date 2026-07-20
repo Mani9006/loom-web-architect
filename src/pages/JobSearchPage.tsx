@@ -163,6 +163,10 @@ export default function JobSearchPage() {
   const [fromCache, setFromCache] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Bumped on every searchJobs() call. A stale/superseded search's finally
+  // block checks this before touching abortControllerRef/progressIntervalRef/
+  // loading state, so it can't clobber a newer search's in-flight refs.
+  const searchGenerationRef = useRef(0);
 
   // Pagination
   const JOBS_PER_PAGE = 15;
@@ -335,9 +339,12 @@ export default function JobSearchPage() {
       return;
     }
 
-    if (abortControllerRef.current) abortControllerRef.current.abort();
+    // Reason matters: this lets the superseded search's own AbortError catch
+    // (below) tell "a newer search started" apart from "actually timed out".
+    if (abortControllerRef.current) abortControllerRef.current.abort("superseded");
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
 
+    const myGeneration = ++searchGenerationRef.current;
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -439,10 +446,10 @@ export default function JobSearchPage() {
       }
     } catch (err: any) {
       if (err.name === "AbortError") {
-        if (controller.signal.reason !== "user-cancel") {
+        if (controller.signal.reason !== "user-cancel" && controller.signal.reason !== "superseded") {
           toast({ title: "Search timed out", description: "Try a simpler search query", variant: "destructive" });
         }
-      } else {
+      } else if (myGeneration === searchGenerationRef.current) {
         console.error("Search failed:", err);
         void captureIncident(err, { source: "manual", operation: "job_search" });
         // Before dead-ending, fall back to the direct job feeds we already
@@ -478,12 +485,17 @@ export default function JobSearchPage() {
         }
       }
     } finally {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-        progressIntervalRef.current = null;
+      // Only the most recent search may clear the shared refs/loading state —
+      // otherwise a stale search finishing after being superseded stomps on
+      // the newer search's in-flight controller/interval/spinner.
+      if (myGeneration === searchGenerationRef.current) {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+        abortControllerRef.current = null;
+        setLoading(false);
       }
-      abortControllerRef.current = null;
-      setLoading(false);
     }
   }, [
     datePosted,

@@ -6,6 +6,75 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const DEFAULT_OWNER_EMAILS = ["myfamily9006@gmail.com"];
+
+function parseOwnerEmails(): string[] {
+  const env = Deno.env.get("ADMIN_OWNER_EMAILS");
+  const parsed = env
+    ? env.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
+    : [];
+  return parsed.length > 0 ? parsed : DEFAULT_OWNER_EMAILS;
+}
+
+// This function exposes internal platform metrics, Jira ticket data, and
+// deployment status — owner/admin only, same gate as /admin (admin-portal).
+async function authenticateOwner(req: Request): Promise<Response | null> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return new Response(JSON.stringify({ error: "Supabase env not configured" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user }, error } = await authClient.auth.getUser();
+  if (error || !user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const ownerEmails = parseOwnerEmails();
+  const email = (user.email || "").toLowerCase();
+  if (ownerEmails.includes(email)) return null;
+
+  const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!serviceRole) {
+    return new Response(JSON.stringify({ error: "Service role key missing" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const serviceClient = createClient(supabaseUrl, serviceRole);
+  const { data: adminRole } = await serviceClient
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .eq("role", "admin")
+    .maybeSingle();
+
+  if (!adminRole) {
+    return new Response(
+      JSON.stringify({ error: "Forbidden", reason: "This endpoint is restricted to owner and admin accounts" }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+  return null;
+}
+
 type DeploymentSignal = {
   state: "success" | "pending" | "failure" | "unknown";
   description: string;
@@ -322,6 +391,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const authFailure = await authenticateOwner(req);
+  if (authFailure) return authFailure;
 
   try {
     const body = await req.json().catch(() => ({}));

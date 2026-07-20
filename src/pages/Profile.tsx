@@ -111,7 +111,7 @@ export default function Profile() {
     // Newer environments mirror these defaults into typed matching columns.
     // The JSON source of truth above keeps profile editing compatible while a
     // staged database migration is still rolling through preview/production.
-    void supabase.from("user_job_prefs").upsert({
+    const prefsResult = await supabase.from("user_job_prefs").upsert({
       user_id: user.id,
       requires_sponsorship: profile.requires_sponsorship,
       work_authorization: profile.work_authorization || null,
@@ -119,6 +119,17 @@ export default function Profile() {
     setSaving(false);
     if (profileResult.error) {
       toast({ title: "Profile wasn't saved", description: "Your previous profile is unchanged. Try again.", variant: "destructive" });
+      return;
+    }
+    if (prefsResult.error) {
+      // Sponsorship/work-authorization drive automated job matching — a
+      // stale mirror here can surface (or hide) jobs based on outdated
+      // eligibility, so this isn't safe to fail silently.
+      toast({
+        title: "Profile saved, but matching details may be stale",
+        description: "Sponsorship/work authorization mirror failed to update. Try saving again.",
+        variant: "destructive",
+      });
       return;
     }
     toast({ title: "Application profile saved", description: "Future matching, tailoring, and forms will use these verified details." });

@@ -351,18 +351,33 @@ export default function JobTracker() {
       toast({ title: "Error", description: "Failed to remove saved job", variant: "destructive" });
       return;
     }
-    // Also remove matching tracked_job if status is "Saved"
+    // Also remove the matching tracked_job if status is "Saved". There's no
+    // id linking saved_jobs to tracked_jobs, so this falls back to a
+    // title+company match — but deleting by that filter alone would remove
+    // every row that happens to share a title/company/status (e.g. the same
+    // role saved twice from different sources). Narrow it to the single
+    // most-recently-created match instead of mass-deleting.
+    let removedTrackedJobId: string | null = null;
     if (userId) {
-      await supabase
+      const { data: matchingTrackedJob } = await supabase
         .from("tracked_jobs")
-        .delete()
+        .select("id")
         .eq("user_id", userId)
         .eq("title", savedJob.job_title)
         .eq("company", savedJob.company)
-        .eq("status", "Saved");
+        .eq("status", "Saved")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (matchingTrackedJob) {
+        await supabase.from("tracked_jobs").delete().eq("id", matchingTrackedJob.id);
+        removedTrackedJobId = matchingTrackedJob.id;
+      }
     }
     setSavedJobDetails((prev) => prev.filter((j) => j.id !== savedJob.id));
-    setJobs((prev) => prev.filter((j) => !(j.title === savedJob.job_title && j.company === savedJob.company && j.status === "Saved")));
+    if (removedTrackedJobId) {
+      setJobs((prev) => prev.filter((j) => j.id !== removedTrackedJobId));
+    }
     toast({ title: "Saved job removed" });
   };
 

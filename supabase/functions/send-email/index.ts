@@ -69,13 +69,76 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+// Verifies the Standard Webhooks signature Supabase Auth attaches to Send
+// Email Hook calls (webhook-id / webhook-timestamp / webhook-signature
+// headers, HMAC-SHA256 over "<id>.<timestamp>.<raw body>" with the hook
+// secret configured in Supabase Dashboard → Auth → Hooks). Without this,
+// the hook branch below is reachable by anyone who POSTs a body shaped like
+// {user, email_data} — a free relay to send real, branded ResumePreps email
+// (password reset / magic link / signup templates) to any address with an
+// attacker-chosen redirect_to.
+async function verifyAuthHookSignature(rawBody: string, headers: Headers): Promise<boolean> {
+  const secret = Deno.env.get("SEND_EMAIL_HOOK_SECRET") || "";
+  if (!secret) {
+    // Not configured yet — log loudly so this doesn't stay silently open,
+    // but don't break the currently-working (if unverified) auth email
+    // flow until the secret is set in Supabase Auth Hooks + function secrets.
+    console.warn(
+      "send-email: SEND_EMAIL_HOOK_SECRET is not set — auth-hook requests are NOT signature-verified. " +
+        "Configure the Send Email Hook secret in Supabase Dashboard > Auth > Hooks to close this.",
+    );
+    return true;
+  }
+
+  const id = headers.get("webhook-id") || "";
+  const timestamp = headers.get("webhook-timestamp") || "";
+  const signatureHeader = headers.get("webhook-signature") || "";
+  if (!id || !timestamp || !signatureHeader) return false;
+
+  // Reject stale/replayed deliveries (5 minute tolerance, matches the
+  // Standard Webhooks spec's recommended window).
+  const tsSeconds = Number(timestamp);
+  if (!Number.isFinite(tsSeconds) || Math.abs(Date.now() / 1000 - tsSeconds) > 300) return false;
+
+  const secretBytes = base64Decode(secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    secretBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signedContent = `${id}.${timestamp}.${rawBody}`;
+  const macBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedContent));
+  const expected = base64Encode(new Uint8Array(macBuf));
+
+  // webhook-signature can list multiple space-separated "v1,<base64>" values.
+  return signatureHeader
+    .split(" ")
+    .map((part) => part.split(",")[1])
+    .filter(Boolean)
+    .some((candidate) => timingSafeEqual(candidate, expected));
+}
+
+function base64Decode(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function base64Encode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
 // The direct-send endpoint (handleDirectEmail) can send arbitrary email to
 // arbitrary recipients through our Resend account, so it must not be open to
 // the public internet. Callers must present either:
 //   1. the shared internal secret via the `x-internal-token` header
 //      (Deno env: INTERNAL_EMAIL_TOKEN), or
 //   2. the project service-role key as a Bearer token (backend-to-backend).
-// The Supabase Auth send-email hook path is unaffected by this check.
 function isAuthorizedDirectRequest(req: Request): boolean {
   const internalToken = Deno.env.get("INTERNAL_EMAIL_TOKEN");
   const providedToken = req.headers.get("x-internal-token");
@@ -574,10 +637,19 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
+    const rawBody = await req.text();
+    const body = JSON.parse(rawBody);
 
     // If this is a Supabase Auth hook call (has user + email_data)
     if (body.user && body.email_data) {
+      const verified = await verifyAuthHookSignature(rawBody, req.headers);
+      if (!verified) {
+        console.warn("send-email: auth-hook signature verification failed");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       return await handleAuthHook(body);
     }
 

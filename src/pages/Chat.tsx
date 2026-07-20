@@ -1275,6 +1275,10 @@ Format with clear headers and bullet points. Be specific to the role and company
     // Calculate total experience
     const totalYears = calculateTotalExperience(resumeData.experience);
 
+    // Declared outside the try block so the catch handler can clear the
+    // "thinking" placeholder on failure too, not just on success.
+    let tempId: string | null = null;
+
     try {
       const title = `Resume: ${resumeData.header.name || "Untitled"}`;
       // Tag as resume-chat so reloads restore the editor view — the default
@@ -1326,7 +1330,7 @@ ${experienceSummary}
       setChatMessages([userMsg]);
 
       // Add thinking placeholder
-      const tempId = crypto.randomUUID();
+      tempId = crypto.randomUUID();
       setChatMessages((prev) => [
         ...prev,
         { id: tempId, role: "assistant", content: "", timestamp: new Date(), isThinking: true },
@@ -1417,6 +1421,13 @@ ${experienceSummary}
         description: error instanceof Error ? error.message : "Failed to generate resume",
         variant: "destructive",
       });
+      // Otherwise the "thinking" placeholder is left in chatMessages forever
+      // with isThinking still true, showing a permanent spinner if the user
+      // ends up back in chat view for this conversation.
+      if (tempId) {
+        const failedTempId = tempId;
+        setChatMessages((prev) => prev.filter((m) => m.id !== failedTempId));
+      }
       setChatMode("resume-form");
     } finally {
       setIsLoading(false);

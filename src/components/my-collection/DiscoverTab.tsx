@@ -115,9 +115,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [conversation, setConversation] = useState<ClarificationTurn[]>(
     initial.current?.conversation ?? [],
   );
+  // Keyed by result index (stable within a given search's results — see
+  // resultsList render below), NOT company+title: two distinct AI-returned
+  // postings can share the same company/title, and a string key would make
+  // saving one falsely mark the other as saved too.
   const [savedTitles, setSavedTitles] = useState<Set<string>>(
     new Set(initial.current?.savedKeys ?? []),
   );
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const [activeJobId, setActiveJobId] = useState<string | null>(
     initial.current?.activeJobId ?? null,
   );
@@ -465,9 +470,17 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     await runSearch(newHistory);
   }
 
-  async function saveToBoard(job: FoundJob) {
+  async function saveToBoard(job: FoundJob, idx: number) {
+    const key = String(idx);
+    if (savedTitles.has(key) || savingKeys.has(key)) return;
+    setSavingKeys((s) => new Set(s).add(key));
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
+      setSavingKeys((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
       toast({ title: "Not signed in", variant: "destructive" });
       return;
     }
@@ -482,11 +495,16 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       jd_md: job.summary ?? null,
       status: "saved",
     });
+    setSavingKeys((s) => {
+      const next = new Set(s);
+      next.delete(key);
+      return next;
+    });
     if (error) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(key));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -496,8 +514,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * and then runs the same tailor pipeline BoardTab uses, but pulling the
    * master resume directly from session settings.
    */
-  async function tailorFromDiscover(job: FoundJob) {
-    const key = `${job.company}::${job.title}`;
+  async function tailorFromDiscover(job: FoundJob, idx: number) {
+    const key = String(idx);
     if (!job.summary || !job.summary.trim()) {
       toast({
         title: "AI didn't return a job description",
@@ -775,10 +793,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     foundJobs.length === 0 ? null : (
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
-          const key = `${job.company}::${job.title}`;
+          const key = String(idx);
           const isSaved = savedTitles.has(key);
+          const isSaving = savingKeys.has(key);
           return (
-            <Card key={`${key}::${idx}`} className="p-4">
+            <Card key={`${job.company}::${job.title}::${idx}`} className="p-4">
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-2 flex-wrap">
@@ -808,7 +827,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                   <Button
                     size="sm"
                     variant="default"
-                    onClick={() => tailorFromDiscover(job)}
+                    onClick={() => tailorFromDiscover(job, idx)}
                     disabled={tailoringKey === key}
                     className="h-7 text-[11px]"
                   >
@@ -829,12 +848,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                   <Button
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
-                    onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    onClick={() => saveToBoard(job, idx)}
+                    disabled={isSaved || isSaving || tailoringKey === key}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
-                    {isSaved ? "Saved" : "Save only"}
+                    {isSaved ? "Saved" : isSaving ? "Saving…" : "Save only"}
                   </Button>
                   {job.apply_url && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">

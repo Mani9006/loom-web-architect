@@ -68,7 +68,9 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function refresh() {
     setRefreshing(true);
     try {
-      const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+      const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {
+        body: { session_id: sessionId },
+      });
       if (error) throw error;
       await load();
       toast({ title: "Inbox is up to date" });

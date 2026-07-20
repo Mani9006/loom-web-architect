@@ -93,20 +93,23 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
 
   async function deleteJob() {
     if (!job) return;
-    if (!confirm(`Delete this card from the board?\n\n${job.company} · ${job.job_title}\n\nThis can't be undone.`)) {
+    if (!confirm(`Move this card to trash?\n\n${job.company} · ${job.job_title}\n\nYou can restore it from Trash later.`)) {
       return;
     }
     setSaving(true);
+    // Soft-delete, same as the board's trash-can icon — keeps this the one
+    // consistent way to remove a card, recoverable via the Trash dialog
+    // instead of a silent permanent delete.
     const { error } = await (supabase as any)
       .from("mc_tracked_jobs")
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq("id", job.id);
     setSaving(false);
     if (error) {
       toast({ title: "Couldn't delete", description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Card removed" });
+    toast({ title: "Moved to trash" });
     onDeleted(job.id);
   }
 
@@ -190,7 +193,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={deleteJob} disabled={saving} className="text-destructive">
-            <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete card
+            <Trash2 className="w-3.5 h-3.5 mr-1" /> Move to trash
           </Button>
           <div className="flex-1" />
           <Button variant="ghost" onClick={onClose} disabled={saving}>

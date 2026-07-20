@@ -1056,7 +1056,7 @@ function OverviewTab({
                         disabled={actionBusy[`reset:${item.userId}`]}
                         onClick={() => void onCreateResetLink(item.userId, item.email)}
                       >
-                        {actionBusy[`reset:${item.userId}`] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Reset Link"}
+                        {actionBusy[`reset:${item.userId}`] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Send Reset Email"}
                       </Button>
                       <Button
                         size="sm"
@@ -1586,19 +1586,23 @@ export default function AdminPortal() {
       const key = `reset:${targetUserId}`;
       try {
         setActionBusy((prev) => ({ ...prev, [key]: true }));
+        // The reset link itself is never returned here — it's a live,
+        // one-time login credential, so the backend emails it straight to
+        // the account owner instead of putting it in this response.
         const payload = (await callAdminPortal({
           action: "password-reset-link",
           targetUserId,
           email,
-        })) as { result?: { resetLink?: string } };
+        })) as { result?: { email?: string } };
 
-        const resetLink = payload?.result?.resetLink;
-        if (!resetLink) throw new Error("No reset link returned.");
-
-        await navigator.clipboard.writeText(resetLink);
-        toast({ title: "Password reset link copied", description: "Share this link securely with the user." });
+        toast({
+          title: "Password reset email sent",
+          description: payload?.result?.email
+            ? `Sent to ${payload.result.email}.`
+            : "Sent to the account's email address.",
+        });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to generate reset link");
+        setError(err instanceof Error ? err.message : "Failed to send reset email");
       } finally {
         setActionBusy((prev) => ({ ...prev, [key]: false }));
       }

@@ -31,6 +31,11 @@ interface Props {
 
 const DRAFT_KEY = "mc:new-session-wizard-draft:v1";
 
+// Mirrors MyCollectionPage's ACTIVE_LIMIT. Re-checked here at submit time
+// since the "New Session" trigger button's disabled state can go stale
+// (a second tab creating sessions, or this dialog sitting open a while).
+const ACTIVE_LIMIT = 5;
+
 interface Draft {
   step: number;
   name: string;
@@ -160,6 +165,21 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       toast({
         title: "Couldn't create",
         description: "You're not signed in. Refresh and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { count: activeCount, error: countErr } = await (supabase as any)
+      .from("mc_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userData.user.id)
+      .eq("status", "active");
+    if (!countErr && (activeCount ?? 0) >= ACTIVE_LIMIT) {
+      setSubmitting(false);
+      toast({
+        title: "Reached active session limit",
+        description: `You can have at most ${ACTIVE_LIMIT} active sessions. Archive one first.`,
         variant: "destructive",
       });
       return;

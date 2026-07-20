@@ -132,7 +132,14 @@ const App = () => {
                     <Route path="/chat" element={<Chat />} />
                     <Route path="/c/:conversationId" element={<Chat />} />
                     <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/control-center" element={<ControlCenter />} />
+                    <Route
+                      path="/control-center"
+                      element={
+                        <OwnerProtectedRoute>
+                          <ControlCenter />
+                        </OwnerProtectedRoute>
+                      }
+                    />
                     <Route path="/market-domination-map" element={<MarketDominationMap />} />
                     <Route
                       path="/admin"

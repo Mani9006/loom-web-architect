@@ -596,16 +596,39 @@ async function generatePasswordResetLink(
 
   if (error) throw new Error(error.message);
 
-  const resetLink =
-    data?.properties?.action_link ||
-    data?.properties?.email_otp ||
-    null;
-
+  const resetLink = data?.properties?.action_link || null;
   if (!resetLink) {
     throw new Error("Password reset link was not returned by Supabase");
   }
 
-  return { ok: true, userId: targetUserId, email, resetLink };
+  // Email the link directly to the account owner instead of returning it in
+  // the API response. A recovery action_link is a live, one-time login
+  // credential for that account — putting it in a JSON response body means
+  // it can leak via network logs, the admin's clipboard history, or an XSS
+  // on the admin UI, handing over full account takeover. Only the account's
+  // own inbox should ever see it.
+  const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${serviceRole}`,
+      apikey: serviceRole,
+    },
+    body: JSON.stringify({
+      type: "reset-password",
+      to: email,
+      data: {
+        token: data?.properties?.email_otp || "",
+        redirect_url: resetLink,
+      },
+    }),
+  });
+  if (!emailResponse.ok) {
+    const text = await emailResponse.text().catch(() => "");
+    throw new Error(`Password reset email could not be sent (${emailResponse.status}): ${text}`);
+  }
+
+  return { ok: true, userId: targetUserId, email };
 }
 
 function buildRoleMap(rows: Array<{ user_id: string; role: AdminRole }>) {

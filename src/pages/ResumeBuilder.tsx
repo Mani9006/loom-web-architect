@@ -406,6 +406,23 @@ export default function ResumeBuilder() {
         certifications: parsedData.certifications?.length > 0 ? parsedData.certifications.map((c: any) => ({ id: crypto.randomUUID(), name: c.name || "", issuer: c.issuer || "", date: c.date || "" })) : data.certifications,
         skills: mergeAndDeduplicateSkills(data.skills, parsedData.skills || {}),
         projects: parsedData.projects?.length > 0 ? parsedData.projects.map((p: any) => ({ id: crypto.randomUUID(), title: p.title || "", organization: p.organization || "", date: p.date || "", bullets: Array.isArray(p.bullets) ? p.bullets : [] })) : data.projects,
+        // Previously omitted here, which wiped these sections out on import
+        // since setData() replaces the whole object rather than merging.
+        languages: parsedData.languages?.length > 0 ? parsedData.languages.map((l: any) => ({ id: crypto.randomUUID(), language: l.language || "", proficiency: l.proficiency || "" })) : data.languages,
+        volunteer: parsedData.volunteer?.length > 0 ? parsedData.volunteer.map((v: any) => ({ id: crypto.randomUUID(), role: v.role || "", organization: v.organization || "", date: v.date || "", bullets: Array.isArray(v.bullets) ? v.bullets : formatBullets(v.bullets || "") })) : data.volunteer,
+        awards: parsedData.awards?.length > 0 ? parsedData.awards.map((a: any) => ({ id: crypto.randomUUID(), title: a.title || "", issuer: a.issuer || "", date: a.date || "", url: a.url || "" })) : data.awards,
+        customSections: parsedData.custom_sections?.length > 0 ? parsedData.custom_sections.map((s: any) => ({
+          id: crypto.randomUUID(),
+          name: s.name || "",
+          entries: (Array.isArray(s.entries) ? s.entries : []).map((entry: any) => ({
+            id: crypto.randomUUID(),
+            title: entry.title || "",
+            subtitle: entry.subtitle || "",
+            date: entry.date || "",
+            bullets: Array.isArray(entry.bullets) ? entry.bullets : formatBullets(entry.bullets || entry.content || ""),
+            url: entry.url || "",
+          })),
+        })) : data.customSections,
       });
       toast({ title: "Resume imported!", description: `Extracted data from ${fileName}.` });
     } catch (error) {
@@ -763,15 +780,24 @@ export default function ResumeBuilder() {
         { role: "user", content: "Fix the issues and return the improved content." },
       ], "resume_fix");
 
-      if (sectionName === "Summary") {
+      // sectionName here is the ATS display name (e.g. "Professional Summary",
+      // "Work Experience") — the button passes atsName, not these short
+      // labels — so match on both; buildSectionFixPrompt above already does.
+      let applied = false;
+      if (sectionName === "Summary" || sectionName === "Professional Summary") {
         const cleaned = result.replace(/^["']|["']$/g, "").replace(/```/g, "").trim();
-        if (cleaned) setData((prev) => ({ ...prev, summary: cleaned }));
-      } else if (sectionName === "Experience") {
+        if (cleaned) {
+          setData((prev) => ({ ...prev, summary: cleaned }));
+          applied = true;
+        }
+      } else if (sectionName === "Experience" || sectionName === "Work Experience") {
         const parsed = parseAIResponse(result);
-        if (parsed && Array.isArray(parsed)) {
+        // buildSectionFixPrompt asks for {"experience": [...]}, not a bare array.
+        const experienceList = Array.isArray(parsed) ? parsed : parsed?.experience;
+        if (Array.isArray(experienceList)) {
           setData((prev) => ({
             ...prev,
-            experience: parsed.map((e: any, idx: number) => ({
+            experience: experienceList.map((e: any, idx: number) => ({
               id: prev.experience[idx]?.id || crypto.randomUUID(),
               role: e.role || prev.experience[idx]?.role || "",
               company_or_client: e.company_or_client || prev.experience[idx]?.company_or_client || "",
@@ -781,14 +807,20 @@ export default function ResumeBuilder() {
               bullets: Array.isArray(e.bullets) ? e.bullets : prev.experience[idx]?.bullets || [],
             })),
           }));
+          applied = true;
         }
       } else if (sectionName === "Skills") {
         const parsed = parseAIResponse(result);
         if (parsed && typeof parsed === "object") {
           setData((prev) => ({ ...prev, skills: mergeAndDeduplicateSkills(prev.skills, parsed as Record<string, string[]>) }));
+          applied = true;
         }
       }
-      toast({ title: `${sectionName} improved!`, description: "AI has fixed the ATS issues." });
+      if (applied) {
+        toast({ title: `${sectionName} improved!`, description: "AI has fixed the ATS issues." });
+      } else {
+        toast({ title: "AI fix failed", description: "Couldn't parse the AI's response. Try again.", variant: "destructive" });
+      }
     } catch {
       toast({ title: "AI fix failed", variant: "destructive" });
     } finally {
