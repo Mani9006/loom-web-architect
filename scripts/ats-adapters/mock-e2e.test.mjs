@@ -21,6 +21,7 @@ import { chromium } from "@playwright/test";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixturePath = path.join(here, "fixtures", "mock-greenhouse.html");
+const ashbyFixturePath = path.join(here, "fixtures", "mock-ashby.html");
 const WORKER_TOKEN = "mock-worker-token";
 
 const PROFILE = {
@@ -33,6 +34,10 @@ const ANSWERS = {
   "Why do you want to work at Acme?": "I want to build delightful user interfaces at Acme.",
   "years of professional experience with React": "5",
 };
+const ASHBY_ANSWERS = {
+  ...ANSWERS,
+  "Are you authorized to work in the US?": "Yes",
+};
 
 let server;
 let baseUrl;
@@ -43,11 +48,12 @@ let resumePath;
 let screenshotDir;
 let queueRequests;
 
-function startMockServer(fixtureHtml) {
+function startMockServer(fixtures) {
   queueRequests = [];
   server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
-    if (url.pathname === "/apply") {
+    const fixtureHtml = fixtures[url.pathname];
+    if (fixtureHtml) {
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.end(fixtureHtml);
       return;
@@ -85,18 +91,18 @@ async function loadWorker(autoSubmit) {
   return await import(`../applypass-browser-worker.mjs?autoSubmit=${autoSubmit}`);
 }
 
-function mockJob(approved) {
+function mockJob(approved, urlPath = "/apply") {
   return {
     id: "job-mock-1",
     title: "Senior Frontend Engineer",
     company: "Acme Corp",
-    url: `${baseUrl}/apply`,
+    url: `${baseUrl}${urlPath}`,
     approvalReceipt: approved ? { approved: true, reviewedAt: new Date().toISOString() } : null,
   };
 }
 
-function mockPayload() {
-  return { candidateProfile: PROFILE, answerMemory: ANSWERS };
+function mockPayload(answers = ANSWERS) {
+  return { candidateProfile: PROFILE, answerMemory: answers };
 }
 
 before(async () => {
@@ -106,7 +112,8 @@ before(async () => {
   screenshotDir = path.join(tmpRoot, "screenshots");
 
   const fixtureHtml = await readFile(fixturePath, "utf8");
-  await startMockServer(fixtureHtml);
+  const ashbyFixtureHtml = await readFile(ashbyFixturePath, "utf8");
+  await startMockServer({ "/apply": fixtureHtml, "/ashby": ashbyFixtureHtml });
 
   process.env.SUPABASE_URL = baseUrl;
   process.env.SUPABASE_ANON_KEY = "mock-anon-key";
@@ -170,6 +177,52 @@ test("mock e2e: APPLYPASS_AUTO_SUBMIT=false blocks submit (dry-run)", async (t) 
   const { processJob } = await loadWorker(false);
 
   const result = await processJob(browser, "task-mock-dry-run", mockJob(true), mockPayload(), resumePath, "mock-worker:1");
+
+  assert.equal(result.submitted, false);
+  assert.equal(result.status, "ready_for_review");
+  assert.equal(result.receipt, null);
+});
+
+
+// --- Ashby mock e2e (mirrors the greenhouse cases above) --------------------
+
+test("mock e2e ashby: fills, submits, and confirms receipt with all gates on", async (t) => {
+  if (!requireBrowser(t)) return;
+  const { processJob } = await loadWorker(true);
+
+  const result = await processJob(browser, "task-mock-ashby-submit", mockJob(true, "/ashby"), mockPayload(ASHBY_ANSWERS), resumePath, "mock-worker:1");
+
+  assert.equal(result.adapter, "ashby");
+  assert.equal(result.status, "submitted");
+  assert.equal(result.submitted, true);
+  // name + email + phone + 2 custom questions + 1 Yes/No pair.
+  assert.ok(result.filledCount >= 6, `expected >=6 filled fields, got ${result.filledCount}`);
+  assert.equal(result.resumeUploaded, true);
+  assert.equal(result.receipt?.applicationId, "ASHBY-MOCK-678");
+  assert.match(result.receipt?.containerText || result.receipt?.confirmationText || "", /application submitted/i);
+  assert.ok(result.screenshotPath && existsSync(result.screenshotPath), "receipt screenshot should exist");
+  const authCheck = queueRequests.filter((req) => req.action === "authorization-status").pop();
+  assert.ok(authCheck, "worker should re-check authorization before submitting");
+  assert.equal(authCheck.workerToken, WORKER_TOKEN);
+});
+
+test("mock e2e ashby: missing approval receipt blocks submit but still fills", async (t) => {
+  if (!requireBrowser(t)) return;
+  const { processJob } = await loadWorker(true);
+
+  const result = await processJob(browser, "task-mock-ashby-no-approval", mockJob(false, "/ashby"), mockPayload(ASHBY_ANSWERS), resumePath, "mock-worker:1");
+
+  assert.equal(result.submitted, false);
+  assert.equal(result.status, "ready_for_review");
+  assert.equal(result.receipt, null);
+  assert.ok(result.filledCount >= 6, `dry fill should still complete, got ${result.filledCount}`);
+});
+
+test("mock e2e ashby: APPLYPASS_AUTO_SUBMIT=false blocks submit (dry-run)", async (t) => {
+  if (!requireBrowser(t)) return;
+  const { processJob } = await loadWorker(false);
+
+  const result = await processJob(browser, "task-mock-ashby-dry-run", mockJob(true, "/ashby"), mockPayload(ASHBY_ANSWERS), resumePath, "mock-worker:1");
 
   assert.equal(result.submitted, false);
   assert.equal(result.status, "ready_for_review");

@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- Local mock of an Ashby-hosted application form. The _systemfield_* inputs
+     and .ashby-application-form wrapper make the real ashby adapter's
+     page-based detection match, so the worker's processJob flow exercises
+     production code paths against this fixture. Mirrors live conventions:
+     single full-name field, UUID-named phone/custom questions, labels in
+     nearby containers, a Yes/No button pair, "Submit Application" button. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="mock ashby board">
+  <title>Acme — Senior Frontend Engineer</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    .field { margin-bottom: 1rem; }
+    label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+    input, textarea { width: 24rem; padding: 0.4rem; }
+    .yesno button { margin-right: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="ashby-application-form">
+    <h1>Senior Frontend Engineer</h1>
+    <p>Acme Corp — Remote</p>
+
+    <form id="ashby-form" action="/submit" method="post" enctype="multipart/form-data">
+      <div class="field">
+        <label for="_systemfield_name">Full Name *</label>
+        <input type="text" id="_systemfield_name" name="_systemfield_name" placeholder="Type here..." required>
+      </div>
+      <div class="field">
+        <label for="_systemfield_email">Email *</label>
+        <input type="email" id="_systemfield_email" name="_systemfield_email" placeholder="Type here..." required>
+      </div>
+      <div class="field">
+        <label for="tel-field">Phone *</label>
+        <input type="tel" id="tel-field" name="9f2b1c44-7a3e-4c5b-8d6a-1a2b3c4d5e6f" required>
+      </div>
+      <div class="field">
+        <label for="_systemfield_resume">Resume *</label>
+        <input type="file" id="_systemfield_resume" name="_systemfield_resume" accept=".pdf,.docx" required>
+      </div>
+      <div class="field ashby-question">
+        <label for="q-why">Why do you want to work at Acme? *</label>
+        <textarea id="q-why" name="a1111111-2222-4333-8444-555566667777" rows="3" required></textarea>
+      </div>
+      <div class="field ashby-question">
+        <label for="q-react">How many years of React experience do you have? *</label>
+        <input type="text" id="q-react" name="b8888888-9999-4000-8000-aaaabbbbcccc" required>
+      </div>
+      <div class="field ashby-question yesno">
+        <label>Are you authorized to work in the US?</label>
+        <button type="button" id="yn-yes">Yes</button>
+        <button type="button" id="yn-no">No</button>
+      </div>
+      <button type="submit" id="submit_app">Submit Application</button>
+    </form>
+  </div>
+
+  <script>
+    // Stand-in for the Ashby submission endpoint: validate like the real form
+    // would, then render the confirmation the adapter's verifyReceipt() looks
+    // for ("Application submitted" text + an application id).
+    document.getElementById("ashby-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = event.target;
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+      const confirmation = document.createElement("div");
+      confirmation.id = "ashby-confirmation";
+      confirmation.className = "ashby-application-confirmation";
+      confirmation.innerHTML =
+        "<h2>Application submitted</h2>" +
+        "<p>Thank you for applying. Application ID: ASHBY-MOCK-678</p>";
+      form.replaceWith(confirmation);
+    });
+  </script>
+</body>
+</html>
