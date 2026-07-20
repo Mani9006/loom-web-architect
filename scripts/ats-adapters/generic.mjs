@@ -347,6 +347,22 @@ export async function collectFieldDescriptors(target) {
 
 /** Fill the Nth form control (index from collectFieldDescriptors). */
 export async function setFieldValueByIndex(target, index, value) {
+  // Human-pace text entry: instant el.value assignment emits no keystroke
+  // events and is a strong bot signal (Ashby flags such submissions as spam).
+  // Type real keystrokes for plain text/textarea inputs; fall back to the
+  // JS path for selects, checkboxes/radios, and when the click is refused.
+  const textValue = String(value ?? "");
+  const locator = target.locator("input, textarea, select").nth(index);
+  const meta = await locator.evaluate((el) => ({ tag: el.tagName, type: String(el.type || "") })).catch(() => null);
+  if (meta && (meta.tag === "INPUT" || meta.tag === "TEXTAREA")
+    && !["checkbox", "radio", "file", "hidden", "submit", "button"].includes(meta.type.toLowerCase())) {
+    const clicked = await locator.click({ timeout: 3000 }).then(() => true).catch(() => false);
+    if (clicked) {
+      await locator.pressSequentially(textValue, { delay: 25 });
+      const committed = await locator.evaluate((el) => String(el.value || "").trim().length > 0).catch(() => false);
+      if (committed) return true;
+    }
+  }
   return await target.evaluate(({ fieldIndex, fieldValue }) => {
     const el = document.querySelectorAll("input, textarea, select")[fieldIndex];
     if (!el) return false;

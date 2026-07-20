@@ -512,6 +512,7 @@ export const ashbyAdapter = defineAdapter({
         containerText: confirmationNode ? (confirmationNode.textContent || "").replace(/\s+/g, " ").trim().slice(0, 300) : null,
         text: text.toLowerCase(),
         applicationId: idMatch ? idMatch[1] : null,
+        spamFlagged: /flagged as possible spam|couldn.t submit your application/i.test(bodyText),
         invalidFields: document.querySelectorAll(':invalid, [aria-invalid="true"]').length,
         verificationRequired: /(verification code was sent|enter the .*code|security code|confirm you(?:'|’)re human)/i.test(bodyText),
         visibleAlerts: Array.from(document.querySelectorAll('[role="alert"], .error, .field-error'))
@@ -541,6 +542,7 @@ export const ashbyAdapter = defineAdapter({
         containerText: state.containerText,
         applicationId: state.applicationId,
         invalidFields: state.invalidFields,
+        spamFlagged: state.spamFlagged,
         verificationRequired: state.verificationRequired,
         visibleAlerts: state.visibleAlerts,
       },
