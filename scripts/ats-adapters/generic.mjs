@@ -14,6 +14,7 @@ import {
   inferAuthorizationAnswers,
   inferCountry,
   isAffirmativeAnswer,
+  isBooleanAnswer,
   isDeclineAnswer,
   looksLikeConsentLabel,
   matchingMemoryAnswer,
@@ -544,9 +545,13 @@ export async function fillCustomFields(target, profile = {}, answerMemory = {}, 
         || matchingMemoryAnswer(answerMemory, descriptor.label)
         || (approved ? "I don't wish to answer" : "");
     } else {
-      desired = matchingMemoryAnswer(answerMemory, descriptor.label)
+      const candidate = matchingMemoryAnswer(answerMemory, descriptor.label)
         || fuzzyMatchAnswer(descriptor.label, answerMemory)?.answer
         || "";
+      // Boolean answers (yes/no) only belong to yes/no-phrased questions —
+      // never type "Yes" into a free-text/combobox expecting a city or name.
+      const yesNoQuestion = /^(are|do|did|have|will|can|is|does|were)\b/.test(label);
+      desired = candidate && (!isBooleanAnswer(candidate) || yesNoQuestion) ? candidate : "";
     }
 
     if (await chooseVisibleOption(target, input, desired, { allowFirstMatch, typeSequentially, searchValue })) {
