@@ -168,6 +168,25 @@ function buildStandardAnswerMemory(
       "Have you previously worked at this company?");
   }
 
+  const firstName = asString(candidateProfile.fullName).split(/\s+/).filter(Boolean)[0] || "";
+  put(firstName,
+    "Preferred Name",
+    "Preferred First Name",
+    "What is your preferred name?");
+
+  const ethnicity = asString(storedEeo.ethnicity) || asString(storedEeo.race);
+  if (ethnicity) {
+    put(ethnicity,
+      "Are you Hispanic/Latino?",
+      "Are you Hispanic or Latino?",
+      "Are you of Hispanic or Latino origin?",
+      "Hispanic or Latino",
+      "Ethnicity",
+      "Race",
+      "Race/Ethnicity",
+      "What is your race or ethnicity?");
+  }
+
   put(candidateProfile.noticePeriod || "2 weeks",
     "When can you start a new role?",
     "When can you start?",
