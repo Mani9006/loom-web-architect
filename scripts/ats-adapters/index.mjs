@@ -5,12 +5,13 @@
 
 import { greenhouseAdapter } from "./greenhouse.mjs";
 import { leverAdapter } from "./lever.mjs";
+import { ashbyAdapter } from "./ashby.mjs";
 import { genericAdapter } from "./generic.mjs";
 
-export { greenhouseAdapter, leverAdapter, genericAdapter };
+export { greenhouseAdapter, leverAdapter, ashbyAdapter, genericAdapter };
 export { defineAdapter, submitRefusal } from "./contract.mjs";
 
-export const adapters = [greenhouseAdapter, leverAdapter, genericAdapter];
+export const adapters = [greenhouseAdapter, leverAdapter, ashbyAdapter, genericAdapter];
 
 /**
  * Pick the first adapter whose detect() matches. `page` may be null (URL-only
