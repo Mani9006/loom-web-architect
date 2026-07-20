@@ -217,6 +217,16 @@ serve(async (req) => {
 
     // Remove stale deterministic suggestions that are no longer in the user's
     // current resume-ranked shortlist. Manually requested explanations remain.
+    // NEVER delete evaluations that have application drafts linked:
+    // draft_applications.evaluation_id is ON DELETE CASCADE, so this cleanup
+    // was silently wiping ready/queued drafts (and their tailored resumes'
+    // submission state) on every refresh.
+    const { data: linkedDrafts } = await svc.from("draft_applications")
+      .select("evaluation_id")
+      .eq("user_id", user.id);
+    const linkedEvaluationIds = [...new Set((linkedDrafts || [])
+      .map((draft: { evaluation_id: string | null }) => draft.evaluation_id)
+      .filter((id: string | null): id is string => Boolean(id)))];
     const publishedIds = persisted.map((row) => row.scanned_job_id);
     let staleQuery = svc.from("job_evaluations")
       .delete()
@@ -224,6 +234,9 @@ serve(async (req) => {
       .eq("model", "deterministic-career-fit");
     if (publishedIds.length > 0) {
       staleQuery = staleQuery.not("scanned_job_id", "in", `(${publishedIds.join(",")})`);
+    }
+    if (linkedEvaluationIds.length > 0) {
+      staleQuery = staleQuery.not("id", "in", `(${linkedEvaluationIds.join(",")})`);
     }
     await staleQuery;
 
