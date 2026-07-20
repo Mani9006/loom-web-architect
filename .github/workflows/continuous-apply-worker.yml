@@ -51,7 +51,9 @@ jobs:
         run: npm ci --include=dev
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        # The worker drives patchright (stealth Playwright build); its CLI
+        # installs the matching patched Chromium revision.
+        run: npx patchright install --with-deps chromium
 
       - name: Run continuous apply worker
         run: |

@@ -4,8 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { chromium } from "@playwright/test";
+// patchright is a drop-in, API-compatible stealth build of Playwright: same
+// chromium surface, patched to reduce bot-detection signals on ATS domains.
+import { chromium } from "patchright";
 import { pickAdapter } from "./ats-adapters/index.mjs";
+import { detectPostingExpired } from "./ats-adapters/generic.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY
@@ -19,11 +22,25 @@ const CONFIGURED_CONCURRENCY = Math.min(12, Math.max(1, Number(process.env.APPLY
 const AUTO_SUBMIT = String(process.env.APPLYPASS_AUTO_SUBMIT || "false").toLowerCase() === "true";
 const SCREENSHOT_DIR = process.env.APPLYPASS_SCREENSHOT_DIR || "";
 
+// Anti-flag pacing (research-backed): at most one submission per ATS domain
+// per window, plus a randomized pause between jobs. In-memory buckets are
+// sufficient — the worker is a single process and all slot loops share them.
+const RATE_LIMITED_DOMAINS = ["greenhouse.io", "lever.co", "ashbyhq.com"];
+const DOMAIN_MIN_INTERVAL_MS = Math.max(0, Number(process.env.APPLYPASS_DOMAIN_MIN_INTERVAL_MS || 45000));
+const JOB_JITTER_MIN_MS = Math.max(0, Number(process.env.APPLYPASS_JOB_JITTER_MIN_MS || 5000));
+const JOB_JITTER_MAX_MS = Math.max(JOB_JITTER_MIN_MS, Number(process.env.APPLYPASS_JOB_JITTER_MAX_MS || 15000));
+
+// Bounded retry for technical navigation/fill failures only (never for
+// adapter-level business outcomes like blocked/needs_attention). Attempt
+// delays follow 1s -> 2s -> 4s; with 2 retries the waits are 1s and 2s.
+const JOB_MAX_RETRIES = 2;
+const JOB_ATTEMPT_BACKOFF_MS = [1000, 2000, 4000];
+
 const once = process.argv.includes("--once");
 const maxTasksArg = process.argv.find((arg) => arg.startsWith("--max-tasks="));
 const maxTasks = maxTasksArg ? Number(maxTasksArg.split("=")[1]) : Number(process.env.APPLYPASS_MAX_TASKS || 0);
 
-const HANDLED_STATUSES = ["processed", "ready_for_review", "needs_review", "needs_attention", "submitted", "stopped"];
+const HANDLED_STATUSES = ["processed", "ready_for_review", "needs_review", "needs_attention", "submitted", "stopped", "skipped"];
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !WORKER_TOKEN) {
   console.error("Missing required env: SUPABASE_URL, a Supabase anon/publishable key, and APPLYPASS_WORKER_TOKEN or WORKER_AUTH_TOKEN");
@@ -40,6 +57,43 @@ function nowIso() {
 
 function normalize(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// Per-domain token buckets: capacity 1, refilling one token every
+// DOMAIN_MIN_INTERVAL_MS. take() reserves the next window synchronously
+// (no await between check and reserve), so concurrent slot loops in this
+// single process can never double-acquire the same window.
+const domainBuckets = new Map();
+
+function rateLimitedDomain(url) {
+  try {
+    const hostname = new URL(String(url || "")).hostname.toLowerCase();
+    return RATE_LIMITED_DOMAINS.find((domain) => hostname === domain || hostname.endsWith(`.${domain}`)) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function acquireDomainToken(domain) {
+  if (!domain || DOMAIN_MIN_INTERVAL_MS <= 0) return;
+  let bucket = domainBuckets.get(domain);
+  if (!bucket) {
+    bucket = { nextAvailableAt: 0 };
+    domainBuckets.set(domain, bucket);
+  }
+  while (true) {
+    const now = Date.now();
+    if (now >= bucket.nextAvailableAt) {
+      bucket.nextAvailableAt = now + DOMAIN_MIN_INTERVAL_MS;
+      return;
+    }
+    await sleep(Math.min(bucket.nextAvailableAt - now, DOMAIN_MIN_INTERVAL_MS));
+  }
+}
+
+function jobJitterMs() {
+  if (JOB_JITTER_MAX_MS <= 0) return 0;
+  return JOB_JITTER_MIN_MS + Math.floor(Math.random() * (JOB_JITTER_MAX_MS - JOB_JITTER_MIN_MS + 1));
 }
 
 async function queueCall(payload, workerId = WORKER_ID) {
@@ -202,6 +256,7 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     screenshotPath: null,
     error: null,
     durationMs: 0,
+    attempts: 1,
   };
 
   const url = result.url;
@@ -211,14 +266,51 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     return result;
   }
 
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  const page = await context.newPage();
+  let lastError = null;
+  for (let attempt = 0; attempt <= JOB_MAX_RETRIES; attempt += 1) {
+    result.attempts = attempt + 1;
+    if (attempt > 0) await sleep(JOB_ATTEMPT_BACKOFF_MS[attempt - 1] || 4000);
+    // Fresh context + page per attempt: no navigation state, cookies, or
+    // half-filled framework forms leak across retries.
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    try {
+      const page = await context.newPage();
+      return await runJobAttempt(page, result, job, taskId, payload, resumeFilePath, workerId, startedAt);
+    } catch (error) {
+      lastError = error;
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }
+  result.error = lastError instanceof Error ? lastError.message : "Unknown browser error";
+  result.durationMs = Date.now() - startedAt;
+  return result;
+}
 
-  try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-    await page.waitForTimeout(1200);
+// One browser attempt at a job on an already-open page. Technical failures
+// (navigation timeout, crashed target, detached frame during fill) throw and
+// are retried by processJob with a fresh page; adapter-level business
+// outcomes (blocked / needs_attention / skipped / ready_for_review ...) are
+// returned normally and are never retried.
+async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath, workerId, startedAt) {
+  const url = result.url;
+  const navResponse = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.waitForTimeout(1200);
 
-    const adapter = await pickAdapter(url, page);
+  // Liveness pre-check: clearly dead postings (HTTP 404/410 or an unambiguous
+  // "job no longer available" page) are skipped before any filling, so an
+  // expired listing never burns a submission attempt or daily quota.
+  const navStatus = navResponse ? navResponse.status() : null;
+  if (navStatus === 404 || navStatus === 410 || await detectPostingExpired(page)) {
+    result.status = "skipped";
+    result.handoffReason = "posting_expired";
+    result.error = "The job posting is no longer available; skipped before filling so no submission quota was used.";
+    result.screenshotPath = await maybeScreenshot(page, taskId, result.jobId);
+    result.durationMs = Date.now() - startedAt;
+    return result;
+  }
+
+  const adapter = await pickAdapter(url, page);
     result.adapter = adapter.metadata.name;
     const handleVerification = typeof adapter.handleVerification === "function"
       ? (p, c) => adapter.handleVerification(p, c)
@@ -319,6 +411,14 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
         }
       }
 
+      // Receipt upgrade: keep the employer's own confirmation text (first
+      // 2000 chars) alongside the DOM receipt so submissions stay verifiable
+      // later even if the ATS page changes or expires.
+      if (result.submitted) {
+        const confirmationText = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
+        result.receipt = { ...(result.receipt || {}), confirmationText: String(confirmationText || "").slice(0, 2000) };
+      }
+
       result.status = result.submitted ? "submitted" : "needs_review";
       if (!result.submitted) {
         const visibleAlert = receipt?.evidence?.visibleAlerts?.[0];
@@ -358,13 +458,6 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     if (result.status === "failed") result.status = "processed";
     result.durationMs = Date.now() - startedAt;
     return result;
-  } catch (error) {
-    result.error = error instanceof Error ? error.message : "Unknown browser error";
-    result.durationMs = Date.now() - startedAt;
-    return result;
-  } finally {
-    await context.close();
-  }
 }
 
 async function processTask(task, workerId) {
@@ -414,8 +507,18 @@ async function processTask(task, workerId) {
       message: `Started task with ${jobs.length} jobs (attempt ${Number(task?.attempt_count || 1)}/${Number(task?.max_attempts || 3)})`,
     });
 
+    let isFirstJob = true;
     for (const job of jobs) {
       if (taskLost) break;
+      // Randomized pause between jobs so request patterns do not look like a
+      // machine gun burst to the ATS edge (5-15s by default).
+      if (!isFirstJob) {
+        const jitter = jobJitterMs();
+        if (jitter > 0) await sleep(jitter);
+        if (taskLost) break;
+      }
+      isFirstJob = false;
+
       await guardedHeartbeat({
         level: "info",
         workerId,
@@ -424,6 +527,11 @@ async function processTask(task, workerId) {
       }, workerId);
 
       if (taskLost) break;
+      // Per-domain token bucket: max one submission per window per ATS domain.
+      // Waits here are bounded by DOMAIN_MIN_INTERVAL_MS (45s default), far
+      // below the 10-minute queue-reaper heartbeat staleness threshold.
+      await acquireDomainToken(rateLimitedDomain(job?.url));
+
       const result = await processJob(browser, taskId, job, payload, resumeFile.filePath, workerId);
       jobResults.push(result);
 
