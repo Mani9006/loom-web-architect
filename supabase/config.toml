@@ -82,6 +82,9 @@ verify_jwt = false
 [functions.career-ops-tailor]
 verify_jwt = false
 
+[functions.career-ops-tailor-report]
+verify_jwt = false
+
 [functions.career-ops-bootstrap]
 verify_jwt = false
 
