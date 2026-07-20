@@ -43,6 +43,7 @@ CREATE INDEX IF NOT EXISTS mc_sessions_user_status_idx
 
 ALTER TABLE mc_sessions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "mc_sessions_owner_all" ON mc_sessions;
 CREATE POLICY "mc_sessions_owner_all" ON mc_sessions
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
@@ -54,6 +55,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS mc_sessions_touch_updated_at ON mc_sessions;
 CREATE TRIGGER mc_sessions_touch_updated_at
   BEFORE UPDATE ON mc_sessions
   FOR EACH ROW EXECUTE FUNCTION mc_touch_updated_at();
@@ -86,6 +88,7 @@ CREATE INDEX IF NOT EXISTS mc_evaluations_session_score_idx
   ON mc_evaluations (session_id, score DESC NULLS LAST);
 
 ALTER TABLE mc_evaluations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mc_evals_owner_all" ON mc_evaluations;
 CREATE POLICY "mc_evals_owner_all" ON mc_evaluations
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
@@ -112,9 +115,11 @@ CREATE INDEX IF NOT EXISTS mc_tailored_session_idx
   ON mc_tailored_resumes (session_id, updated_at DESC);
 
 ALTER TABLE mc_tailored_resumes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mc_tailored_owner_all" ON mc_tailored_resumes;
 CREATE POLICY "mc_tailored_owner_all" ON mc_tailored_resumes
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+DROP TRIGGER IF EXISTS mc_tailored_touch_updated_at ON mc_tailored_resumes;
 CREATE TRIGGER mc_tailored_touch_updated_at
   BEFORE UPDATE ON mc_tailored_resumes
   FOR EACH ROW EXECUTE FUNCTION mc_touch_updated_at();
@@ -147,9 +152,11 @@ CREATE INDEX IF NOT EXISTS mc_tracked_session_status_idx
   ON mc_tracked_jobs (session_id, status, updated_at DESC);
 
 ALTER TABLE mc_tracked_jobs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mc_tracked_owner_all" ON mc_tracked_jobs;
 CREATE POLICY "mc_tracked_owner_all" ON mc_tracked_jobs
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+DROP TRIGGER IF EXISTS mc_tracked_touch_updated_at ON mc_tracked_jobs;
 CREATE TRIGGER mc_tracked_touch_updated_at
   BEFORE UPDATE ON mc_tracked_jobs
   FOR EACH ROW EXECUTE FUNCTION mc_touch_updated_at();
@@ -172,8 +179,10 @@ CREATE INDEX IF NOT EXISTS mc_history_tracked_idx
   ON mc_status_history (tracked_job_id, created_at DESC);
 
 ALTER TABLE mc_status_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mc_history_owner_select" ON mc_status_history;
 CREATE POLICY "mc_history_owner_select" ON mc_status_history
   FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "mc_history_owner_insert" ON mc_status_history;
 CREATE POLICY "mc_history_owner_insert" ON mc_status_history
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
@@ -206,6 +215,7 @@ CREATE INDEX IF NOT EXISTS mc_emails_tracked_idx
   ON mc_inbound_emails (tracked_job_id);
 
 ALTER TABLE mc_inbound_emails ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mc_emails_owner_all" ON mc_inbound_emails;
 CREATE POLICY "mc_emails_owner_all" ON mc_inbound_emails
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
@@ -232,10 +242,13 @@ CREATE INDEX IF NOT EXISTS mc_usage_user_day_idx
   ON mc_ai_usage (user_id, day DESC);
 
 ALTER TABLE mc_ai_usage ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mc_usage_owner_select" ON mc_ai_usage;
 CREATE POLICY "mc_usage_owner_select" ON mc_ai_usage
   FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "mc_usage_owner_insert" ON mc_ai_usage;
 CREATE POLICY "mc_usage_owner_insert" ON mc_ai_usage
   FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "mc_usage_owner_update" ON mc_ai_usage;
 CREATE POLICY "mc_usage_owner_update" ON mc_ai_usage
   FOR UPDATE USING (auth.uid() = user_id);
 
