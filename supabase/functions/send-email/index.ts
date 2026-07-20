@@ -44,8 +44,54 @@ async function getResendApiKey(): Promise<string | null> {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-token",
 };
+
+// ── Security Helpers ────────────────────────────────────────────────────
+
+// Escape a string for safe interpolation into HTML markup/attribute context.
+function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Constant-time string comparison so token checks don't leak via timing.
+function timingSafeEqual(a: string, b: string): boolean {
+  const bufA = new TextEncoder().encode(a);
+  const bufB = new TextEncoder().encode(b);
+  if (bufA.length !== bufB.length) return false;
+  let diff = 0;
+  for (let i = 0; i < bufA.length; i++) diff |= bufA[i] ^ bufB[i];
+  return diff === 0;
+}
+
+// The direct-send endpoint (handleDirectEmail) can send arbitrary email to
+// arbitrary recipients through our Resend account, so it must not be open to
+// the public internet. Callers must present either:
+//   1. the shared internal secret via the `x-internal-token` header
+//      (Deno env: INTERNAL_EMAIL_TOKEN), or
+//   2. the project service-role key as a Bearer token (backend-to-backend).
+// The Supabase Auth send-email hook path is unaffected by this check.
+function isAuthorizedDirectRequest(req: Request): boolean {
+  const internalToken = Deno.env.get("INTERNAL_EMAIL_TOKEN");
+  const providedToken = req.headers.get("x-internal-token");
+  if (internalToken && providedToken && timingSafeEqual(providedToken, internalToken)) {
+    return true;
+  }
+
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (serviceKey && authHeader.startsWith("Bearer ")) {
+    const bearer = authHeader.slice("Bearer ".length).trim();
+    if (bearer && timingSafeEqual(bearer, serviceKey)) return true;
+  }
+
+  return false;
+}
 
 // ── Email Templates ─────────────────────────────────────────────────────
 
@@ -310,14 +356,21 @@ function billingReceiptEmail(
 }
 
 function marketingEmail(subject: string, heading: string, body: string, ctaText?: string, ctaUrl?: string): { subject: string; html: string } {
+  // All caller-supplied fields are HTML-escaped before interpolation so a
+  // marketing request cannot inject markup/scripts into outgoing email.
+  // The CTA URL is additionally restricted to http(s) schemes.
+  const safeHeading = escapeHtml(heading);
+  const safeBody = escapeHtml(body);
+  const safeCtaText = ctaText ? escapeHtml(ctaText) : undefined;
+  const safeCtaUrl = ctaUrl && /^https?:\/\//i.test(ctaUrl) ? ctaUrl : undefined;
   return {
     subject,
-    html: baseLayout(heading, `
-      <h2 style="margin:0 0 16px;color:#18181b;font-size:22px;font-weight:700;">${heading}</h2>
+    html: baseLayout(safeHeading, `
+      <h2 style="margin:0 0 16px;color:#18181b;font-size:22px;font-weight:700;">${safeHeading}</h2>
       <div style="color:#3f3f46;font-size:15px;line-height:1.7;margin:0 0 24px;">
-        ${body}
+        ${safeBody}
       </div>
-      ${ctaText && ctaUrl ? buttonHtml(ctaText, ctaUrl) : ""}
+      ${safeCtaText && safeCtaUrl ? buttonHtml(safeCtaText, safeCtaUrl) : ""}
       <p style="color:#a1a1aa;font-size:11px;text-align:center;margin:16px 0 0;">
         You're receiving this because you signed up for ${BRAND.name}.
         <a href="${BRAND.siteUrl}/settings" style="color:#6366f1;">Unsubscribe</a>
@@ -528,7 +581,16 @@ serve(async (req) => {
       return await handleAuthHook(body);
     }
 
-    // Otherwise, it's a direct API call
+    // Otherwise, it's a direct API call — this path is an open mail relay
+    // without an explicit internal credential, so require one.
+    if (!isAuthorizedDirectRequest(req)) {
+      console.warn("send-email: unauthorized direct send attempt rejected");
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     return await handleDirectEmail(body);
   } catch (err) {
     console.error("send-email error:", err);
