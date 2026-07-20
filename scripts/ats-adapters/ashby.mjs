@@ -30,6 +30,7 @@ import { defineAdapter, submitRefusal } from "./contract.mjs";
 import {
   fuzzyMatchAnswer,
   isAffirmativeAnswer,
+  isBooleanAnswer,
   isDeclineAnswer,
   looksLikeConsentLabel,
   normalizeText,
@@ -384,7 +385,8 @@ export const ashbyAdapter = defineAdapter({
 
       // UUID-named custom questions: strong fuzzy label match only.
       const match = fuzzyMatchAnswer(label, answers);
-      if (match) {
+      // Boolean answers (yes/no) belong to yes/no controls, never free text.
+      if (match && !isBooleanAnswer(match.answer)) {
         if (await setFieldValueByIndex(page, field.index, match.answer)) filledCount += 1;
       }
       // Unmatched questions stay blank; required ones become requiredMissing.

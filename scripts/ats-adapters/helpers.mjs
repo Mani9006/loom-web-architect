@@ -228,8 +228,14 @@ export function classifyBlockers(snapshot = {}) {
  * behavior-identical to the worker's original matchingMemoryAnswer). The
  * ATS-specific adapters use the stricter fuzzyMatchAnswer above.
  */
+/** Yes/no-style stored answers — never pour these into free-text fields. */
+export function isBooleanAnswer(value) {
+  return /^(yes|no|y|n|true|false)$/i.test(String(value || "").trim());
+}
+
 export function matchingMemoryAnswer(answerMemory, label) {
   const labelTokens = normalizeText(label).split(" ").filter((token) => token.length > 3);
+  if (labelTokens.length === 0) return "";
   let bestAnswer = "";
   let bestScore = 0;
   for (const [question, answer] of Object.entries(answerMemory || {})) {
@@ -242,7 +248,10 @@ export function matchingMemoryAnswer(answerMemory, label) {
       bestAnswer = response;
     }
   }
-  return bestScore >= 2 ? bestAnswer : "";
+  // Require 2+ shared tokens AND coverage of at least half the label tokens;
+  // boolean answers are rejected by the caller for free-text targets.
+  if (bestScore < 2 || bestScore < labelTokens.length * 0.5) return "";
+  return bestAnswer;
 }
 
 /**
