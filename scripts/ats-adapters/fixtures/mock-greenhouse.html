@@ -49,6 +49,63 @@
         <label for="question_react">How many years of React experience do you have? *</label>
         <input type="text" id="question_react" name="question_react" required>
       </div>
+
+      <!-- Old-style Greenhouse EMPLOYMENT HISTORY section. Starts with one
+           block; "+ Add Another Employment" clones it (re-indexed, cleared).
+           Fields are intentionally NOT required so the existing mock-e2e
+           submit path stays green when no experience payload is present. -->
+      <fieldset id="employment_history" class="employment-section">
+        <legend>Employment History</legend>
+        <div class="employment-block" id="employment_block_0">
+          <div class="field">
+            <label for="eh_company_0">Company name</label>
+            <input type="text" id="eh_company_0" name="eh_company_0">
+          </div>
+          <div class="field">
+            <label for="eh_title_0">Title</label>
+            <input type="text" id="eh_title_0" name="eh_title_0">
+          </div>
+          <div class="field date-group">
+            <span class="group-label">Start date</span>
+            <label for="eh_start_month_0">Month</label>
+            <select id="eh_start_month_0" name="eh_start_month_0">
+              <option value="">Select...</option>
+              <option value="1">January</option><option value="2">February</option>
+              <option value="3">March</option><option value="4">April</option>
+              <option value="5">May</option><option value="6">June</option>
+              <option value="7">July</option><option value="8">August</option>
+              <option value="9">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+            <label for="eh_start_year_0">Year</label>
+            <input type="text" id="eh_start_year_0" name="eh_start_year_0" maxlength="4">
+          </div>
+          <div class="field date-group">
+            <span class="group-label">End date</span>
+            <label for="eh_end_month_0">Month</label>
+            <select id="eh_end_month_0" name="eh_end_month_0">
+              <option value="">Select...</option>
+              <option value="1">January</option><option value="2">February</option>
+              <option value="3">March</option><option value="4">April</option>
+              <option value="5">May</option><option value="6">June</option>
+              <option value="7">July</option><option value="8">August</option>
+              <option value="9">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+            <label for="eh_end_year_0">Year</label>
+            <input type="text" id="eh_end_year_0" name="eh_end_year_0" maxlength="4">
+          </div>
+          <div class="field">
+            <label><input type="checkbox" id="eh_current_0" name="eh_current_0"> I currently work here</label>
+          </div>
+          <div class="field">
+            <label for="eh_location_0">Location</label>
+            <input type="text" id="eh_location_0" name="eh_location_0">
+          </div>
+        </div>
+        <button type="button" id="add_employment">+ Add Another Employment</button>
+      </fieldset>
+
       <button type="submit" id="submit_app">Submit application</button>
     </form>
   </div>
@@ -61,6 +118,27 @@
   <script src="/recaptcha-enterprise.js" async></script>
 
   <script>
+    // "+ Add Another Employment": clone the last block, re-index ids/names,
+    // clear all values (mirrors the real board's append behavior).
+    document.getElementById("add_employment").addEventListener("click", () => {
+      const section = document.getElementById("employment_history");
+      const blocks = section.querySelectorAll(".employment-block");
+      const next = blocks.length;
+      const clone = blocks[blocks.length - 1].cloneNode(true);
+      clone.id = `employment_block_${next}`;
+      clone.querySelectorAll("[id], [name], [for]").forEach((el) => {
+        for (const attr of ["id", "name", "for"]) {
+          const value = el.getAttribute(attr);
+          if (value) el.setAttribute(attr, value.replace(/_\d+$/, `_${next}`));
+        }
+      });
+      clone.querySelectorAll("input, select, textarea").forEach((el) => {
+        if (el.type === "checkbox") el.checked = false;
+        else el.value = "";
+      });
+      section.insertBefore(clone, document.getElementById("add_employment"));
+    });
+
     // Stand-in for the Greenhouse submission endpoint: validate like the real
     // form would, then render the confirmation container the adapter's
     // verifyReceipt() looks for.

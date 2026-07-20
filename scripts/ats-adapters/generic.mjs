@@ -271,6 +271,17 @@ export async function collectFieldDescriptors(target) {
         const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
         if (label) return label.textContent || "";
       }
+      // aria-hidden validation-carrier inputs (Remix/react-select shells)
+      // have no label of their own; inherit the sibling combobox's label so
+      // requiredMissing names the actual question instead of a wrong one.
+      if (el.getAttribute("aria-hidden") === "true") {
+        const combo = el.parentElement?.querySelector('input[role="combobox"]');
+        const comboId = combo?.getAttribute("id");
+        if (comboId) {
+          const label = document.querySelector(`label[for="${CSS.escape(comboId)}"]`);
+          if (label) return label.textContent || "";
+        }
+      }
       const parentLabel = el.closest("label");
       if (parentLabel) return parentLabel.textContent || "";
       const container = el.closest(".field, .application-question, .application-field, [class*='question']");
@@ -291,11 +302,29 @@ export async function collectFieldDescriptors(target) {
       const rect = el.getBoundingClientRect();
       const style = window.getComputedStyle(el);
       const labelText = (findLabelText(el) || "").replace(/\s+/g, " ").trim();
+      const role = el.getAttribute("role") || "";
+      // react-select style comboboxes keep their input value empty after a
+      // selection; the committed choice renders in a single-value element.
+      // Walk ancestors (closest() would match the input itself — its class
+      // is select__input) until the widget container is found.
+      let comboSelected = false;
+      if (role === "combobox") {
+        let container = el.parentElement;
+        for (let depth = 0; container && depth < 5; depth += 1) {
+          const singleValue = container.querySelector('[class*="single-value"], [class*="singleValue"]');
+          if (singleValue && (singleValue.textContent || "").trim()) {
+            comboSelected = true;
+            break;
+          }
+          container = container.parentElement;
+        }
+      }
       return {
         index,
         tag: el.tagName.toLowerCase(),
         type: (el.getAttribute("type") || (el.tagName === "SELECT" ? "select" : el.tagName === "TEXTAREA" ? "textarea" : "text")).toLowerCase(),
-        role: el.getAttribute("role") || "",
+        role,
+        comboSelected,
         name: el.getAttribute("name") || "",
         id: el.getAttribute("id") || "",
         placeholder: el.getAttribute("placeholder") || "",
@@ -424,6 +453,38 @@ export async function chooseVisibleOption(target, input, desired, { allowFirstMa
 }
 
 /**
+ * Some old-style boards render instruction acknowledgments ("Please enter
+ * your relevant employment and military service above") as a react-select
+ * with exactly ONE benign option (e.g. "Thank you"). When an explicit memory
+ * answer exists for the question but no option matches its text, selecting
+ * the sole offered option is the form's only acknowledgment path — choosing
+ * it invents no data. Never used when zero or multiple options exist.
+ */
+export async function selectOnlyOption(target, input) {
+  const keyboard = typeof target.page === "function" ? target.page().keyboard : target.keyboard;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    // Close any menu left open by a previous combobox so the visible-option
+    // count below reflects only this widget's list.
+    await keyboard.press("Escape").catch(() => {});
+    await target.waitForTimeout(250);
+    await input.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+    const clicked = await input.click({ timeout: 3000 }).then(() => true).catch(() => false);
+    if (!clicked) continue;
+    await target.waitForTimeout(250);
+    const options = target.locator('[role="option"]:visible');
+    await options.first().waitFor({ state: "visible", timeout: 1200 }).catch(() => {});
+    const count = await options.count();
+    if (count !== 1) {
+      await keyboard.press("Escape").catch(() => {});
+      continue; // zero options, or a stale menu inflating the count
+    }
+    await options.first().click();
+    return true;
+  }
+  return false;
+}
+
+/**
  * Fill required ARIA comboboxes (country, location, work authorization,
  * sponsorship, consent, demographics) plus the demographic-consent checkbox.
  *
@@ -493,6 +554,10 @@ export async function fillCustomFields(target, profile = {}, answerMemory = {}, 
       if (/gender|transgender|sexual orientation|disabilit|veteran|military|ethnicit|race/.test(label)) {
         answeredDemographicFields += 1;
       }
+    } else if (desired && /please enter your relevant employment/.test(label)) {
+      // Instruction-acknowledgment dropdown (see selectOnlyOption): the board
+      // already has the data above; only the sole benign option is chosen.
+      if (await selectOnlyOption(target, input)) filledCount += 1;
     }
   }
 

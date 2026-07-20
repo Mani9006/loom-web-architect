@@ -141,7 +141,11 @@ export function requiredMissingFromFields(fields = []) {
     if (field.visible === false) continue;
     const type = String(field.type || "").toLowerCase();
     let filled;
-    if (type === "checkbox" || type === "radio") {
+    if (String(field.role || "") === "combobox") {
+      // react-select comboboxes commit into a single-value element, not the
+      // input value (see collectFieldDescriptors.comboSelected).
+      filled = field.comboSelected === true || String(field.value || "").trim().length > 0;
+    } else if (type === "checkbox" || type === "radio") {
       filled = field.checked === true;
     } else if (type === "file") {
       filled = Number(field.filesCount || 0) > 0;
@@ -239,6 +243,80 @@ export function matchingMemoryAnswer(answerMemory, label) {
     }
   }
   return bestScore >= 2 ? bestAnswer : "";
+}
+
+/**
+ * Whether a resume end_date marks the entry as ongoing ("Present", "Current").
+ */
+export function isCurrentEndDate(endDate) {
+  return /present|current/i.test(String(endDate || ""));
+}
+
+/**
+ * Map one tailored-resume experience entry
+ * ({ role, company_or_client, start_date, end_date, location, bullets })
+ * onto the adapter-facing employment shape
+ * ({ company, title, startDate, endDate, location, current }).
+ * Returns null for entries without any company or title.
+ */
+export function mapResumeExperienceEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const company = String(entry.company_or_client || entry.company || "").trim();
+  const title = String(entry.role || entry.title || "").trim();
+  if (!company && !title) return null;
+  const endDate = String(entry.end_date || "").trim();
+  return {
+    company,
+    title,
+    startDate: String(entry.start_date || "").trim(),
+    endDate,
+    location: String(entry.location || "").trim(),
+    current: isCurrentEndDate(endDate),
+  };
+}
+
+/** First `limit` usable employment entries from a resume experience array. */
+export function mapResumeExperience(experience, limit = 4) {
+  if (!Array.isArray(experience)) return [];
+  return experience.map(mapResumeExperienceEntry).filter(Boolean).slice(0, limit);
+}
+
+const MONTH_NAMES = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december",
+];
+
+/**
+ * Parse a free-form resume date ("Jan 2021", "January 2021", "2021-01",
+ * "01/2021", "2021") into { month: 1-12|null, monthName, paddedMonth, year }.
+ * Returns null when no 4-digit year is present.
+ */
+export function parseMonthYear(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const yearMatch = text.match(/\b(19|20)\d{2}\b/);
+  if (!yearMatch) return null;
+  const year = yearMatch[0];
+
+  let month = null;
+  const monthNameMatch = text.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i);
+  if (monthNameMatch) {
+    const abbrev = monthNameMatch[1].toLowerCase().slice(0, 3);
+    month = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(abbrev) + 1;
+  } else {
+    // Numeric forms: 2021-01 / 2021/01 (year first) or 01/2021 (month first).
+    const yearFirst = text.match(/(?:19|20)\d{2}\s*[-/.]\s*(0?[1-9]|1[0-2])(?!\d)/);
+    const monthFirst = text.match(/\b(0?[1-9]|1[0-2])\s*[-/.]\s*(?:19|20)\d{2}\b/);
+    if (yearFirst) month = Number(yearFirst[1]);
+    else if (monthFirst) month = Number(monthFirst[1]);
+  }
+
+  return {
+    month,
+    monthName: month ? MONTH_NAMES[month - 1].replace(/^\w/, (c) => c.toUpperCase()) : null,
+    paddedMonth: month ? String(month).padStart(2, "0") : null,
+    year,
+  };
 }
 
 /** Infer "United States" from a US city/state location string; "" otherwise. */

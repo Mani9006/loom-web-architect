@@ -11,8 +11,11 @@ import {
   detectAtsFromUrl,
   fuzzyMatchAnswer,
   isAffirmativeAnswer,
+  isCurrentEndDate,
   looksLikeConsentLabel,
+  mapResumeExperience,
   normalizeText,
+  parseMonthYear,
   requiredMissingFromFields,
 } from "./helpers.mjs";
 import { defineAdapter, submitRefusal } from "./contract.mjs";
@@ -257,4 +260,52 @@ test("defineAdapter rejects incomplete adapters", () => {
 
 test("normalizeText collapses whitespace and case", () => {
   assert.equal(normalizeText("  Hello   WORLD \n"), "hello world");
+});
+
+// --- resume experience -> employment history mapping -------------------------
+
+test("isCurrentEndDate detects present/current end dates only", () => {
+  assert.equal(isCurrentEndDate("Present"), true);
+  assert.equal(isCurrentEndDate("present"), true);
+  assert.equal(isCurrentEndDate("Current"), true);
+  assert.equal(isCurrentEndDate("Dec 2020"), false);
+  assert.equal(isCurrentEndDate("2020-12"), false);
+  assert.equal(isCurrentEndDate(""), false);
+  assert.equal(isCurrentEndDate(null), false);
+});
+
+test("mapResumeExperience maps resume entries and caps at 4", () => {
+  const resumeExperience = [
+    { role: "Senior Engineer", company_or_client: "Globex", start_date: "Jan 2021", end_date: "Present", location: "Remote", bullets: ["x"] },
+    { role: "Engineer", company_or_client: "Initech", start_date: "2018-06", end_date: "Dec 2020", location: "Austin, TX" },
+    { role: "", company_or_client: "", start_date: "2017", end_date: "2018" }, // empty -> dropped
+    { role: "Intern", company_or_client: "Umbrella", start_date: "2016", end_date: "2017" },
+    { role: "Aide", company_or_client: "Hooli", start_date: "2015", end_date: "2016" },
+    { role: "Fifth", company_or_client: "Stark", start_date: "2014", end_date: "2015" },
+  ];
+  const mapped = mapResumeExperience(resumeExperience);
+  assert.equal(mapped.length, 4, "empty entry dropped, capped at 4");
+  assert.deepEqual(mapped[0], {
+    company: "Globex", title: "Senior Engineer", startDate: "Jan 2021",
+    endDate: "Present", location: "Remote", current: true,
+  });
+  assert.deepEqual(mapped[1], {
+    company: "Initech", title: "Engineer", startDate: "2018-06",
+    endDate: "Dec 2020", location: "Austin, TX", current: false,
+  });
+  assert.equal(mapped[2].company, "Umbrella");
+  assert.equal(mapped[3].company, "Hooli");
+  assert.equal(mapResumeExperience(null).length, 0);
+  assert.equal(mapResumeExperience("nope").length, 0);
+});
+
+test("parseMonthYear parses month-name and numeric resume dates", () => {
+  assert.deepEqual(parseMonthYear("Jan 2021"), { month: 1, monthName: "January", paddedMonth: "01", year: "2021" });
+  assert.deepEqual(parseMonthYear("January 2021"), { month: 1, monthName: "January", paddedMonth: "01", year: "2021" });
+  assert.deepEqual(parseMonthYear("2021-01"), { month: 1, monthName: "January", paddedMonth: "01", year: "2021" });
+  assert.deepEqual(parseMonthYear("01/2021"), { month: 1, monthName: "January", paddedMonth: "01", year: "2021" });
+  assert.deepEqual(parseMonthYear("Dec 2020"), { month: 12, monthName: "December", paddedMonth: "12", year: "2020" });
+  assert.deepEqual(parseMonthYear("2020"), { month: null, monthName: null, paddedMonth: null, year: "2020" });
+  assert.equal(parseMonthYear("Present"), null);
+  assert.equal(parseMonthYear(""), null);
 });
