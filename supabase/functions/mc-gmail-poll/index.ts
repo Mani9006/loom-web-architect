@@ -1,7 +1,12 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { decryptSecret, encryptSecret } from "../_shared/oauth-crypto.ts";
-import { extractVerificationCode } from "../_shared/verification-code.ts";
+import {
+  applicationSenderDomain,
+  extractApplicationCode,
+  extractVerificationCode,
+  isApplicationSender,
+} from "../_shared/verification-code.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,7 +21,7 @@ const STATUS_MAP: Record<string, string> = {
   offer: "offer",
 };
 
-type Classification = keyof typeof STATUS_MAP | "other_recruiter" | "irrelevant";
+type Classification = keyof typeof STATUS_MAP | "verification" | "other_recruiter" | "irrelevant";
 interface ClassifiedEmail {
   classification: Classification;
   confidence: number;
@@ -134,7 +139,7 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
 
   const { data: trackedJobs } = await admin
     .from("mc_tracked_jobs")
-    .select("id,company,job_title,status")
+    .select("id,company,job_title,status,apply_url")
     .eq("session_id", connection.session_id);
 
   const sinceTs = connection.last_polled_at
@@ -173,27 +178,47 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     const subject = headers.subject || "";
     const fromEmail = headers.from || "";
     const bodyText = normalizeBody(extractBody(message.payload) || message.snippet || "");
-    const matched = (trackedJobs ?? []).find((job: any) => emailMatchesJob(job, subject, fromEmail, bodyText));
-    if (!matched) continue;
-
-    const classification = await classifyEmail({ subject, from: fromEmail, body: bodyText });
     const receivedAt = message.internalDate
       ? new Date(Number(message.internalDate)).toISOString()
       : new Date().toISOString();
-    const verificationCode = extractVerificationCode(`${subject}\n${bodyText}`);
+
+    // OTP screening runs on every inbound message: strict labelled extraction
+    // for all mail, plus a digit-only fallback restricted to job-application
+    // senders (ATS domains / noreply@). Codes live 10 minutes, are never
+    // logged, and are redacted from stored previews below.
+    const combinedText = `${subject}\n${bodyText}`;
+    const fromApplicationSender = isApplicationSender(fromEmail);
+    const verificationCode = extractVerificationCode(combinedText)
+      || (fromApplicationSender ? extractApplicationCode(combinedText) : null);
     const codeExpiresAt = verificationCode
-      ? new Date(new Date(receivedAt).getTime() + 30 * 60_000).toISOString()
+      ? new Date(new Date(receivedAt).getTime() + 10 * 60_000).toISOString()
       : null;
     const activeCode = codeExpiresAt && new Date(codeExpiresAt).getTime() > Date.now()
       ? verificationCode
       : null;
+
+    let matched = (trackedJobs ?? []).find((job: any) => emailMatchesJob(job, subject, fromEmail, bodyText));
+    // OTP mail often names no company ("Your verification code"); link through
+    // the ATS sender domain to the tracked job's apply_url host. Code mail
+    // only — other mail keeps the company/title match so existing kanban
+    // auto-move behavior is unchanged.
+    if (!matched && activeCode && fromApplicationSender) {
+      matched = linkCodeEmailToJob(trackedJobs ?? [], fromEmail, combinedText);
+    }
+    // Unmatched mail is skipped unless it carries a code from an application
+    // sender; those still land in the inbox (unlinked) for the OTP flow.
+    if (!matched && !(activeCode && fromApplicationSender)) continue;
+
+    const classification = matched
+      ? await classifyEmail({ subject, from: fromEmail, body: bodyText })
+      : { classification: "verification" as Classification, confidence: 1, summary: "Employer verification code" };
 
     const { data: emailRow } = await admin
       .from("mc_inbound_emails")
       .insert({
         user_id: connection.user_id,
         session_id: connection.session_id,
-        tracked_job_id: matched.id,
+        tracked_job_id: matched?.id ?? null,
         message_id: messageRef.id,
         from_email: fromEmail,
         to_email: connection.gmail_email,
@@ -216,7 +241,7 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     processed += 1;
 
     const newStatus = STATUS_MAP[classification.classification];
-    if (newStatus && classification.confidence >= 0.8 && newStatus !== matched.status) {
+    if (matched && newStatus && classification.confidence >= 0.8 && newStatus !== matched.status) {
       await admin.from("mc_tracked_jobs").update({ status: newStatus }).eq("id", matched.id);
       await admin.from("mc_status_history").insert({
         tracked_job_id: matched.id,
@@ -243,6 +268,28 @@ function emailMatchesJob(job: any, subject: string, from: string, body: string):
   const title = String(job.job_title || "").trim().toLowerCase();
   return Boolean((company.length >= 3 && haystack.includes(company)) ||
     (title.length >= 5 && haystack.includes(title)));
+}
+
+// Link an OTP email to a tracked job via the ATS sender domain vs apply_url
+// host. With several jobs on the same portal, the company name breaks the tie;
+// without one the email stays unlinked rather than guessing the wrong job.
+function linkCodeEmailToJob(trackedJobs: any[], fromEmail: string, text: string) {
+  const atsDomain = applicationSenderDomain(fromEmail);
+  if (!atsDomain) return null;
+  const candidates = trackedJobs.filter((job: any) => {
+    try {
+      const host = new URL(String(job?.apply_url || "")).hostname.toLowerCase();
+      return host === atsDomain || host.endsWith(`.${atsDomain}`);
+    } catch {
+      return false;
+    }
+  });
+  if (candidates.length === 1) return candidates[0];
+  const haystack = text.toLowerCase();
+  return candidates.find((job: any) => {
+    const company = String(job?.company || "").trim().toLowerCase();
+    return company.length >= 3 && haystack.includes(company);
+  }) || null;
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number }> {
