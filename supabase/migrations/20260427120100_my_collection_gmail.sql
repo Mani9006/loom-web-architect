@@ -31,9 +31,11 @@ CREATE INDEX IF NOT EXISTS mc_gmail_user_idx
   ON mc_gmail_connections (user_id, enabled);
 
 ALTER TABLE mc_gmail_connections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mc_gmail_owner_all" ON mc_gmail_connections;
 CREATE POLICY "mc_gmail_owner_all" ON mc_gmail_connections
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+DROP TRIGGER IF EXISTS mc_gmail_touch_updated_at ON mc_gmail_connections;
 CREATE TRIGGER mc_gmail_touch_updated_at
   BEFORE UPDATE ON mc_gmail_connections
   FOR EACH ROW EXECUTE FUNCTION mc_touch_updated_at();
@@ -63,6 +65,7 @@ CREATE INDEX IF NOT EXISTS mc_research_session_idx
   ON mc_company_research (session_id);
 
 ALTER TABLE mc_company_research ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mc_research_owner_all" ON mc_company_research;
 CREATE POLICY "mc_research_owner_all" ON mc_company_research
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
