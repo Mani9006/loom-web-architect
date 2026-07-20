@@ -96,7 +96,16 @@ export const greenhouseAdapter = defineAdapter({
 
   async detect(url, page) {
     if (isGreenhouseUrl(url)) return true;
-    if (page) return await pageLooksLikeGreenhouse(page);
+    if (page) {
+      if (await pageLooksLikeGreenhouse(page)) return true;
+      // JS shells (e.g. app.careerpuck.com custom Greenhouse domains) inject
+      // the job-boards.greenhouse.io embed iframe several seconds after load.
+      // Poll briefly before yielding to the generic adapter.
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await page.waitForTimeout(1000);
+        if (await pageLooksLikeGreenhouse(page)) return true;
+      }
+    }
     return false;
   },
 
