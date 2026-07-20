@@ -204,7 +204,7 @@ export function classifyBlockers(snapshot = {}) {
   // conservatively (fail closed) for any caller that has not migrated to
   // captchaElements descriptors.
   if (snapshot.hasCaptcha === true || visibleChallenge
-    || /(verify (that )?you are (a )?human|are you a robot|complete the captcha|unusual traffic|checking your browser)/.test(text)) {
+    || /(verify (that )?you are (a )?human|are you a robot|complete the captcha|unusual traffic|checking your browser|security verification|malicious bots|attention required! |cloudflare ray id)/i.test(text)) {
     blockers.push({
       kind: "captcha",
       message: "CAPTCHA or human-verification challenge detected. The worker never bypasses these; a human must complete this application.",
