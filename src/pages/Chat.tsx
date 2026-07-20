@@ -260,6 +260,12 @@ export default function Chat() {
   const loadConversation = async (id: string) => {
     const { data: conv } = await supabase.from("conversations").select("*").eq("id", id).maybeSingle();
 
+    if (!conv) {
+      toast({ title: "Conversation not found", description: "It may have been deleted.", variant: "destructive" });
+      navigate("/chat", { replace: true });
+      return;
+    }
+
     if (conv) {
       setCurrentConversation(conv);
 
@@ -1271,7 +1277,9 @@ Format with clear headers and bullet points. Be specific to the role and company
 
     try {
       const title = `Resume: ${resumeData.header.name || "Untitled"}`;
-      const convId = await createNewConversation(title);
+      // Tag as resume-chat so reloads restore the editor view — the default
+      // "general" mode made saved sessions reopen as plain chat.
+      const convId = await createNewConversation(title, "resume-chat");
       if (!convId) {
         setIsLoading(false);
         setChatMode("resume-form");
@@ -1686,9 +1694,19 @@ ${experienceSummary}
       messages: messagesData || [],
     });
 
-    // Delete messages first, then conversation
-    await supabase.from("messages").delete().eq("conversation_id", id);
-    await supabase.from("conversations").delete().eq("id", id);
+    // Delete messages first, then conversation. Check both — an unchecked
+    // failure here used to surface as a false "Conversation deleted" toast.
+    const { error: msgsError } = await supabase.from("messages").delete().eq("conversation_id", id);
+    const convError = msgsError
+      ? msgsError
+      : (await supabase.from("conversations").delete().eq("id", id)).error;
+
+    if (convError) {
+      setDeletedConversation(null);
+      toast({ title: "Delete failed", description: "The conversation was not deleted. Try again.", variant: "destructive" });
+      return;
+    }
+
     await fetchConversations();
 
     if (currentConversation?.id === id) {
@@ -1705,11 +1723,16 @@ ${experienceSummary}
           size="sm"
           onClick={async () => {
             if (convData) {
-              // Restore conversation
-              await supabase.from("conversations").insert(convData);
-              // Restore messages
-              if (messagesData && messagesData.length > 0) {
-                await supabase.from("messages").insert(messagesData);
+              // Restore conversation, then messages
+              const { error: restoreError } = await supabase.from("conversations").insert(convData);
+              const msgsRestoreError = restoreError
+                ? restoreError
+                : messagesData && messagesData.length > 0
+                  ? (await supabase.from("messages").insert(messagesData)).error
+                  : null;
+              if (msgsRestoreError) {
+                toast({ title: "Restore failed", description: "The conversation could not be restored.", variant: "destructive" });
+                return;
               }
               await fetchConversations();
               setDeletedConversation(null);
@@ -1729,10 +1752,18 @@ ${experienceSummary}
   const handleClearAllConversations = async () => {
     // Delete all messages first
     for (const conv of conversations) {
-      await supabase.from("messages").delete().eq("conversation_id", conv.id);
+      const { error } = await supabase.from("messages").delete().eq("conversation_id", conv.id);
+      if (error) {
+        toast({ title: "Clear failed", description: "Some conversations could not be deleted. Nothing else was touched.", variant: "destructive" });
+        return;
+      }
     }
     // Delete all conversations
-    await supabase.from("conversations").delete().eq("user_id", user?.id);
+    const { error } = await supabase.from("conversations").delete().eq("user_id", user?.id);
+    if (error) {
+      toast({ title: "Clear failed", description: "Conversations could not be deleted. Try again.", variant: "destructive" });
+      return;
+    }
     await fetchConversations();
     navigate("/chat");
     toast({

@@ -146,6 +146,9 @@ export default function ResumeProjects() {
         )];
       }
       setResumes(masters);
+    } else if (error) {
+      // A failed read must not render as a false "No resumes yet" empty state.
+      toast({ title: "Couldn't load your résumés", description: "Refresh to try again.", variant: "destructive" });
     }
     const { data: profile } = await supabase
       .from("profiles")
