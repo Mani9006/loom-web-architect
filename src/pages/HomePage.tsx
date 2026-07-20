@@ -19,8 +19,7 @@ import {
   FileText,
   Search,
   Target,
-  Mail,
-  Mic,
+  Bot,
   Sparkles,
   Columns3,
   Quote,
@@ -48,12 +47,16 @@ interface TopMatch {
   summary: string | null;
   title: string;
   company: string;
-  apply_url: string;
+  location: string;
+  dimensions: Array<{ key: string; label: string; score: number }>;
 }
 
-interface RecentResume {
+interface RecentApplication {
   id: string;
   title: string;
+  company: string;
+  status: string;
+  tailoredResumeId: string | null;
   updated_at: string;
 }
 
@@ -66,12 +69,12 @@ interface AgentSummary {
 // ─── Static content ────────────────────────────────────────────────────
 
 const quickActions: Array<{ label: string; desc: string; icon: React.ElementType; path: string }> = [
-  { label: "Resume Builder",  desc: "Draft, tailor, export",     icon: FileText,    path: "/resume-builder" },
-  { label: "ATS Checker",     desc: "Score against a JD",        icon: Target,      path: "/ats-checker" },
-  { label: "Job Search",      desc: "Company career pages",      icon: Search,      path: "/job-search" },
-  { label: "Matches",         desc: "Pre-scored open roles",     icon: Sparkles,    path: "/matches" },
-  { label: "Cover Letters",   desc: "One per application",       icon: Mail,        path: "/cover-letters" },
-  { label: "Interview Prep",  desc: "STAR drills with AI",       icon: Mic,         path: "/interview-prep" },
+  { label: "Job Search",   desc: "Direct company openings",     icon: Search,      path: "/job-search" },
+  { label: "Matches",      desc: "Resume-scored opportunities", icon: Sparkles,    path: "/matches" },
+  { label: "Agent",        desc: "Match, tailor, check, queue",  icon: Bot,         path: "/agent" },
+  { label: "Resume",       desc: "Edit, tailor, export",         icon: FileText,    path: "/resume-builder" },
+  { label: "ATS Preview",  desc: "Score against a job",         icon: Target,      path: "/ats-checker" },
+  { label: "Applications", desc: "Status and receipts",         icon: Columns3,    path: "/job-tracker" },
 ];
 
 // ─── Date helpers (masthead) ───────────────────────────────────────────
@@ -91,6 +94,18 @@ function relativeDays(iso: string): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+function applicationStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    draft: "Preparing",
+    ready: "Ready for review",
+    queued: "Queued",
+    submitted: "Submitted",
+    failed: "Needs attention",
+    skipped: "Skipped",
+  };
+  return labels[status.toLowerCase()] ?? "In progress";
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────
 
 export default function HomePage() {
@@ -101,21 +116,29 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [topMatches, setTopMatches] = useState<TopMatch[]>([]);
-  const [recentResumes, setRecentResumes] = useState<RecentResume[]>([]);
+  const [hasResume, setHasResume] = useState(false);
+  const [recentApplications, setRecentApplications] = useState<RecentApplication[]>([]);
   const [agentSummary, setAgentSummary] = useState<AgentSummary | null>(null);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const [profileRes, jobsRes, resumesRes, matchesRes] = await Promise.all([
+      const [profileRes, jobsRes, resumesRes, applicationsRes, matchesRes] = await Promise.all([
         supabase.from("profiles").select("full_name, onboarding_completed").eq("user_id", user.id).maybeSingle(),
         supabase.from("tracked_jobs").select("status").eq("user_id", user.id),
-        supabase.from("resumes").select("id, title, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(5),
+        supabase.from("resumes").select("id").eq("user_id", user.id).limit(1),
+        supabase
+          .from("draft_applications")
+          .select("id,status,tailored_resume_id,updated_at,submitted_at,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
+          .eq("user_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(5),
         supabase
           .from("job_evaluations")
-          .select("id,score,tier,summary,scanned_job_id,scanned_jobs(title,apply_url,company:scan_companies(name))")
+          .select("id,score,fit_score,tier,summary,dimension_scores,scanned_job_id,scanned_jobs(title,location,apply_url,company:scan_companies(name))")
           .eq("user_id", user.id)
-          .order("score", { ascending: false })
+          .eq("eligible", true)
+          .order("fit_score", { ascending: false })
           .limit(3),
       ]);
 
@@ -131,20 +154,37 @@ export default function HomePage() {
       });
       setStats(counts as unknown as Stats);
 
-      setRecentResumes((resumesRes.data || []) as RecentResume[]);
+      setHasResume((resumesRes.data || []).length > 0);
+      const applications = ((applicationsRes.data || []) as unknown as Array<Record<string, unknown>>).flatMap((row) => {
+        const evaluation = row.evaluation as { scanned_job?: { title?: string; company?: { name?: string } } } | null;
+        const job = evaluation?.scanned_job;
+        if (!job?.title) return [];
+        return [{
+          id: String(row.id),
+          title: job.title,
+          company: job.company?.name ?? "Company not listed",
+          status: String(row.status ?? "ready"),
+          tailoredResumeId: typeof row.tailored_resume_id === "string" ? row.tailored_resume_id : null,
+          updated_at: String(row.submitted_at ?? row.updated_at),
+        }];
+      });
+      setRecentApplications(applications);
 
       const matches: TopMatch[] = ((matchesRes.data || []) as Array<Record<string, unknown>>)
         .filter((m) => m.scanned_jobs)
         .map((m) => {
-          const sj = m.scanned_jobs as { title: string; apply_url: string; company?: { name?: string } };
+          const sj = m.scanned_jobs as { title: string; location?: string; apply_url: string; company?: { name?: string } };
           return {
             evaluation_id: String(m.id),
-            score: Number(m.score),
+            score: Math.round(Number(m.fit_score ?? Number(m.score) * 20)),
             tier: String(m.tier ?? ""),
             summary: (m.summary as string | null) ?? null,
             title: sj.title,
             company: sj.company?.name ?? "—",
-            apply_url: sj.apply_url,
+            location: sj.location ?? "Location not listed",
+            dimensions: Array.isArray(m.dimension_scores)
+              ? (m.dimension_scores as Array<{ key: string; label: string; score: number }>)
+              : [],
           };
         });
       setTopMatches(matches);
@@ -183,7 +223,7 @@ export default function HomePage() {
 
   // ── Today's lede — the single thing worth doing right now ─────────────
   const lede = useMemo(() => {
-    if (recentResumes.length === 0) {
+    if (!hasResume) {
       return {
         eyebrow: "Today · Get set up",
         headline: "Start your first résumé.",
@@ -195,11 +235,10 @@ export default function HomePage() {
     if (topMatches.length > 0) {
       return {
         eyebrow: "Today · Apply",
-        headline: `A ${topMatches[0].tier || ""} match for you at ${topMatches[0].company}.`,
-        body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title} — score ${topMatches[0].score.toFixed(1)} out of 5.`,
-        cta: "Open the role",
-        href: topMatches[0].apply_url,
-        external: true as const,
+        headline: `A ${topMatches[0].score}% match for you at ${topMatches[0].company}.`,
+        body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title} — ${topMatches[0].score}% career fit before the ATS check.`,
+        cta: "Tailor and review",
+        href: "/matches",
       };
     }
     if (stats.applied + stats.interviewing > 0) {
@@ -218,7 +257,7 @@ export default function HomePage() {
       cta: "Run ATS check",
       href: "/ats-checker",
     };
-  }, [recentResumes, topMatches, stats]);
+  }, [hasResume, topMatches, stats]);
 
   if (loading) {
     return (
@@ -250,7 +289,7 @@ export default function HomePage() {
               className="text-rp-ink-3"
               style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
             >
-              {recentResumes.length} résumé{recentResumes.length === 1 ? "" : "s"} · {stats.applied + stats.interviewing} active · {topMatches.length} match{topMatches.length === 1 ? "" : "es"}
+              {recentApplications.length} recent application{recentApplications.length === 1 ? "" : "s"} · {stats.applied + stats.interviewing} active · {topMatches.length} match{topMatches.length === 1 ? "" : "es"}
             </span>
           </div>
 
@@ -282,8 +321,8 @@ export default function HomePage() {
             className="text-rp-ink-2 max-w-2xl"
             style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "16px", lineHeight: 1.6 }}
           >
-            {recentResumes.length === 0
-              ? "Start with your first résumé. You can upload a PDF and the AI will parse every section, or build from scratch."
+            {!hasResume
+              ? "Start with your first résumé. Upload a PDF to parse every section, or build from scratch."
               : `You have ${stats.applied + stats.interviewing} application${stats.applied + stats.interviewing === 1 ? "" : "s"} in flight${topMatches.length > 0 ? ` and ${topMatches.length} fresh match${topMatches.length === 1 ? "" : "es"} waiting` : ""}.`}
           </p>
 
@@ -294,24 +333,24 @@ export default function HomePage() {
             body={lede.body}
             cta={lede.cta}
             href={lede.href}
-            external={"external" in lede ? lede.external : false}
+            external={Boolean("external" in lede && lede.external)}
             onNavigate={navigate}
           />
 
           {/* ── Two-column block: recent work + actions ────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-x-12 gap-y-10 mt-16">
-            {/* Recent work */}
+            {/* Application work */}
             <section>
-              <SectionHead n={1} title="Recent work" />
-              {recentResumes.length === 0 ? (
-                <EmptyResumes onCreate={() => navigate("/resume-builder")} />
+              <SectionHead n={1} title="Recent applications" />
+              {recentApplications.length === 0 ? (
+                <EmptyApplications onBrowse={() => navigate("/matches")} />
               ) : (
                 <ol className="mt-3 divide-y divide-rp-rule border-t border-b border-rp-rule">
-                  {recentResumes.map((r, i) => (
-                    <li key={r.id}>
+                  {recentApplications.map((application, i) => (
+                    <li key={application.id} className="flex items-center gap-2 py-1">
                       <button
-                        onClick={() => navigate(`/resume-builder/${r.id}`)}
-                        className="w-full flex items-baseline gap-5 py-3.5 text-left group"
+                        onClick={() => navigate(`/applications/${application.id}`)}
+                        className="min-w-0 flex-1 flex items-baseline gap-5 py-3 text-left group"
                       >
                         <span
                           className="text-rp-ink-2/70 w-7 shrink-0 text-right"
@@ -328,26 +367,36 @@ export default function HomePage() {
                             fontWeight: 500,
                           }}
                         >
-                          {r.title || "Untitled résumé"}
+                          <span className="block truncate">{application.title}</span>
+                          <span className="block truncate text-xs font-normal text-rp-ink-2 mt-0.5">{application.company} · {applicationStatusLabel(application.status)}</span>
                         </span>
                         <span
                           className="text-rp-ink-2/70 hidden sm:inline shrink-0"
                           style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.05em", textTransform: "uppercase" }}
                         >
-                          {relativeDays(r.updated_at)}
+                          {relativeDays(application.updated_at)}
                         </span>
                         <ArrowUpRight className="w-3.5 h-3.5 text-rp-ink-2/40 group-hover:text-rp-accent shrink-0" strokeWidth={1.6} />
                       </button>
+                      {application.tailoredResumeId && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/resume-builder/${application.tailoredResumeId}`)}
+                          className="mr-2 shrink-0 border border-rp-rule px-2.5 py-1.5 text-[11px] text-rp-ink-2 hover:border-rp-ink hover:text-rp-ink transition-colors"
+                        >
+                          Résumé used
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ol>
               )}
               <button
-                onClick={() => navigate("/documents")}
+                onClick={() => navigate("/job-tracker")}
                 className="mt-5 inline-flex items-center gap-1.5 text-rp-ink-2 hover:text-rp-ink transition-colors group"
                 style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "12.5px" }}
               >
-                Browse all documents
+                Browse all applications
                 <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" strokeWidth={1.6} />
               </button>
             </section>
@@ -388,7 +437,7 @@ export default function HomePage() {
           {/* ── Agent activity block (quote treatment) ───────────────── */}
           {agentSummary && (
             <section className="mt-16">
-              <SectionHead n={3} title="Auto-pilot" />
+              <SectionHead n={3} title="Agent activity" />
               <blockquote className="mt-4 border-l-2 border-rp-accent pl-5 max-w-3xl">
                 <Quote className="w-4 h-4 text-rp-accent mb-2" strokeWidth={1.6} />
                 <p
@@ -422,12 +471,10 @@ export default function HomePage() {
               <SectionHead n={4} title="Top matches" />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-rp-rule border border-rp-rule mt-3">
                 {topMatches.map((m, i) => (
-                  <a
+                  <button
                     key={m.evaluation_id}
-                    href={m.apply_url}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="bg-rp-canvas p-5 block hover:bg-rp-paper transition-colors no-underline group"
+                    onClick={() => navigate("/matches")}
+                    className="bg-rp-canvas p-5 block text-left hover:bg-rp-paper transition-colors no-underline group"
                   >
                     <div className="flex items-baseline justify-between">
                       <span
@@ -440,7 +487,7 @@ export default function HomePage() {
                         className="text-rp-accent tabular-nums"
                         style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "12px", fontWeight: 600 }}
                       >
-                        {m.score.toFixed(1)}
+                        {m.score}%
                       </span>
                     </div>
                     <h3
@@ -461,6 +508,7 @@ export default function HomePage() {
                     >
                       {m.company}
                     </p>
+                    <p className="mt-1 text-[11px] text-rp-ink-3">{m.location}</p>
                     {m.summary && (
                       <p
                         className="text-rp-ink-2 mt-3 line-clamp-3"
@@ -469,7 +517,16 @@ export default function HomePage() {
                         {m.summary}
                       </p>
                     )}
-                  </a>
+                    {m.dimensions.length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-1.5">
+                        {m.dimensions.slice(0, 3).map((dimension) => (
+                          <span key={dimension.key} className="border border-rp-rule px-2 py-1 text-[10px] text-rp-ink-2">
+                            {dimension.label} {Math.round(dimension.score)}%
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </button>
                 ))}
               </div>
             </section>
@@ -562,20 +619,8 @@ function Brief({
   external: boolean;
   onNavigate: (p: string) => void;
 }) {
-  const Wrapper = (props: { children: React.ReactNode }) =>
-    external ? (
-      <a href={href} target="_blank" rel="noreferrer noopener" className="block">
-        {props.children}
-      </a>
-    ) : (
-      <button onClick={() => onNavigate(href)} className="block text-left w-full">
-        {props.children}
-      </button>
-    );
-
-  return (
-    <div className="mt-10 border-y-2 border-rp-ink py-7">
-      <Wrapper>
+  const content = (
+    <>
         <div
           className="text-rp-accent"
           style={{
@@ -612,34 +657,47 @@ function Brief({
           {cta}
           <ArrowUpRight className="w-4 h-4" strokeWidth={1.75} />
         </span>
-      </Wrapper>
+    </>
+  );
+
+  return (
+    <div className="mt-10 border-y-2 border-rp-ink py-7">
+      {external ? (
+        <a href={href} target="_blank" rel="noreferrer noopener" className="block">
+          {content}
+        </a>
+      ) : (
+        <button onClick={() => onNavigate(href)} className="block text-left w-full">
+          {content}
+        </button>
+      )}
     </div>
   );
 }
 
 // ─── Empty state for recent resumes ────────────────────────────────────
 
-function EmptyResumes({ onCreate }: { onCreate: () => void }) {
+function EmptyApplications({ onBrowse }: { onBrowse: () => void }) {
   return (
     <div className="mt-4 border border-rp-rule p-8 bg-rp-paper/40">
       <p
         className="text-rp-ink"
         style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "20px", letterSpacing: "-0.005em", fontWeight: 500 }}
       >
-        No résumés on your shelf yet.
+        No application packets yet.
       </p>
       <p
         className="text-rp-ink-2 mt-1.5 max-w-md"
         style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "14px", lineHeight: 1.55 }}
       >
-        Start with a blank one, or upload a PDF and let the AI parse it into editable sections.
+        Open a résumé-aligned match and prepare it. The exact job-specific résumé will stay attached to that application here.
       </p>
       <button
-        onClick={onCreate}
+        onClick={onBrowse}
         className="mt-4 inline-flex items-center gap-1.5 px-4 h-9 bg-rp-ink text-rp-canvas hover:bg-rp-accent transition-colors"
         style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "12.5px", fontWeight: 500 }}
       >
-        Create your first résumé
+        Browse your matches
         <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />
       </button>
     </div>

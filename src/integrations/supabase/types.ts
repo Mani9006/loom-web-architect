@@ -41,6 +41,54 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_runs: {
+        Row: {
+          actions: Json
+          agent: string
+          completed_at: string | null
+          error_message: string | null
+          id: string
+          iterations: number
+          model: string
+          started_at: string
+          status: string
+          summary: string | null
+          tokens_in: number
+          tokens_out: number
+          user_id: string
+        }
+        Insert: {
+          actions?: Json
+          agent: string
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          iterations?: number
+          model?: string
+          started_at?: string
+          status?: string
+          summary?: string | null
+          tokens_in?: number
+          tokens_out?: number
+          user_id: string
+        }
+        Update: {
+          actions?: Json
+          agent?: string
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          iterations?: number
+          model?: string
+          started_at?: string
+          status?: string
+          summary?: string | null
+          tokens_in?: number
+          tokens_out?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       application_emails: {
         Row: {
           body_preview: string | null
@@ -900,9 +948,14 @@ export type Database = {
       job_evaluations: {
         Row: {
           archetype: string | null
+          dimension_scores: Json
+          eligible: boolean
           error_message: string | null
           evaluated_at: string
+          fit_confidence: number | null
+          fit_score: number | null
           gaps: string[] | null
+          hard_filters: string[]
           id: string
           keyword_matches: string[] | null
           model: string
@@ -910,6 +963,7 @@ export type Database = {
           resume_id: string | null
           scanned_job_id: string
           score: number
+          score_version: string
           star_stories: Json | null
           summary: string | null
           tier: string | null
@@ -919,9 +973,14 @@ export type Database = {
         }
         Insert: {
           archetype?: string | null
+          dimension_scores?: Json
+          eligible?: boolean
           error_message?: string | null
           evaluated_at?: string
+          fit_confidence?: number | null
+          fit_score?: number | null
           gaps?: string[] | null
+          hard_filters?: string[]
           id?: string
           keyword_matches?: string[] | null
           model?: string
@@ -929,6 +988,7 @@ export type Database = {
           resume_id?: string | null
           scanned_job_id: string
           score: number
+          score_version?: string
           star_stories?: Json | null
           summary?: string | null
           tier?: string | null
@@ -938,9 +998,14 @@ export type Database = {
         }
         Update: {
           archetype?: string | null
+          dimension_scores?: Json
+          eligible?: boolean
           error_message?: string | null
           evaluated_at?: string
+          fit_confidence?: number | null
+          fit_score?: number | null
           gaps?: string[] | null
+          hard_filters?: string[]
           id?: string
           keyword_matches?: string[] | null
           model?: string
@@ -948,6 +1013,7 @@ export type Database = {
           resume_id?: string | null
           scanned_job_id?: string
           score?: number
+          score_version?: string
           star_stories?: Json | null
           summary?: string | null
           tier?: string | null
@@ -1780,6 +1846,7 @@ export type Database = {
           linkedin_url: string | null
           location: string | null
           onboarding_completed: boolean
+          phone: string | null
           preferred_work_type: string[] | null
           profile_completeness: number | null
           profile_setup_completed: boolean | null
@@ -1808,6 +1875,7 @@ export type Database = {
           linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
+          phone?: string | null
           preferred_work_type?: string[] | null
           profile_completeness?: number | null
           profile_setup_completed?: boolean | null
@@ -1836,6 +1904,7 @@ export type Database = {
           linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
+          phone?: string | null
           preferred_work_type?: string[] | null
           profile_completeness?: number | null
           profile_setup_completed?: boolean | null
@@ -2322,49 +2391,100 @@ export type Database = {
       }
       user_job_prefs: {
         Row: {
+          agent_actions_today: number
+          agent_enabled: boolean
+          agent_max_actions_per_day: number
           auto_apply_enabled: boolean
+          auto_apply_min_fit_score: number
           auto_apply_min_score: number
           auto_apply_portals: string[]
           comp_target_usd_max: number | null
           comp_target_usd_min: number | null
           created_at: string
           daily_apply_cap: number
+          employment_types: string[]
+          excluded_companies: string[]
+          last_agent_run_at: string | null
           locations: string[]
+          max_stretch_years: number
+          max_years_experience: number | null
+          min_years_experience: number | null
           negative_keywords: string[]
+          require_salary_disclosure: boolean
+          requires_sponsorship: boolean
           remote_only: boolean
+          review_mode: string
+          seniority_levels: string[]
+          target_countries: string[]
           target_roles: string[]
           updated_at: string
           user_id: string
+          work_authorization: string | null
+          work_modes: string[]
         }
         Insert: {
+          agent_actions_today?: number
+          agent_enabled?: boolean
+          agent_max_actions_per_day?: number
           auto_apply_enabled?: boolean
+          auto_apply_min_fit_score?: number
           auto_apply_min_score?: number
           auto_apply_portals?: string[]
           comp_target_usd_max?: number | null
           comp_target_usd_min?: number | null
           created_at?: string
           daily_apply_cap?: number
+          employment_types?: string[]
+          excluded_companies?: string[]
+          last_agent_run_at?: string | null
           locations?: string[]
+          max_stretch_years?: number
+          max_years_experience?: number | null
+          min_years_experience?: number | null
           negative_keywords?: string[]
+          require_salary_disclosure?: boolean
+          requires_sponsorship?: boolean
           remote_only?: boolean
+          review_mode?: string
+          seniority_levels?: string[]
+          target_countries?: string[]
           target_roles?: string[]
           updated_at?: string
           user_id: string
+          work_authorization?: string | null
+          work_modes?: string[]
         }
         Update: {
+          agent_actions_today?: number
+          agent_enabled?: boolean
+          agent_max_actions_per_day?: number
           auto_apply_enabled?: boolean
+          auto_apply_min_fit_score?: number
           auto_apply_min_score?: number
           auto_apply_portals?: string[]
           comp_target_usd_max?: number | null
           comp_target_usd_min?: number | null
           created_at?: string
           daily_apply_cap?: number
+          employment_types?: string[]
+          excluded_companies?: string[]
+          last_agent_run_at?: string | null
           locations?: string[]
+          max_stretch_years?: number
+          max_years_experience?: number | null
+          min_years_experience?: number | null
           negative_keywords?: string[]
+          require_salary_disclosure?: boolean
+          requires_sponsorship?: boolean
           remote_only?: boolean
+          review_mode?: string
+          seniority_levels?: string[]
+          target_countries?: string[]
           target_roles?: string[]
           updated_at?: string
           user_id?: string
+          work_authorization?: string | null
+          work_modes?: string[]
         }
         Relationships: []
       }

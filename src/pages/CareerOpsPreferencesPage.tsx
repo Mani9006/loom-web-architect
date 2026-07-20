@@ -9,12 +9,25 @@ import { cn } from "@/lib/utils";
 interface Prefs {
   target_roles: string[];
   negative_keywords: string[];
+  excluded_companies: string[];
   locations: string[];
+  target_countries: string[];
+  work_modes: string[];
+  employment_types: string[];
+  seniority_levels: string[];
   remote_only: boolean;
   comp_target_usd_min: number | null;
   comp_target_usd_max: number | null;
+  work_authorization: string | null;
+  requires_sponsorship: boolean;
+  require_salary_disclosure: boolean;
+  max_stretch_years: number;
+  min_years_experience: number | null;
+  max_years_experience: number | null;
+  review_mode: "always" | "low_confidence" | "eligible_only";
   auto_apply_enabled: boolean;
   auto_apply_min_score: number;
+  auto_apply_min_fit_score: number;
   daily_apply_cap: number;
   auto_apply_portals: string[];
   agent_enabled: boolean;
@@ -24,16 +37,29 @@ interface Prefs {
 const DEFAULT: Prefs = {
   target_roles: [],
   negative_keywords: [],
+  excluded_companies: [],
   locations: [],
+  target_countries: ["United States"],
+  work_modes: ["remote", "hybrid", "onsite"],
+  employment_types: ["full_time"],
+  seniority_levels: ["entry", "mid", "senior"],
   remote_only: false,
   comp_target_usd_min: null,
   comp_target_usd_max: null,
+  work_authorization: null,
+  requires_sponsorship: false,
+  require_salary_disclosure: false,
+  max_stretch_years: 2,
+  min_years_experience: null,
+  max_years_experience: null,
+  review_mode: "always",
   auto_apply_enabled: false,
   auto_apply_min_score: 4.5,
-  daily_apply_cap: 5,
-  auto_apply_portals: ["greenhouse"],
+  auto_apply_min_fit_score: 82,
+  daily_apply_cap: 60,
+  auto_apply_portals: ["greenhouse", "ashby", "lever"],
   agent_enabled: false,
-  agent_max_actions_per_day: 20,
+  agent_max_actions_per_day: 240,
 };
 
 interface AgentRun {
@@ -44,7 +70,7 @@ interface AgentRun {
   completed_at: string | null;
   iterations: number;
   summary: string | null;
-  actions: Array<{ tool: string; input: any; result: any; ts: string }>;
+  actions: Array<{ tool: string; input: unknown; result: unknown; ts: string }>;
 }
 
 const fadeUp = {
@@ -64,10 +90,12 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
   };
   return (
     <div className="space-y-3">
-      <div>
-        <p className="text-[14px] font-semibold text-foreground">{label}</p>
-        <p className="text-[12px] text-muted-foreground">{hint}</p>
-      </div>
+      {label || hint ? (
+        <div>
+          {label ? <p className="text-[14px] font-semibold text-foreground">{label}</p> : null}
+          {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {values.map((v, i) => (
           <span key={i} className="inline-flex items-center gap-2 h-8 pl-3 pr-2 rounded-full bg-foreground/5 text-[12px] text-foreground">
@@ -83,6 +111,7 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
       </div>
       <div className="flex gap-2">
         <input
+          aria-label={label}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
@@ -92,10 +121,49 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
         <button
           type="button"
           onClick={add}
+          aria-label={`Add ${label.toLowerCase()}`}
           className="h-10 px-4 rounded-full text-[12px] font-medium border border-foreground/15 text-foreground hover:bg-foreground/5 transition-colors"
         >
           Add
         </button>
+      </div>
+    </div>
+  );
+}
+
+function ChoiceChips({ label, hint, values, choices, onChange }: {
+  label: string;
+  hint: string;
+  values: string[];
+  choices: Array<{ value: string; label: string }>;
+  onChange: (values: string[]) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {label || hint ? (
+        <div>
+          {label ? <p className="text-[14px] font-semibold text-foreground">{label}</p> : null}
+          {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {choices.map((choice) => {
+          const active = values.includes(choice.value);
+          return (
+            <button
+              type="button"
+              key={choice.value}
+              aria-pressed={active}
+              onClick={() => onChange(active ? values.filter((value) => value !== choice.value) : [...values, choice.value])}
+              className={cn(
+                "h-9 px-4 rounded-full text-[12px] font-medium transition-colors",
+                active ? "bg-foreground text-background" : "border border-foreground/15 text-foreground hover:bg-foreground/5",
+              )}
+            >
+              {choice.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -108,18 +176,23 @@ export default function CareerOpsPreferencesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [confirmedExperienceYears, setConfirmedExperienceYears] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const sb = supabase as unknown as { from: (t: string) => any };
-      const [prefsRes, runsRes] = await Promise.all([
-        sb.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
-        sb.from("agent_runs").select("*").eq("user_id", user.id)
+      const [prefsRes, runsRes, profileRes] = await Promise.all([
+        supabase.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
+        supabase.from("agent_runs").select("*").eq("user_id", user.id)
           .order("started_at", { ascending: false }).limit(8),
+        supabase.from("profiles").select("years_of_experience").eq("user_id", user.id).maybeSingle(),
       ]);
       if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as unknown as Prefs) });
-      setRuns(((runsRes.data || []) as unknown) as AgentRun[]);
+      setConfirmedExperienceYears(typeof profileRes.data?.years_of_experience === "number" ? profileRes.data.years_of_experience : null);
+      setRuns((runsRes.data || []).map((run) => ({
+        ...run,
+        actions: Array.isArray(run.actions) ? run.actions as unknown as AgentRun["actions"] : [],
+      })));
       setLoading(false);
     })();
   }, [user]);
@@ -127,12 +200,17 @@ export default function CareerOpsPreferencesPage() {
   const save = async () => {
     if (!user) return;
     setSaving(true);
-    const { error } = await supabase
-      .from("user_job_prefs")
-      .upsert({ user_id: user.id, ...prefs } as never, { onConflict: "user_id" });
+    const normalized = {
+      ...prefs,
+      remote_only: prefs.work_modes.length === 1 && prefs.work_modes[0] === "remote",
+    };
+    const [prefsResult, profileResult] = await Promise.all([
+      supabase.from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
+      supabase.from("profiles").update({ years_of_experience: confirmedExperienceYears } as never).eq("user_id", user.id),
+    ]);
     setSaving(false);
-    if (error) toast.error(`Save failed: ${error.message}`);
-    else toast.success("Preferences saved");
+    if (prefsResult.error || profileResult.error) toast.error("Your matching settings could not be saved. Try again in a moment.");
+    else toast.success("Matching settings saved");
   };
 
   if (loading) {
@@ -150,7 +228,7 @@ export default function CareerOpsPreferencesPage() {
           Tune the shortlist
         </h1>
         <p className="mt-2 max-w-[64ch] text-[14px] text-muted-foreground leading-relaxed">
-          These preferences control what the scanner surfaces, how the evaluator scores, and whether the auto-submitter engages.
+          Control which jobs appear, how career fit is scored, and whether the Agent may prepare or submit supported applications.
         </p>
       </motion.header>
 
@@ -159,47 +237,180 @@ export default function CareerOpsPreferencesPage() {
         <div className="flex items-baseline justify-between">
           <p className="text-[13px] font-semibold text-foreground">Targeting</p>
         </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_180px] sm:items-end">
+          <div>
+            <p className="text-[14px] font-semibold text-foreground">Confirmed total experience</p>
+            <p className="text-[12px] leading-relaxed text-muted-foreground">
+              Enter your verified total once. Leave blank to calculate non-overlapping months across every client in the matching resume.
+            </p>
+          </div>
+          <div className="relative">
+            <input
+              aria-label="Confirmed total experience in years"
+              type="number"
+              min={0}
+              max={50}
+              step={0.5}
+              value={confirmedExperienceYears ?? ""}
+              onChange={(event) => setConfirmedExperienceYears(event.target.value === "" ? null : Number(event.target.value))}
+              placeholder="Auto from dates"
+              className="h-10 w-full rounded-md border border-foreground/15 bg-background px-3 pr-14 text-[13px] text-foreground focus:outline-none focus:border-foreground/30"
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">years</span>
+          </div>
+        </div>
         <TagEditor
           label="Target roles"
-          hint="Keywords that must appear in the job title (e.g. 'AI', 'Staff', 'Platform')."
+          hint="Role families you can support with resume evidence; exact title wording is not required."
           values={prefs.target_roles}
           onChange={(target_roles) => setPrefs({ ...prefs, target_roles })}
           placeholder="Staff Engineer, Product Manager…"
         />
         <TagEditor
           label="Negative keywords"
-          hint="Titles containing any of these are hidden."
+          hint="Exclude any title or description containing one of these terms."
           values={prefs.negative_keywords}
           onChange={(negative_keywords) => setPrefs({ ...prefs, negative_keywords })}
           placeholder="Intern, Sales…"
         />
         <TagEditor
+          label="Excluded companies"
+          hint="Companies you never want included in the shortlist."
+          values={prefs.excluded_companies}
+          onChange={(excluded_companies) => setPrefs({ ...prefs, excluded_companies })}
+          placeholder="Company name…"
+        />
+        <TagEditor
           label="Preferred locations"
-          hint="City or region. Leave empty to include all."
+          hint="Cities or regions for hybrid and on-site work."
           values={prefs.locations}
           onChange={(locations) => setPrefs({ ...prefs, locations })}
           placeholder="Berlin, Remote EU…"
         />
-        <div className="flex items-center justify-between">
+        <TagEditor
+          label="Countries"
+          hint="Country eligibility is checked before a role can be prepared."
+          values={prefs.target_countries}
+          onChange={(target_countries) => setPrefs({ ...prefs, target_countries })}
+          placeholder="United States, Canada…"
+        />
+        <ChoiceChips
+          label="Work mode"
+          hint="Choose every arrangement you will accept."
+          values={prefs.work_modes}
+          onChange={(work_modes) => setPrefs({ ...prefs, work_modes })}
+          choices={[
+            { value: "remote", label: "Remote" },
+            { value: "hybrid", label: "Hybrid" },
+            { value: "onsite", label: "On-site" },
+          ]}
+        />
+        <ChoiceChips
+          label="Seniority"
+          hint="A role outside these levels is held from Autopilot, even if its keywords look similar."
+          values={prefs.seniority_levels}
+          onChange={(seniority_levels) => setPrefs({ ...prefs, seniority_levels })}
+          choices={[
+            { value: "entry", label: "Entry" },
+            { value: "mid", label: "Mid" },
+            { value: "senior", label: "Senior" },
+            { value: "staff", label: "Staff / Principal" },
+            { value: "manager", label: "Manager" },
+            { value: "director", label: "Director" },
+            { value: "executive", label: "Executive" },
+          ]}
+        />
+        <ChoiceChips
+          label="Employment type"
+          hint="Only selected employment types can enter the application queue."
+          values={prefs.employment_types}
+          onChange={(employment_types) => setPrefs({ ...prefs, employment_types })}
+          choices={[
+            { value: "full_time", label: "Full-time" },
+            { value: "contract", label: "Contract" },
+            { value: "part_time", label: "Part-time" },
+            { value: "internship", label: "Internship" },
+          ]}
+        />
+        <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <p className="text-[14px] font-semibold text-foreground">Remote only</p>
-            <p className="text-[12px] text-muted-foreground">Hide on-site and hybrid roles.</p>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Work authorization</p>
+            <input
+              aria-label="Work authorization"
+              value={prefs.work_authorization ?? ""}
+              onChange={(e) => setPrefs({ ...prefs, work_authorization: e.target.value || null })}
+              placeholder="US citizen, H-1B, OPT…"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+            />
+          </div>
+          <div>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Maximum experience stretch</p>
+            <input
+              aria-label="Maximum experience stretch in years"
+              type="number"
+              min="0"
+              max="10"
+              step="0.5"
+              value={prefs.max_stretch_years}
+              onChange={(e) => setPrefs({ ...prefs, max_stretch_years: Number(e.target.value) })}
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Hold roles asking for more than this many extra years for your review.</p>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Minimum job experience level</p>
+            <input
+              aria-label="Minimum job experience in years"
+              type="number"
+              min="0"
+              max="40"
+              step="0.5"
+              value={prefs.min_years_experience ?? ""}
+              onChange={(e) => setPrefs({ ...prefs, min_years_experience: e.target.value ? Number(e.target.value) : null })}
+              placeholder="No minimum"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+            />
+          </div>
+          <div>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Maximum job experience level</p>
+            <input
+              aria-label="Maximum job experience in years"
+              type="number"
+              min="0"
+              max="40"
+              step="0.5"
+              value={prefs.max_years_experience ?? ""}
+              onChange={(e) => setPrefs({ ...prefs, max_years_experience: e.target.value ? Number(e.target.value) : null })}
+              placeholder="No maximum"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <div>
+            <p className="text-[14px] font-semibold text-foreground">I need sponsorship</p>
+            <p className="text-[12px] text-muted-foreground">Hold postings that explicitly cannot sponsor.</p>
           </div>
           <button
             type="button"
-            onClick={() => setPrefs({ ...prefs, remote_only: !prefs.remote_only })}
+            onClick={() => setPrefs({ ...prefs, requires_sponsorship: !prefs.requires_sponsorship })}
             className={cn(
-              "h-7 w-12 rounded-full transition-colors relative",
-              prefs.remote_only ? "bg-foreground" : "bg-foreground/10",
+              "h-7 w-12 overflow-hidden rounded-full transition-colors relative",
+              prefs.requires_sponsorship ? "bg-foreground" : "bg-foreground/10",
             )}
+            aria-label="Toggle sponsorship requirement"
+            aria-pressed={prefs.requires_sponsorship}
           >
-            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.remote_only ? "translate-x-5" : "translate-x-0.5")} />
+            <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.requires_sponsorship ? "translate-x-5" : "translate-x-0")} />
           </button>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">Comp min (USD)</p>
             <input
+              aria-label="Minimum compensation in US dollars"
               type="number"
               value={prefs.comp_target_usd_min ?? ""}
               onChange={(e) => setPrefs({ ...prefs, comp_target_usd_min: e.target.value ? Number(e.target.value) : null })}
@@ -210,6 +421,7 @@ export default function CareerOpsPreferencesPage() {
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">Comp max (USD)</p>
             <input
+              aria-label="Maximum compensation in US dollars"
               type="number"
               value={prefs.comp_target_usd_max ?? ""}
               onChange={(e) => setPrefs({ ...prefs, comp_target_usd_max: e.target.value ? Number(e.target.value) : null })}
@@ -217,6 +429,24 @@ export default function CareerOpsPreferencesPage() {
               className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
             />
           </div>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <div>
+            <p className="text-[14px] font-semibold text-foreground">Require a disclosed salary</p>
+            <p className="text-[12px] text-muted-foreground">Hold roles without a usable compensation range.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPrefs({ ...prefs, require_salary_disclosure: !prefs.require_salary_disclosure })}
+            className={cn(
+              "h-7 w-12 overflow-hidden rounded-full transition-colors relative shrink-0",
+              prefs.require_salary_disclosure ? "bg-foreground" : "bg-foreground/10",
+            )}
+            aria-label="Toggle salary disclosure requirement"
+            aria-pressed={prefs.require_salary_disclosure}
+          >
+            <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.require_salary_disclosure ? "translate-x-5" : "translate-x-0")} />
+          </button>
         </div>
       </motion.section>
 
@@ -226,37 +456,38 @@ export default function CareerOpsPreferencesPage() {
           <div>
             <p className="text-[13px] font-semibold text-foreground">Auto-submit</p>
             <p className="text-[14px] font-semibold text-foreground mt-2">
-              Submit to Greenhouse portals <em className="italic font-normal">on your behalf.</em>
+              Submit supported simple-form applications <em className="italic font-normal">on your behalf.</em>
             </p>
             <p className="text-[13px] text-muted-foreground mt-1 max-w-[60ch]">
-              When on, high-scoring drafts can be queued to the worker which POSTs to the Greenhouse application endpoint.
-              Lever, Ashby, Workday, LinkedIn are intentionally excluded — account-flag risk outweighs convenience.
+              Greenhouse, Ashby, and Lever applications above your threshold can enter guarded submission checks.
+              Multi-page or uncertain portals stay review-only until they pass receipt-level validation.
             </p>
           </div>
           <button
             type="button"
             onClick={() => setPrefs({ ...prefs, auto_apply_enabled: !prefs.auto_apply_enabled })}
             className={cn(
-              "h-7 w-12 rounded-full transition-colors relative shrink-0",
+              "h-7 w-12 overflow-hidden rounded-full transition-colors relative shrink-0",
               prefs.auto_apply_enabled ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle auto-apply"
+            aria-pressed={prefs.auto_apply_enabled}
           >
-            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.auto_apply_enabled ? "translate-x-5" : "translate-x-0.5")} />
+            <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.auto_apply_enabled ? "translate-x-5" : "translate-x-0")} />
           </button>
         </div>
 
         <div className={cn("grid grid-cols-2 gap-6 pt-4 border-t border-foreground/10", !prefs.auto_apply_enabled && "opacity-50 pointer-events-none")}>
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Minimum score</p>
-            <p className="text-[12px] text-muted-foreground mb-2">Only submit to roles scored ≥ this.</p>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Minimum career fit</p>
+            <p className="text-[12px] text-muted-foreground mb-2">0–100 evidence-based gate. Your non-negotiable rules still win.</p>
             <input
+              aria-label="Minimum career fit score"
               type="number"
-              step="0.1"
               min="0"
-              max="5"
-              value={prefs.auto_apply_min_score}
-              onChange={(e) => setPrefs({ ...prefs, auto_apply_min_score: Number(e.target.value) })}
+              max="100"
+              value={prefs.auto_apply_min_fit_score}
+              onChange={(e) => setPrefs({ ...prefs, auto_apply_min_fit_score: Number(e.target.value) })}
               className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
             />
           </div>
@@ -264,14 +495,31 @@ export default function CareerOpsPreferencesPage() {
             <p className="text-[13px] font-semibold text-foreground mb-1">Daily submit cap</p>
             <p className="text-[12px] text-muted-foreground mb-2">Hard limit to protect your applicant reputation.</p>
             <input
+              aria-label="Daily submission cap"
               type="number"
               min="0"
-              max="50"
+              max="75"
               value={prefs.daily_apply_cap}
               onChange={(e) => setPrefs({ ...prefs, daily_apply_cap: Number(e.target.value) })}
               className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
             />
           </div>
+        </div>
+
+        <div className="pt-4 border-t border-foreground/10">
+          <p className="text-[13px] font-semibold text-foreground mb-1">Review policy</p>
+          <p className="text-[12px] text-muted-foreground mb-3">Controls the last human checkpoint; roles outside your rules are never submitted.</p>
+          <ChoiceChips
+            label=""
+            hint=""
+            values={[prefs.review_mode]}
+            onChange={(values) => setPrefs({ ...prefs, review_mode: (values.at(-1) ?? "always") as Prefs["review_mode"] })}
+            choices={[
+              { value: "always", label: "Review every application" },
+              { value: "low_confidence", label: "Review low confidence" },
+              { value: "eligible_only", label: "Auto-send eligible only" },
+            ]}
+          />
         </div>
 
         {prefs.auto_apply_enabled && (
@@ -280,7 +528,7 @@ export default function CareerOpsPreferencesPage() {
             <div className="flex gap-2 flex-wrap mt-2">
               {(["greenhouse", "ashby", "lever"] as const).map((p) => {
                 const active = prefs.auto_apply_portals.includes(p);
-                const available = p === "greenhouse";
+                const available = true;
                 return (
                   <button
                     type="button"
@@ -317,19 +565,20 @@ export default function CareerOpsPreferencesPage() {
               Let the Job Hunter agent run for you.
             </p>
             <p className="text-[13px] text-muted-foreground mt-1 max-w-[60ch]">
-              Every hour, an autonomous agent scans new matches against your prefs, scores them, and prepares the high-scoring ones — so you walk in to a queue of ready-to-review applications instead of doing it manually. It never submits without your approval.
+              Every ten minutes, the Agent scans new matches against your preferences, scores them, and prepares high-fit roles. In Continuous Apply mode, supported jobs can submit under your saved policy until you press Stop applying.
             </p>
           </div>
           <button
             type="button"
             onClick={() => setPrefs({ ...prefs, agent_enabled: !prefs.agent_enabled })}
             className={cn(
-              "h-7 w-12 rounded-full transition-colors relative shrink-0",
+              "h-7 w-12 overflow-hidden rounded-full transition-colors relative shrink-0",
               prefs.agent_enabled ? "bg-foreground" : "bg-foreground/10",
             )}
             aria-label="Toggle auto-pilot"
+            aria-pressed={prefs.agent_enabled}
           >
-            <span className={cn("absolute top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform", prefs.agent_enabled ? "translate-x-5" : "translate-x-0.5")} />
+            <span className={cn("absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-background shadow-sm transition-transform duration-200 ease-out", prefs.agent_enabled ? "translate-x-5" : "translate-x-0")} />
           </button>
         </div>
 
@@ -337,6 +586,7 @@ export default function CareerOpsPreferencesPage() {
           <p className="text-[13px] font-semibold text-foreground mb-1">Daily action budget</p>
           <p className="text-[12px] text-muted-foreground mb-2">Hard cap on how many score + prepare actions the agent can take in 24 hours.</p>
           <input
+            aria-label="Daily Agent action budget"
             type="number"
             min="0"
             max="100"

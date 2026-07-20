@@ -14,13 +14,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import {
   Plus, Search, Briefcase, Building2, Clock, Target, Trash2, Loader2,
-  Bookmark, MapPin, DollarSign, Globe, X, FileText,
+  Bookmark, MapPin, DollarSign, Globe, X, FileText, Sparkles, Zap, BarChart3, ExternalLink,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { trackProductEvent } from "@/lib/product-analytics";
 import { JobApplyButton } from "@/components/JobApplyButton";
+import { JobDescription } from "@/components/JobDescription";
 
 interface Job {
   id: string;
@@ -29,6 +30,21 @@ interface Job {
   status: string;
   created_at: string;
 }
+
+// Pipeline counters below use the same definition as the Agent page tiles:
+// Prepared = status draft/ready, Queued = status queued, Submitted/Failed/
+// Skipped map 1:1. Agent run summaries count per-run actions instead, so a
+// run can report "prepared 0" while these totals stay non-zero.
+type DraftApplicationStatus = "draft" | "ready" | "queued" | "submitted" | "skipped" | "failed";
+
+const EMPTY_AUTOMATION_COUNTS: Record<DraftApplicationStatus, number> = {
+  draft: 0,
+  ready: 0,
+  queued: 0,
+  submitted: 0,
+  skipped: 0,
+  failed: 0,
+};
 
 const COLUMNS = [
   { key: "Saved", color: "border-t-muted-foreground" },
@@ -52,6 +68,37 @@ interface SavedJobDetail {
   source: string | null;
   saved_at: string;
 }
+
+interface ApplicationPacket {
+  id: string;
+  status: DraftApplicationStatus;
+  tailored_resume_id: string | null;
+  created_at: string;
+  submitted_at: string | null;
+  evaluation: {
+    score: number;
+    fit_score: number | null;
+    scanned_job: {
+      title: string;
+      apply_url: string | null;
+      company: { name: string };
+    };
+  };
+}
+
+interface WorkerRuntime {
+  online: boolean;
+  lastSeen: string | null;
+}
+
+const PACKET_STATUS: Record<DraftApplicationStatus, { label: string; note: string }> = {
+  draft: { label: "Preparing", note: "Packet is still being assembled." },
+  ready: { label: "Ready for review", note: "Résumé and answers are ready; nothing has been submitted." },
+  queued: { label: "Queued", note: "Waiting for guarded worker checks; no submission receipt yet." },
+  submitted: { label: "Submitted", note: "A submission receipt was recorded." },
+  skipped: { label: "Skipped", note: "The application was intentionally held." },
+  failed: { label: "Needs attention", note: "Review the packet and use the employer portal if needed." },
+};
 
 function JobDetailPanel({
   job,
@@ -128,9 +175,7 @@ function JobDetailPanel({
             <div className="border-t pt-4">
               <h4 className="font-semibold text-sm mb-2">About the Job</h4>
               {job.description ? (
-                <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">
-                  {job.description}
-                </div>
+                <JobDescription value={job.description} />
               ) : (
                 <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
                   <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
@@ -159,6 +204,9 @@ export default function JobTracker() {
   const [newJob, setNewJob] = useState({ title: "", company: "" });
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [automationCounts, setAutomationCounts] = useState(EMPTY_AUTOMATION_COUNTS);
+  const [applicationPackets, setApplicationPackets] = useState<ApplicationPacket[]>([]);
+  const [workerRuntime, setWorkerRuntime] = useState<WorkerRuntime>({ online: false, lastSeen: null });
 
   const [selectedSavedJob, setSelectedSavedJob] = useState<SavedJobDetail | null>(null);
   const [selectedKanbanJob, setSelectedKanbanJob] = useState<Job | null>(null);
@@ -195,6 +243,38 @@ export default function JobTracker() {
         .order("saved_at", { ascending: false });
 
       setSavedJobDetails((savedData as SavedJobDetail[]) || []);
+
+      // Keep preparation and submission states observable in the same workspace.
+      // Older environments without the career-ops migration can still load the tracker.
+      const { data: draftData } = await supabase
+        .from("draft_applications")
+        .select(`id,status,tailored_resume_id,created_at,submitted_at,
+          evaluation:job_evaluations(score,fit_score,
+            scanned_job:scanned_jobs(title,apply_url,company:scan_companies(name))
+          )`)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (draftData) {
+        const packets = draftData as unknown as ApplicationPacket[];
+        setApplicationPackets(packets);
+        const next = { ...EMPTY_AUTOMATION_COUNTS };
+        packets.forEach(({ status }) => {
+          if (status in next) next[status as DraftApplicationStatus] += 1;
+        });
+        setAutomationCounts(next);
+      }
+
+      const { data: heartbeat } = await supabase
+        .from("mc_worker_heartbeats")
+        .select("last_seen")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const lastSeen = heartbeat?.last_seen || null;
+      setWorkerRuntime({
+        online: Boolean(lastSeen && Date.now() - new Date(lastSeen).getTime() < 90_000),
+        lastSeen,
+      });
       setLoading(false);
     };
     load();
@@ -277,6 +357,12 @@ export default function JobTracker() {
   const filteredSavedDetails = savedJobDetails.filter(
     (j) => j.job_title.toLowerCase().includes(search.toLowerCase()) || j.company.toLowerCase().includes(search.toLowerCase())
   );
+
+  const filteredApplicationPackets = applicationPackets.filter((packet) => {
+    const job = packet.evaluation?.scanned_job;
+    const query = search.toLowerCase();
+    return !query || job?.title.toLowerCase().includes(query) || job?.company?.name.toLowerCase().includes(query);
+  });
 
   if (loading) {
     return (
@@ -439,12 +525,118 @@ export default function JobTracker() {
       <PageHeader
         title="Applications."
         status="kanban · pipeline"
-        description="Drag and drop between Saved · Applied · Interviewing · Offer · Rejected. Status changes are logged for analytics."
+        description="One record for every opportunity—from match and tailored resume through application, interview, and offer."
       />
+      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-px bg-rp-rule border border-rp-rule mb-6">
+        <button onClick={() => navigate("/matches")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
+          <Sparkles className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Matched jobs</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Review fit and tailor a resume.</p>
+        </button>
+        <button onClick={() => navigate("/agent")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
+          <Zap className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Agent</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Matches, tailored packets, ATS, and safe queue controls.</p>
+        </button>
+        <button
+          onClick={() => navigate(applicationPackets[0] ? `/applications/${applicationPackets[0].id}` : "/matches")}
+          className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors"
+        >
+          <FileText className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Application packets</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Tailored résumé, ATS evidence, cover letter, and answers.</p>
+        </button>
+        <button onClick={() => navigate("/analytics")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
+          <BarChart3 className="w-4 h-4 text-rp-accent" strokeWidth={1.7} />
+          <p className="mt-2 text-sm font-semibold text-rp-ink">Outcomes</p>
+          <p className="mt-0.5 text-xs text-rp-ink-2">Track conversion and follow-up activity.</p>
+        </button>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 border-y border-rp-rule mb-6" aria-label="Application automation status">
+        {[
+          { label: "Prepared", value: automationCounts.draft + automationCounts.ready },
+          { label: "Queued", value: automationCounts.queued },
+          { label: "Submitted", value: automationCounts.submitted },
+          { label: "Failed", value: automationCounts.failed },
+          { label: "Skipped", value: automationCounts.skipped },
+        ].map((item) => (
+          <div key={item.label} className="px-3 py-3 border-r border-rp-rule last:border-r-0">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-rp-ink/50">{item.label}</p>
+            <p className="mt-1 text-xl font-semibold tabular-nums text-rp-ink">{item.value}</p>
+          </div>
+        ))}
+      </div>
+      {automationCounts.queued > 0 && (
+        <section className={cn(
+          "mb-6 flex flex-col gap-3 border p-4 sm:flex-row sm:items-center sm:justify-between",
+          workerRuntime.online ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5",
+        )} aria-live="polite">
+          <div>
+            <p className="text-sm font-semibold text-rp-ink">
+              {workerRuntime.online ? "Submission worker is processing the queue" : "Submission worker is offline"}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">
+              {workerRuntime.online
+                ? "The browser worker is filling the employer form. This changes to Submitted only after a verifiable receipt."
+                : `${automationCounts.queued} application${automationCounts.queued === 1 ? " is" : "s are"} saved safely, but nothing can be submitted until an application worker is online.`}
+            </p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => navigate("/agent")}>Open Agent status</Button>
+        </section>
+      )}
+      {applicationPackets.length > 0 && (
+        <section className="mb-6" aria-labelledby="application-packets-title">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 id="application-packets-title" className="text-sm font-semibold text-rp-ink">Application packets</h2>
+              <p className="mt-0.5 text-xs text-rp-ink-2">Every tailored résumé stays attached to its job and submission state.</p>
+            </div>
+            <span className="text-[11px] tabular-nums text-rp-ink-3">{filteredApplicationPackets.length} shown</span>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {filteredApplicationPackets.map((packet) => {
+              const job = packet.evaluation.scanned_job;
+              const status = PACKET_STATUS[packet.status];
+              const fit = Math.round(packet.evaluation.fit_score ?? packet.evaluation.score * 20);
+              return (
+                <article key={packet.id} className="border border-rp-rule bg-rp-paper p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="rounded-none text-[10px]">{status.label}</Badge>
+                        <span className="text-[11px] font-semibold tabular-nums text-rp-accent">{fit}% career fit</span>
+                      </div>
+                      <h3 className="mt-2 truncate text-sm font-semibold text-rp-ink">{job.title}</h3>
+                      <p className="mt-0.5 text-xs text-rp-ink-2">{job.company.name}</p>
+                    </div>
+                    <Button size="sm" onClick={() => navigate(`/applications/${packet.id}`)}>Review</Button>
+                  </div>
+                  <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">{status.note}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-rp-rule pt-3">
+                    {packet.tailored_resume_id && (
+                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate(`/resume-builder/${packet.tailored_resume_id}`)}>
+                        <FileText className="h-3.5 w-3.5" /> Résumé used
+                      </Button>
+                    )}
+                    {job.apply_url && (
+                      <Button variant="ghost" size="sm" className="gap-1.5" asChild>
+                        <a href={job.apply_url} target="_blank" rel="noreferrer noopener">Employer portal <ExternalLink className="h-3.5 w-3.5" /></a>
+                      </Button>
+                    )}
+                    <span className="ml-auto text-[10px] text-rp-ink-3">
+                      {packet.submitted_at ? `Submitted ${new Date(packet.submitted_at).toLocaleDateString()}` : formatDistanceToNow(new Date(packet.created_at), { addSuffix: true })}
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
       <div className="flex items-center justify-end gap-2 mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rp-ink-3" />
-          <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
+          <Input aria-label="Search applications" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-48" />
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -453,8 +645,8 @@ export default function JobTracker() {
             <DialogContent>
               <DialogHeader><DialogTitle>Add New Job</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                <div><Label>Job Title</Label><Input value={newJob.title} onChange={(e) => setNewJob((p) => ({ ...p, title: e.target.value }))} placeholder="e.g. Software Engineer" /></div>
-                <div><Label>Company</Label><Input value={newJob.company} onChange={(e) => setNewJob((p) => ({ ...p, company: e.target.value }))} placeholder="e.g. Google" /></div>
+                <div><Label htmlFor="new-job-title">Job Title</Label><Input id="new-job-title" value={newJob.title} onChange={(e) => setNewJob((p) => ({ ...p, title: e.target.value }))} placeholder="e.g. Software Engineer" /></div>
+                <div><Label htmlFor="new-job-company">Company</Label><Input id="new-job-company" value={newJob.company} onChange={(e) => setNewJob((p) => ({ ...p, company: e.target.value }))} placeholder="e.g. Google" /></div>
                 <Button onClick={addJob} className="w-full">Add Job</Button>
               </div>
             </DialogContent>
@@ -524,6 +716,7 @@ export default function JobTracker() {
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); deleteJob(job.id); }}
+                        aria-label={`Delete ${job.title}${job.company ? ` at ${job.company}` : ""}`}
                         className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 transition-all"
                       >
                         <Trash2 className="w-3 h-3 text-destructive" />

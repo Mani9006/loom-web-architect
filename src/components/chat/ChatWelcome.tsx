@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { FileText, MessageSquare, Target, Search, Mail, BriefcaseBusiness } from "lucide-react";
+import { FileText, Bot, Target, Search, Mail, BriefcaseBusiness } from "lucide-react";
 
 interface ChatWelcomeProps {
   displayName: string;
@@ -33,14 +33,14 @@ const quickActions = [
   {
     icon: Search,
     label: "Find Jobs",
-    description: "AI-powered job search",
+    description: "Find relevant jobs with clear fit evidence",
     route: "/job-search",
   },
   {
-    icon: MessageSquare,
-    label: "Interview Prep",
-    description: "Practice mock interviews",
-    route: "/interview-prep",
+    icon: Bot,
+    label: "Application Agent",
+    description: "Review matches and prepared packets",
+    route: "/agent",
   },
 ];
 
@@ -48,7 +48,7 @@ const quickPrompts = [
   "How do I negotiate a higher salary?",
   "Tips for career change to tech",
   "Improve my LinkedIn profile",
-  "How to prepare for behavioral interviews?",
+  "Review my application strategy",
 ];
 
 export function ChatWelcome({

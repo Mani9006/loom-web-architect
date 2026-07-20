@@ -25,6 +25,11 @@ jobs:
     name: Jira Governance & Deployment Gate
     runs-on: ubuntu-latest
     if: ${{ vars.ENABLE_HQ_LOOP != '0' }}
+    env:
+      JIRA_URL: ${{ secrets.JIRA_URL }}
+      JIRA_USER: ${{ secrets.JIRA_USER }}
+      JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+      PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY || 'KAN' }}
     outputs:
       deploy_state: ${{ steps.deploy.outputs.state }}
       open_issues: ${{ steps.jira.outputs.open_count }}
@@ -42,12 +47,7 @@ jobs:
 
       - name: Check Jira ticket status
         id: jira
-        if: ${{ secrets.JIRA_URL != '' }}
-        env:
-          JIRA_URL: ${{ secrets.JIRA_URL }}
-          JIRA_USER: ${{ secrets.JIRA_USER }}
-          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
-          PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY || 'KAN' }}
+        if: ${{ env.JIRA_URL != '' }}
         run: |
           RESPONSE=$(curl -s -u "$JIRA_USER:$JIRA_TOKEN" \
             -H "Content-Type: application/json" \
@@ -67,7 +67,7 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Scan tracked files for secrets
         run: |
@@ -87,11 +87,11 @@ jobs:
     name: Quality Gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - run: npm ci

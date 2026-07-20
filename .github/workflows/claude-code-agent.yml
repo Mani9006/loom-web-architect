@@ -25,18 +25,22 @@ jobs:
   agent-dispatch:
     name: Claude Code Agent Task
     runs-on: ubuntu-latest
+    # Disabled unless explicitly enabled. This legacy workflow is broader and
+    # potentially more expensive than the bounded ai-review workflow.
     if: |
-      (github.event_name == 'workflow_dispatch') ||
-      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'agent-task')) ||
-      (github.event_name == 'issue_comment' && contains(github.event.issue.labels.*.name, 'agent-task') && github.event.comment.user.login != 'github-actions[bot]')
+      vars.ENABLE_CLAUDE_AGENT == '1' && (
+        (github.event_name == 'workflow_dispatch') ||
+        (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'agent-task')) ||
+        (github.event_name == 'issue_comment' && contains(github.event.issue.labels.*.name, 'agent-task') && github.event.comment.user.login != 'github-actions[bot]')
+      )
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - run: npm ci

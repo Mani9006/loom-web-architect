@@ -41,12 +41,12 @@ interface ATSResult {
 }
 
 const SECTION_CONFIG = [
-  { key: "formatting" as const, label: "Formatting & Structure", icon: Layout, weight: "20%", color: "blue" },
+  { key: "formatting" as const, label: "Formatting & Structure", icon: Layout, weight: "15%", color: "blue" },
   { key: "keywords" as const, label: "Keyword Match", icon: Key, weight: "25%", color: "purple" },
-  { key: "experience" as const, label: "Experience Relevance", icon: Briefcase, weight: "20%", color: "orange" },
+  { key: "experience" as const, label: "Experience Relevance", icon: Briefcase, weight: "25%", color: "orange" },
   { key: "skills" as const, label: "Skills Coverage", icon: Sparkles, weight: "15%", color: "cyan" },
-  { key: "education" as const, label: "Education", icon: GraduationCap, weight: "10%", color: "green" },
-  { key: "impact" as const, label: "Impact & Achievements", icon: TrendingUp, weight: "10%", color: "pink" },
+  { key: "education" as const, label: "Education", icon: GraduationCap, weight: "5%", color: "green" },
+  { key: "impact" as const, label: "Impact & Achievements", icon: TrendingUp, weight: "15%", color: "pink" },
 ];
 
 function ScoreRing({ score, size = 120, strokeWidth = 10 }: { score: number; size?: number; strokeWidth?: number }) {
@@ -85,7 +85,7 @@ function SectionCard({ config, data, expanded, onToggle }: {
 
   return (
     <Card className="overflow-hidden">
-      <button onClick={onToggle} className="w-full text-left">
+      <button onClick={onToggle} aria-expanded={expanded} className="w-full text-left">
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
@@ -203,85 +203,26 @@ export default function ATSCheckerPage() {
 
       const baseUrl = import.meta.env.VITE_SUPABASE_URL;
 
-      // Try new structured endpoint first
-      let response = await fetch(`${baseUrl}/functions/v1/ats-score`, {
+      const response = await fetch(`${baseUrl}/functions/v1/ats-score`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ resumeText, jobDescription: jobDescription || undefined }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setResult(data);
-        // Expand all sections that need attention (score < 70)
-        const weak = SECTION_CONFIG.filter((c) => data.sections?.[c.key]?.score < 70).map((c) => c.key);
-        setExpandedSections(weak.length > 0 ? weak : [SECTION_CONFIG[0].key]);
-      } else {
-        // Fallback: use the chat endpoint for ATS analysis
-        console.log("ats-score not available, falling back to chat");
-        response = await fetch(`${baseUrl}/functions/v1/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            messages: [{
-              role: "user",
-              content: jobDescription
-                ? `Analyze this resume for ATS compatibility:\n\nResume:\n${resumeText}\n\nJob Description:\n${jobDescription}`
-                : `Analyze this resume for ATS compatibility:\n\n${resumeText}`,
-            }],
-            mode: "ats-check",
-          }),
-        });
+      if (!response.ok) throw new Error(`ATS analysis request failed (${response.status})`);
 
-        if (!response.ok) throw new Error("Analysis failed");
-
-        // Parse streaming response for fallback display
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        let content = "";
-        let buffer = "";
-
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            let idx;
-            while ((idx = buffer.indexOf("\n")) !== -1) {
-              const line = buffer.slice(0, idx);
-              buffer = buffer.slice(idx + 1);
-              if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
-              try {
-                const parsed = JSON.parse(line.slice(6));
-                const c = parsed.choices?.[0]?.delta?.content;
-                if (c) content += c;
-              } catch {}
-            }
-          }
-        }
-
-        // Try to extract a score from the text
-        const scoreMatch = content.match(/(\d{1,3})\s*\/\s*100/);
-        const fallbackScore = scoreMatch ? parseInt(scoreMatch[1]) : 65;
-
-        setResult({
-          overallScore: fallbackScore,
-          sections: {
-            formatting: { score: fallbackScore, issues: ["Detailed breakdown requires the ats-score edge function"], tips: ["Deploy ats-score for section-by-section analysis"] },
-            keywords: { score: fallbackScore, matched: [], missing: [], tips: [] },
-            experience: { score: fallbackScore, issues: [], tips: [] },
-            skills: { score: fallbackScore, matched: [], missing: [], tips: [] },
-            education: { score: fallbackScore, issues: [], tips: [] },
-            impact: { score: fallbackScore, issues: [], tips: [] },
-          },
-          summary: content.substring(0, 500),
-          topImprovements: ["Deploy the ats-score edge function for detailed structured analysis"],
-        });
-        setExpandedSections(["formatting"]);
-      }
+      const data = await response.json();
+      setResult(data);
+      // Expand all sections that need attention (score < 70)
+      const weak = SECTION_CONFIG.filter((c) => data.sections?.[c.key]?.score < 70).map((c) => c.key);
+      setExpandedSections(weak.length > 0 ? weak : [SECTION_CONFIG[0].key]);
     } catch (err) {
       console.error("ATS analysis failed:", err);
-      toast({ title: "Analysis Failed", description: "Please try again", variant: "destructive" });
+      toast({
+        title: "We could not complete the ATS check",
+        description: "Your résumé is safe. Try again in a moment.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -302,13 +243,17 @@ export default function ATSCheckerPage() {
           <div className="max-w-3xl mx-auto p-6 space-y-6">
             {/* Header */}
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={reset} className="shrink-0">
+              <Button variant="ghost" size="icon" aria-label="Back to ATS input" onClick={reset} className="shrink-0">
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <div>
                 <h1 className="text-xl font-bold">ATS Analysis Results</h1>
-                <p className="text-sm text-muted-foreground">Detailed compatibility breakdown</p>
+                <p className="text-sm text-muted-foreground">Detailed résumé-readiness breakdown</p>
               </div>
+            </div>
+
+            <div className="rounded-lg border bg-background px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+              This is the standalone ATS résumé-readiness estimate. Job matching uses a separate career-fit score that also considers role, experience level, location, compensation, and authorization; the two percentages should not be added together or treated as the same score.
             </div>
 
             {/* Overall Score Card */}
@@ -416,6 +361,7 @@ export default function ATSCheckerPage() {
               )}
 
               <Textarea
+                aria-label="Résumé text"
                 placeholder="Or paste your resume content here..."
                 value={resumeText}
                 onChange={(e) => { setResumeText(e.target.value); setUploadedFileName(null); }}
@@ -435,6 +381,7 @@ export default function ATSCheckerPage() {
                 Paste the job posting to get keyword match analysis and tailored recommendations
               </p>
               <Textarea
+                aria-label="Target job description"
                 placeholder="Paste the target job description here..."
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}

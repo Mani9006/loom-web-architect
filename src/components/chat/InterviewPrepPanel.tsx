@@ -254,7 +254,7 @@ export function InterviewPrepPanel({
             </div>
             <div>
               <h2 className="font-semibold">Interview Prep</h2>
-              <p className="text-xs text-muted-foreground">Practice with AI-generated questions</p>
+              <p className="text-xs text-muted-foreground">Practice with questions tailored to your target role</p>
             </div>
           </div>
         </div>
@@ -512,7 +512,7 @@ export function InterviewPrepPanel({
             {isListening 
               ? "🎤 Listening... speak your answer" 
               : autoSpeak 
-                ? "🔊 Auto-speak enabled - AI will read responses aloud"
+                ? "🔊 Auto-speak enabled — responses will be read aloud"
                 : "💡 Use the mic to practice answering questions verbally"
             }
           </p>

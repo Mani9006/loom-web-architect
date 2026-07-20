@@ -1,11 +1,17 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  resolveSubscription,
+  type SubscriptionPlan,
+  type SubscriptionStatus,
+} from "@/lib/subscription";
 
 interface SubscriptionState {
-  plan: "free" | "premium";
-  status: "active" | "canceled" | "past_due" | "trialing";
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
   isPremium: boolean;
+  hasAutoApply: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
 }
@@ -14,6 +20,7 @@ const SubscriptionContext = createContext<SubscriptionState>({
   plan: "free",
   status: "active",
   isPremium: false,
+  hasAutoApply: false,
   loading: true,
   refresh: async () => {},
 });
@@ -26,36 +33,28 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     plan: "free",
     status: "active",
     isPremium: false,
+    hasAutoApply: false,
     loading: true,
   });
 
   const refresh = async () => {
     if (!user) {
-      setState({ plan: "free", status: "active", isPremium: false, loading: false });
+      setState({ plan: "free", status: "active", isPremium: false, hasAutoApply: false, loading: false });
       return;
     }
 
     try {
-      const { data } = await supabase
-        .from("subscription_plans")
-        .select("plan_type, status")
+      const { data, error } = await supabase
+        .from("user_access_controls")
+        .select("account_status, purchase_state, subscription_plan")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (data) {
-        const plan = (data.plan_type as "free" | "premium") || "free";
-        const status = (data.status as SubscriptionState["status"]) || "active";
-        setState({
-          plan,
-          status,
-          isPremium: plan === "premium" && status === "active",
-          loading: false,
-        });
-      } else {
-        setState({ plan: "free", status: "active", isPremium: false, loading: false });
-      }
+      if (error) throw error;
+
+      setState({ ...resolveSubscription(data), loading: false });
     } catch {
-      setState({ plan: "free", status: "active", isPremium: false, loading: false });
+      setState({ plan: "free", status: "active", isPremium: false, hasAutoApply: false, loading: false });
     }
   };
 

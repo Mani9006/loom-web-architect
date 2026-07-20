@@ -1,10 +1,17 @@
 // Stripe Webhook - Handles subscription lifecycle events
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyStripeSignature } from "../_shared/stripe-signature.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const PLAN_LABELS: Record<string, string> = {
+  pro: "Pro ($39/mo)",
+  autopilot: "Autopilot ($99/mo)",
+  premium: "Legacy Premium",
 };
 
 // ── Email helper ─────────────────────────────────────────────────────
@@ -31,7 +38,7 @@ async function sendEmailNotification(
   }
 }
 
-async function getUserEmail(supabase: any, userId: string): Promise<string | null> {
+async function getUserEmail(supabase: ReturnType<typeof createClient>, userId: string): Promise<string | null> {
   const { data } = await supabase.auth.admin.getUserById(userId);
   return data?.user?.email || null;
 }
@@ -46,7 +53,20 @@ serve(async (req: Request) => {
     const sig = req.headers.get("stripe-signature");
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
-    // For now, parse the event directly (in production, verify signature)
+    if (!webhookSecret) {
+      console.error("Stripe webhook secret is unavailable");
+      return new Response(JSON.stringify({ error: "Webhook temporarily unavailable" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!await verifyStripeSignature(body, sig, webhookSecret)) {
+      return new Response(JSON.stringify({ error: "Invalid webhook signature" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const event = JSON.parse(body);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -59,9 +79,9 @@ serve(async (req: Request) => {
       case "checkout.session.completed": {
         const session = event.data.object;
         const userId = session.metadata?.user_id;
-        const planType = session.metadata?.plan_type || "premium";
+        const planType = session.metadata?.plan_type;
 
-        if (userId) {
+        if (userId && ["pro", "autopilot"].includes(planType) && session.mode === "subscription") {
           await supabase.from("subscription_plans").upsert({
             user_id: userId,
             plan_type: planType,
@@ -88,7 +108,7 @@ serve(async (req: Request) => {
           if (email) {
             const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
             void sendEmailNotification(supabaseUrl, serviceKey, "subscription", email, {
-              plan_name: planType === "premium" ? "Premium ($120/mo)" : planType,
+              plan_name: PLAN_LABELS[planType] || planType,
               status: "active",
               period_end: periodEnd,
             });
@@ -194,7 +214,7 @@ serve(async (req: Request) => {
   } catch (error) {
     console.error("Webhook error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "Webhook processing failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

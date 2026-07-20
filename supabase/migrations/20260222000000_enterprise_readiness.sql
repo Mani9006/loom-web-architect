@@ -29,29 +29,6 @@ CREATE POLICY "Admins can manage tenants"
   ON public.enterprise_tenants
   USING (public.has_role(auth.uid(), 'admin'));
 
--- Enterprise admins can view their own tenant
-CREATE POLICY "Enterprise admins can view their tenant"
-  ON public.enterprise_tenants FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.enterprise_memberships em
-      WHERE em.tenant_id = enterprise_tenants.id
-        AND em.user_id   = auth.uid()
-        AND em.tenant_role IN ('owner', 'admin')
-    )
-  );
-
--- Enterprise members can view their own tenant
-CREATE POLICY "Enterprise members can view their tenant"
-  ON public.enterprise_tenants FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.enterprise_memberships em
-      WHERE em.tenant_id = enterprise_tenants.id
-        AND em.user_id   = auth.uid()
-    )
-  );
-
 -- ─────────────────────────────────────────────
 -- 3. Enterprise memberships (tenant ↔ user)
 -- ─────────────────────────────────────────────
@@ -70,6 +47,30 @@ CREATE INDEX idx_enterprise_memberships_tenant ON public.enterprise_memberships(
 CREATE INDEX idx_enterprise_memberships_user   ON public.enterprise_memberships(user_id);
 
 ALTER TABLE public.enterprise_memberships ENABLE ROW LEVEL SECURITY;
+
+-- Tenant visibility policies must be created after enterprise_memberships.
+-- PostgreSQL resolves referenced relations when CREATE POLICY runs, so placing
+-- these policies before the table prevents a clean environment from migrating.
+CREATE POLICY "Enterprise admins can view their tenant"
+  ON public.enterprise_tenants FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.enterprise_memberships em
+      WHERE em.tenant_id = enterprise_tenants.id
+        AND em.user_id   = auth.uid()
+        AND em.tenant_role IN ('owner', 'admin')
+    )
+  );
+
+CREATE POLICY "Enterprise members can view their tenant"
+  ON public.enterprise_tenants FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.enterprise_memberships em
+      WHERE em.tenant_id = enterprise_tenants.id
+        AND em.user_id   = auth.uid()
+    )
+  );
 
 -- Members can see memberships in their tenants
 CREATE POLICY "Members can view tenant memberships"

@@ -5,17 +5,21 @@
  *   1. Deterministic checks (no LLM): format (bullet length, action verbs at
  *      start, quantified bullets), sections present, length ratios,
  *      keyword density.
- *   2. Haiku 4.5 pass (simple tier) to extract JD keywords + produce
- *      sharp, actionable suggestions. Cheap; ~20k/day at free tier scale.
+ *   2. Cost-routed small-model pass to extract JD keywords + produce sharp,
+ *      actionable suggestions.
  *   3. Final row written to `ats_scores` with six dimensions 0-100.
  *
- * Body: { resume_id: uuid, scanned_job_id?: uuid, job_description?: string }
+ * Body: { resume_id: uuid, scanned_job_id?: uuid, job_description?: string, user_id?: uuid }
  * Returns: { ats: row }
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { callClaude, truncate } from "../_shared/ai.ts";
+import { truncate } from "../_shared/ai.ts";
+import { callLlmWithFallback } from "../_shared/llm.ts";
 import {
-  corsHeaders, jsonResponse, withErrorHandler, getAuthedUser,
+  collectImpactBullets, computeImpactScore, extractEntryBullets, IMPACT_FULL_CREDIT_RATIO,
+} from "../_shared/ats-impact.ts";
+import {
+  corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
 } from "../_shared/guards.ts";
 
@@ -67,7 +71,8 @@ function deterministicAnalysis(resume: any): DetReport {
   const hasSummary = Boolean(resume.summary || resume.personal_info?.summary);
   const hasExperience = Array.isArray(resume.experience) && resume.experience.length > 0;
   const hasEducation = Array.isArray(resume.education) && resume.education.length > 0;
-  const hasSkills = Array.isArray(resume.skills) && resume.skills.length > 0;
+  const skillList = flattenSkills(resume.skills);
+  const hasSkills = skillList.length > 0;
 
   if (!hasSummary) { issues.push({ scope: "format", where: "summary", message: "no summary/about section" }); formatScore -= 10; }
   if (!hasExperience) { issues.push({ scope: "format", where: "experience", message: "no experience section" }); formatScore -= 30; }
@@ -79,34 +84,53 @@ function deterministicAnalysis(resume: any): DetReport {
   const allBullets: string[] = [];
   if (hasExperience) {
     for (const x of resume.experience) {
-      const bullets: string[] = Array.isArray(x.bullets) ? x.bullets
-        : x.description ? [x.description] : [];
+      // Defensive extraction: handles string arrays, editor objects, and
+      // multi-line description/responsibilities blocks (see _shared/ats-impact.ts).
+      const bullets = extractEntryBullets(x);
       for (const b of bullets) {
         allBullets.push(b);
         const a = analyseBullet(b);
         bulletScores.push(a.score);
-        for (const i of a.issues) issues.push({ scope: "experience", where: `${x.company ?? ""} — ${x.title ?? ""}`, message: i });
+        for (const i of a.issues) issues.push({
+          scope: "experience",
+          where: `${x.company_or_client ?? x.company ?? ""} — ${x.role ?? x.title ?? ""}`,
+          message: i,
+        });
       }
     }
   }
   const bulletAvg = bulletScores.length ? bulletScores.reduce((s, n) => s + n, 0) / bulletScores.length : 0;
 
-  // Impact = bullets with numbers
-  const quantified = allBullets.filter((b) => /\d/.test(b)).length;
-  const impactScore = allBullets.length ? Math.round((quantified / allBullets.length) * 100) : 0;
-  if (impactScore < 40 && allBullets.length > 0) {
-    issues.push({ scope: "impact", where: "experience", message: `only ${quantified}/${allBullets.length} bullets are quantified` });
+  // Impact = quantified achievement coverage across experience AND projects.
+  // Full credit once 40% of bullets carry a metric (IMPACT_FULL_CREDIT_RATIO)
+  // — the same bar the issue below asks users to reach — instead of mapping
+  // the raw ratio onto 0-100, which dragged strong resumes to single digits.
+  const impact = computeImpactScore(collectImpactBullets(resume));
+  if (impact.total > 0 && impact.quantified / impact.total < IMPACT_FULL_CREDIT_RATIO) {
+    issues.push({ scope: "impact", where: "experience", message: `only ${impact.quantified}/${impact.total} bullets are quantified` });
   }
 
   return {
     format: Math.max(0, Math.min(100, Math.round(formatScore))),
     experience: Math.max(0, Math.min(100, Math.round(bulletAvg))),
     education: hasEducation ? 90 : 40,
-    skills: hasSkills ? Math.min(100, (resume.skills?.length || 0) * 8) : 0,
-    impact: impactScore,
+    skills: hasSkills ? Math.min(100, skillList.length * 8) : 0,
+    impact: impact.score,
     issues,
     bullets: allBullets,
   };
+}
+
+function flattenSkills(skills: unknown): string[] {
+  if (Array.isArray(skills)) {
+    return skills.map((skill) => typeof skill === "string" ? skill : String(skill?.name || "")).filter(Boolean);
+  }
+  if (skills && typeof skills === "object") {
+    return Object.values(skills as Record<string, unknown>)
+      .flatMap((value) => Array.isArray(value) ? value.map(String) : [])
+      .filter(Boolean);
+  }
+  return [];
 }
 
 // ── AI keyword matcher (Haiku 4.5) ────────────────────────────
@@ -116,7 +140,7 @@ interface KeywordPayload {
   suggestions: Array<{ priority: "high" | "medium" | "low"; action: string }>;
 }
 
-const KW_SYSTEM = `You are an ATS keyword extractor. You get a job description. Return the 15 most important terms a résumé should demonstrate to pass ATS screening AND human review. Mix hard skills, tools, domains, and seniority indicators. No fluff words.
+const KW_SYSTEM = `You are an ATS keyword extractor. You get a job description. Return the 15 most important terms a résumé should demonstrate to pass ATS screening AND human review. Mix hard skills, tools, domains, and seniority indicators. Use standard 1-4 word ATS phrases. Split bundled requirements into separate terms instead of returning a long sentence or slash-separated list. No fluff words.
 
 Then propose 5 crisp suggestions to close the gap, prioritised high/medium/low.
 
@@ -126,29 +150,53 @@ Return ONLY JSON:
 function computeKeywordScore(resumeText: string, keywords: string[]): {
   score: number; matched: string[]; missing: string[];
 } {
-  const lower = resumeText.toLowerCase();
+  const normalizedResume = normalizeForMatch(resumeText);
+  const paddedResume = ` ${normalizedResume} `;
+  const resumeTokens = new Set(normalizedResume.split(" ").filter(Boolean));
   const matched: string[] = [];
   const missing: string[] = [];
+  let earned = 0;
   for (const k of keywords) {
-    const needle = k.toLowerCase().trim();
+    const needle = normalizeForMatch(k);
     if (!needle) continue;
-    if (lower.includes(needle)) matched.push(k);
+    if (paddedResume.includes(` ${needle} `)) {
+      matched.push(k);
+      earned += 1;
+      continue;
+    }
+    const tokens = needle.split(" ").filter((token) => token.length > 1 && !ATS_STOP_WORDS.has(token));
+    const coverage = tokens.length > 0
+      ? tokens.filter((token) => resumeTokens.has(token)).length / tokens.length
+      : 0;
+    earned += coverage;
+    if (coverage >= 0.7) matched.push(k);
     else missing.push(k);
   }
-  const score = keywords.length ? Math.round((matched.length / keywords.length) * 100) : 0;
+  const score = keywords.length ? Math.round((earned / keywords.length) * 100) : 0;
   return { score, matched, missing };
+}
+
+const ATS_STOP_WORDS = new Set(["and", "the", "for", "with", "from", "into", "using", "such", "including", "end", "full", "large", "scale"]);
+
+function normalizeForMatch(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function resumeToPlainText(r: any): string {
   const parts: string[] = [];
+  const personal = r.personal_info && typeof r.personal_info === "object" ? r.personal_info : {};
+  parts.push(`${personal.fullName ?? personal.name ?? ""} ${personal.title ?? ""} ${personal.location ?? ""}`);
   if (r.summary || r.personal_info?.summary) parts.push(r.summary || r.personal_info.summary);
   if (Array.isArray(r.experience)) for (const x of r.experience) {
-    parts.push(`${x.title ?? ""} ${x.company ?? ""}`);
+    parts.push(`${x.role ?? x.title ?? ""} ${x.company_or_client ?? x.company ?? ""}`);
     if (Array.isArray(x.bullets)) parts.push(x.bullets.join(" "));
     else if (x.description) parts.push(x.description);
   }
-  if (Array.isArray(r.skills)) parts.push(r.skills.map((s: any) => s?.name || s).join(" "));
-  if (Array.isArray(r.projects)) parts.push(r.projects.map((p: any) => `${p.name} ${p.description}`).join(" "));
+  const skills = flattenSkills(r.skills);
+  if (skills.length > 0) parts.push(skills.join(" "));
+  if (Array.isArray(r.projects)) parts.push(r.projects.map((p: any) =>
+    `${p.title ?? p.name ?? ""} ${p.organization ?? ""} ${p.description ?? ""} ${Array.isArray(p.bullets) ? p.bullets.join(" ") : ""}`,
+  ).join(" "));
   return parts.join("\n");
 }
 
@@ -158,10 +206,10 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   return withErrorHandler(async () => {
-    const user = await getAuthedUser(req);
     const body = await req.json().catch(() => ({})) as {
-      resume_id?: string; scanned_job_id?: string; job_description?: string;
+      resume_id?: string; scanned_job_id?: string; job_description?: string; user_id?: string;
     };
+    const user = await getAuthedUserOrService(req, body.user_id);
     if (!body.resume_id) throw new HttpError(400, "resume_id required");
 
     const svc = serviceClient();
@@ -184,7 +232,7 @@ serve(async (req) => {
     const det = deterministicAnalysis(resume);
     const resumeText = resumeToPlainText(resume);
 
-    // Keywords + suggestions via Haiku if JD present; else generic suggestions.
+    // Keywords + suggestions use the cheap routing tier if a JD is present.
     let keywordScore = 0;
     let matched: string[] = [];
     let missing: string[] = [];
@@ -193,8 +241,8 @@ serve(async (req) => {
     let tokens_in = 0, tokens_out = 0;
 
     if (jdText && jdText.trim().length > 100) {
-      const result = await callClaude<KeywordPayload>({
-        tier: "simple", // Haiku 4.5 — cheap for extraction
+      const result = await callLlmWithFallback<KeywordPayload>({
+        tier: "cheap",
         system: KW_SYSTEM,
         user: `Job description:\n${truncate(jdText, 10_000)}`,
         maxTokens: 600,

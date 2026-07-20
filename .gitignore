@@ -17,6 +17,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
+!.env.worker.example
 
 # Editor directories and files
 .vscode/*
@@ -48,6 +49,9 @@ OPENCLAW_AI_SETUP.md
 
 # Supabase temp
 supabase/.temp/
+
+# Local QA artifacts and uploaded test documents
+tmp/
 
 # Vercel local metadata
 .vercel/

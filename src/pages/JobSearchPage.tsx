@@ -1,4 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy search results and generated Supabase joins are not yet fully typed */
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -15,13 +17,19 @@ import {
   Search, Briefcase, Building2,
   Clock, DollarSign, Loader2, Globe, Filter, ChevronDown, ChevronUp,
   FileText, MapPin, X, Ban, Bookmark, BookmarkCheck, ArrowLeft,
-  ChevronLeft, ChevronRight, Sparkles, RefreshCw, ThumbsUp, ThumbsDown,
+  ChevronLeft, ChevronRight, Sparkles, RefreshCw,
+  CheckCircle2, ShieldCheck, WandSparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 // resolveJobUrl moved into JobApplyButton component
 import LocationAutocomplete from "@/components/LocationAutocomplete";
 import { JobApplyButton } from "@/components/JobApplyButton";
 import { JOB_ROLES } from "@/data/job-roles";
+import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
+import { JobDescription } from "@/components/JobDescription";
+import { cleanJobDescription, jobDescriptionPreview, safeMatchText } from "@/lib/job-description";
+import { filterJobsForSearchIntent } from "@/lib/job-search-relevance";
 
 interface SearchJob {
   id: string;
@@ -40,11 +48,53 @@ interface SearchJob {
   industry?: string;
 }
 
+/**
+ * Resilience fallback: when the perplexity-job-search edge function fails,
+ * query the hourly-scanned direct job feeds (scanned_jobs, populated from
+ * _shared/direct-job-sources.ts) straight from the client — same table the
+ * Matches page reads — instead of dead-ending with an error toast.
+ */
+async function fetchDirectFeedJobs(q: string): Promise<SearchJob[]> {
+  const terms = q.trim().split(/\s+/).filter(Boolean).slice(0, 3);
+  let request = supabase
+    .from("scanned_jobs")
+    .select("id,title,location,description_md,apply_url,compensation_text,employment_type,remote_policy,posted_at,company:scan_companies(name)")
+    .eq("is_live", true);
+  for (const term of terms) request = request.ilike("title", `%${term}%`);
+  const { data, error } = await request
+    .order("posted_at", { ascending: false, nullsFirst: false })
+    .limit(40);
+  if (error) throw error;
+  return ((data || []) as any[]).map((row) => ({
+    id: row.id,
+    title: row.title,
+    company: row.company?.name || "",
+    location: row.location || "",
+    description: cleanJobDescription(row.description_md || ""),
+    apply_url: row.apply_url,
+    salary: row.compensation_text ?? null,
+    job_type: row.employment_type ?? null,
+    remote: /remote/i.test(`${row.remote_policy || ""} ${row.location || ""}`),
+    date_posted: row.posted_at || "",
+    source: "direct_feed",
+  }));
+}
+
 interface MatchedJob extends SearchJob {
   match_score: number;
   match_reasons: Record<string, number>;
   match_id: string;
-  liked: boolean | null;
+  match_summary: string;
+  match_dimensions: Array<{
+    key: string;
+    label: string;
+    score: number;
+    evidence: string[];
+    gaps: string[];
+  }>;
+  matched_keywords: string[];
+  gaps: string[];
+  fit_confidence: number | null;
 }
 
 const QUICK_ROLES = [
@@ -56,7 +106,24 @@ const QUICK_ROLES = [
   "Cybersecurity Analyst",
 ];
 
+function displayJobDate(value: string): string {
+  if (!value) return "";
+  if (/today|yesterday|ago|recent/i.test(value)) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const days = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 86_400_000));
+  if (days === 0) return "Posted today";
+  if (days === 1) return "Posted yesterday";
+  if (days < 7) return `Posted ${days} days ago`;
+  if (days < 35) {
+    const weeks = Math.floor(days / 7);
+    return `Posted ${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
+  }
+  return `Posted ${parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
 export default function JobSearchPage() {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -68,16 +135,15 @@ export default function JobSearchPage() {
   const [datePosted, setDatePosted] = usePersistedState("jobSearch.datePosted", "month", "sessionStorage");
   const [experienceLevel, setExperienceLevel] = usePersistedState("jobSearch.experienceLevel", "all", "sessionStorage");
   const [remoteFilter, setRemoteFilter] = usePersistedState("jobSearch.remoteFilter", "all", "sessionStorage");
-  const [searchSource, setSearchSource] = usePersistedState("jobSearch.searchSource", "direct", "sessionStorage");
-  const [resumeText, setResumeText] = usePersistedState("jobSearch.resumeText", "", "sessionStorage");
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showResumeUpload, setShowResumeUpload] = useState(false);
 
   // Tab mode
   const [viewMode, setViewMode] = useState<"search" | "matched">("search");
   const [matchedJobs, setMatchedJobs] = useState<MatchedJob[]>([]);
   const [matchLoading, setMatchLoading] = useState(false);
+  const [matchLoadAttempted, setMatchLoadAttempted] = useState(false);
   const [matchRefreshing, setMatchRefreshing] = useState(false);
+  const [preparingMatch, setPreparingMatch] = useState<string | null>(null);
 
   // Role search autocomplete
   const [showRoleSuggestions, setShowRoleSuggestions] = useState(false);
@@ -101,11 +167,8 @@ export default function JobSearchPage() {
   // Pagination
   const JOBS_PER_PAGE = 15;
   const [currentPage, setCurrentPage] = usePersistedState("jobSearch.currentPage", 1, "sessionStorage");
-  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [nextPageFetched, setNextPageFetched] = useState(false);
   const [dbTotal, setDbTotal] = useState(0);
-  const [hasMoreDb, setHasMoreDb] = useState(false);
-  const [dbPageOffset, setDbPageOffset] = useState(0);
 
   const totalPages = Math.max(1, Math.ceil(jobs.length / JOBS_PER_PAGE));
   const paginatedJobs = useMemo(() => {
@@ -153,7 +216,7 @@ export default function JobSearchPage() {
           });
         }
       });
-  }, [user?.id]);
+  }, [user]);
 
   const isJobSaved = (job: SearchJob) => savedJobKeys.has(jobKey(job));
 
@@ -220,6 +283,7 @@ export default function JobSearchPage() {
       }
     } catch (err: any) {
       console.error("Save job error:", err);
+      void captureIncident(err, { source: "manual", operation: "job_save" });
       toast({ title: "Failed to save job", variant: "destructive" });
     } finally {
       setSavingJobs((prev) => {
@@ -237,7 +301,6 @@ export default function JobSearchPage() {
     datePosted !== "month" ? 1 : 0,
     experienceLevel !== "all" ? 1 : 0,
     remoteFilter !== "all" ? 1 : 0,
-    searchSource !== "direct" ? 1 : 0,
     location ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
@@ -254,7 +317,7 @@ export default function JobSearchPage() {
     setSearchProgress(0);
     setSearchStatus("");
     toast({ title: "Search cancelled" });
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     return () => {
@@ -286,8 +349,6 @@ export default function JobSearchPage() {
     setCurrentPage(1);
     setNextPageFetched(false);
     setDbTotal(0);
-    setHasMoreDb(false);
-    setDbPageOffset(0);
 
     const statusMessages = [
       { at: 0, msg: "Searching database...", pct: 15 },
@@ -326,8 +387,7 @@ export default function JobSearchPage() {
       if (datePosted) payload.date_posted = datePosted;
       if (experienceLevel !== "all") payload.experience_level = experienceLevel;
       if (remoteFilter !== "all") payload.remote_filter = remoteFilter;
-      if (searchSource !== "direct") payload.search_source = searchSource;
-      if (resumeText.trim()) payload.resume_text = resumeText.trim();
+      payload.search_source = "direct";
 
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -355,15 +415,17 @@ export default function JobSearchPage() {
       }
 
       const data = await response.json();
-      const resultJobs = data.jobs || [];
+      const providerJobs = ((data.jobs || []) as SearchJob[]).map((job) => ({
+        ...job,
+        description: cleanJobDescription(job.description),
+      }));
+      const resultJobs = filterJobsForSearchIntent(providerJobs, q);
       setJobs(resultJobs);
       setSearchProgress(100);
       setSearchStatus(data.from_db ? `Found ${data.db_total || resultJobs.length} matching jobs!` : data.from_cache ? "Loaded from cache!" : "Done!");
       setFromCache(!!data.from_cache || !!data.from_db);
       if (data.elapsed_ms) setElapsedMs(data.elapsed_ms);
       if (data.db_total) setDbTotal(data.db_total);
-      if (data.has_more_db !== undefined) setHasMoreDb(data.has_more_db);
-      setDbPageOffset(resultJobs.length);
 
       // Auto-select first job for detail panel
       if (resultJobs.length > 0) {
@@ -380,7 +442,38 @@ export default function JobSearchPage() {
         }
       } else {
         console.error("Search failed:", err);
-        toast({ title: "Search failed", description: err.message || "Please try again", variant: "destructive" });
+        void captureIncident(err, { source: "manual", operation: "job_search" });
+        // Before dead-ending, fall back to the direct job feeds we already
+        // scan hourly into scanned_jobs.
+        let recovered = false;
+        try {
+          const fallbackJobs = filterJobsForSearchIntent(await fetchDirectFeedJobs(q), q);
+          if (fallbackJobs.length > 0) {
+            recovered = true;
+            setJobs(fallbackJobs);
+            setSelectedJob(fallbackJobs[0]);
+            setSearchProgress(100);
+            setFromCache(true);
+            setSearchStatus(`Live search is unavailable — showing ${fallbackJobs.length} recent roles from our direct job feeds.`);
+            toast({
+              title: "Showing jobs from our direct feeds",
+              description: "Live job discovery is temporarily unavailable, so these results come from our hourly company scans. Retry in a moment for full results.",
+            });
+          }
+        } catch (fallbackErr) {
+          console.error("Direct-feed fallback failed:", fallbackErr);
+        }
+        if (!recovered) {
+          const safeError = toUserFacingError(err, {
+            operation: "job_search",
+            defaultMessage: "Job discovery is temporarily unavailable. Try again in a moment.",
+          });
+          toast({
+            title: safeError.title,
+            description: withSupportReference(safeError),
+            variant: "destructive",
+          });
+        }
       }
     } finally {
       if (progressIntervalRef.current) {
@@ -390,7 +483,20 @@ export default function JobSearchPage() {
       abortControllerRef.current = null;
       setLoading(false);
     }
-  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText]);
+  }, [
+    datePosted,
+    experienceLevel,
+    jobType,
+    location,
+    query,
+    remoteFilter,
+    salaryRange,
+    setCurrentPage,
+    setHasSearched,
+    setJobs,
+    setSelectedJob,
+    toast,
+  ]);
 
   // Pre-fetch more jobs in background for the next page
   // Strategy: if DB has more results, fetch next page from DB; otherwise use Perplexity
@@ -427,8 +533,7 @@ export default function JobSearchPage() {
       if (datePosted) payload.date_posted = datePosted;
       if (experienceLevel !== "all") payload.experience_level = experienceLevel;
       if (remoteFilter !== "all") payload.remote_filter = remoteFilter;
-      if (searchSource !== "direct") payload.search_source = searchSource;
-      if (resumeText.trim()) payload.resume_text = resumeText.trim();
+      payload.search_source = "direct";
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/perplexity-job-search`,
@@ -444,7 +549,11 @@ export default function JobSearchPage() {
 
       if (response.ok) {
         const data = await response.json();
-        const newJobs = (data.jobs || []) as SearchJob[];
+        const providerJobs = ((data.jobs || []) as SearchJob[]).map((job) => ({
+          ...job,
+          description: cleanJobDescription(job.description),
+        }));
+        const newJobs = filterJobsForSearchIntent(providerJobs, query);
         if (newJobs.length > 0) {
           // Deduplicate — don't add jobs already in the list
           const existingKeys = new Set(jobs.map((j) => `${j.title}:::${j.company}`.toLowerCase()));
@@ -454,16 +563,16 @@ export default function JobSearchPage() {
           }
         }
         // Update DB tracking state
-        if (data.has_more_db !== undefined) setHasMoreDb(data.has_more_db);
         if (data.db_total) setDbTotal(data.db_total);
         setNextPageFetched(true);
       }
     } catch (err) {
       console.error("Pre-fetch more jobs failed:", err);
+      void captureIncident(err, { source: "manual", operation: "job_search_prefetch" }, "warning");
     } finally {
       prefetchRef.current = false;
     }
-  }, [query, location, salaryRange, jobType, datePosted, experienceLevel, remoteFilter, searchSource, resumeText, jobs, hasMoreDb]);
+  }, [datePosted, experienceLevel, jobType, jobs, location, query, remoteFilter, salaryRange, setJobs]);
 
   // Auto pre-fetch: only run after the user actively pages forward beyond
   // page 1. The previous logic fired this effect on every mount whenever
@@ -489,107 +598,110 @@ export default function JobSearchPage() {
     setNextPageFetched(false);
   };
 
-  const handleResumeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    setResumeText(text.substring(0, 3000));
-    toast({ title: "Resume loaded", description: "Your resume will improve search relevance" });
-  };
-
   const clearFilters = () => {
     setSalaryRange("any");
     setJobType("all");
     setDatePosted("month");
     setExperienceLevel("all");
     setRemoteFilter("all");
-    setSearchSource("direct");
     setLocation("");
   };
 
-  // Load matched jobs from DB
-  const loadMatchedJobs = useCallback(async () => {
+  // Rebuild the resume-evidence feed before loading it. The bootstrap is
+  // zero-token and makes resume edits, experience corrections, and preference
+  // changes visible immediately instead of serving stale generic results.
+  const loadMatchedJobs = useCallback(async (refreshCareerEvidence = true) => {
     if (!user) return;
     setMatchLoading(true);
+    setMatchLoadAttempted(true);
     try {
-      const { data, error } = await supabase
-        .from("job_matches")
-        .select(`
+      const fetchEvaluations = () => supabase
+          .from("job_evaluations")
+          .select(`
           id,
-          match_score,
-          match_reasons,
-          liked,
-          created_at,
-          jobs!inner (
-            id, title, company, location, description, apply_url,
-            salary, job_type, remote, date_posted, source,
-            role_category, experience_level, industry
+          fit_score,
+          score,
+          dimension_scores,
+          fit_confidence,
+          summary,
+          keyword_matches,
+          gaps,
+          evaluated_at,
+          scanned_job:scanned_jobs!inner (
+            id, title, location, description_md, apply_url,
+            compensation_text, remote_policy, posted_at, last_seen_at,
+            company:scan_companies(name, category)
           )
         `)
-        .eq("user_id", user.id)
-        .order("match_score", { ascending: false })
-        .limit(100);
+          .eq("user_id", user.id)
+          .gte("fit_score", 50)
+          .order("fit_score", { ascending: false })
+          .limit(100);
 
+      if (refreshCareerEvidence) {
+        const { error: reviewError } = await supabase.functions.invoke("career-profile-review", { body: {} });
+        if (reviewError) {
+          void captureIncident(reviewError, { source: "manual", operation: "career_profile_review" }, "warning");
+        }
+        const { error: bootstrapError } = await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+        if (bootstrapError) throw bootstrapError;
+      }
+
+      const { data, error } = await fetchEvaluations();
       if (error) throw error;
       if (data) {
-        const mapped: MatchedJob[] = data.map((m: any) => ({
-          id: m.jobs.id,
-          title: m.jobs.title,
-          company: m.jobs.company || "Unknown",
-          location: m.jobs.location || "Remote",
-          description: m.jobs.description || "",
-          apply_url: m.jobs.apply_url || "",
-          salary: m.jobs.salary,
-          job_type: m.jobs.job_type,
-          remote: m.jobs.remote || false,
-          date_posted: m.jobs.date_posted || "",
-          source: m.jobs.source || "matched",
-          role_category: m.jobs.role_category,
-          experience_level: m.jobs.experience_level,
-          industry: m.jobs.industry,
-          match_score: m.match_score,
-          match_reasons: m.match_reasons || {},
+        const mapped: MatchedJob[] = data
+          .filter((m: any) => Math.round(m.fit_score ?? Number(m.score || 0) * 20) >= 50)
+          .map((m: any) => ({
+          id: m.scanned_job.id,
+          title: m.scanned_job.title,
+          company: m.scanned_job.company?.name || "Unknown",
+          location: m.scanned_job.location || "Remote",
+          description: cleanJobDescription(m.scanned_job.description_md || ""),
+          apply_url: m.scanned_job.apply_url || "",
+          salary: m.scanned_job.compensation_text,
+          job_type: null,
+          remote: /remote/i.test(`${m.scanned_job.remote_policy || ""} ${m.scanned_job.location || ""}`),
+          date_posted: displayJobDate(m.scanned_job.posted_at || m.scanned_job.last_seen_at || m.evaluated_at),
+          source: "career pages",
+          industry: m.scanned_job.company?.category,
+          match_score: Math.round(m.fit_score ?? Number(m.score || 0) * 20),
+          match_reasons: Object.fromEntries(
+            (Array.isArray(m.dimension_scores) ? m.dimension_scores : [])
+              .filter((dimension: any) => ["role", "skills", "experience"].includes(String(dimension?.key)) && Number.isFinite(Number(dimension?.score)))
+              .map((dimension: any) => [String(dimension.key), Math.round(Number(dimension.score))]),
+          ),
           match_id: m.id,
-          liked: m.liked,
+          match_summary: safeMatchText(m.summary || "This role was scored against the complete source resume and saved preferences."),
+          match_dimensions: Array.isArray(m.dimension_scores) ? m.dimension_scores : [],
+          matched_keywords: Array.isArray(m.keyword_matches) ? m.keyword_matches : [],
+          gaps: Array.isArray(m.gaps) ? m.gaps : [],
+          fit_confidence: typeof m.fit_confidence === "number" ? m.fit_confidence : null,
         }));
         setMatchedJobs(mapped);
+        setSelectedJob(mapped[0] ?? null);
       }
     } catch (err) {
       console.error("Load matched jobs failed:", err);
-      toast({ title: "Failed to load matches", variant: "destructive" });
+      void captureIncident(err, { source: "manual", operation: "job_matches_load" });
+      const safeError = toUserFacingError(err, {
+        operation: "job_matches_load",
+        defaultMessage: "Your match feed could not be built right now. Try again in a moment.",
+      });
+      toast({ title: safeError.title, description: withSupportReference(safeError), variant: "destructive" });
     } finally {
       setMatchLoading(false);
     }
-  }, [user, toast]);
+  }, [setSelectedJob, user, toast]);
 
-  // Refresh matches by calling edge function
+  // Refresh the current career-fit feed. New evaluations are generated from
+  // the dedicated Matches workspace and the Autopilot agent.
   const refreshMatches = useCallback(async () => {
     if (!user) return;
     setMatchRefreshing(true);
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-jobs`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token || anonKey}`,
-          },
-          body: JSON.stringify({ user_id: user.id }),
-        }
-      );
-
-      if (response.ok) {
-        toast({ title: "Matches refreshed!", description: "Loading updated matches..." });
-        await loadMatchedJobs();
-      } else {
-        const err = await response.json().catch(() => ({}));
-        toast({ title: "Refresh failed", description: err.error || "Try again later", variant: "destructive" });
-      }
+      await loadMatchedJobs(true);
+      toast({ title: "Matches refreshed", description: "Fresh roles were checked against your resume and preferences." });
     } catch {
       toast({ title: "Refresh failed", variant: "destructive" });
     } finally {
@@ -597,27 +709,63 @@ export default function JobSearchPage() {
     }
   }, [user, loadMatchedJobs, toast]);
 
-  // Like/dislike a match
-  const toggleMatchFeedback = useCallback(async (matchId: string, liked: boolean | null) => {
+  const prepareMatchedApplication = useCallback(async (job: MatchedJob) => {
+    setPreparingMatch(job.match_id);
     try {
-      await supabase
-        .from("job_matches")
-        .update({ liked })
-        .eq("id", matchId);
-      setMatchedJobs((prev) =>
-        prev.map((j) => (j.match_id === matchId ? { ...j, liked } : j))
-      );
-    } catch {
-      toast({ title: "Failed to update feedback", variant: "destructive" });
+      const { data: existing } = await supabase
+        .from("draft_applications")
+        .select("id,tailored_resume_id")
+        .eq("user_id", user?.id ?? "")
+        .eq("evaluation_id", job.match_id)
+        .maybeSingle();
+
+      let draft = existing;
+      if (!draft) {
+        const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
+          body: { evaluation_id: job.match_id, allow_outside_preferences: true },
+        });
+        if (error) throw error;
+        draft = data?.draft ?? null;
+      }
+      if (!draft?.id) throw new Error("The tailored application draft was not returned.");
+
+      let atsScore: number | null = null;
+      if (draft.tailored_resume_id) {
+        const { data: atsData, error: atsError } = await supabase.functions.invoke("career-ops-ats", {
+          body: { resume_id: draft.tailored_resume_id, scanned_job_id: job.id },
+        });
+        if (atsError) throw atsError;
+        atsScore = Number(atsData?.ats?.overall ?? 0);
+      }
+
+      toast({
+        title: atsScore ? `Tailored resume ready · ${Math.round(atsScore)} ATS` : "Tailored resume ready",
+        description: "Review every claim, answer, and attachment before submission.",
+      });
+      navigate(`/applications/${draft.id}`);
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: "matched_job_prepare" });
+      const safeError = toUserFacingError(error, {
+        operation: "matched_job_prepare",
+        defaultMessage: "The application draft could not be prepared. Try again in a moment.",
+      });
+      toast({ title: safeError.title, description: withSupportReference(safeError), variant: "destructive" });
+    } finally {
+      setPreparingMatch(null);
     }
-  }, [toast]);
+  }, [navigate, toast, user?.id]);
 
   // Auto-load matches when switching to matched tab
   useEffect(() => {
-    if (viewMode === "matched" && matchedJobs.length === 0 && !matchLoading) {
-      loadMatchedJobs();
+    if (viewMode === "matched" && !matchLoadAttempted && !matchLoading) {
+      void loadMatchedJobs(true);
     }
-  }, [viewMode, matchedJobs.length, matchLoading, loadMatchedJobs]);
+  }, [viewMode, matchLoadAttempted, matchLoading, loadMatchedJobs]);
+
+  useEffect(() => {
+    setMatchLoadAttempted(false);
+    setMatchedJobs([]);
+  }, [user?.id]);
 
   // Whether we're in split view (results exist)
   const showSplitView = !loading && jobs.length > 0;
@@ -667,6 +815,7 @@ export default function JobSearchPage() {
             <div className="relative flex-1">
               <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
               <Input
+                aria-label="Job title, role, or keywords"
                 placeholder="Job title, role, or keywords..."
                 className="pl-10 h-10"
                 value={query}
@@ -705,6 +854,7 @@ export default function JobSearchPage() {
 
             <div className="flex-1 sm:max-w-[200px]">
               <LocationAutocomplete
+                ariaLabel="Job location"
                 value={location}
                 onChange={setLocation}
                 placeholder="City, State or Remote"
@@ -734,10 +884,6 @@ export default function JobSearchPage() {
                 </span>
               )}
               {showAdvanced ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" onClick={() => setShowResumeUpload(!showResumeUpload)}>
-              <FileText className="w-3 h-3" /> Resume
-              {resumeText && <span className="w-1.5 h-1.5 rounded-full bg-green-500" />}
             </Button>
             {activeFilters > 0 && (
               <Button variant="ghost" size="sm" className="gap-1 h-7 text-xs text-muted-foreground" onClick={clearFilters}>
@@ -853,25 +999,13 @@ export default function JobSearchPage() {
             </div>
           )}
 
-              {/* Resume upload */}
-              {showResumeUpload && (
-                <div className="pt-2 border-t space-y-2">
-                  <Label className="text-xs">Upload resume for better relevance (optional)</Label>
-                  <Input type="file" accept=".txt,.pdf,.doc,.docx" onChange={handleResumeFile} className="h-8 text-xs" />
-                  {resumeText && (
-                    <p className="text-xs text-green-600 flex items-center gap-1">
-                      <FileText className="w-3 h-3" /> Resume loaded ({resumeText.length} chars)
-                    </p>
-                  )}
-                </div>
-              )}
             </>
           )}
 
           {viewMode === "matched" && (
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                Jobs matched to your profile preferences
+                Fresh roles ranked against your complete resume story, skills, experience, and preferences
               </p>
               <Button
                 variant="outline"
@@ -1042,7 +1176,7 @@ export default function JobSearchPage() {
                               )}
                             </div>
                             {job.description && (
-                              <p className="text-xs text-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">{job.description}</p>
+                              <p className="text-xs text-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">{jobDescriptionPreview(job.description)}</p>
                             )}
                             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                               {job.role_category && job.role_category !== "Other" && (
@@ -1186,6 +1320,7 @@ export default function JobSearchPage() {
                             location: selectedJob.location,
                             apply_url: selectedJob.apply_url,
                             source: selectedJob.source,
+                            description: selectedJob.description,
                           }}
                           variant="compact"
                         />
@@ -1212,9 +1347,7 @@ export default function JobSearchPage() {
                     <div className="border-t pt-5">
                       <h3 className="font-semibold text-base mb-3">About the job</h3>
                       {selectedJob.description ? (
-                        <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">
-                          {selectedJob.description}
-                        </div>
+                        <JobDescription value={selectedJob.description} />
                       ) : (
                         <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
                           <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
@@ -1242,22 +1375,26 @@ export default function JobSearchPage() {
         {viewMode === "matched" && (
           <>
             {matchLoading && (
-              <div className="flex items-center justify-center py-20">
+              <div className="flex flex-col items-center justify-center py-20">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="mt-3 text-sm font-medium">Building your match feed</p>
+                <p className="mt-1 text-xs text-muted-foreground">Checking fresh roles against your resume and preferences…</p>
               </div>
             )}
 
             {!matchLoading && matchedJobs.length === 0 && (
               <div className="text-center py-20">
                 <Sparkles className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-                <h3 className="text-lg font-medium">No matches yet</h3>
+                <h3 className="text-lg font-medium">No personalized matches yet</h3>
                 <p className="text-muted-foreground mt-1 max-w-md mx-auto">
-                  Complete your profile setup to get AI-powered job matches based on your skills, experience, and preferences.
+                  Confirm your source resume and broaden any strict role, location, seniority, or work-mode preferences.
                 </p>
-                <Button className="mt-4 gap-2" onClick={refreshMatches} disabled={matchRefreshing}>
-                  {matchRefreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                  Generate Matches
-                </Button>
+                <div className="mt-4 flex justify-center gap-2">
+                  <Button variant="outline" onClick={() => navigate("/career-ops/preferences")}>Review preferences</Button>
+                  <Button className="gap-2" onClick={() => navigate("/matches")}>
+                    <Sparkles className="w-4 h-4" /> Browse scored roles
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -1289,37 +1426,18 @@ export default function JobSearchPage() {
                             )}
                           >
                             <div className="flex gap-3">
-                              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                                style={{
-                                  background: job.match_score >= 80 ? 'rgb(220 252 231)' : job.match_score >= 60 ? 'rgb(254 249 195)' : 'rgb(241 245 249)',
-                                }}
-                              >
-                                <span className={cn(
-                                  "text-xs font-bold",
-                                  job.match_score >= 80 ? "text-green-700" : job.match_score >= 60 ? "text-yellow-700" : "text-rp-ink-2"
-                                )}>
-                                  {job.match_score}%
-                                </span>
-                              </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-start justify-between gap-1">
                                   <h3 className="font-semibold text-sm leading-tight line-clamp-1">{job.title}</h3>
-                                  <div className="flex items-center gap-0.5 shrink-0">
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); toggleMatchFeedback(job.match_id, job.liked === true ? null : true); }}
-                                      className={cn("p-0.5 rounded transition-all", job.liked === true ? "text-green-600" : "text-muted-foreground/30 opacity-0 group-hover:opacity-100")}
-                                    >
-                                      <ThumbsUp className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); toggleMatchFeedback(job.match_id, job.liked === false ? null : false); }}
-                                      className={cn("p-0.5 rounded transition-all", job.liked === false ? "text-red-500" : "text-muted-foreground/30 opacity-0 group-hover:opacity-100")}
-                                    >
-                                      <ThumbsDown className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">{job.company}</p>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <Progress value={job.match_score} className="h-1.5 flex-1" aria-label={`${job.match_score}% career fit`} />
+                                  <span className="w-10 text-right text-xs font-semibold tabular-nums">{job.match_score}%</span>
+                                </div>
+                                <p className="mt-1 text-[10px] font-medium text-muted-foreground">
+                                  {job.match_score >= 80 ? "Strong fit" : job.match_score >= 65 ? "Good fit" : "Potential fit"}
+                                </p>
                                 <div className="flex flex-wrap gap-1 mt-1.5">
                                   <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                                     <MapPin className="w-2.5 h-2.5" /> {job.location}
@@ -1341,11 +1459,12 @@ export default function JobSearchPage() {
                                       .slice(0, 3)
                                       .map(([reason, score]) => (
                                         <Badge key={reason} variant="outline" className="text-[10px] h-4 px-1.5 gap-0.5">
-                                          {reason}: {score}pts
+                                          {reason.replace(/_/g, " ")}: {score}%
                                         </Badge>
                                       ))}
                                   </div>
                                 )}
+                                <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{job.match_summary}</p>
                               </div>
                             </div>
                           </div>
@@ -1382,8 +1501,13 @@ export default function JobSearchPage() {
                               {(selectedJob as MatchedJob).match_score}%
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-rp-ink">Match Score</p>
-                              <p className="text-xs text-rp-ink-2">Based on your profile, skills, and preferences</p>
+                              <p className="text-sm font-medium text-rp-ink">Career fit</p>
+                              <p className="text-xs text-rp-ink-2">
+                                Resume evidence + hard preferences
+                                {(selectedJob as MatchedJob).fit_confidence != null
+                                  ? ` · ${Math.round(((selectedJob as MatchedJob).fit_confidence ?? 0) * 100)}% confidence`
+                                  : ""}
+                              </p>
                             </div>
                           </div>
                         )}
@@ -1420,7 +1544,18 @@ export default function JobSearchPage() {
                               </Badge>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              className="h-8 gap-1.5"
+                              disabled={preparingMatch === (selectedJob as MatchedJob).match_id}
+                              onClick={() => void prepareMatchedApplication(selectedJob as MatchedJob)}
+                            >
+                              {preparingMatch === (selectedJob as MatchedJob).match_id
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <WandSparkles className="h-4 w-4" />}
+                              Tailor + ATS
+                            </Button>
                             <JobApplyButton
                               job={{
                                 id: selectedJob.id,
@@ -1429,6 +1564,7 @@ export default function JobSearchPage() {
                                 location: selectedJob.location,
                                 apply_url: selectedJob.apply_url,
                                 source: selectedJob.source,
+                                description: selectedJob.description,
                               }}
                               variant="compact"
                             />
@@ -1444,10 +1580,45 @@ export default function JobSearchPage() {
                             </Button>
                           </div>
                         </div>
+                        {(selectedJob as MatchedJob).match_dimensions.length > 0 && (
+                          <div className="border-t pt-5">
+                            <div className="flex items-center gap-2">
+                              <ShieldCheck className="h-4 w-4 text-rp-accent" />
+                              <h3 className="font-semibold text-base">Why this role fits</h3>
+                            </div>
+                            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{(selectedJob as MatchedJob).match_summary}</p>
+                            <div className="mt-4 grid sm:grid-cols-2 gap-x-6 gap-y-3">
+                              {(selectedJob as MatchedJob).match_dimensions.map((dimension) => (
+                                <div key={dimension.key}>
+                                  <div className="mb-1.5 flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">{dimension.label}</span>
+                                    <span className="font-semibold tabular-nums">{Math.round(dimension.score)}%</span>
+                                  </div>
+                                  <Progress value={dimension.score} className="h-1.5" />
+                                  {dimension.evidence?.[0] && (
+                                    <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{dimension.evidence[0]}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                            {((selectedJob as MatchedJob).matched_keywords.length > 0 || (selectedJob as MatchedJob).gaps.length > 0) && (
+                              <div className="mt-5 grid sm:grid-cols-2 gap-4">
+                                <div className="border border-emerald-500/20 bg-emerald-500/5 p-3">
+                                  <p className="flex items-center gap-1.5 text-xs font-semibold"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Evidence found</p>
+                                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{(selectedJob as MatchedJob).matched_keywords.slice(0, 8).join(" · ") || "No explicit keyword evidence recorded."}</p>
+                                </div>
+                                <div className="border border-amber-500/20 bg-amber-500/5 p-3">
+                                  <p className="text-xs font-semibold">Gaps to review</p>
+                                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{(selectedJob as MatchedJob).gaps.slice(0, 4).join(" · ") || "No material gaps recorded."}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div className="border-t pt-5">
                           <h3 className="font-semibold text-base mb-3">About the job</h3>
                           {selectedJob.description ? (
-                            <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">{selectedJob.description}</div>
+                            <JobDescription value={selectedJob.description} />
                           ) : (
                             <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
                               <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />

@@ -21,6 +21,7 @@ interface JobApplyButtonProps {
     location?: string | null;
     apply_url?: string | null;
     source?: string | null;
+    description?: string | null;
   };
   variant?: "default" | "compact";
   onApplied?: () => void;
@@ -28,44 +29,41 @@ interface JobApplyButtonProps {
 
 export function JobApplyButton({ job, variant = "default", onApplied }: JobApplyButtonProps) {
   const { user } = useAuth();
-  const { isPremium } = useSubscription();
+  const { hasAutoApply } = useSubscription();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [applying, setApplying] = useState(false);
-  const [applied, setApplied] = useState(false);
+  const [actionComplete, setActionComplete] = useState<"opened" | "prepared" | "queued" | null>(null);
 
   const resolved = resolveJobUrl(job.apply_url, job.title, job.company, job.location);
 
-  const recordApplication = async (method: "manual" | "auto") => {
+  const recordApplicationAction = async (method: "manual" | "auto") => {
     if (!user) return;
 
     try {
-      // Record in tracked_jobs
-      await supabase.from("tracked_jobs").upsert(
-        {
+      // Opening a form or entering the automation queue is not a verified
+      // submission. Keep it saved until the worker records a receipt.
+      const { data: existing, error: lookupError } = await supabase
+        .from("tracked_jobs")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("title", job.title)
+        .eq("company", job.company)
+        .limit(1)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!existing) {
+        const { error: insertError } = await supabase.from("tracked_jobs").insert({
           user_id: user.id,
           title: job.title,
           company: job.company,
-          status: "Applied",
-        },
-        { onConflict: "user_id,title,company" }
-      );
-
-      // Record in job_applications if it exists
-      try {
-        await supabase.from("job_applications").insert({
-          user_id: user.id,
-          job_id: job.id || null,
-          title: job.title,
-          company: job.company,
-          status: "applied",
-          notes: `Applied via ${method}`,
+          status: "Saved",
+          url: resolved.url,
         });
-      } catch {
-        // job_applications table may not exist yet
+        if (insertError) throw insertError;
       }
 
-      void trackProductEvent("job_applied", {
+      void trackProductEvent(method === "auto" ? "job_apply_queued" : "job_apply_opened", {
         method,
         source: job.source || "unknown",
         company: job.company,
@@ -79,22 +77,21 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
     // Open job URL in new tab
     window.open(resolved.url, "_blank", "noopener,noreferrer");
 
-    // Record the application
-    await recordApplication("manual");
-    setApplied(true);
+    await recordApplicationAction("manual");
+    setActionComplete("opened");
     onApplied?.();
 
     toast({
-      title: "Application started!",
-      description: `Opened ${job.company} job page. Update your tracker after applying.`,
+      title: "Application opened",
+      description: `The ${job.company} form is open. ResumePreps will not mark it submitted until there is a receipt.`,
     });
   };
 
   const handleAutoApply = async () => {
-    if (!isPremium) {
+    if (!hasAutoApply) {
       toast({
         title: "Premium Feature",
-        description: "Auto-Apply requires a Premium subscription.",
+        description: "Cloud Auto-Apply requires an Autopilot subscription.",
       });
       navigate("/pricing");
       return;
@@ -107,7 +104,7 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/applypass-agent-queue`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/career-ops-one-click`,
         {
           method: "POST",
           headers: {
@@ -115,37 +112,43 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
             Authorization: `Bearer ${token || anonKey}`,
           },
           body: JSON.stringify({
-            action: "enqueue",
-            user_id: user?.id,
-            jobs: [{
-              title: job.title,
-              company: job.company,
-              apply_url: job.apply_url,
-              source: job.source,
-            }],
+            title: job.title,
+            company: job.company,
+            location: job.location,
+            description: job.description,
+            apply_url: job.apply_url,
+            source: job.source,
+            queue_if_supported: true,
           }),
         }
       );
 
       if (response.ok) {
-        await recordApplication("auto");
-        setApplied(true);
+        const result = await response.json();
+        await recordApplicationAction("auto");
+        setActionComplete(result.status === "queued" ? "queued" : "prepared");
         onApplied?.();
         toast({
-          title: "Auto-Apply queued!",
-          description: `Application to ${job.company} has been queued for processing.`,
+          title: result.status === "queued" ? "Added to application queue" : "Application packet ready",
+          description: result.status === "queued"
+            ? `ResumePreps prepared the tailored packet and queued the ${job.company} application.`
+            : `The tailored resume and answers are ready for review${result.ats_score ? ` · ${Math.round(result.ats_score)}% ATS` : ""}.`,
         });
+        if (result.draft_id) navigate(`/applications/${result.draft_id}`);
       } else {
+        await response.json().catch(() => ({}));
         toast({
-          title: "Auto-Apply failed",
-          description: "Could not queue auto-application. Try manual apply.",
+          title: "Application could not be prepared",
+          description: response.status === 412
+            ? "Add or finish your source resume, then try again."
+            : "Try again in a moment. You can still open the employer application directly.",
           variant: "destructive",
         });
       }
     } catch {
       toast({
-        title: "Auto-Apply error",
-        description: "Something went wrong. Try manual apply instead.",
+        title: "Application could not be prepared",
+        description: "Try again in a moment. You can still open the employer application directly.",
         variant: "destructive",
       });
     } finally {
@@ -153,12 +156,22 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
     }
   };
 
-  if (applied) {
+  if (actionComplete) {
     return (
-      <Button variant="outline" size={variant === "compact" ? "sm" : "default"} disabled className="gap-2">
-        <CheckCircle2 className="w-4 h-4 text-green-500" />
-        Applied
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline" className="h-9 gap-2 px-3 font-medium">
+          <CheckCircle2 className="w-4 h-4 text-green-600" />
+          {actionComplete === "queued" ? "Queued" : actionComplete === "prepared" ? "Packet ready" : "Application opened"}
+        </Badge>
+        <Button
+          variant="outline"
+          size={variant === "compact" ? "sm" : "default"}
+          className="gap-2"
+          onClick={() => window.open(resolved.url, "_blank", "noopener,noreferrer")}
+        >
+          Open application again <ExternalLink className="w-3.5 h-3.5" />
+        </Button>
+      </div>
     );
   }
 
@@ -168,7 +181,7 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
         <Button size="sm" className="gap-1.5 h-8" onClick={handleManualApply}>
           Apply <ExternalLink className="w-3.5 h-3.5" />
         </Button>
-        {isPremium && (
+        {hasAutoApply && (
           <Button
             size="sm"
             variant="secondary"
@@ -177,7 +190,7 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
             disabled={applying}
           >
             {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-            Auto
+            Queue
           </Button>
         )}
       </div>
@@ -191,19 +204,19 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
         <ExternalLink className="w-4 h-4" />
       </Button>
       <Button
-        variant={isPremium ? "secondary" : "outline"}
-        className={cn("gap-2", !isPremium && "opacity-70")}
+        variant={hasAutoApply ? "secondary" : "outline"}
+        className={cn("gap-2", !hasAutoApply && "opacity-70")}
         onClick={handleAutoApply}
         disabled={applying}
       >
         {applying ? (
           <Loader2 className="w-4 h-4 animate-spin" />
-        ) : isPremium ? (
+        ) : hasAutoApply ? (
           <Zap className="w-4 h-4" />
         ) : (
           <Crown className="w-4 h-4" />
         )}
-        {isPremium ? "Auto-Apply" : "Premium"}
+        {hasAutoApply ? "Prepare & queue" : "Autopilot"}
       </Button>
     </div>
   );

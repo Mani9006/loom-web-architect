@@ -3,7 +3,7 @@
  *
  * Sits on top of provider-specific clients (Anthropic via ai.ts, OpenAI here).
  * Pick a `tier` and the router resolves to a concrete model. Provider is
- * Anthropic by default and can be overridden per call or globally via env.
+ * OpenAI by default and can be overridden per call or globally via env.
  *
  *   const { text, tokens_in, tokens_out } = await callLlm({
  *     tier: "standard",
@@ -40,14 +40,14 @@ function envModel(key: string, fallback: string): string {
 
 function openaiModelFor(tier: Tier): string {
   switch (tier) {
-    case "cheap":    return envModel("OPENAI_MODEL_CHEAP", "gpt-4o-mini");
-    case "standard": return envModel("OPENAI_MODEL_STANDARD", "gpt-4o");
-    case "hard":     return envModel("OPENAI_MODEL_HARD", "gpt-4o");
+    case "cheap":    return envModel("OPENAI_MODEL_CHEAP", "gpt-5.4-nano");
+    case "standard": return envModel("OPENAI_MODEL_STANDARD", "gpt-5.4-mini");
+    case "hard":     return envModel("OPENAI_MODEL_HARD", "gpt-5.4-mini");
   }
 }
 
 function defaultProvider(): Provider {
-  const v = (Deno.env.get("LLM_DEFAULT_PROVIDER") ?? "anthropic").toLowerCase();
+  const v = (Deno.env.get("LLM_DEFAULT_PROVIDER") ?? "openai").toLowerCase();
   return v === "openai" ? "openai" : "anthropic";
 }
 
@@ -59,7 +59,9 @@ const DEFAULT_MAX: Record<Tier, number> = {
 
 export interface LlmCallOptions {
   tier: Tier;
-  /** Override provider; otherwise uses LLM_DEFAULT_PROVIDER or anthropic. */
+  /** Narrow workload-specific model override; tier defaults remain unchanged. */
+  model?: string;
+  /** Override provider; otherwise uses LLM_DEFAULT_PROVIDER or OpenAI. */
   provider?: Provider;
   /** System prompt — always cached when supported. */
   system: string;
@@ -130,9 +132,9 @@ async function callAnthropic<T>(opts: LlmCallOptions): Promise<LlmCallResult<T>>
 async function callOpenAi<T>(opts: LlmCallOptions): Promise<LlmCallResult<T>> {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
-  const model = openaiModelFor(opts.tier);
+  const model = opts.model ?? openaiModelFor(opts.tier);
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX[opts.tier];
-  const temperature = opts.temperature ?? 0.2;
+  const isGpt5 = /^gpt-5(?:\.|-|$)/i.test(model);
 
   const systemContent = opts.cachedContext
     ? `${opts.system}\n\n---\n\n${opts.cachedContext}`
@@ -140,13 +142,19 @@ async function callOpenAi<T>(opts: LlmCallOptions): Promise<LlmCallResult<T>> {
 
   const body: Record<string, unknown> = {
     model,
-    max_tokens: maxTokens,
-    temperature,
     messages: [
       { role: "system", content: systemContent },
       { role: "user", content: opts.user },
     ],
   };
+  if (isGpt5) {
+    // GPT-5 family models use the newer completion-token parameter and do not
+    // need a sampling temperature for these deterministic product workflows.
+    body.max_completion_tokens = maxTokens;
+  } else {
+    body.max_tokens = maxTokens;
+    body.temperature = opts.temperature ?? 0.2;
+  }
   if (opts.parseJson) {
     body.response_format = { type: "json_object" };
   }
@@ -212,7 +220,8 @@ export async function callLlmWithFallback<T = string>(opts: LlmCallOptions): Pro
     // through to the other provider rather than fail the user request.
     const isTransient = /\b(5\d\d|429|timeout|overloaded|rate.?limit)\b/i.test(msg);
     const isBillingDry = /(credit\s+balance|insufficient_quota|billing|out_of_credits|payment_required|402)/i.test(msg);
-    if (!isTransient && !isBillingDry) throw e;
+    const isProviderUnconfigured = /(api.?key.*(?:not configured|not set|missing)|not configured)/i.test(msg);
+    if (!isTransient && !isBillingDry && !isProviderUnconfigured) throw e;
     return await callLlm<T>({ ...opts, provider: secondary });
   }
 }

@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  enforceAutoApplyEntitlement,
+  enforceMonthlyAutoApplyExecutionCap,
+} from "../_shared/guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +16,8 @@ type QueueAction =
   | "cancel"
   | "claim-next"
   | "heartbeat"
+  | "authorization-status"
+  | "verification-code"
   | "complete"
   | "fail";
 
@@ -31,7 +37,7 @@ function getWorkerToken(req: Request, body: Record<string, unknown>): string {
 }
 
 function workerAuthorized(req: Request, body: Record<string, unknown>): boolean {
-  const expected = Deno.env.get("APPLYPASS_WORKER_TOKEN") || "";
+  const expected = Deno.env.get("APPLYPASS_WORKER_TOKEN") || Deno.env.get("WORKER_AUTH_TOKEN") || "";
   if (!expected) return false;
   const actual = getWorkerToken(req, body);
   return Boolean(actual) && actual === expected;
@@ -46,6 +52,61 @@ function createServiceClient() {
   return createClient(supabaseUrl, serviceRole);
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+async function syncCareerDraft(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  taskContext: Record<string, unknown> | null,
+  outcome: "complete" | "fail",
+  result: unknown,
+  errorMessage?: string,
+) {
+  if (!taskContext || taskContext.task_type !== "career_ops_submit") return;
+  const payload = asRecord(taskContext.payload);
+  const draftId = typeof payload.draft_application_id === "string" ? payload.draft_application_id : "";
+  const trackedJobId = typeof payload.tracked_job_id === "string" ? payload.tracked_job_id : "";
+  const userId = typeof taskContext.user_id === "string" ? taskContext.user_id : "";
+  if (!draftId || !userId) return;
+
+  if (outcome === "fail") {
+    await serviceClient.from("draft_applications").update({
+      status: "failed",
+      error_message: (errorMessage || "Worker execution failed").slice(0, 1500),
+    }).eq("id", draftId).eq("user_id", userId);
+    return;
+  }
+
+  const jobs = Array.isArray(asRecord(result).jobs) ? asRecord(result).jobs as unknown[] : [];
+  const submitted = jobs.some((job) => asRecord(job).status === "submitted" && asRecord(job).submitted === true);
+  const firstIssue = jobs
+    .map((job) => asRecord(job).error)
+    .find((message) => typeof message === "string" && message.trim());
+
+  await serviceClient.from("draft_applications").update({
+    status: submitted ? "submitted" : "ready",
+    submitted_at: submitted ? new Date().toISOString() : null,
+    error_message: submitted ? null : typeof firstIssue === "string" ? firstIssue.slice(0, 1500) : null,
+  }).eq("id", draftId).eq("user_id", userId);
+
+  if (submitted && trackedJobId) {
+    await serviceClient.from("mc_tracked_jobs").update({
+      status: "applied",
+      applied_at: new Date().toISOString(),
+    }).eq("id", trackedJobId).eq("user_id", userId);
+    await serviceClient.from("mc_status_history").insert({
+      tracked_job_id: trackedJobId,
+      user_id: userId,
+      status_from: "saved",
+      status_to: "applied",
+      source: "auto_apply",
+    });
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -55,7 +116,7 @@ serve(async (req: Request) => {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const action = String(body?.action || "enqueue") as QueueAction;
 
-    const workerActions = new Set<QueueAction>(["claim-next", "heartbeat", "complete", "fail"]);
+    const workerActions = new Set<QueueAction>(["claim-next", "heartbeat", "authorization-status", "verification-code", "complete", "fail"]);
     if (workerActions.has(action)) {
       if (!workerAuthorized(req, body)) {
         return jsonResponse({ error: "Unauthorized worker action." }, 401);
@@ -82,13 +143,111 @@ serve(async (req: Request) => {
         return jsonResponse({ error: "taskId is required" }, 400);
       }
 
+      if (action === "authorization-status") {
+        const { data: task } = await serviceClient
+          .from("applypass_tasks")
+          .select("id,user_id,status,task_type")
+          .eq("id", taskId)
+          .maybeSingle();
+        if (!task) return jsonResponse({ ok: true, authorized: false, reason: "task_not_active" });
+
+        const { data: prefs } = await serviceClient
+          .from("user_job_prefs")
+          .select("agent_enabled,auto_apply_enabled,review_mode")
+          .eq("user_id", task.user_id)
+          .maybeSingle();
+        const continuousTask = task.task_type === "career_ops_submit";
+        const authorized = task.status === "running" && (
+          !continuousTask || (
+            prefs?.agent_enabled === true
+            && prefs?.auto_apply_enabled === true
+            && prefs?.review_mode === "eligible_only"
+          )
+        );
+        return jsonResponse({
+          ok: true,
+          authorized,
+          reason: authorized ? "authorized" : task.status !== "running" ? "task_stopped" : "agent_stopped",
+        });
+      }
+
+      if (action === "verification-code") {
+        const jobId = String(body?.jobId || "").trim();
+        if (!jobId) return jsonResponse({ error: "jobId is required" }, 400);
+
+        const { data: task } = await serviceClient
+          .from("applypass_tasks")
+          .select("id,user_id,payload,status")
+          .eq("id", taskId)
+          .in("status", ["pending", "running"])
+          .maybeSingle();
+        if (!task) return jsonResponse({ error: "Active task not found" }, 404);
+
+        const taskPayload = asRecord(task.payload);
+        const taskJobs = Array.isArray(taskPayload.jobs) ? taskPayload.jobs.map(asRecord) : [];
+        const taskJob = taskJobs.find((job) => String(job.id || "") === jobId);
+        if (!taskJob) return jsonResponse({ error: "Job does not belong to this task" }, 403);
+
+        // Poll through the server-side Gmail connection. OAuth tokens never
+        // enter the worker payload, browser context, logs, or frontend.
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+        const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+        let inboxStatus = "INBOX_CHECKED";
+        if (supabaseUrl && serviceRole) {
+          const pollResponse = await fetch(`${supabaseUrl}/functions/v1/mc-gmail-poll`, {
+            method: "POST",
+            headers: {
+              apikey: serviceRole,
+              authorization: `Bearer ${serviceRole}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ user_id: task.user_id }),
+          }).catch(() => null);
+          if (!pollResponse) {
+            inboxStatus = "INBOX_CHECK_FAILED";
+          } else {
+            const pollBody = await pollResponse.json().catch(() => ({}));
+            const failureCodes = Array.isArray(pollBody?.failure_codes) ? pollBody.failure_codes : [];
+            if (!pollResponse.ok || Number(pollBody?.failed || 0) > 0) {
+              inboxStatus = String(failureCodes[0] || "INBOX_CHECK_FAILED");
+            }
+          }
+        } else {
+          inboxStatus = "INBOX_UNAVAILABLE";
+        }
+
+        const trackedJobId = String(taskJob.trackedJobId || taskPayload.tracked_job_id || "").trim();
+        if (!trackedJobId) return jsonResponse({ ok: true, available: false, inbox_status: "JOB_INBOX_NOT_LINKED" });
+        let codeQuery = serviceClient
+          .from("mc_inbound_emails")
+          .select("id,verification_code,verification_code_expires_at")
+          .eq("user_id", task.user_id)
+          .not("verification_code", "is", null)
+          .gt("verification_code_expires_at", new Date().toISOString())
+          .order("received_at", { ascending: false })
+          .limit(1);
+        codeQuery = codeQuery.eq("tracked_job_id", trackedJobId);
+        const { data: codeRows } = await codeQuery;
+        const codeRow = codeRows?.[0];
+        if (!codeRow?.verification_code) return jsonResponse({ ok: true, available: false, inbox_status: inboxStatus });
+
+        await serviceClient.from("mc_inbound_emails").update({
+          verification_code: null,
+          verification_code_expires_at: null,
+          verification_code_used_at: new Date().toISOString(),
+          is_read: true,
+        }).eq("id", codeRow.id);
+
+        return jsonResponse({ ok: true, available: true, code: codeRow.verification_code, inbox_status: "CODE_AVAILABLE" });
+      }
+
       if (action === "heartbeat") {
         const { data, error } = await serviceClient
           .from("applypass_tasks")
           .update({ heartbeat_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq("id", taskId)
           .eq("status", "running")
-          .select("id,status,heartbeat_at,updated_at")
+          .select("id,user_id,status,heartbeat_at,updated_at")
           .single();
 
         if (error) throw error;
@@ -100,10 +259,22 @@ serve(async (req: Request) => {
           });
         }
 
+        await serviceClient.from("mc_worker_heartbeats").upsert({
+          user_id: data.user_id,
+          hostname: workerId,
+          version: "applypass-browser-worker-v2",
+          last_seen: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+
         return jsonResponse({ ok: true, task: data });
       }
 
       if (action === "complete") {
+        const { data: taskContext } = await serviceClient
+          .from("applypass_tasks")
+          .select("task_type,payload,user_id")
+          .eq("id", taskId)
+          .maybeSingle();
         const { data, error } = await serviceClient
           .from("applypass_tasks")
           .update({
@@ -128,11 +299,18 @@ serve(async (req: Request) => {
           });
         }
 
+        await syncCareerDraft(serviceClient, taskContext, "complete", body?.result);
+
         return jsonResponse({ ok: true, task: data });
       }
 
       if (action === "fail") {
         const errorMessage = String(body?.errorMessage || "Worker execution failed").slice(0, 1500);
+        const { data: taskContext } = await serviceClient
+          .from("applypass_tasks")
+          .select("task_type,payload,user_id")
+          .eq("id", taskId)
+          .maybeSingle();
 
         const { data, error } = await serviceClient
           .from("applypass_tasks")
@@ -157,6 +335,8 @@ serve(async (req: Request) => {
             p_entry: body.log,
           });
         }
+
+        await syncCareerDraft(serviceClient, taskContext, "fail", body?.result, errorMessage);
 
         return jsonResponse({ ok: true, task: data });
       }
@@ -230,6 +410,10 @@ serve(async (req: Request) => {
       return jsonResponse({ error: "Maximum 25 jobs per queued task" }, 400);
     }
 
+    const serviceClient = createServiceClient();
+    await enforceAutoApplyEntitlement(serviceClient, user.id);
+    await enforceMonthlyAutoApplyExecutionCap(serviceClient, user.id, jobs.length);
+
     const taskPayload = {
       jobs,
       resumeId: body?.resumeId || null,
@@ -255,6 +439,9 @@ serve(async (req: Request) => {
 
     return jsonResponse({ ok: true, task: data });
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
+    const status = error && typeof error === "object" && "status" in error
+      ? Number((error as { status?: number }).status) || 500
+      : 500;
+    return jsonResponse({ error: error instanceof Error ? error.message : "Unknown error" }, status);
   }
 });

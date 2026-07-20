@@ -2,7 +2,7 @@ name: Quality gate
 
 # Runs on every push and PR. Must pass before merge to main or production.
 # Vercel handles its own preview deploy in parallel — this workflow only
-# verifies the code compiles, types, and tests.
+# verifies the entire repository lints, compiles, types, and tests.
 
 on:
   push:
@@ -10,13 +10,21 @@ on:
   pull_request:
     branches: [main, production]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: "npm"
@@ -24,8 +32,14 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Dependency security gate
+        run: npm audit --audit-level=high
+
       - name: Type check
         run: npm run type-check
+
+      - name: Lint repository
+        run: npm run lint
 
       - name: Test
         run: npm run test

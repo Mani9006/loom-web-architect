@@ -162,7 +162,7 @@ What to avoid`,
   resume_parse: {
     name: "Resume Parser",
     description: "Extracts structured resume data accurately",
-    systemPrompt: `You are a resume parsing engine. Extract EVERY piece of information from the candidate's resume into the exact JSON schema below.
+    systemPrompt: `You are a lossless resume extraction engine. Transcribe the candidate's resume into the exact JSON schema below.
 
 ABSOLUTE RULES:
 1. Return ONE JSON object. No prose, no markdown fences, no explanation.
@@ -171,6 +171,12 @@ ABSOLUTE RULES:
 4. Use empty string "" for missing scalar fields. Use empty array [] for missing list fields.
 5. Never invent companies, dates, schools, certifications, or metrics that aren't in the source. If you can't read a date, use "".
 6. Preserve the original wording of bullets verbatim. Do NOT rewrite, shorten, or rephrase.
+7. Remove visual bullet glyphs and PDF control characters, but preserve the bullet text.
+8. Keep Environment/Technology lines attached to the correct experience entry.
+9. Preserve education date ranges. Do not collapse a start/end range into only the graduation month.
+10. Skills must come from the explicit skills section when one exists. Do not infer skills from experience bullets. Preserve source category labels as lowercase snake_case and list each skill once.
+11. Put meaningful non-standard sections in custom_sections instead of discarding them.
+12. Treat placeholder contact values such as "EMAIL NEEDED", "(XXX) XXX-XXXX", "City, ST", and generic /handle URLs as missing values.
 
 SCHEMA (every key required, in this order):
 
@@ -191,7 +197,8 @@ SCHEMA (every key required, in this order):
       "start_date": "string (e.g. 'Jan 2023' or '2023')",
       "end_date": "string (e.g. 'Present' or 'Aug 2024')",
       "location": "string (City, ST or 'Remote')",
-      "bullets": ["string", "string", ...]
+      "bullets": ["string", "string", ...],
+      "environment": "string (exact Environment/Technology line without the label, or '')"
     }
   ],
   "education": [
@@ -200,7 +207,9 @@ SCHEMA (every key required, in this order):
       "field": "string (e.g. 'Computer Science')",
       "institution": "string (school name)",
       "gpa": "string (or '')",
-      "graduation_date": "string (e.g. 'May 2024')",
+      "start_date": "string (preserve attendance range start, or '')",
+      "end_date": "string (preserve attendance range end, or '')",
+      "graduation_date": "string (same as end_date when a range is present)",
       "location": "string"
     }
   ],
@@ -208,7 +217,8 @@ SCHEMA (every key required, in this order):
     {
       "name": "string (certification name)",
       "issuer": "string (issuing organization)",
-      "date": "string"
+      "date": "string",
+      "url": "string"
     }
   ],
   "skills": {
@@ -219,21 +229,17 @@ SCHEMA (every key required, in this order):
       "title": "string",
       "organization": "string (or '')",
       "date": "string",
-      "bullets": ["string", ...]
+      "bullets": ["string", ...],
+      "url": "string"
     }
-  ]
+  ],
+  "languages": [{"language":"string","proficiency":"string"}],
+  "volunteer": [{"role":"string","organization":"string","date":"string","bullets":["string"]}],
+  "awards": [{"title":"string","issuer":"string","date":"string","url":"string"}],
+  "custom_sections": [{"name":"string","entries":[{"title":"string","subtitle":"string","date":"string","bullets":["string"],"url":"string"}]}]
 }
 
-SKILL CATEGORIES — use ONLY these keys (lowercase, snake_case). Merge variants into the canonical key. Do NOT create new categories:
-  "generative_ai", "nlp", "machine_learning", "deep_learning",
-  "programming_languages", "data_engineering_etl", "visualization",
-  "cloud_mlops", "devops", "databases", "frameworks",
-  "collaboration_tools", "big_data", "soft_skills", "tools",
-  "testing", "web_development", "mobile_development", "data_science",
-  "statistical_modeling", "project_management", "operating_systems",
-  "networking", "cybersecurity"
-
-If a skill doesn't fit any category, put it in "tools".
+SKILL CATEGORIES — preserve the explicit source category labels as lowercase snake_case. Merge only obvious spelling variants. Do not manufacture extra categories and do not duplicate skills between categories.
 
 OUTPUT: Just the JSON object. Nothing else.`,
   },
@@ -377,7 +383,7 @@ async function classifyIntent(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini", // Fast model for classification
+        model: Deno.env.get("OPENAI_MODEL_CLASSIFY") || "gpt-5.4-nano",
         messages: [
           { role: "system", content: AGENTS.orchestrator.systemPrompt },
           ...conversationHistory.slice(-2),
@@ -410,8 +416,12 @@ async function classifyIntent(
   }
 }
 
-// Model selection based on task - using OpenAI models
+// Model routing is cost-aware and environment-overridable. Extraction and
+// substantive writing use mini; classification/conversation use nano.
 function getOptimalModelForAgent(agentType: string): string {
+  const nano = Deno.env.get("OPENAI_MODEL_CHEAP") || "gpt-5.4-nano";
+  const mini = Deno.env.get("OPENAI_MODEL_STANDARD") || "gpt-5.4-mini";
+  const parser = Deno.env.get("OPENAI_MODEL_RESUME_PARSE") || mini;
   switch (agentType) {
     case "cover_letter":
     case "resume":
@@ -419,16 +429,14 @@ function getOptimalModelForAgent(agentType: string): string {
     case "salary_negotiation":
     case "networking":
     case "resume_enhance":
-      // GPT-4o for complex writing and analysis tasks
-      return "gpt-4o";
+      return mini;
     case "resume_parse":
-      return "gpt-4o";
+      return parser;
     case "interview":
     case "job_search":
     case "general":
     default:
-      // GPT-4o-mini for faster conversational tasks
-      return "gpt-4o-mini";
+      return nano;
   }
 }
 
@@ -480,29 +488,33 @@ async function executeAgent(
 
   console.log(`[Agent] Executing ${normalizedAgentType} with OpenAI model: ${optimalModel} (timeout=${timeoutMs}ms)`);
 
-  const systemPrompt = `${agent.systemPrompt}
+  const systemPrompt = normalizedAgentType === "resume_parse"
+    ? agent.systemPrompt
+    : `${agent.systemPrompt}
 
 ${memoryContext ? `## User Context (from previous interactions)\n${memoryContext}\n\nUse this context to provide personalized responses.` : ""}
 
 Keep responses clear, well-structured, and actionable. Use markdown formatting for readability.`;
 
   // Force JSON mode for parse-style tasks so the model can't return prose.
-  // (response_format works alongside streaming on gpt-4o.)
+  // Structured JSON mode works alongside streaming on supported OpenAI models.
   // Lower temperature on parse to 0 — extraction is a deterministic task,
   // any creativity at temperature 1.0 (OpenAI default) leads to invented
   // bullets/skipped entries.
   const requestBody: Record<string, unknown> = {
     model: optimalModel,
-    max_tokens: maxTokens,
     messages: [
       { role: "system", content: systemPrompt },
       ...messages,
     ],
     stream: true,
   };
+  if (/^gpt-5/i.test(optimalModel)) requestBody.max_completion_tokens = maxTokens;
+  else requestBody.max_tokens = maxTokens;
   if (normalizedAgentType === "resume_parse") {
     requestBody.response_format = { type: "json_object" };
-    requestBody.temperature = 0;
+    // GPT-5 reasoning models do not accept arbitrary temperature values.
+    if (!/^gpt-5/i.test(optimalModel)) requestBody.temperature = 0;
   }
 
   const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {

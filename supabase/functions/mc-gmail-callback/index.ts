@@ -1,93 +1,149 @@
-// supabase/functions/mc-gmail-callback/index.ts
-// Handles the redirect back from Google. Exchanges code for tokens, stores in mc_gmail_connections.
-
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { encryptSecret, verifySignedState } from "../_shared/oauth-crypto.ts";
 
-const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
-const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
-const REDIRECT_URI = Deno.env.get("GOOGLE_REDIRECT_URI")!;
-const APP_BASE_URL = Deno.env.get("APP_BASE_URL")!; // e.g. https://resumepreps.io
+interface OAuthState {
+  session_id: string;
+  user_id: string;
+  exp: number;
+  nonce: string;
+  return_to?: string;
+}
+
+function safeRedirect(baseUrl: string, path: string, params: Record<string, string>): Response {
+  let url: URL;
+  try {
+    url = new URL(path, baseUrl);
+  } catch {
+    url = new URL(path, "https://www.resumepreps.com");
+  }
+  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+  return Response.redirect(url.toString(), 302);
+}
 
 serve(async (req) => {
-  const url = new URL(req.url);
-  const code = url.searchParams.get("code");
-  const stateRaw = url.searchParams.get("state");
-  const error = url.searchParams.get("error");
+  const appBaseUrl = Deno.env.get("APP_BASE_URL") || "https://resumepreps.com";
+  const requestUrl = new URL(req.url);
+  const code = requestUrl.searchParams.get("code");
+  const stateRaw = requestUrl.searchParams.get("state") || "";
+  const providerError = requestUrl.searchParams.get("error");
 
-  if (error) {
-    return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=${encodeURIComponent(error)}`, 302);
-  }
-  if (!code || !stateRaw) {
-    return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=missing_params`, 302);
+  if (providerError) {
+    return safeRedirect(appBaseUrl, "/inbox", { inbox: "cancelled" });
   }
 
-  let session_id: string;
-  let jwt: string;
+  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID") || "";
+  const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET") || "";
+  const redirectUri = Deno.env.get("GOOGLE_REDIRECT_URI") || "";
+  const encryptionKey = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY") || "";
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+  if (!code || !stateRaw || !googleClientId || !googleClientSecret || !redirectUri ||
+      !encryptionKey || !supabaseUrl || !serviceKey) {
+    return safeRedirect(appBaseUrl, "/inbox", { inbox: "unavailable" });
+  }
+
+  let state: OAuthState | null = null;
   try {
-    const decoded = JSON.parse(atob(stateRaw));
-    session_id = decoded.session_id;
-    jwt = decoded.jwt;
-  } catch {
-    return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=bad_state`, 302);
+    state = await verifySignedState<OAuthState>(stateRaw, encryptionKey);
+  } catch (error) {
+    console.error("mc-gmail-callback state", error);
+  }
+  if (!state?.session_id || !state?.user_id || !state?.nonce) {
+    return safeRedirect(appBaseUrl, "/inbox", { inbox: "invalid_link" });
   }
 
-  // 1. Exchange code for tokens
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
-      redirect_uri: REDIRECT_URI,
-      grant_type: "authorization_code",
-    }),
-  });
-  if (!tokenRes.ok) {
-    const txt = await tokenRes.text();
-    return Response.redirect(
-      `${APP_BASE_URL}/my-collection?gmail_error=${encodeURIComponent(txt.slice(0, 80))}`,
-      302
-    );
+  const redirectBase = state.return_to || appBaseUrl;
+
+  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  const { data: session } = await admin
+    .from("mc_sessions")
+    .select("id")
+    .eq("id", state.session_id)
+    .eq("user_id", state.user_id)
+    .maybeSingle();
+  if (!session) return safeRedirect(appBaseUrl, "/inbox", { inbox: "invalid_link" });
+
+  try {
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: googleClientId,
+        client_secret: googleClientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    });
+    if (!tokenResponse.ok) throw new Error(`oauth_exchange_${tokenResponse.status}`);
+
+    const tokens = await tokenResponse.json();
+    if (!tokens.access_token || !tokens.expires_in) {
+      throw new Error("oauth_tokens_incomplete");
+    }
+
+    // Google can omit refresh_token when the user has already granted this
+    // client access. Reuse the encrypted refresh token from the existing
+    // connection instead of requiring a destructive disconnect/reconnect.
+    let existingRefreshCiphertext: string | null = null;
+    if (!tokens.refresh_token) {
+      const { data: existingConnection } = await admin
+        .from("mc_gmail_connections")
+        .select("id")
+        .eq("session_id", state.session_id)
+        .maybeSingle();
+      if (existingConnection?.id) {
+        const { data: existingTokens } = await admin.rpc("mc_get_gmail_tokens", {
+          p_connection_id: existingConnection.id,
+        });
+        existingRefreshCiphertext = existingTokens?.[0]?.refresh_ciphertext || null;
+      }
+      if (!existingRefreshCiphertext) throw new Error("oauth_refresh_token_missing");
+    }
+
+    const profileResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (!profileResponse.ok) throw new Error(`oauth_profile_${profileResponse.status}`);
+    const profile = await profileResponse.json();
+    if (!profile?.email) throw new Error("oauth_profile_incomplete");
+
+    const expiresAt = new Date(Date.now() + Number(tokens.expires_in) * 1000).toISOString();
+    const { data: connection, error: connectionError } = await admin
+      .from("mc_gmail_connections")
+      .upsert({
+        user_id: state.user_id,
+        session_id: state.session_id,
+        gmail_email: profile.email,
+        token_expires_at: expiresAt,
+        scopes: String(tokens.scope || "").split(" ").filter(Boolean),
+        enabled: true,
+      }, { onConflict: "session_id" })
+      .select("id")
+      .single();
+    if (connectionError || !connection) throw new Error("connection_store_failed");
+
+    const [accessCiphertext, refreshCiphertext] = await Promise.all([
+      encryptSecret(tokens.access_token, encryptionKey),
+      tokens.refresh_token
+        ? encryptSecret(tokens.refresh_token, encryptionKey)
+        : Promise.resolve(existingRefreshCiphertext),
+    ]);
+    const { error: tokenStoreError } = await admin.rpc("mc_store_gmail_tokens", {
+      p_connection_id: connection.id,
+      p_access_ciphertext: accessCiphertext,
+      p_refresh_ciphertext: refreshCiphertext,
+    });
+    if (tokenStoreError) {
+      await admin.from("mc_gmail_connections").update({ enabled: false }).eq("id", connection.id);
+      throw new Error("token_store_failed");
+    }
+
+    return safeRedirect(redirectBase, "/inbox", { inbox: "connected" });
+  } catch (error) {
+    console.error("mc-gmail-callback", error);
+    return safeRedirect(redirectBase, "/inbox", { inbox: "connect_failed" });
   }
-  const tokens = await tokenRes.json();
-
-  // 2. Look up user's email
-  const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-    headers: { authorization: `Bearer ${tokens.access_token}` },
-  });
-  const profile = await profileRes.json();
-
-  // 3. Persist via Supabase as the authenticated user
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: `Bearer ${jwt}` } } }
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=not_authenticated`, 302);
-  }
-
-  const expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-
-  const { error: dbError } = await supabase
-    .from("mc_gmail_connections")
-    .upsert({
-      user_id: user.id,
-      session_id,
-      gmail_email: profile.email,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      token_expires_at: expires_at,
-      scopes: tokens.scope.split(" "),
-      enabled: true,
-    }, { onConflict: "session_id" });
-
-  if (dbError) {
-    return Response.redirect(`${APP_BASE_URL}/my-collection?gmail_error=${encodeURIComponent(dbError.message)}`, 302);
-  }
-
-  return Response.redirect(`${APP_BASE_URL}/my-collection/${session_id}?gmail_connected=1`, 302);
 });

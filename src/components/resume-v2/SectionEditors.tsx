@@ -4,6 +4,7 @@
  * Each editor is a controlled form that reads from + writes to the Zustand
  * store. No prop drilling — components subscribe to the slice they care about.
  */
+import { cloneElement, isValidElement, useId, useState, type ReactElement } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Plus, Trash2, GripVertical } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useResumeStore } from "@/lib/resume-store";
-import { SKILL_CATEGORY_LABELS } from "@/types/resume";
+import { CANONICAL_SKILL_CATEGORIES, normalizeResumeSkills } from "@/lib/resume-skills";
 import type {
   ExperienceEntry,
   EducationEntry,
@@ -92,6 +93,7 @@ export function ExperienceEditor() {
       end_date: "",
       location: "",
       bullets: [""],
+      environment: "",
     });
 
   return (
@@ -128,6 +130,7 @@ function ExperienceCard({
     start_date: safe(entry.start_date),
     end_date: safe(entry.end_date),
     location: safe(entry.location),
+    environment: safe(entry.environment),
     bullets: bulletsSafe,
   };
   const upd = (patch: Partial<ExperienceEntry>) => onChange({ ...e, ...patch });
@@ -160,7 +163,12 @@ function ExperienceCard({
             <Input value={e.location} onChange={(ev) => upd({ location: ev.target.value })} />
           </Field>
         </div>
-        <Button variant="ghost" size="icon" onClick={onRemove}>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Remove experience${e.role || e.company_or_client ? `: ${e.role || e.company_or_client}` : ""}`}
+          onClick={onRemove}
+        >
           <Trash2 className="size-4" />
         </Button>
       </div>
@@ -170,13 +178,19 @@ function ExperienceCard({
         {e.bullets.map((b, i) => (
           <div key={i} className="flex gap-2">
             <Textarea
+              aria-label={`Bullet ${i + 1}${e.role ? ` for ${e.role}` : ""}`}
               rows={2}
               value={b}
               onChange={(e) => updBullet(i, e.target.value)}
               placeholder="Reduced inference cost 42% by quantizing the BERT classifier and migrating to Triton..."
               className="text-sm"
             />
-            <Button variant="ghost" size="icon" onClick={() => rmBullet(i)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Remove bullet ${i + 1}${e.role ? ` from ${e.role}` : ""}`}
+              onClick={() => rmBullet(i)}
+            >
               <Trash2 className="size-3.5" />
             </Button>
           </div>
@@ -185,6 +199,17 @@ function ExperienceCard({
           <Plus className="size-3.5 mr-1" /> Add bullet
         </Button>
       </div>
+      <Field
+        label="Environment / technologies"
+        hint="Preserved with this role; do not merge it into unrelated skill categories."
+      >
+        <Textarea
+          rows={2}
+          value={e.environment ?? ""}
+          onChange={(event) => upd({ environment: event.target.value })}
+          placeholder="Python, SQL, AWS, Kubernetes, ..."
+        />
+      </Field>
     </div>
   );
 }
@@ -196,7 +221,10 @@ export function EducationEditor() {
     useShallow((s) => ({ items: s.resume.education, upsert: s.upsertEducation, remove: s.removeEducation })),
   );
   const add = () =>
-    upsert({ id: newId(), degree: "", field: "", institution: "", gpa: "", graduation_date: "", location: "" });
+    upsert({
+      id: newId(), degree: "", field: "", institution: "", gpa: "",
+      start_date: "", end_date: "", graduation_date: "", location: "",
+    });
 
   return (
     <div className="space-y-4">
@@ -231,8 +259,15 @@ function EducationCard({
       <Field label="Field">
         <Input value={entry.field} onChange={(e) => upd({ field: e.target.value })} placeholder="Computer Science" />
       </Field>
-      <Field label="Graduation">
-        <Input value={entry.graduation_date} onChange={(e) => upd({ graduation_date: e.target.value })} />
+      <Field label="Start date">
+        <Input value={entry.start_date ?? ""} onChange={(e) => upd({ start_date: e.target.value })} placeholder="Jan 2022" />
+      </Field>
+      <Field label="End / graduation">
+        <Input
+          value={entry.end_date ?? entry.graduation_date}
+          onChange={(e) => upd({ end_date: e.target.value, graduation_date: e.target.value })}
+          placeholder="Jul 2023"
+        />
       </Field>
       <Field label="GPA (optional)">
         <Input value={entry.gpa} onChange={(e) => upd({ gpa: e.target.value })} />
@@ -255,10 +290,11 @@ export function SkillsEditor() {
   const { skills, setSkills } = useResumeStore(
     useShallow((s) => ({ skills: s.resume.skills, setSkills: s.setSkills })),
   );
+  const [newCategory, setNewCategory] = useState("");
 
   const updCategory = (cat: string, value: string) => {
     const list = value.split(",").map((v) => v.trim()).filter(Boolean);
-    setSkills({ ...skills, [cat]: list });
+    setSkills(normalizeResumeSkills({ ...skills, [cat]: list }));
   };
   const removeCategory = (cat: string) => {
     const next = { ...skills };
@@ -266,37 +302,64 @@ export function SkillsEditor() {
     setSkills(next);
   };
   const addCategory = () => {
-    const cat = prompt("New skill category key (e.g. 'machine_learning'):")?.trim();
+    const cat = newCategory;
     if (!cat) return;
     if (skills[cat]) return;
     setSkills({ ...skills, [cat]: [] });
+    setNewCategory("");
   };
 
-  const cats = Object.keys(skills);
+  const cats = CANONICAL_SKILL_CATEGORIES.map(({ key }) => key).filter((key) => skills[key]?.length);
+  const available = CANONICAL_SKILL_CATEGORIES.filter(({ key }) => !skills[key]);
 
   return (
     <div className="space-y-3">
+      <div className="rounded-md border border-rp-rule bg-rp-paper/40 p-3 text-xs leading-relaxed text-rp-ink-2">
+        Each skill is stored once in a consistent ATS-readable category. Phrases that are responsibilities rather than skills are removed automatically.
+      </div>
       {cats.length === 0 && (
         <p className="text-sm text-muted-foreground">No skill categories yet. Add one to get started.</p>
       )}
       {cats.map((cat) => (
         <div key={cat} className="border rounded-md p-3">
           <div className="flex items-center justify-between mb-1.5">
-            <Label className="text-sm font-semibold">{SKILL_CATEGORY_LABELS[cat] ?? cat}</Label>
-            <Button variant="ghost" size="icon" onClick={() => removeCategory(cat)}>
+            <Label className="text-sm font-semibold">
+              {CANONICAL_SKILL_CATEGORIES.find(({ key }) => key === cat)?.label ?? cat}
+              <span className="ml-2 text-xs font-normal text-muted-foreground">{skills[cat].length} skills</span>
+            </Label>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Remove ${CANONICAL_SKILL_CATEGORIES.find(({ key }) => key === cat)?.label ?? cat} skills`}
+              onClick={() => removeCategory(cat)}
+            >
               <Trash2 className="size-3.5" />
             </Button>
           </div>
           <Input
+            aria-label={`${CANONICAL_SKILL_CATEGORIES.find(({ key }) => key === cat)?.label ?? cat} skills`}
             value={skills[cat].join(", ")}
             onChange={(e) => updCategory(cat, e.target.value)}
             placeholder="Python, PyTorch, JAX, ..."
           />
         </div>
       ))}
-      <Button variant="outline" size="sm" onClick={addCategory}>
-        <Plus className="size-4 mr-1" /> Add category
-      </Button>
+      {available.length > 0 && (
+        <div className="flex gap-2">
+          <select
+            value={newCategory}
+            onChange={(event) => setNewCategory(event.target.value)}
+            className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+            aria-label="Skill category"
+          >
+            <option value="">Choose a category</option>
+            {available.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          <Button variant="outline" size="sm" onClick={addCategory} disabled={!newCategory}>
+            <Plus className="size-4 mr-1" /> Add
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -433,11 +496,28 @@ function Field({
   children: React.ReactNode;
   className?: string;
 }) {
+  const generatedControlId = useId();
+  const generatedHintId = useId();
+  type LabeledControlProps = { id?: string; "aria-describedby"?: string };
+  const childProps = isValidElement(children)
+    ? (children as ReactElement<LabeledControlProps>).props
+    : null;
+  const controlId = childProps?.id ?? generatedControlId;
+  const describedBy = [childProps?.["aria-describedby"], hint ? generatedHintId : null]
+    .filter(Boolean)
+    .join(" ") || undefined;
+  const control = isValidElement(children)
+    ? cloneElement(children as ReactElement<LabeledControlProps>, {
+      id: controlId,
+      "aria-describedby": describedBy,
+    })
+    : children;
+
   return (
     <div className={`space-y-1 ${className}`}>
-      <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
-      {children}
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      <Label htmlFor={controlId} className="text-xs font-medium text-muted-foreground">{label}</Label>
+      {control}
+      {hint && <p id={generatedHintId} className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }

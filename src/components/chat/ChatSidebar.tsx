@@ -450,7 +450,7 @@ export function ChatSidebar({
                 <Sparkles className="w-4 h-4 text-primary-foreground" />
               </div>
               {!isCollapsed && (
-                <span className="font-semibold text-sidebar-foreground">AI Assistant</span>
+                <span className="font-semibold text-sidebar-foreground">Career Assistant</span>
               )}
             </div>
             <SidebarTrigger className="text-sidebar-foreground hover:bg-sidebar-accent rounded-lg p-1.5" />

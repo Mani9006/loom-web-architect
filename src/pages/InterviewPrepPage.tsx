@@ -66,7 +66,7 @@ export default function InterviewPrepPage() {
                 content += c;
                 setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, content } : m)));
               }
-            } catch {}
+            } catch { /* Ignore malformed stream fragments and continue reading. */ }
           }
         }
       }
@@ -122,7 +122,7 @@ export default function InterviewPrepPage() {
                 content += c;
                 setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, content } : m)));
               }
-            } catch {}
+            } catch { /* Ignore malformed stream fragments and continue reading. */ }
           }
         }
       }

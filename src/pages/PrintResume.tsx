@@ -93,7 +93,7 @@ export default function PrintResume() {
         {/* Header - Centered */}
         <header className="text-center pb-2 border-b-2 border-black mb-2 print-no-break">
           <h1 className="font-bold tracking-wide" style={{ fontSize: "18pt" }}>
-            {data.header.name || "Your Name"}
+            {data.header.name || ""}
           </h1>
 
           {data.header.title && (

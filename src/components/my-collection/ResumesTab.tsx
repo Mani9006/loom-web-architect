@@ -103,7 +103,7 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Save a job in Discover, then click "Tailor with AI" to generate one
+          No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
           here.
         </p>
       </Card>
@@ -352,7 +352,7 @@ function CanvasEditor({
           {/* AI side panel */}
           <div className="border rounded-lg p-3 overflow-y-auto flex flex-col">
             <div className="text-xs font-medium mb-2 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-primary" /> AI assistant
+              <Sparkles className="w-3.5 h-3.5 text-primary" /> Writing assistant
             </div>
             {!selectedLine && (
               <p className="text-[11px] text-muted-foreground">

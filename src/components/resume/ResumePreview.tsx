@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { ResumeJSON, getSkillCategoryLabel, DEFAULT_SECTION_ORDER } from "@/types/resume";
+import { normalizeResumeSkills } from "@/lib/resume-skills";
 import { Loader2, FileDown, FileText, Printer, ChevronDown, Copy, FileType } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -45,7 +46,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
   };
 
   // Get non-empty skill categories
-  const skillCategories = Object.entries(data.skills)
+  const skillCategories = Object.entries(normalizeResumeSkills(data.skills))
     .filter(([_, skills]) => skills.length > 0)
     .map(([key, skills]) => ({
       category: getSkillCategoryLabel(key),
@@ -116,7 +117,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
             className="font-bold tracking-wide"
             style={{ fontSize: "19pt" }}
           >
-            {data.header.name || "Your Name"}
+            {data.header.name || ""}
           </h1>
           
           {data.header.title && (

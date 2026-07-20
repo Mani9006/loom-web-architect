@@ -9,6 +9,8 @@ on:
     branches: [main, production]
     paths:
       - "supabase/functions/**"
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
       - ".github/workflows/deploy-edge-functions.yml"
   workflow_dispatch:
     inputs:
@@ -19,12 +21,20 @@ on:
         type: choice
         options: [staging, production]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-${{ github.event.inputs.environment || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/production' && 'production' || 'staging') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -34,26 +44,33 @@ jobs:
       - name: Deploy edge functions
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DB_PASSWORD_STAGING: ${{ secrets.SUPABASE_DB_PASSWORD_STAGING }}
+          DB_PASSWORD_PRODUCTION: ${{ secrets.SUPABASE_DB_PASSWORD_PROD }}
         run: |
           set -e
           if [ "${{ github.ref }}" = "refs/heads/production" ] || [ "${{ github.event.inputs.environment }}" = "production" ]; then
             REF="${{ secrets.SUPABASE_PROJECT_REF_PROD }}"
             ENV_NAME="production"
+            SUPABASE_DB_PASSWORD="$DB_PASSWORD_PRODUCTION"
           else
             REF="${{ secrets.SUPABASE_PROJECT_REF_STAGING }}"
             ENV_NAME="staging"
+            SUPABASE_DB_PASSWORD="$DB_PASSWORD_STAGING"
           fi
-          if [ -z "$REF" ]; then
-            echo "::error::Missing Supabase project ref for $ENV_NAME — set SUPABASE_PROJECT_REF_${ENV_NAME^^} in GitHub secrets."
+          export SUPABASE_DB_PASSWORD
+          if [ -z "$REF" ] || [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "::error::Missing Supabase project ref or database password for $ENV_NAME."
             exit 1
           fi
-          echo "Deploying to $ENV_NAME ($REF)"
+          echo "Applying migrations to $ENV_NAME"
+          supabase link --project-ref "$REF"
+          supabase db push --linked
+          echo "Deploying functions to $ENV_NAME"
           for fn in supabase/functions/*/; do
             name=$(basename "$fn")
             # Skip the shared utilities directory — it isn't a function.
             if [ "$name" = "_shared" ]; then continue; fi
             echo "::group::Deploying $name"
-            supabase functions deploy "$name" --project-ref "$REF" --no-verify-jwt || \
-              supabase functions deploy "$name" --project-ref "$REF"
+            supabase functions deploy "$name" --project-ref "$REF"
             echo "::endgroup::"
           done

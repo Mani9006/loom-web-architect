@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import StatsTab from "@/components/my-collection/StatsTab";
 import WorkerStatusBadge from "@/components/my-collection/WorkerStatusBadge";
 import SessionSettingsDialog from "@/components/my-collection/SessionSettingsDialog";
 import TrashDialog from "@/components/my-collection/TrashDialog";
+import ApplicationInboxTab from "@/components/my-collection/ApplicationInboxTab";
+import { toUserFacingError } from "@/lib/user-facing-error";
 
 interface MCSession {
   id: string;
@@ -60,7 +62,7 @@ export default function SessionPage() {
     let hadInitialLoad = false;
     (async () => {
       setLoading(true);
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
         .eq("id", sessionId)
@@ -72,14 +74,13 @@ export default function SessionPage() {
       // navigate away if we KNOW the session doesn't exist on the very
       // first load — otherwise just keep showing what we already have.
       if (error) {
-        // eslint-disable-next-line no-console
         console.error("[SessionPage] reload failed:", error.message);
         if (!hadInitialLoad) {
-          toast({
-            title: "Couldn't load session",
-            description: error.message,
-            variant: "destructive",
+          const safeError = toUserFacingError(error, {
+            operation: "load_application_workspace",
+            defaultMessage: "This application workspace could not be loaded.",
           });
+          toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
         }
         setLoading(false);
         return;
@@ -92,7 +93,7 @@ export default function SessionPage() {
         return;
       }
       hadInitialLoad = true;
-      setSession(data);
+      setSession(data as unknown as MCSession);
       setLoading(false);
     })();
     return () => {
@@ -128,9 +129,7 @@ export default function SessionPage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Session ID: <code className="text-[10px]">{session.id.slice(0, 8)}</code>
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
         </div>
         <div className="flex items-center gap-2">
           <WorkerStatusBadge />
@@ -144,7 +143,7 @@ export default function SessionPage() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="grid w-full max-w-2xl grid-cols-4">
+        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
           <TabsTrigger value="discover" className="gap-2">
             <Search className="w-4 h-4" /> Discover
           </TabsTrigger>
@@ -153,6 +152,9 @@ export default function SessionPage() {
           </TabsTrigger>
           <TabsTrigger value="board" className="gap-2">
             <Columns3 className="w-4 h-4" /> Board
+          </TabsTrigger>
+          <TabsTrigger value="inbox" className="gap-2">
+            <Inbox className="w-4 h-4" /> Inbox
           </TabsTrigger>
           <TabsTrigger value="stats" className="gap-2">
             <BarChart3 className="w-4 h-4" /> Stats
@@ -167,6 +169,9 @@ export default function SessionPage() {
         </TabsContent>
         <TabsContent value="board" className="mt-6">
           <BoardTab sessionId={session.id} key={boardReloadKey} />
+        </TabsContent>
+        <TabsContent value="inbox" className="mt-6">
+          <ApplicationInboxTab sessionId={session.id} />
         </TabsContent>
         <TabsContent value="stats" className="mt-6">
           <StatsTab sessionId={session.id} />

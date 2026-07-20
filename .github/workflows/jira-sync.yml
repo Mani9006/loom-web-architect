@@ -17,15 +17,15 @@ jobs:
   sync-review-tickets:
     name: Sync Jira Review Tickets
     runs-on: ubuntu-latest
-    if: ${{ secrets.JIRA_URL != '' }}
+    env:
+      JIRA_URL: ${{ secrets.JIRA_URL }}
+      JIRA_USER: ${{ secrets.JIRA_USER }}
+      JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+      PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY || 'KAN' }}
     steps:
       - name: Fetch Jira tickets needing review
         id: jira
-        env:
-          JIRA_URL: ${{ secrets.JIRA_URL }}
-          JIRA_USER: ${{ secrets.JIRA_USER }}
-          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
-          PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY || 'KAN' }}
+        if: ${{ env.JIRA_URL != '' }}
         run: |
           JQL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('project = $PROJECT_KEY AND status = Review ORDER BY updated DESC'))")
 
@@ -41,7 +41,7 @@ jobs:
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack about review tickets
-        if: steps.jira.outputs.count != '0' && vars.SLACK_WEBHOOK_URL != ''
+        if: env.JIRA_URL != '' && steps.jira.outputs.count != '0' && vars.SLACK_WEBHOOK_URL != ''
         env:
           SLACK_WEBHOOK_URL: ${{ vars.SLACK_WEBHOOK_URL }}
         run: |

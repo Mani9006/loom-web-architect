@@ -1,12 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy Supabase JSON rows are incrementally typed */
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ResumeJSON, createEmptyResumeJSON } from "@/types/resume";
 import { calculateATSScore } from "@/lib/ats-scorer";
 import {
-  streamAIText, parseAIResponse, mapParsedToResumePayload, RESUME_PARSE_SYSTEM_PROMPT,
-  prepareResumeTextForParsing,
+  streamAIText, parseAIResponse, mapParsedToResumePayload,
+  prepareResumeTextForParsing, calculateResumeParseQuality, buildResumeCorrectionPrompt,
 } from "@/lib/ai-resume-parser";
+import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { ResumeTemplate } from "@/components/resume/ResumeTemplate";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { Button } from "@/components/ui/button";
@@ -36,8 +39,17 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { TerminalLoader, TerminalText } from "@/components/Terminal";
+import { normalizeResumeSkills } from "@/lib/resume-skills";
+import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
 
 type ResumeSource = "scratch" | "upload" | "existing";
+type ImportFormatMode = "ats_recommended" | "preserve_source";
+
+async function sha256(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value.normalize("NFKC"));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 interface ResumeRow {
   id: string;
@@ -53,6 +65,7 @@ interface ResumeRow {
   template: string;
   updated_at: string;
   created_at: string;
+  source_document_id?: string | null;
 }
 
 function mapRowToResumeJSON(r: ResumeRow): ResumeJSON {
@@ -63,7 +76,7 @@ function mapRowToResumeJSON(r: ResumeRow): ResumeJSON {
     experience: Array.isArray(r.experience) ? r.experience : [],
     education: Array.isArray(r.education) ? r.education : [],
     certifications: Array.isArray(r.certifications) ? r.certifications : [],
-    skills: r.skills && typeof r.skills === "object" && !Array.isArray(r.skills) ? r.skills : {},
+    skills: normalizeResumeSkills(r.skills),
     projects: Array.isArray(r.projects) ? r.projects : [],
     languages: Array.isArray(r.languages) ? r.languages : [],
     volunteer: [],
@@ -85,24 +98,61 @@ export default function ResumeProjects() {
   const [resumeSource, setResumeSource] = useState<ResumeSource>("scratch");
   const [uploadedResumeText, setUploadedResumeText] = useState<string | null>(null);
   const [uploadedResumeFileName, setUploadedResumeFileName] = useState("");
+  const [uploadedDocumentId, setUploadedDocumentId] = useState<string | null>(null);
   const [existingDocuments, setExistingDocuments] = useState<any[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [isParsingImport, setIsParsingImport] = useState(false);
+  const [importFormatMode, setImportFormatMode] = useState<ImportFormatMode>("ats_recommended");
+  const [primaryResumeId, setPrimaryResumeId] = useState<string | null>(null);
 
   // ── Fetch all resumes ─────────────────────────────────────────────────
   const fetchResumes = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data, error } = await supabase
-      .from("resumes" as any)
-      .select("*")
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false });
+    const [{ data, error }, { data: applicationDrafts }] = await Promise.all([
+      supabase
+        .from("resumes" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false }),
+      supabase
+        .from("draft_applications")
+        .select("tailored_resume_id")
+        .eq("user_id", user.id),
+    ]);
 
     if (!error && data) {
-      setResumes(data as any as ResumeRow[]);
+      const applicationResumeIds = new Set(
+        (applicationDrafts || []).flatMap(({ tailored_resume_id }) => tailored_resume_id ? [tailored_resume_id] : []),
+      );
+      const nonApplicationResumes = (data as any as ResumeRow[]).filter((resume) => {
+        const role = resume.personal_info?._v2_extras?.document_role;
+        return role !== "application_snapshot" && role !== "tailored_draft" && !applicationResumeIds.has(resume.id);
+      });
+      let masters = nonApplicationResumes.filter((resume) => {
+        // Imported documents are durable masters even when a historical title
+        // contains the word "tailored". Generated copies do not carry the source
+        // document link and stay with their application instead.
+        if (resume.source_document_id) return true;
+        return !/—\s*tailored(?:\s*—|$)|application resume$/i.test(resume.title || "");
+      });
+      if (masters.length === 0 && nonApplicationResumes.length > 0) {
+        // Legacy records predate document-role metadata. Keep the oldest one as
+        // the source rather than exposing every historical variant or an empty
+        // library. New saves receive explicit metadata and do not use this path.
+        masters = [nonApplicationResumes.reduce((oldest, resume) =>
+          new Date(resume.created_at).getTime() < new Date(oldest.created_at).getTime() ? resume : oldest
+        )];
+      }
+      setResumes(masters);
     }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("primary_resume_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    setPrimaryResumeId((profile as { primary_resume_id?: string | null } | null)?.primary_resume_id ?? null);
     setIsLoading(false);
   };
 
@@ -144,8 +194,10 @@ export default function ResumeProjects() {
     setResumeSource("scratch");
     setUploadedResumeText(null);
     setUploadedResumeFileName("");
+    setUploadedDocumentId(null);
     setSelectedDocumentId(null);
     setIsParsingImport(false);
+    setImportFormatMode("ats_recommended");
   };
 
   // ── Create new resume ─────────────────────────────────────────────────
@@ -164,7 +216,11 @@ export default function ResumeProjects() {
       payload = {
         user_id: user.id,
         title: newResumeName.trim(),
-        personal_info: { ...emptyResume.header, title: newResumeRole.trim() } as any,
+        personal_info: {
+          ...emptyResume.header,
+          title: newResumeRole.trim(),
+          _v2_extras: { document_role: "master", import_format_mode: "ats_recommended" },
+        } as any,
         summary: "",
         experience: [] as any,
         education: [] as any,
@@ -177,11 +233,14 @@ export default function ResumeProjects() {
     } else {
       // "upload" or "existing" — get extracted text and AI-parse it
       let textToParse: string;
+      let sourceDocumentId: string | null = null;
       if (resumeSource === "upload") {
         textToParse = uploadedResumeText!;
+        sourceDocumentId = uploadedDocumentId;
       } else {
         const selectedDoc = existingDocuments.find((d) => d.id === selectedDocumentId);
         textToParse = selectedDoc?.extracted_text || "";
+        sourceDocumentId = selectedDoc?.id || null;
         if (!textToParse) {
           toast({ title: "Error", description: "Selected document has no extracted text.", variant: "destructive" });
           setIsCreating(false);
@@ -209,13 +268,45 @@ export default function ResumeProjects() {
           "resume_parse",
         );
 
-        const parsedData = parseAIResponse(fullContent);
+        let parsedData = parseAIResponse(fullContent);
         if (!parsedData) {
           console.error("[ResumeProjects] Failed to parse AI response:", fullContent.substring(0, 500));
           throw new Error("Could not extract structured data from the AI response. Please try again.");
         }
 
+        let quality = calculateResumeParseQuality(preparedText, parsedData);
+
+        // Low-confidence imports receive one targeted correction pass. The
+        // deterministic gate, not the model's self-assessment, decides whether
+        // the extraction is safe to present as complete.
+        if (quality.status === "review_required") {
+          const correctedContent = await streamAIText(
+            session.session.access_token,
+            [{ role: "user", content: buildResumeCorrectionPrompt(preparedText, parsedData, quality) }],
+            "resume_parse",
+          );
+          const corrected = parseAIResponse(correctedContent);
+          if (corrected) {
+            const correctedQuality = calculateResumeParseQuality(preparedText, corrected);
+            if (correctedQuality.score >= quality.score) {
+              parsedData = corrected;
+              quality = correctedQuality;
+            }
+          }
+        }
+
         const mapped = mapParsedToResumePayload(parsedData);
+        if (!mapped.personal_info.name) {
+          // The parser could not extract the candidate's name. Fall back to
+          // the profile full_name so we never render a "Your Name" literal.
+          const { data: nameProfile } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          mapped.personal_info.name = (nameProfile?.full_name ?? "").trim();
+        }
+        const sourceHash = await sha256(preparedText);
 
         payload = {
           user_id: user.id,
@@ -223,6 +314,7 @@ export default function ResumeProjects() {
           personal_info: {
             ...mapped.personal_info,
             title: newResumeRole.trim() || mapped.personal_info.title,
+            _v2_extras: { document_role: "master", import_format_mode: importFormatMode },
           } as any,
           summary: mapped.summary,
           experience: mapped.experience as any,
@@ -230,15 +322,42 @@ export default function ResumeProjects() {
           skills: mapped.skills as any,
           projects: mapped.projects as any,
           certifications: mapped.certifications as any,
-          languages: [] as any,
+          languages: mapped.languages as any,
+          volunteer: mapped.volunteer as any,
+          awards: mapped.awards as any,
+          custom_sections: mapped.custom_sections as any,
+          source_document_id: sourceDocumentId,
+          source_hash: sourceHash,
+          parser_version: quality.version,
+          parse_quality: quality as any,
+          parsed_at: new Date().toISOString(),
           template: "professional",
         };
+
+        if (quality.status === "passed") {
+          toast({
+            title: `Source coverage ${quality.score}%`,
+            description: importFormatMode === "preserve_source"
+              ? "The original remains your application master; the structured copy is ready for matching and review."
+              : "The import passed the lossless extraction gate and is ready in the recommended ATS layout.",
+          });
+        } else {
+          toast({
+            title: `Review required · ${quality.score}% coverage`,
+            description: quality.warnings[0] || "Some source evidence needs review before applying.",
+            variant: "destructive",
+          });
+        }
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Failed to parse resume";
-        console.error("[ResumeProjects] Import error:", errorMsg);
+        console.error("[ResumeProjects] Import error:", error);
+        void captureIncident(error, { source: "manual", operation: "resume_parse" });
+        const safeError = toUserFacingError(error, {
+          operation: "resume_parse",
+          defaultMessage: "We could not read this resume reliably. Try a text-based PDF or DOCX file.",
+        });
         toast({
-          title: "Import failed",
-          description: errorMsg.length > 150 ? errorMsg.substring(0, 150) + "..." : errorMsg,
+          title: safeError.title,
+          description: withSupportReference(safeError),
           variant: "destructive",
         });
         setIsCreating(false);
@@ -262,9 +381,62 @@ export default function ResumeProjects() {
       return;
     }
 
+    const createdResumeId = (newResume as unknown as { id: string }).id;
+    if (resumeSource !== "scratch") {
+      const importedId = createdResumeId;
+      const { error: primaryError } = await supabase
+        .from("profiles")
+        .update({ primary_resume_id: importedId } as never)
+        .eq("user_id", user.id);
+      if (!primaryError) setPrimaryResumeId(importedId);
+
+      // One upload should be enough. Fill reusable application defaults from
+      // verified resume fields and start the personalized feed in the
+      // background while the user reviews the editor.
+      void (async () => {
+        try {
+          await hydrateApplicationProfileFromResume({
+            userId: user.id,
+            resumeId: importedId,
+            resume: payload as Record<string, unknown>,
+            accountEmail: user.email,
+          });
+          await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+          const parsePassed = payload.parse_quality?.status === "passed";
+          if (parsePassed) {
+            const { error: reviewError } = await supabase.functions.invoke("career-profile-review", {
+              body: { resume_id: importedId },
+            });
+            if (!reviewError) await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+          }
+        } catch (backgroundError) {
+          void captureIncident(backgroundError, { source: "manual", operation: "resume_workspace_autofill" }, "warning");
+        }
+      })();
+      toast({
+        title: "Your workspace is being prepared",
+        description: "We filled reusable profile details from the resume and started finding matching roles. You can review the resume while this finishes.",
+      });
+    }
+
     setCreateOpen(false);
     resetCreateDialog();
-    navigate(`/resume-builder/${(newResume as any).id}`);
+    navigate(`/resume-builder/${createdResumeId}`);
+  };
+
+  const handleSetPrimaryResume = async (resumeId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ primary_resume_id: resumeId } as never)
+      .eq("user_id", user.id);
+    if (error) {
+      toast({ title: "Could not change matching resume", description: "Try again in a moment.", variant: "destructive" });
+      return;
+    }
+    setPrimaryResumeId(resumeId);
+    toast({ title: "Matching resume updated", description: "Job matches will now use this complete resume history." });
   };
 
   // ── Clone resume ──────────────────────────────────────────────────────
@@ -352,7 +524,7 @@ export default function ResumeProjects() {
             className="text-rp-ink-3"
             style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
           >
-            library · {resumes.length} on the shelf
+            library · {resumes.length} {resumes.length === 1 ? "résumé" : "résumés"}
           </span>
         </div>
 
@@ -375,8 +547,32 @@ export default function ResumeProjects() {
           className="text-rp-ink-2 max-w-2xl"
           style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "16px", lineHeight: 1.6 }}
         >
-          Every draft, tailored variant, and saved version. Click one to edit, or start a new one and the AI tailor turns any job description into a matching application.
+          Your source and master résumés only. Job-specific versions stay attached to Applications, so small edits never clutter this library.
         </p>
+
+        {/* One resume workflow, rather than separate products in the sidebar. */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-px bg-rp-rule border border-rp-rule mt-8">
+          <button onClick={() => setCreateOpen(true)} className="bg-rp-canvas p-4 text-left hover:bg-rp-paper transition-colors group">
+            <Upload className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
+            <p className="mt-3 text-sm font-semibold text-rp-ink">Import & parse</p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Turn PDF, DOCX, text, or an existing document into editable resume sections.</p>
+          </button>
+          <button onClick={() => navigate("/ats-checker")} className="bg-rp-canvas p-4 text-left hover:bg-rp-paper transition-colors group">
+            <Shield className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
+            <p className="mt-3 text-sm font-semibold text-rp-ink">ATS & formatting</p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Check parseability, structure, section quality, keywords, and job alignment.</p>
+          </button>
+          <button onClick={() => navigate("/matches")} className="bg-rp-canvas p-4 text-left hover:bg-rp-paper transition-colors group">
+            <Sparkles className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
+            <p className="mt-3 text-sm font-semibold text-rp-ink">Tailor per job</p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Create a separate evidence-backed version without overwriting your source resume.</p>
+          </button>
+          <button onClick={() => navigate("/documents")} className="bg-rp-canvas p-4 text-left hover:bg-rp-paper transition-colors group">
+            <FolderOpen className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
+            <p className="mt-3 text-sm font-semibold text-rp-ink">Documents</p>
+            <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Keep source resumes, tailored variants, and application documents together.</p>
+          </button>
+        </div>
 
         {/* Action row — primary uses default (white-on-black) like the rest of the app */}
         <div className="mt-7 flex items-center gap-2">
@@ -386,11 +582,17 @@ export default function ResumeProjects() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => navigate("/resume-builder/v2")}
+            onClick={() => {
+              const resumeId = resumes.some((resume) => resume.id === primaryResumeId)
+                ? primaryResumeId
+                : resumes[0]?.id;
+              if (resumeId) navigate(`/resume-builder/${resumeId}`);
+              else setCreateOpen(true);
+            }}
             className="gap-2"
           >
-            <Sparkles className="h-4 w-4" />
-            Open editor
+            <Pencil className="h-4 w-4" />
+            {resumes.length > 0 ? "Open matching résumé" : "Open editor"}
           </Button>
         </div>
 
@@ -425,7 +627,7 @@ export default function ResumeProjects() {
           </div>
           <h2 className="text-xl font-semibold mb-2">No resumes yet</h2>
           <p className="text-muted-foreground max-w-md mb-6">
-            Create your first resume to get started. Our AI-powered builder will help you craft an ATS-optimized resume in minutes.
+            Create your first resume to get started. Build an ATS-ready source resume, then tailor a separate copy for each job.
           </p>
           <Button onClick={() => setCreateOpen(true)} size="lg" className="gap-2">
             <Plus className="h-5 w-5" />
@@ -452,6 +654,8 @@ export default function ResumeProjects() {
               onClick={() => navigate(`/resume-builder/${resume.id}`)}
               onClone={() => handleClone(resume.id)}
               onDelete={() => setDeleteConfirmId(resume.id)}
+              isPrimary={primaryResumeId === resume.id}
+              onSetPrimary={() => void handleSetPrimaryResume(resume.id)}
             />
           ))}
         </div>
@@ -528,6 +732,7 @@ export default function ResumeProjects() {
                     }
                   }}
                   persistToDocuments={true}
+                  onDocumentSaved={(doc) => setUploadedDocumentId(doc.id)}
                   label="Drop your resume here"
                 />
                 {uploadedResumeText && (
@@ -563,6 +768,33 @@ export default function ResumeProjects() {
                     </SelectContent>
                   </Select>
                 )}
+              </div>
+            )}
+
+            {resumeSource !== "scratch" && (
+              <div className="space-y-3 rounded-lg border border-rp-rule bg-rp-paper p-3.5">
+                <div>
+                  <p className="text-sm font-semibold text-rp-ink">Choose the format workflow</p>
+                  <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">
+                    Source coverage is verified after import. Your wording is preserved in either path.
+                  </p>
+                </div>
+                <RadioGroup value={importFormatMode} onValueChange={(value) => setImportFormatMode(value as ImportFormatMode)} className="grid gap-2">
+                  <label htmlFor="format-ats" className="flex cursor-pointer items-start gap-3 rounded-md border border-rp-rule bg-rp-canvas p-3">
+                    <RadioGroupItem value="ats_recommended" id="format-ats" className="mt-0.5" />
+                    <span>
+                      <span className="block text-sm font-medium text-rp-ink">Use recommended ATS layout</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-rp-ink-2">Convert the extracted content into the clean editable template used for PDF, Word, and JSON exports.</span>
+                    </span>
+                  </label>
+                  <label htmlFor="format-source" className="flex cursor-pointer items-start gap-3 rounded-md border border-rp-rule bg-rp-canvas p-3">
+                    <RadioGroupItem value="preserve_source" id="format-source" className="mt-0.5" />
+                    <span>
+                      <span className="block text-sm font-medium text-rp-ink">Keep original as application master</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-rp-ink-2">Retain the uploaded file unchanged in Documents. The editor creates a structured analysis copy for matching and tailoring.</span>
+                    </span>
+                  </label>
+                </RadioGroup>
               </div>
             )}
           </div>
@@ -644,9 +876,11 @@ interface ResumeCardProps {
   onClick: () => void;
   onClone: () => void;
   onDelete: () => void;
+  isPrimary: boolean;
+  onSetPrimary: () => void;
 }
 
-function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
+function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimary }: ResumeCardProps) {
   const resumeData = useMemo(() => mapRowToResumeJSON(resume), [resume]);
   const atsScore = useMemo(() => calculateATSScore(resumeData), [resumeData]);
 
@@ -684,6 +918,11 @@ function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
         <div className={`absolute top-3 right-3 ${scoreColor} text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md`}>
           {atsScore.overall}%
         </div>
+        {isPrimary && (
+          <div className="absolute left-3 top-3 rounded-full bg-rp-ink px-2.5 py-1 text-[10px] font-semibold text-rp-canvas shadow-md">
+            Matching resume
+          </div>
+        )}
 
         {/* Hover overlay — dark pill against the white resume thumbnail */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
@@ -716,7 +955,12 @@ function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
           {/* Actions dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Actions for ${resume.title || "Untitled resume"}`}
+                className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -726,6 +970,9 @@ function ResumeCard({ resume, onClick, onClone, onDelete }: ResumeCardProps) {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onClone} className="gap-2">
                 <Copy className="h-4 w-4" /> Clone
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onSetPrimary} disabled={isPrimary} className="gap-2">
+                <CheckCircle className="h-4 w-4" /> {isPrimary ? "Used for matching" : "Use for job matching"}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onDelete} className="gap-2 text-destructive focus:text-destructive">
                 <Trash2 className="h-4 w-4" /> Delete

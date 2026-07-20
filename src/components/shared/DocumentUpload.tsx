@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- document extraction responses are migration-compatible dynamic payloads */
 import { useState, useRef, useCallback } from "react";
 import { Upload, X, Loader2, CheckCircle, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,8 @@ import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { captureIncident } from "@/lib/incidents";
+import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 
 interface ProgressState {
   progress: number;
@@ -12,6 +15,9 @@ interface ProgressState {
   stage: string;
   pageCount?: number;
 }
+
+const MAX_FILE_SIZE_MB = 20;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 interface DocumentUploadProps {
   onTextExtracted: (text: string, fileName: string) => void;
@@ -27,13 +33,13 @@ interface DocumentUploadProps {
   documentCategory?: string;
 }
 
-const VALID_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"];
+const VALID_EXTENSIONS = [".pdf", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"];
 
 export function DocumentUpload({
   onTextExtracted,
   isLoading: externalLoading = false,
   className,
-  accept = ".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg,.webp",
+  accept = ".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp",
   label = "Upload Document",
   persistToDocuments = false,
   onDocumentSaved,
@@ -44,16 +50,18 @@ export function DocumentUpload({
   const [isParsing, setIsParsing] = useState(false);
   const [progressState, setProgressState] = useState<ProgressState | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   const validateFile = useCallback((file: File): boolean => {
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const message = `This file is ${formatFileSize(file.size)}. Upload a resume under ${MAX_FILE_SIZE_MB} MB, or export a smaller PDF and try again.`;
+      setUploadError(message);
       toast({
         title: "File too large",
-        description: "Please upload a file smaller than 10MB",
+        description: message,
         variant: "destructive",
       });
       return false;
@@ -62,9 +70,11 @@ export function DocumentUpload({
     // Validate file type
     const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
     if (!VALID_EXTENSIONS.includes(fileExt)) {
+      const message = "Use a PDF, DOCX, TXT, Markdown, PNG, JPG, JPEG, or WebP file.";
+      setUploadError(message);
       toast({
         title: "Invalid file type",
-        description: "Please upload a PDF, Word document, text file, or image",
+        description: message,
         variant: "destructive",
       });
       return false;
@@ -74,9 +84,18 @@ export function DocumentUpload({
   }, [toast]);
 
   const processFile = useCallback(async (file: File) => {
-    if (!validateFile(file)) return;
+    setUploadError(null);
+    setUploadedFile(null);
+    setProgressState(null);
+    if (!validateFile(file)) {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
 
     setIsUploading(true);
+    let uploadedPath: string | null = null;
 
     try {
       // Get current user
@@ -101,6 +120,7 @@ export function DocumentUpload({
       if (uploadError) {
         throw uploadError;
       }
+      uploadedPath = filePath;
 
       setUploadedFile({ name: file.name, path: filePath });
       setIsUploading(false);
@@ -110,6 +130,10 @@ export function DocumentUpload({
       // Parse the document with streaming for progress
       const { data: session } = await supabase.auth.getSession();
       const isPdfOrImage = /\.(pdf|png|jpg|jpeg|webp)$/i.test(file.name);
+      const publishableKey =
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        import.meta.env.VITE_SUPABASE_ANON_KEY ||
+        "";
 
       // Add timeout for large file processing (2 minutes)
       const abortController = new AbortController();
@@ -124,6 +148,7 @@ export function DocumentUpload({
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${session.session?.access_token}`,
+              ...(publishableKey ? { apikey: publishableKey } : {}),
             },
             body: JSON.stringify({ filePath, streaming: isPdfOrImage }),
             signal: abortController.signal,
@@ -220,13 +245,6 @@ export function DocumentUpload({
         throw new Error("Could not extract text from this document. Please try pasting your resume text directly, or use a different file format.");
       }
 
-      onTextExtracted(extractedText, extractedFileName);
-
-      toast({
-        title: "Document uploaded",
-        description: `Successfully extracted text from ${file.name}`,
-      });
-
       if (persistToDocuments) {
         // Save record to user_documents and keep file in storage
         const fileExt = file.name.split(".").pop()?.toLowerCase() || "pdf";
@@ -250,21 +268,48 @@ export function DocumentUpload({
           .select("id, storage_path")
           .single();
 
-        if (!dbError && docRecord) {
-          onDocumentSaved?.({ id: (docRecord as any).id, storage_path: filePath });
+        if (dbError || !docRecord) {
+          throw new Error("Text was extracted, but the document could not be saved. Please try again.");
         }
+        onDocumentSaved?.({ id: (docRecord as any).id, storage_path: filePath });
+        uploadedPath = null;
       } else {
         // Legacy behavior: clean up the file from storage after parsing
-        await supabase.storage.from("documents").remove([filePath]);
+        const { error: cleanupError } = await supabase.storage.from("documents").remove([filePath]);
+        if (cleanupError) throw cleanupError;
+        uploadedPath = null;
       }
+
+      onTextExtracted(extractedText, extractedFileName);
+
+      toast({
+        title: "Resume ready",
+        description: `Extracted ${extractedText.length.toLocaleString()} characters from ${file.name}`,
+      });
       
     } catch (error) {
       console.error("Upload error:", error);
-      toast({
-        title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to process document",
-        variant: "destructive",
+      const operation = uploadedPath ? "document_process" : "document_upload";
+      void captureIncident(error, { source: "manual", operation });
+
+      if (uploadedPath) {
+        const failedPath = uploadedPath;
+        uploadedPath = null;
+        const { error: cleanupError } = await supabase.storage.from("documents").remove([failedPath]);
+        if (cleanupError) {
+          void captureIncident(cleanupError, { source: "manual", operation: "document_cleanup" }, "warning");
+        }
+      }
+
+      const safeError = toUserFacingError(error, {
+        operation,
+        defaultMessage: operation === "document_upload"
+          ? "The file could not be uploaded. Check the file and try again."
+          : "The file could not be read reliably. Try a text-based PDF or DOCX file.",
       });
+      const safeMessage = withSupportReference(safeError);
+      setUploadError(safeMessage);
+      toast({ title: safeError.title, description: safeMessage, variant: "destructive" });
       setUploadedFile(null);
     } finally {
       setIsUploading(false);
@@ -367,19 +412,34 @@ export function DocumentUpload({
           <>
             <CheckCircle className="w-8 h-8 text-green-500" />
             <p className="text-sm font-medium">{uploadedFile.name}</p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleClear();
-              }}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X className="w-4 h-4 mr-1" />
-              Remove
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="h-8 gap-1"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Replace file
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClear();
+                }}
+                className="h-8 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5 mr-1" />
+                Remove
+              </Button>
+            </div>
           </>
         ) : (
           <>
@@ -403,6 +463,12 @@ export function DocumentUpload({
         />
       </div>
 
+      {uploadError && !isProcessing && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {uploadError}
+        </div>
+      )}
+
       {/* Progress indicator for OCR processing */}
       {isParsing && progressState && (
         <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
@@ -413,15 +479,20 @@ export function DocumentUpload({
           <Progress value={progressState.progress} className="h-2" />
           {progressState.pageCount && progressState.pageCount > 1 && (
             <p className="text-xs text-muted-foreground">
-              Processing {progressState.pageCount} pages with AI OCR...
+              Reading {progressState.pageCount} pages with document recognition...
             </p>
           )}
         </div>
       )}
 
       <p className="text-xs text-muted-foreground text-center">
-        Supports: PDF (including multi-page scanned), Word (.docx), Text files, Images (PNG, JPG) - Max 10MB
+        Supports PDF, DOCX, TXT, Markdown, PNG, JPG, JPEG, and WebP files up to {MAX_FILE_SIZE_MB} MB.
       </p>
     </div>
   );
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

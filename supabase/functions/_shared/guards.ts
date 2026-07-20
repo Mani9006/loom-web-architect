@@ -9,11 +9,11 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export const CAPS = {
-  free:  { evaluation: 20, tailor: 10, linkedin: 10, ats: 25, story: 15 },
-  pro:   { evaluation: 200, tailor: 100, linkedin: 100, ats: 500, story: 150 },
+  free:  { search: 10, evaluation: 20, tailor: 10, linkedin: 10, ats: 25, story: 15 },
+  pro:   { search: 100, evaluation: 200, tailor: 100, linkedin: 100, ats: 500, story: 150 },
 };
 
-export type UsageKind = "evaluation" | "tailor" | "linkedin" | "ats" | "story" | "draft_answers";
+export type UsageKind = "search" | "evaluation" | "tailor" | "linkedin" | "ats" | "story" | "draft_answers";
 
 export function corsHeaders(): Record<string, string> {
   return {
@@ -61,6 +61,23 @@ export async function getAuthedUser(req: Request): Promise<{ id: string; email: 
   return { id: data.user.id, email: data.user.email ?? null };
 }
 
+/**
+ * Resolve a normal signed-in user, or an explicitly named user for a trusted
+ * service-role worker. The service path is intentionally opt-in per request so
+ * user-facing calls cannot impersonate another account by adding user_id.
+ */
+export async function getAuthedUserOrService(
+  req: Request,
+  serviceUserId?: string,
+): Promise<{ id: string; email: string | null }> {
+  if (serviceUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(serviceUserId)) {
+    const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (serviceRoleKey && token === serviceRoleKey) return { id: serviceUserId, email: null };
+  }
+  return getAuthedUser(req);
+}
+
 export async function enforceAccountActive(svc: SupabaseClient, userId: string): Promise<{ isPro: boolean }> {
   const { data } = await svc
     .from("user_access_controls")
@@ -77,6 +94,79 @@ export async function enforceAccountActive(svc: SupabaseClient, userId: string):
     ["trial", "active", "manual"].includes((data.purchase_state as string) ?? "")
   );
   return { isPro };
+}
+
+export async function enforceAutoApplyEntitlement(
+  svc: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  const { data, error } = await svc
+    .from("user_access_controls")
+    .select("account_status, subscription_plan, purchase_state")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new HttpError(500, "unable to verify auto-apply entitlement");
+
+  const plan = String(data?.subscription_plan || "free").toLowerCase();
+  const purchaseState = String(data?.purchase_state || "").toLowerCase();
+  const entitled = data?.account_status === "active"
+    && ["autopilot", "premium"].includes(plan)
+    && ["trial", "active", "manual"].includes(purchaseState);
+
+  if (!entitled) throw new HttpError(402, "Autopilot subscription required");
+}
+
+/**
+ * Infrastructure safety ceiling. It includes failed executions because they
+ * still consume browser/proxy resources. Customer-facing credits may be
+ * refunded separately, but no account can create unbounded monthly work.
+ */
+export async function enforceMonthlyAutoApplyExecutionCap(
+  svc: SupabaseClient,
+  userId: string,
+  requestedJobs: number,
+): Promise<void> {
+  const monthlyLimit = Math.max(1, Number(Deno.env.get("AUTOPILOT_MONTHLY_EXECUTION_CAP") || 1600));
+  const weeklyLimit = Math.max(1, Number(Deno.env.get("AUTOPILOT_WEEKLY_EXECUTION_CAP") || 400));
+  const weekStart = new Date();
+  const daysFromMonday = (weekStart.getUTCDay() + 6) % 7;
+  weekStart.setUTCDate(weekStart.getUTCDate() - daysFromMonday);
+  weekStart.setUTCHours(0, 0, 0, 0);
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+
+  const { data, error } = await svc
+    .from("applypass_tasks")
+    .select("task_type,payload,status,created_at")
+    .eq("user_id", userId)
+    .gte("created_at", weekStart < monthStart ? weekStart.toISOString() : monthStart.toISOString())
+    .neq("status", "canceled")
+    .limit(2000);
+  if (error) throw new HttpError(500, "unable to verify application usage");
+
+  const units = (task: { task_type: string; payload: unknown }) => {
+    if (task.task_type === "career_ops_submit") return 1;
+    const payload = task.payload && typeof task.payload === "object" && !Array.isArray(task.payload)
+      ? task.payload as Record<string, unknown>
+      : {};
+    return Array.isArray(payload.jobs) ? Math.max(1, payload.jobs.length) : 1;
+  };
+  const weeklyUsed = (data || []).reduce((total, task) => {
+    const createdAt = "created_at" in task ? new Date(String(task.created_at)) : monthStart;
+    return createdAt >= weekStart ? total + units(task) : total;
+  }, 0);
+  const monthlyUsed = (data || []).reduce((total, task) => {
+    const createdAt = "created_at" in task ? new Date(String(task.created_at)) : weekStart;
+    return createdAt >= monthStart ? total + units(task) : total;
+  }, 0);
+
+  if (weeklyUsed + requestedJobs > weeklyLimit) {
+    throw new HttpError(429, `weekly application allowance reached (${weeklyLimit})`);
+  }
+  if (monthlyUsed + requestedJobs > monthlyLimit) {
+    throw new HttpError(429, `monthly application allowance reached (${monthlyLimit})`);
+  }
 }
 
 export async function enforceDailyCap(

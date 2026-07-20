@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ interface LocationAutocompleteProps {
   className?: string;
   onKeyDown?: (e: React.KeyboardEvent) => void;
   error?: boolean;
+  ariaLabel?: string;
 }
 
 export default function LocationAutocomplete({
@@ -20,6 +21,7 @@ export default function LocationAutocomplete({
   className,
   onKeyDown,
   error,
+  ariaLabel = "Location",
 }: LocationAutocompleteProps) {
   const [open, setOpen] = useState(false);
   const [filtered, setFiltered] = useState<string[]>([]);
@@ -27,7 +29,7 @@ export default function LocationAutocomplete({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const filterLocations = useCallback((input: string) => {
+  const filterLocations = (input: string) => {
     if (!input.trim()) {
       setFiltered([]);
       setOpen(false);
@@ -38,11 +40,7 @@ export default function LocationAutocomplete({
     setFiltered(matches);
     setOpen(matches.length > 0);
     setHighlightIndex(-1);
-  }, []);
-
-  useEffect(() => {
-    filterLocations(value);
-  }, [value, filterLocations]);
+  };
 
   // Close on click outside
   useEffect(() => {
@@ -98,10 +96,14 @@ export default function LocationAutocomplete({
     <div ref={wrapperRef} className="relative">
       <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
       <Input
+        aria-label={ariaLabel}
         placeholder={placeholder}
         className={cn("pl-10 h-11", error && "border-destructive", className)}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          filterLocations(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         onFocus={() => { if (value.trim()) filterLocations(value); }}
         autoComplete="off"

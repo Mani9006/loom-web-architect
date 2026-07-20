@@ -2,6 +2,15 @@
 // Returns structured JSON scores instead of freeform chat text
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { callLlm } from "../_shared/llm.ts";
+import {
+  enforceAccountActive,
+  enforceDailyCap,
+  getAuthedUser,
+  HttpError,
+  jsonResponse,
+  serviceClient,
+} from "../_shared/guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,7 +35,7 @@ const SCORING_PROMPT = `You are an advanced ATS (Applicant Tracking System) anal
 
 ## Scoring Criteria
 
-### 1. Formatting (20% weight)
+### 1. Formatting (15% weight)
 - Clean section headers (Education, Experience, Skills, etc.)
 - No tables, images, columns, or fancy formatting that ATS can't parse
 - Standard fonts and bullet points
@@ -43,7 +52,7 @@ const SCORING_PROMPT = `You are an advanced ATS (Applicant Tracking System) anal
 - Action verbs alignment
 - Score based on % of JD keywords found in resume
 
-### 3. Experience Relevance (20% weight)
+### 3. Experience Relevance (25% weight)
 - Years of experience match
 - Role progression/seniority alignment
 - Industry relevance
@@ -56,13 +65,13 @@ const SCORING_PROMPT = `You are an advanced ATS (Applicant Tracking System) anal
 - Tools and platform proficiency
 - Language/framework alignment
 
-### 5. Education (10% weight)
+### 5. Education (5% weight)
 - Degree level match
 - Field of study relevance
 - Certifications and continuing education
 - Relevant coursework
 
-### 6. Impact & Achievements (10% weight)
+### 6. Impact & Achievements (15% weight)
 - Quantified results (numbers, percentages, dollar amounts)
 - Action verbs usage (Led, Developed, Increased, etc.)
 - STAR method indicators
@@ -112,9 +121,62 @@ You MUST respond with ONLY a valid JSON object matching this exact schema. No ma
 }
 
 The overallScore should be a weighted average:
-formatting * 0.20 + keywords * 0.25 + experience * 0.20 + skills * 0.15 + education * 0.10 + impact * 0.10
+formatting * 0.15 + keywords * 0.25 + experience * 0.25 + skills * 0.15 + education * 0.05 + impact * 0.15
 
 Be honest and critical. Real ATS systems are strict. A perfect resume for a matching job might score 85-95. An average resume scores 50-70. A poor match scores below 50.`;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function strings(value: unknown, limit = 10): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item) => item.trim()).slice(0, limit)
+    : [];
+}
+
+function clamp(value: unknown): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.min(100, Math.round(numeric))) : 0;
+}
+
+function normalizeResult(value: unknown): ATSScoreResult {
+  const root = asRecord(value);
+  const sections = asRecord(root.sections);
+  const genericSection = (key: string) => {
+    const section = asRecord(sections[key]);
+    return { score: clamp(section.score), issues: strings(section.issues), tips: strings(section.tips) };
+  };
+  const matchSection = (key: string) => {
+    const section = asRecord(sections[key]);
+    return { score: clamp(section.score), matched: strings(section.matched), missing: strings(section.missing), tips: strings(section.tips) };
+  };
+  const normalized = {
+    formatting: genericSection("formatting"),
+    keywords: matchSection("keywords"),
+    experience: genericSection("experience"),
+    skills: matchSection("skills"),
+    education: genericSection("education"),
+    impact: genericSection("impact"),
+  };
+  const overallScore = Math.round(
+    normalized.formatting.score * 0.15 +
+    normalized.keywords.score * 0.25 +
+    normalized.experience.score * 0.25 +
+    normalized.skills.score * 0.15 +
+    normalized.education.score * 0.05 +
+    normalized.impact.score * 0.15
+  );
+  return {
+    overallScore,
+    sections: normalized,
+    summary: typeof root.summary === "string" ? root.summary.trim().slice(0, 800) : "ATS analysis completed.",
+    topImprovements: strings(root.topImprovements, 5),
+  };
+}
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -122,13 +184,10 @@ serve(async (req: Request) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const user = await getAuthedUser(req);
+    const svc = serviceClient();
+    const { isPro } = await enforceAccountActive(svc, user.id);
+    await enforceDailyCap(svc, user.id, "ats", isPro);
 
     const { resumeText, jobDescription } = await req.json();
 
@@ -139,94 +198,28 @@ serve(async (req: Request) => {
       );
     }
 
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ error: "AI service not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Build the user message
-    let userMessage = `## Resume\n${resumeText.substring(0, 8000)}`;
+    let scoringContext = `## Resume\n${resumeText.substring(0, 12_000)}`;
     if (jobDescription?.trim()) {
-      userMessage += `\n\n## Job Description\n${jobDescription.substring(0, 4000)}`;
+      scoringContext += `\n\n## Job Description\n${jobDescription.substring(0, 8_000)}`;
     } else {
-      userMessage += `\n\n## Note\nNo job description provided. Score the resume on general ATS best practices and formatting. For keywords/skills sections, evaluate based on how well the resume presents its own stated skills and experience.`;
+      scoringContext += `\n\n## Note\nNo job description was provided. Score general ATS structure and evidence quality. Do not invent missing requirements.`;
     }
 
-    console.log(`[ATS-Score] Analyzing resume (${resumeText.length} chars), JD: ${jobDescription ? "yes" : "no"}`);
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: SCORING_PROMPT },
-          { role: "user", content: userMessage },
-        ],
-        temperature: 0.3,
-        max_tokens: 2000,
-        response_format: { type: "json_object" },
-      }),
+    const result = await callLlm<ATSScoreResult>({
+      tier: "cheap",
+      provider: "openai",
+      model: "gpt-5.6-luna",
+      system: SCORING_PROMPT,
+      cachedContext: scoringContext,
+      user: "Score the supplied resume now. Return only the required JSON object.",
+      maxTokens: 1800,
+      parseJson: true,
+      usage: { svc, userId: user.id, kind: "ats" },
     });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("OpenAI error:", response.status, errText);
-      return new Response(JSON.stringify({ error: "Scoring failed" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-      return new Response(JSON.stringify({ error: "Empty response from AI" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Parse the structured JSON
-    let scoreResult: ATSScoreResult;
-    try {
-      scoreResult = JSON.parse(content);
-    } catch {
-      console.error("Failed to parse ATS score JSON:", content.substring(0, 200));
-      return new Response(JSON.stringify({ error: "Failed to parse scoring result" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Validate and clamp scores
-    const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
-    if (scoreResult.sections) {
-      for (const key of Object.keys(scoreResult.sections) as Array<keyof typeof scoreResult.sections>) {
-        if (scoreResult.sections[key]) {
-          scoreResult.sections[key].score = clamp(scoreResult.sections[key].score);
-        }
-      }
-    }
-    scoreResult.overallScore = clamp(scoreResult.overallScore);
-
-    console.log(`[ATS-Score] Result: ${scoreResult.overallScore}/100`);
-
-    return new Response(JSON.stringify(scoreResult), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(normalizeResult(result.text));
   } catch (error) {
     console.error("ATS score error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    if (error instanceof HttpError) return jsonResponse({ error: error.message }, error.status);
+    return jsonResponse({ error: "ATS scoring is temporarily unavailable" }, 500);
   }
 });

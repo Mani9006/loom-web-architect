@@ -82,6 +82,8 @@ export interface ExperienceEntry {
   end_date: string;
   location: string;
   bullets: string[];
+  /** Exact tools/technology line attached to this role in the source resume. */
+  environment?: string;
 }
 
 // Education entry
@@ -93,6 +95,9 @@ export interface EducationEntry {
   gpa: string;
   graduation_date: string;
   location: string;
+  /** Optional range fields preserve resumes that include attendance dates. */
+  start_date?: string;
+  end_date?: string;
 }
 
 // Certification entry
@@ -203,6 +208,27 @@ export interface ResumeJSON {
   section_order?: ResumeSectionId[];
 }
 
+export interface ResumeParseQuality {
+  version: string;
+  score: number;
+  threshold: number;
+  status: "passed" | "review_required";
+  sourceCharacters: number;
+  metrics: {
+    lexicalCoverage: number;
+    bulletCoverage: number;
+    dateCoverage: number;
+    sectionCoverage: number;
+  };
+  evidence: {
+    sourceBullets: number;
+    parsedBullets: number;
+    expectedSections: string[];
+    capturedSections: string[];
+  };
+  warnings: string[];
+}
+
 // Template configuration
 export interface ResumeTemplate {
   id: string;
@@ -253,6 +279,14 @@ export const createEmptyResumeJSON = (): ResumeJSON => ({
 
 // Skill category display names for UI
 export const SKILL_CATEGORY_LABELS: Record<string, string> = {
+  ai_ml: "AI & Machine Learning",
+  data_engineering: "Data Engineering",
+  cloud_devops: "Cloud & DevOps",
+  frameworks_apis: "Frameworks & APIs",
+  analytics_bi: "Analytics & BI",
+  testing_observability: "Testing & Observability",
+  delivery_methods: "Delivery & Methods",
+  tools_platforms: "Tools & Platforms",
   generative_ai: "Generative AI",
   nlp: "NLP",
   machine_learning: "Machine Learning",
@@ -345,7 +379,7 @@ export const SKILL_CATEGORY_ALIASES: Record<string, string> = {
 
   // Data Engineering & ETL variations
   data_engineering_etl: "data_engineering_etl",
-  data_engineering: "data_engineering_etl",
+  data_engineering: "data_engineering",
   etl: "data_engineering_etl",
   etl_tools: "data_engineering_etl",
   data_pipeline: "data_engineering_etl",
@@ -368,7 +402,7 @@ export const SKILL_CATEGORY_ALIASES: Record<string, string> = {
   cloud: "cloud_mlops",
   cloud_platforms: "cloud_mlops",
   cloud_and_devops: "cloud_mlops",
-  cloud_devops: "cloud_mlops",
+  cloud_devops: "cloud_devops",
   cloud_services: "cloud_mlops",
   mlops: "cloud_mlops",
   ml_ops: "cloud_mlops",

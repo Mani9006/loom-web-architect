@@ -32,19 +32,20 @@ const ResumeProjects = lazy(() => import("./pages/ResumeProjects"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
 const ResumeBuilderV2 = lazy(() => import("./pages/ResumeBuilderV2"));
 const JobSearchPage = lazy(() => import("./pages/JobSearchPage"));
-// ApplyPass removed — redirects to /auto-apply
+// Legacy application routes redirect into the consolidated Agent workspace.
 const CoverLettersPage = lazy(() => import("./pages/CoverLettersPage"));
-const InterviewPrepPage = lazy(() => import("./pages/InterviewPrepPage"));
 const ATSCheckerPage = lazy(() => import("./pages/ATSCheckerPage"));
 const AIToolbox = lazy(() => import("./pages/AIToolbox"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Profile = lazy(() => import("./pages/Profile"));
+const InboxPage = lazy(() => import("./pages/InboxPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
 const AdminPortal = lazy(() => import("./pages/AdminPortal"));
-const AutoApplyPage = lazy(() => import("./pages/AutoApplyPage"));
+const AgentPage = lazy(() => import("./pages/AgentPage"));
 const MatchesPage = lazy(() => import("./pages/MatchesPage"));
 const ApplicationReviewPage = lazy(() => import("./pages/ApplicationReviewPage"));
 const CareerOpsPreferencesPage = lazy(() => import("./pages/CareerOpsPreferencesPage"));
@@ -104,7 +105,7 @@ const App = () => {
                     <Route path="/my-collection" element={<MyCollectionPage />} />
                     <Route path="/my-collection/:sessionId" element={<SessionPage />} />
                     <Route path="/job-search" element={<JobSearchPage />} />
-                    <Route path="/applypass" element={<Navigate to="/auto-apply" replace />} />
+                    <Route path="/applypass" element={<Navigate to="/agent" replace />} />
                     <Route path="/resume-builder" element={<ResumeProjects />} />
                     {/* v2 is now the default editor everywhere. v1 still
                         accessible at /resume-builder/legacy/:id as a fallback
@@ -115,15 +116,18 @@ const App = () => {
                     <Route path="/resume-builder/:resumeId" element={<ResumeBuilderV2 />} />
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
                     <Route path="/job-tracker" element={<JobTracker />} />
+                    <Route path="/inbox" element={<InboxPage />} />
                     <Route path="/matches" element={<MatchesPage />} />
+                    <Route path="/applications" element={<Navigate to="/job-tracker" replace />} />
                     <Route path="/applications/:id" element={<ApplicationReviewPage />} />
                     <Route path="/career-ops/preferences" element={<CareerOpsPreferencesPage />} />
                     <Route path="/feedback" element={<FeedbackPage />} />
                     <Route path="/docs" element={<DocsPage />} />
-                    <Route path="/auto-apply" element={<AutoApplyPage />} />
+                    <Route path="/auto-apply" element={<Navigate to="/agent" replace />} />
+                    <Route path="/agent" element={<AgentPage />} />
                     <Route path="/profile-setup" element={<ProfileSetupPage />} />
                     <Route path="/pricing" element={<PricingPage />} />
-                    <Route path="/interview-prep" element={<InterviewPrepPage />} />
+                    <Route path="/interview-prep" element={<Navigate to="/agent" replace />} />
                     <Route path="/cover-letters" element={<CoverLettersPage />} />
                     <Route path="/chat" element={<Chat />} />
                     <Route path="/c/:conversationId" element={<Chat />} />
@@ -147,6 +151,7 @@ const App = () => {
                       }
                     />
                     <Route path="/profile" element={<Profile />} />
+                    <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/documents" element={<Documents />} />
                     <Route path="/ai-toolbox" element={<AIToolbox />} />
                     <Route path="/analytics" element={<Analytics />} />

@@ -4,21 +4,30 @@ import { PageHeader } from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart3, TrendingUp, Target, Briefcase, FileText, MessageSquare, Mic2 } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Clock3, Target, FileText } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Cell, LineChart, Line, Legend, AreaChart, Area,
+  Cell, Legend, AreaChart, Area,
 } from "recharts";
 import { EmptyState } from "@/components/EmptyState";
 
 const COLORS = ["hsl(12,76%,58%)", "hsl(28,80%,52%)", "hsl(160,50%,45%)", "hsl(340,65%,55%)", "hsl(200,70%,50%)"];
 
+type PacketStatus = "draft" | "ready" | "queued" | "submitted" | "failed" | "skipped";
+
+interface PacketRow {
+  id: string;
+  status: PacketStatus;
+  created_at: string;
+  submitted_at: string | null;
+}
+
 export default function Analytics() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [jobStats, setJobStats] = useState<{ name: string; value: number }[]>([]);
-  const [activityData, setActivityData] = useState<{ date: string; conversations: number; coverLetters: number; applications: number }[]>([]);
-  const [totals, setTotals] = useState({ jobs: 0, conversations: 0, coverLetters: 0, interviews: 0 });
+  const [activityData, setActivityData] = useState<{ date: string; prepared: number; submitted: number }[]>([]);
+  const [totals, setTotals] = useState({ packets: 0, prepared: 0, queued: 0, submitted: 0, failed: 0 });
   const [skillData, setSkillData] = useState<{ skill: string; count: number }[]>([]);
   const [weeklyApplied, setWeeklyApplied] = useState<{ day: string; count: number }[]>([]);
 
@@ -27,23 +36,25 @@ export default function Analytics() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { navigate("/auth"); return; }
 
-      const [jobsRes, convsRes, clRes, resumesRes] = await Promise.all([
-        supabase.from("tracked_jobs").select("id, status, created_at").eq("user_id", user.id),
-        supabase.from("conversations").select("id, chat_mode, created_at").eq("user_id", user.id),
-        supabase.from("cover_letters").select("id, created_at").eq("user_id", user.id),
+      const [packetsRes, resumesRes] = await Promise.all([
+        supabase.from("draft_applications").select("id,status,created_at,submitted_at").eq("user_id", user.id),
         supabase.from("resumes").select("skills").eq("user_id", user.id).limit(1),
       ]);
 
-      const jobs = jobsRes.data || [];
-      const convs = convsRes.data || [];
-      const cls = clRes.data || [];
+      const packets = (packetsRes.data || []) as PacketRow[];
 
       // Pipeline stats
       const statusCounts: Record<string, number> = {};
-      jobs.forEach((j) => { statusCounts[j.status] = (statusCounts[j.status] || 0) + 1; });
+      packets.forEach((packet) => { statusCounts[packet.status] = (statusCounts[packet.status] || 0) + 1; });
+      const prepared = (statusCounts.draft || 0) + (statusCounts.ready || 0);
       setJobStats(
-        ["Saved", "Applied", "Interviewing", "Offer", "Rejected"]
-          .map((s) => ({ name: s, value: statusCounts[s] || 0 }))
+        [
+          { name: "Prepared", value: prepared },
+          { name: "Queued", value: statusCounts.queued || 0 },
+          { name: "Submitted", value: statusCounts.submitted || 0 },
+          { name: "Needs attention", value: statusCounts.failed || 0 },
+          { name: "Skipped", value: statusCounts.skipped || 0 },
+        ]
       );
 
       // Weekly applied (last 7 days)
@@ -55,7 +66,7 @@ export default function Analytics() {
         const label = d.toLocaleDateString("en-US", { weekday: "short" });
         weekDays.push({
           day: label,
-          count: jobs.filter((j) => j.status !== "Saved" && j.created_at?.slice(0, 10) === key).length,
+          count: packets.filter((packet) => packet.submitted_at?.slice(0, 10) === key).length,
         });
       }
       setWeeklyApplied(weekDays);
@@ -69,9 +80,8 @@ export default function Analytics() {
         const label = d.toLocaleDateString("en-US", { weekday: "short" });
         days.push({
           date: label,
-          conversations: convs.filter((c) => c.created_at?.slice(0, 10) === key).length,
-          coverLetters: cls.filter((c) => c.created_at?.slice(0, 10) === key).length,
-          applications: jobs.filter((j) => j.created_at?.slice(0, 10) === key).length,
+          prepared: packets.filter((packet) => packet.created_at?.slice(0, 10) === key).length,
+          submitted: packets.filter((packet) => packet.submitted_at?.slice(0, 10) === key).length,
         });
       }
       setActivityData(days);
@@ -95,12 +105,12 @@ export default function Analytics() {
           .map(([skill, count]) => ({ skill, count }))
       );
 
-      const interviewConvs = convs.filter((c) => c.chat_mode === "interview-prep");
       setTotals({
-        jobs: jobs.length,
-        conversations: convs.length,
-        coverLetters: cls.length,
-        interviews: interviewConvs.length,
+        packets: packets.length,
+        prepared,
+        queued: statusCounts.queued || 0,
+        submitted: statusCounts.submitted || 0,
+        failed: statusCounts.failed || 0,
       });
 
       setLoading(false);
@@ -122,23 +132,19 @@ export default function Analytics() {
     );
   }
 
-  const interviewRatio = totals.jobs > 0
-    ? Math.round((jobStats.find((s) => s.name === "Interviewing")?.value || 0) / totals.jobs * 100)
-    : 0;
-
   const statCards = [
-    { label: "Jobs Tracked", value: totals.jobs, icon: Briefcase, color: "text-primary" },
-    { label: "Interview Rate", value: `${interviewRatio}%`, icon: TrendingUp, color: "text-accent" },
-    { label: "Cover Letters", value: totals.coverLetters, icon: FileText, color: "text-primary" },
-    { label: "Mock Interviews", value: totals.interviews, icon: Mic2, color: "text-accent" },
+    { label: "Prepared", value: totals.prepared, icon: FileText, color: "text-primary" },
+    { label: "Queued", value: totals.queued, icon: Clock3, color: "text-accent" },
+    { label: "Verified submitted", value: totals.submitted, icon: CheckCircle2, color: "text-emerald-600" },
+    { label: "Needs attention", value: totals.failed, icon: AlertTriangle, color: "text-rose-600" },
   ];
 
   return (
     <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-6">
       <PageHeader
-        title="Career analytics."
-        status="track · refine"
-        description="What you've applied to, what got interviews, what your résumé optimizes for. Numbers, not vibes."
+        title="Application outcomes."
+        status="receipts · conversion"
+        description="Prepared packets, guarded queues, verified submissions, and issues that need your attention. Only a recorded submission receipt counts as applied."
       />
 
       {/* Stat Cards */}
@@ -167,8 +173,8 @@ export default function Analytics() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {totals.jobs === 0 ? (
-              <EmptyState icon={Target} title="No applications yet" subtitle="Start tracking jobs to see your pipeline" className="py-8" />
+            {totals.packets === 0 ? (
+              <EmptyState icon={Target} title="No application packets yet" subtitle="Prepare a matched job to start measuring outcomes" className="py-8" />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={jobStats} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -189,7 +195,7 @@ export default function Analytics() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-accent" /> Weekly Activity
+              <BarChart3 className="w-4 h-4 text-accent" /> Weekly packet activity
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -200,9 +206,8 @@ export default function Analytics() {
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
                 <Legend wrapperStyle={{ fontSize: "11px" }} />
-                <Area type="monotone" dataKey="applications" stroke={COLORS[2]} fill={COLORS[2]} fillOpacity={0.15} strokeWidth={2} name="Applications" />
-                <Area type="monotone" dataKey="conversations" stroke={COLORS[0]} fill={COLORS[0]} fillOpacity={0.15} strokeWidth={2} name="Conversations" />
-                <Area type="monotone" dataKey="coverLetters" stroke={COLORS[1]} fill={COLORS[1]} fillOpacity={0.15} strokeWidth={2} name="Cover Letters" />
+                <Area type="monotone" dataKey="prepared" stroke={COLORS[1]} fill={COLORS[1]} fillOpacity={0.15} strokeWidth={2} name="Prepared" />
+                <Area type="monotone" dataKey="submitted" stroke={COLORS[2]} fill={COLORS[2]} fillOpacity={0.15} strokeWidth={2} name="Verified submitted" />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -212,7 +217,7 @@ export default function Analytics() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Briefcase className="w-4 h-4 text-primary" /> Jobs Applied This Week
+              <CheckCircle2 className="w-4 h-4 text-primary" /> Verified submissions this week
             </CardTitle>
           </CardHeader>
           <CardContent>

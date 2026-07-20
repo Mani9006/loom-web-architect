@@ -329,7 +329,7 @@ export default function ResumeBuilder() {
         if (newResume) setCurrentResumeId((newResume as any).id);
       }
       setLastSaved(new Date());
-    } catch {}
+    } catch { /* Autosave failures are surfaced by the explicit save flow. */ }
     setIsSaving(false);
   }, [currentResumeId, selectedTemplate]);
 
@@ -644,7 +644,12 @@ export default function ResumeBuilder() {
   const addAward = () => setData((prev) => ({ ...prev, awards: [...(prev.awards || []), { id: crypto.randomUUID(), title: "", issuer: "", date: "" }] }));
   const removeAward = (id: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).filter((a) => a.id !== id) }));
   const updateAward = (id: string, field: keyof AwardEntry, value: string) => setData((prev) => ({ ...prev, awards: (prev.awards || []).map((a) => (a.id === id ? { ...a, [field]: value } : a)) }));
-  const toggleSectionVisibility = (sectionId: SectionId) => setHiddenSections((prev) => { const next = new Set(prev); next.has(sectionId) ? next.delete(sectionId) : next.add(sectionId); return next; });
+  const toggleSectionVisibility = (sectionId: SectionId) => setHiddenSections((prev) => {
+    const next = new Set(prev);
+    if (next.has(sectionId)) next.delete(sectionId);
+    else next.add(sectionId);
+    return next;
+  });
 
   // ── Section management ────────────────────────────────────────────────
   const removeSection = (sectionId: SectionId) => {
@@ -854,7 +859,7 @@ export default function ResumeBuilder() {
             <div className="mt-2 p-3 bg-muted/40 rounded-lg border border-border/30 space-y-3">
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">
-                  Copy your LinkedIn profile page content (Ctrl+A → Ctrl+C on your LinkedIn profile) and paste it below. AI will extract your experience, education, skills, and more.
+                  Copy your LinkedIn profile page content (Ctrl+A → Ctrl+C on your LinkedIn profile) and paste it below. ResumePreps will extract your experience, education, skills, and more.
                 </p>
               </div>
               <Textarea
@@ -923,7 +928,7 @@ export default function ResumeBuilder() {
             {showJobTarget && (
               <div className="mt-2 p-3 bg-muted/40 rounded-lg border border-border/30 space-y-3">
                 <Textarea
-                  placeholder="Paste a job description here to get keyword matching and AI-powered tailoring..."
+                  placeholder="Paste a job description here for keyword matching and job-specific tailoring..."
                   value={jobDescription}
                   onChange={(e) => setJobDescription(e.target.value)}
                   className="bg-background text-sm min-h-[100px] resize-y"

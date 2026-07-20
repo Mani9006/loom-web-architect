@@ -1,9 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, no-control-regex, no-empty */
 /**
  * Shared AI resume parsing utilities.
  * Extracted from ResumeBuilder.tsx to be reusable across the app.
  */
 
-import { normalizeSkillCategory, type SkillsObject } from "@/types/resume";
+import type { ResumeParseQuality, SkillsObject } from "@/types/resume";
+import { mergeResumeSkills, normalizeResumeSkills } from "@/lib/resume-skills";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -24,7 +26,7 @@ const AI_RETRY_BASE_DELAY_MS = 2_000;
 export function parseAIResponse(content: string): Record<string, any> | null {
   if (!content || content.trim().length === 0) return null;
 
-  let cleaned = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  const cleaned = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
 
   // Strategy 1: Find matching braces with string/escape awareness
   const result = extractJsonByBraceMatching(cleaned);
@@ -125,12 +127,26 @@ export function formatBullets(responsibilities: string | string[]): string[] {
   if (Array.isArray(responsibilities))
     return responsibilities
       .filter((r) => r && r.trim())
-      .map((r) => r.trim().replace(/^[•\-*]\s*/, ""));
+      .map(cleanBulletText)
+      .filter(Boolean);
   return String(responsibilities)
-    .split(/\n|(?=•)|(?=-)/)
+    .split(/\n|(?=[•‣◦⁃∙▪▫●○■□◆\uF0B7])|(?=-\s)/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0)
-    .map((l) => l.replace(/^[•\-*]\s*/, ""));
+    .map(cleanBulletText)
+    .filter(Boolean);
+}
+
+const BULLET_PREFIX = /^[\s\u000c]*(?:[•‣◦⁃∙▪▫●○■□◆\uF0B7]|[-–—*])\s*/u;
+
+export function cleanBulletText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .normalize("NFKC")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
+    .replace(BULLET_PREFIX, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // ── Text preparation for AI parsing ──────────────────────────────────────────
@@ -143,7 +159,7 @@ export function formatBullets(responsibilities: string | string[]): string[] {
 export function prepareResumeTextForParsing(text: string): string {
   if (!text) return "";
 
-  let prepared = text.trim();
+  const prepared = text.trim();
 
   // If text is within limits, return as-is
   if (prepared.length <= MAX_RESUME_TEXT_CHARS) return prepared;
@@ -195,8 +211,13 @@ export async function streamAIText(
       lastError = error instanceof Error ? error : new Error(String(error));
       console.error(`[streamAIText] Attempt ${attempt + 1} failed:`, lastError.message);
 
-      // Don't retry on auth errors
-      if (lastError.message.includes("401") || lastError.message.includes("Unauthorized")) {
+      // Configuration, entitlement, routing, and authentication errors will not
+      // improve on retry. Surface them immediately instead of making the user
+      // wait through three identical failures.
+      if (
+        /\((400|401|402|403|404)\)/.test(lastError.message) ||
+        /unauthorized|not configured|access denied/i.test(lastError.message)
+      ) {
         throw lastError;
       }
     }
@@ -212,6 +233,10 @@ async function streamAITextOnce(
 ): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), AI_STREAM_TIMEOUT_MS);
+  const publishableKey =
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    "";
 
   try {
     const response = await fetch(
@@ -221,6 +246,7 @@ async function streamAITextOnce(
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
+          ...(publishableKey ? { apikey: publishableKey } : {}),
         },
         body: JSON.stringify({ messages, mode, agentHint: mode }),
         signal: controller.signal,
@@ -290,11 +316,41 @@ async function streamAITextOnce(
 
 // ── System prompt for resume parsing ─────────────────────────────────────────
 
-export const RESUME_PARSE_SYSTEM_PROMPT = `You are an expert resume parser. Extract ALL structured resume data.
-OUTPUT: Return ONLY valid JSON.
-SCHEMA: {"header":{"name":"","title":"","location":"","email":"","phone":"","linkedin":""},"summary":"","experience":[{"role":"","company_or_client":"","start_date":"","end_date":"","location":"","bullets":[]}],"education":[{"degree":"","field":"","institution":"","gpa":"","graduation_date":"","location":""}],"certifications":[{"name":"","issuer":"","date":""}],"skills":{},"projects":[{"title":"","organization":"","date":"","bullets":[]}]}
-RULES: Extract EVERY bullet point. Use "" for missing fields. Return ONLY JSON.
-SKILL CATEGORIES: Map all skills to these standard keys: "generative_ai", "nlp", "machine_learning", "deep_learning", "programming_languages", "data_engineering_etl", "visualization", "cloud_mlops", "devops", "databases", "frameworks", "collaboration_tools", "big_data". Do NOT create duplicates like "nlp_tools" or "cloud_platforms" - merge into the standard keys.`;
+export const RESUME_PARSE_SYSTEM_PROMPT = `You are a lossless resume extraction engine. Your job is transcription into structured data, not rewriting.
+OUTPUT: Return one valid JSON object only. No prose or markdown.
+SCHEMA: {"header":{"name":"","title":"","location":"","email":"","phone":"","linkedin":""},"summary":"","experience":[{"role":"","company_or_client":"","start_date":"","end_date":"","location":"","bullets":[],"environment":""}],"education":[{"degree":"","field":"","institution":"","gpa":"","start_date":"","end_date":"","graduation_date":"","location":""}],"certifications":[{"name":"","issuer":"","date":"","url":""}],"skills":{},"projects":[{"title":"","organization":"","date":"","bullets":[],"url":""}],"languages":[{"language":"","proficiency":""}],"volunteer":[{"role":"","organization":"","date":"","bullets":[]}],"awards":[{"title":"","issuer":"","date":"","url":""}],"custom_sections":[{"name":"","entries":[{"title":"","subtitle":"","date":"","bullets":[],"url":""}]}]}
+RULES:
+1. Preserve source wording and facts. Never summarize, enhance, infer, or invent.
+2. Extract every entry, bullet, date, link, skill, and section. Remove only visual bullet glyphs and PDF control characters.
+3. Keep an Environment/Technology line on the experience entry it belongs to in "environment"; do not discard it.
+4. Preserve education date ranges in start_date/end_date. Also set graduation_date to end_date for backward compatibility.
+5. Skills must come from the explicit skills section when one exists. Preserve its category labels as lowercase snake_case. Do not infer skills from job bullets and do not list a skill more than once.
+6. Put any meaningful section that does not fit the named schema into custom_sections instead of dropping it.
+7. Placeholder contact values such as "EMAIL NEEDED", "(XXX) XXX-XXXX", "City, ST", or generic /handle URLs are missing values: return "" for that field.
+8. Use "" for missing scalar fields and [] for missing lists. Every schema key is required.`;
+
+const PARSER_VERSION = "resume-parse-v2";
+const PLACEHOLDER_PATTERNS: Record<string, RegExp[]> = {
+  email: [/email\s+(?:needed|required|here)/i, /your[._ -]?email/i],
+  phone: [/x{2,}/i, /your\s+phone/i, /phone\s+(?:needed|required)/i],
+  location: [/^city\s*,?\s*(?:st|state)$/i, /location\s+(?:needed|required)/i],
+  linkedin: [/linkedin\.com\/in\/(?:handle|username|your)/i],
+};
+
+function cleanScalar(value: unknown): string {
+  return typeof value === "string"
+    ? value.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim()
+    : "";
+}
+
+function cleanContact(field: keyof typeof PLACEHOLDER_PATTERNS, value: unknown): string {
+  const cleaned = cleanScalar(value);
+  return PLACEHOLDER_PATTERNS[field].some((pattern) => pattern.test(cleaned)) ? "" : cleaned;
+}
+
+function safeArray(value: unknown): any[] {
+  return Array.isArray(value) ? value : [];
+}
 
 // ── Skill normalization and deduplication ─────────────────────────────────────
 
@@ -307,29 +363,7 @@ SKILL CATEGORIES: Map all skills to these standard keys: "generative_ai", "nlp",
  * @returns Normalized SkillsObject with deduplicated categories and skills
  */
 export function normalizeAndDeduplicateSkills(rawSkills: Record<string, string[]>): SkillsObject {
-  const merged: SkillsObject = {};
-
-  for (const [rawKey, skills] of Object.entries(rawSkills)) {
-    if (!Array.isArray(skills) || skills.length === 0) continue;
-
-    const canonicalKey = normalizeSkillCategory(rawKey);
-
-    if (!merged[canonicalKey]) {
-      merged[canonicalKey] = [];
-    }
-
-    // Deduplicate skills (case-insensitive)
-    const existingLower = new Set(merged[canonicalKey].map((s) => s.toLowerCase().trim()));
-    for (const skill of skills) {
-      const trimmed = skill.trim();
-      if (trimmed && !existingLower.has(trimmed.toLowerCase())) {
-        merged[canonicalKey].push(trimmed);
-        existingLower.add(trimmed.toLowerCase());
-      }
-    }
-  }
-
-  return merged;
+  return normalizeResumeSkills(rawSkills);
 }
 
 /**
@@ -344,27 +378,7 @@ export function mergeAndDeduplicateSkills(
   existing: Record<string, string[]>,
   incoming: Record<string, string[]>,
 ): SkillsObject {
-  // First normalize both inputs separately, then merge
-  const combined: Record<string, string[]> = {};
-
-  // Add existing skills first (normalize their keys)
-  for (const [key, skills] of Object.entries(existing)) {
-    if (!Array.isArray(skills)) continue;
-    const canonical = normalizeSkillCategory(key);
-    if (!combined[canonical]) combined[canonical] = [];
-    combined[canonical].push(...skills);
-  }
-
-  // Add incoming skills (normalize their keys)
-  for (const [key, skills] of Object.entries(incoming)) {
-    if (!Array.isArray(skills)) continue;
-    const canonical = normalizeSkillCategory(key);
-    if (!combined[canonical]) combined[canonical] = [];
-    combined[canonical].push(...skills);
-  }
-
-  // Now deduplicate within each category
-  return normalizeAndDeduplicateSkills(combined);
+  return mergeResumeSkills(existing, incoming);
 }
 
 // ── Map AI parsed data to Supabase resume payload ────────────────────────────
@@ -372,59 +386,232 @@ export function mergeAndDeduplicateSkills(
 export function mapParsedToResumePayload(parsedData: Record<string, any>) {
   return {
     personal_info: {
-      name: parsedData.header?.name || "",
-      title: parsedData.header?.title || "",
-      email: parsedData.header?.email || "",
-      phone: parsedData.header?.phone || "",
-      location: parsedData.header?.location || "",
-      linkedin: parsedData.header?.linkedin || "",
+      name: cleanScalar(parsedData.header?.name),
+      title: cleanScalar(parsedData.header?.title),
+      email: cleanContact("email", parsedData.header?.email),
+      phone: cleanContact("phone", parsedData.header?.phone),
+      location: cleanContact("location", parsedData.header?.location),
+      linkedin: cleanContact("linkedin", parsedData.header?.linkedin),
     },
-    summary: parsedData.summary || "",
+    summary: cleanScalar(parsedData.summary),
     experience:
-      parsedData.experience?.length > 0
-        ? parsedData.experience.map((e: any) => ({
+      safeArray(parsedData.experience).length > 0
+        ? safeArray(parsedData.experience).map((e: any) => ({
             id: crypto.randomUUID(),
-            role: e.role || "",
-            company_or_client: e.company_or_client || "",
-            start_date: e.start_date || "",
-            end_date: e.end_date || "",
-            location: e.location || "",
-            bullets: Array.isArray(e.bullets)
-              ? e.bullets
-              : formatBullets(e.bullets || ""),
+            role: cleanScalar(e.role),
+            company_or_client: cleanScalar(e.company_or_client),
+            start_date: cleanScalar(e.start_date),
+            end_date: cleanScalar(e.end_date),
+            location: cleanScalar(e.location),
+            bullets: formatBullets(e.bullets || ""),
+            environment: cleanScalar(e.environment),
           }))
         : [],
     education:
-      parsedData.education?.length > 0
-        ? parsedData.education.map((e: any) => ({
+      safeArray(parsedData.education).length > 0
+        ? safeArray(parsedData.education).map((e: any) => ({
             id: crypto.randomUUID(),
-            degree: e.degree || "",
-            field: e.field || "",
-            institution: e.institution || "",
-            gpa: e.gpa || "",
-            graduation_date: e.graduation_date || "",
-            location: e.location || "",
+            degree: cleanScalar(e.degree),
+            field: cleanScalar(e.field),
+            institution: cleanScalar(e.institution),
+            gpa: cleanScalar(e.gpa),
+            start_date: cleanScalar(e.start_date),
+            end_date: cleanScalar(e.end_date),
+            graduation_date: cleanScalar(e.graduation_date || e.end_date),
+            location: cleanScalar(e.location),
           }))
         : [],
     certifications:
-      parsedData.certifications?.length > 0
-        ? parsedData.certifications.map((c: any) => ({
+      safeArray(parsedData.certifications).length > 0
+        ? safeArray(parsedData.certifications).map((c: any) => ({
             id: crypto.randomUUID(),
-            name: c.name || "",
-            issuer: c.issuer || "",
-            date: c.date || "",
+            name: cleanScalar(c.name),
+            issuer: cleanScalar(c.issuer),
+            date: cleanScalar(c.date),
+            url: cleanScalar(c.url),
           }))
         : [],
-    skills: parsedData.skills ? normalizeAndDeduplicateSkills(parsedData.skills) : {},
+    skills: parsedData.skills && typeof parsedData.skills === "object"
+      ? normalizeAndDeduplicateSkills(parsedData.skills)
+      : {},
     projects:
-      parsedData.projects?.length > 0
-        ? parsedData.projects.map((p: any) => ({
+      safeArray(parsedData.projects).length > 0
+        ? safeArray(parsedData.projects).map((p: any) => ({
             id: crypto.randomUUID(),
-            title: p.title || "",
-            organization: p.organization || "",
-            date: p.date || "",
-            bullets: Array.isArray(p.bullets) ? p.bullets : [],
+            title: cleanScalar(p.title),
+            organization: cleanScalar(p.organization),
+            date: cleanScalar(p.date),
+            bullets: formatBullets(p.bullets || ""),
+            url: cleanScalar(p.url),
           }))
         : [],
+    languages: safeArray(parsedData.languages).map((l: any) => ({
+      id: crypto.randomUUID(),
+      language: cleanScalar(l.language),
+      proficiency: cleanScalar(l.proficiency),
+    })),
+    volunteer: safeArray(parsedData.volunteer).map((v: any) => ({
+      id: crypto.randomUUID(),
+      role: cleanScalar(v.role),
+      organization: cleanScalar(v.organization),
+      date: cleanScalar(v.date),
+      bullets: formatBullets(v.bullets || ""),
+    })),
+    awards: safeArray(parsedData.awards).map((a: any) => ({
+      id: crypto.randomUUID(),
+      title: cleanScalar(a.title),
+      issuer: cleanScalar(a.issuer),
+      date: cleanScalar(a.date),
+      url: cleanScalar(a.url),
+    })),
+    custom_sections: safeArray(parsedData.custom_sections).map((s: any) => ({
+      id: crypto.randomUUID(),
+      name: cleanScalar(s.name),
+      entries: safeArray(s.entries).map((entry: any) => ({
+        id: crypto.randomUUID(),
+        title: cleanScalar(entry.title),
+        subtitle: cleanScalar(entry.subtitle),
+        date: cleanScalar(entry.date),
+        bullets: formatBullets(entry.bullets || entry.content || ""),
+        url: cleanScalar(entry.url),
+      })),
+    })),
   };
+}
+
+const SECTION_DEFINITIONS = [
+  { id: "summary", source: /^(?:professional\s+)?(?:summary|profile|objective|about)$/im },
+  { id: "experience", source: /^(?:professional\s+|work\s+)?experience|employment(?:\s+history)?$/im },
+  { id: "skills", source: /^(?:technical\s+|core\s+)?skills|technologies$/im },
+  { id: "education", source: /^education|academic(?:\s+background)?$/im },
+  { id: "projects", source: /^(?:selected\s+)?projects$/im },
+  { id: "certifications", source: /^certifications?|licenses?(?:\s+and\s+certifications)?$/im },
+  { id: "languages", source: /^languages$/im },
+  { id: "volunteer", source: /^(?:volunteer|community)(?:\s+experience|\s+service)?$/im },
+  { id: "awards", source: /^(?:awards|honors|publications)(?:\s+and\s+publications)?$/im },
+] as const;
+
+const COVERAGE_STOP_WORDS = new Set([
+  "and", "the", "with", "for", "from", "that", "this", "into", "using", "used", "over", "under",
+  "professional", "experience", "summary", "technical", "skills", "education", "present", "resume",
+]);
+
+function coverageTokens(value: string): Set<string> {
+  const normalized = value
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/\b(?:email needed|city st|xxx xxx xxxx|linkedin com in handle|github com handle)\b/g, " ")
+    .replace(/[^a-z0-9+#./-]+/g, " ");
+  return new Set(
+    normalized
+      .split(/\s+/)
+      .map((token) => token.replace(/^[./-]+|[./-]+$/g, ""))
+      .filter((token) => token.length > 2 && !COVERAGE_STOP_WORDS.has(token)),
+  );
+}
+
+function sourceBulletCount(sourceText: string): number {
+  return sourceText
+    .split(/\r?\n/)
+    .filter((line) => /^[\s\u000c]*[•‣◦⁃∙▪▫●○■□◆\uF0B7]\s*\S/u.test(line)).length;
+}
+
+function parsedValueText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(parsedValueText).join(" ");
+  if (value && typeof value === "object") return Object.values(value).map(parsedValueText).join(" ");
+  return "";
+}
+
+function ratio(numerator: number, denominator: number): number {
+  return denominator <= 0 ? 1 : Math.max(0, Math.min(1, numerator / denominator));
+}
+
+function percent(value: number): number {
+  return Math.round(value * 1000) / 10;
+}
+
+export function calculateResumeParseQuality(
+  sourceText: string,
+  parsedData: Record<string, any>,
+  threshold = 95,
+): ResumeParseQuality {
+  const mapped = mapParsedToResumePayload(parsedData);
+  const parsedText = parsedValueText(mapped);
+  const sourceTokens = coverageTokens(sourceText);
+  const parsedTokens = coverageTokens(parsedText);
+  const retainedTokens = [...sourceTokens].filter((token) => parsedTokens.has(token)).length;
+  const lexicalCoverage = ratio(retainedTokens, sourceTokens.size);
+
+  const sourceBullets = sourceBulletCount(sourceText);
+  const parsedBullets = mapped.experience.reduce((count, entry) => count + entry.bullets.length, 0)
+    + mapped.projects.reduce((count, entry) => count + entry.bullets.length, 0)
+    + mapped.volunteer.reduce((count, entry) => count + entry.bullets.length, 0);
+  const bulletCoverage = ratio(Math.min(parsedBullets, sourceBullets), sourceBullets);
+
+  const sourceDates = new Set(
+    (sourceText.match(/\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+)?(?:19|20)\d{2}\b/gi) || [])
+      .map((date) => date.toLocaleLowerCase()),
+  );
+  const parsedDates = new Set(
+    (parsedText.match(/\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+)?(?:19|20)\d{2}\b/gi) || [])
+      .map((date) => date.toLocaleLowerCase()),
+  );
+  const dateCoverage = ratio([...sourceDates].filter((date) => parsedDates.has(date)).length, sourceDates.size);
+
+  const expectedSections = SECTION_DEFINITIONS.filter((section) => section.source.test(sourceText)).map((section) => section.id);
+  const capturedSections = expectedSections.filter((section) => {
+    if (section === "summary") return Boolean(mapped.summary);
+    if (section === "skills") return Object.values(mapped.skills).some((items) => items.length > 0);
+    return safeArray((mapped as Record<string, unknown>)[section]).length > 0;
+  });
+  const sectionCoverage = ratio(capturedSections.length, expectedSections.length);
+
+  const score = percent(
+    lexicalCoverage * 0.55 + bulletCoverage * 0.25 + dateCoverage * 0.1 + sectionCoverage * 0.1,
+  );
+  const warnings: string[] = [];
+  if (sourceBullets > parsedBullets) warnings.push(`${sourceBullets - parsedBullets} source bullet(s) may be missing.`);
+  const missingSections = expectedSections.filter((section) => !capturedSections.includes(section));
+  if (missingSections.length) warnings.push(`Missing structured sections: ${missingSections.join(", ")}.`);
+  if (dateCoverage < 1) warnings.push("One or more source dates were not preserved.");
+  if (lexicalCoverage < 0.95) warnings.push("Some source terms were not retained in structured fields.");
+  if (/email\s+needed|\(x{3}\)|city\s*,\s*st|\/(?:handle|username)\b/i.test(sourceText)) {
+    warnings.push("Placeholder contact values were left blank for the user to complete.");
+  }
+  if (sourceText.includes("[Content truncated for processing]")) {
+    warnings.push("The source exceeded the parser limit and requires manual review.");
+  }
+
+  return {
+    version: PARSER_VERSION,
+    score,
+    threshold,
+    status: score >= threshold ? "passed" : "review_required",
+    sourceCharacters: sourceText.length,
+    metrics: {
+      lexicalCoverage: percent(lexicalCoverage),
+      bulletCoverage: percent(bulletCoverage),
+      dateCoverage: percent(dateCoverage),
+      sectionCoverage: percent(sectionCoverage),
+    },
+    evidence: { sourceBullets, parsedBullets, expectedSections, capturedSections },
+    warnings,
+  };
+}
+
+export function buildResumeCorrectionPrompt(
+  sourceText: string,
+  previousParsed: Record<string, any>,
+  quality: ResumeParseQuality,
+): string {
+  return `The previous extraction scored ${quality.score}% against a ${quality.threshold}% source-coverage gate.
+Correct it using the lossless extraction rules. Preserve all source facts and return the complete JSON schema, not a patch.
+Quality findings: ${quality.warnings.join(" ") || "Source evidence was not fully retained."}
+
+PREVIOUS JSON:
+${JSON.stringify(previousParsed)}
+
+SOURCE RESUME:
+${prepareResumeTextForParsing(sourceText)}`;
 }

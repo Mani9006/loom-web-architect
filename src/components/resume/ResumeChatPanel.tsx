@@ -88,7 +88,7 @@ export function ResumeChatPanel({
               <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4">
                 <Sparkles className="w-6 h-6 text-primary-foreground" />
               </div>
-              <h3 className="text-lg font-medium mb-2">AI Resume Assistant</h3>
+              <h3 className="text-lg font-medium mb-2">Resume Writing Assistant</h3>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto">
                 I'll help you generate and refine your resume. Ask me to rewrite sections, suggest improvements, or generate new content.
               </p>

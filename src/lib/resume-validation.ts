@@ -2,8 +2,8 @@ import { z } from "zod";
 
 // ── Optional field schemas (empty string allowed) ──────────────────────────
 export const emailSchema = z.string().email("Invalid email format").or(z.literal(""));
-export const phoneSchema = z.string().regex(/^[\+\-\(\)\s\d]*$/, "Invalid phone format").or(z.literal(""));
-export const urlSchema = z.string().url("Invalid URL").or(z.string().regex(/^[\w\.\-\/]+\.\w+/, "Invalid URL")).or(z.literal(""));
+export const phoneSchema = z.string().regex(/^[+()\s\d-]*$/, "Invalid phone format").or(z.literal(""));
+export const urlSchema = z.string().url("Invalid URL").or(z.string().regex(/^[\w./-]+\.\w+/, "Invalid URL")).or(z.literal(""));
 export const linkedinSchema = z.string().regex(/linkedin\.com\/in\//, "Should be a LinkedIn profile URL").or(z.literal(""));
 
 // ── Required field schemas (empty string NOT allowed) ──────────────────────

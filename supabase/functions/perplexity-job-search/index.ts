@@ -3,6 +3,15 @@
 // v20: Full CST (America/Chicago) timezone support + comprehensive debug logging
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  enforceAccountActive,
+  enforceDailyCap,
+  getAuthedUser,
+  HttpError,
+  logAiUsage,
+} from "../_shared/guards.ts";
+import { isAllowedApplyUrl } from "../_shared/jobs.ts";
+import { searchDirectJobSources } from "../_shared/direct-job-sources.ts";
 
 // ── CST Timezone Helper ─────────────────────────────────────────────────
 // Returns current date/time in America/Chicago (CST/CDT) timezone
@@ -189,23 +198,17 @@ const GENERIC_URL_PATTERNS = [
   /ziprecruiter\.com\/jobs\/search/i,
 ];
 
-function buildFallbackUrl(title: string, company: string, location: string): string {
-  const query = `${title} ${company}`.trim();
-  const loc = (location || "United States").trim();
-  return `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(query)}&location=${encodeURIComponent(loc)}`;
-}
-
-function sanitizeApplyUrl(url: string, title: string, company: string, location: string): string {
-  if (!url || !url.startsWith("http")) return buildFallbackUrl(title, company, location);
+function sanitizeApplyUrl(url: string, title: string, company: string, _location: string): string {
+  if (!url || !url.startsWith("http")) return "";
   const lower = url.toLowerCase();
-  if (/fake|placeholder|example\.com|undefined|null/.test(lower)) return buildFallbackUrl(title, company, location);
+  if (/fake|placeholder|example\.com|undefined|null/.test(lower)) return "";
   for (const pattern of GENERIC_URL_PATTERNS) {
     if (pattern.test(lower)) {
       console.log(`Generic URL detected for ${title} at ${company}: ${url}`);
-      return buildFallbackUrl(title, company, location);
+      return "";
     }
   }
-  return url;
+  return isAllowedApplyUrl(url) ? url : "";
 }
 
 function validateJob(job: any): { valid: boolean; reason?: string } {
@@ -213,6 +216,7 @@ function validateJob(job: any): { valid: boolean; reason?: string } {
   if (!job.company || job.company.length < 2) return { valid: false, reason: "missing company" };
   if (!job.location || job.location.length < 2) return { valid: false, reason: "missing location" };
   if (!job.apply_url || !job.apply_url.startsWith("http")) return { valid: false, reason: "invalid apply_url" };
+  if (!isAllowedApplyUrl(job.apply_url)) return { valid: false, reason: "not a direct company or ATS URL" };
   if (!job.description || job.description.length < 50) return { valid: false, reason: "description too short" };
   const loc = (job.location || "").toLowerCase();
   const nonUSPatterns = [
@@ -358,6 +362,110 @@ async function searchDatabase(
   return { jobs: jobs || [], total: count || 0 };
 }
 
+async function searchScannedJobs(
+  sb: any,
+  query: string,
+  filters: {
+    location?: string;
+    remote_filter?: string;
+    job_type?: string;
+    date_posted?: string;
+  },
+  offset: number,
+  limit: number,
+): Promise<{ jobs: any[]; total: number }> {
+  const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  let dbQuery = sb
+    .from("scanned_jobs")
+    .select("id,title,location,description_md,apply_url,compensation_text,employment_type,remote_policy,posted_at,last_seen_at,company:scan_companies!inner(name,category)", { count: "exact" })
+    .eq("is_live", true);
+
+  for (const term of terms) {
+    const safeTerm = term.replace(/[%_,()]/g, "");
+    if (safeTerm) dbQuery = dbQuery.or(`title.ilike.%${safeTerm}%,description_md.ilike.%${safeTerm}%`);
+  }
+  if (filters.location?.trim()) dbQuery = dbQuery.ilike("location", `%${filters.location.trim()}%`);
+  if (filters.remote_filter === "remote-only") {
+    dbQuery = dbQuery.or("remote_policy.ilike.%remote%,location.ilike.%remote%");
+  } else if (filters.remote_filter === "on-site") {
+    dbQuery = dbQuery.not("remote_policy", "ilike", "%remote%").not("location", "ilike", "%remote%");
+  }
+  if (filters.job_type && filters.job_type !== "all") {
+    dbQuery = dbQuery.ilike("employment_type", `%${filters.job_type.replace(/-/g, "_")}%`);
+  }
+  const cutoff = getDateCutoff(filters.date_posted || "month");
+  if (cutoff) dbQuery = dbQuery.gte("last_seen_at", cutoff);
+
+  const { data, count, error } = await dbQuery
+    .order("posted_at", { ascending: false, nullsFirst: false })
+    .order("last_seen_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (error) {
+    console.error("[SCANNED_DB] Search error:", JSON.stringify(error));
+    return { jobs: [], total: 0 };
+  }
+
+  const jobs = (data || []).flatMap((row: any) => {
+    const company = Array.isArray(row.company) ? row.company[0] : row.company;
+    if (!isAllowedApplyUrl(row.apply_url || "")) return [];
+    const description = row.description_md || "";
+    return [{
+      id: row.id,
+      title: row.title,
+      company: company?.name || "Company",
+      location: row.location || "Location listed on company page",
+      description,
+      apply_url: row.apply_url,
+      salary: row.compensation_text || null,
+      job_type: row.employment_type || null,
+      remote: /remote/i.test(`${row.remote_policy || ""} ${row.location || ""}`),
+      date_posted: sanitizeDatePosted(row.posted_at || row.last_seen_at || "Recent"),
+      source: `${company?.name || "Company"} careers`,
+      role_category: classifyRoleCategory(row.title, description),
+      experience_level: detectExperienceLevel(row.title, description),
+      industry: company?.category || detectIndustry(company?.name || "", description),
+    }];
+  });
+  return { jobs, total: count || jobs.length };
+}
+
+async function persistDirectJobs(sb: any, jobs: any[]): Promise<any[]> {
+  const normalized: any[] = [];
+  for (const job of jobs) {
+    const applyUrl = sanitizeApplyUrl(job.apply_url || "", job.title || "", job.company || "", job.location || "");
+    const candidate = { ...job, apply_url: applyUrl };
+    const check = validateJob(candidate);
+    if (!check.valid) continue;
+
+    const jobRow = {
+      title: candidate.title,
+      company: candidate.company,
+      location: candidate.location,
+      description: candidate.description,
+      apply_url: applyUrl,
+      salary: candidate.salary || null,
+      job_type: candidate.job_type || null,
+      remote: Boolean(candidate.remote),
+      date_posted: sanitizeDatePosted(candidate.date_posted || "Recent"),
+      source: candidate.source || `${candidate.company} careers`,
+      role_category: classifyRoleCategory(candidate.title, candidate.description),
+      experience_level: detectExperienceLevel(candidate.title, candidate.description),
+      industry: detectIndustry(candidate.company, candidate.description),
+      job_fingerprint: jobFingerprint(candidate),
+      expires_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    const { data, error } = await sb
+      .from("cached_jobs")
+      .upsert(jobRow, { onConflict: "job_fingerprint", ignoreDuplicates: false })
+      .select("id")
+      .single();
+    if (!error && data?.id) {
+      normalized.push({ id: data.id, ...jobRow, job_fingerprint: undefined, expires_at: undefined });
+    }
+  }
+  return normalized;
+}
+
 // ── Main Server ────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -375,7 +483,6 @@ serve(async (req) => {
       job_type,
       date_posted,
       resume_text,
-      user_id,
       experience_level,
       remote_filter,
       search_source,
@@ -392,6 +499,9 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, serviceKey);
+    const user = await getAuthedUser(req);
+    const user_id = user.id;
+    const { isPro } = await enforceAccountActive(sb, user_id);
 
     const searchQuery = query || "software engineer";
     const cstInfo = getCSTNow();
@@ -424,7 +534,7 @@ serve(async (req) => {
       if (dbResult.jobs.length > 0) {
         // Post-query filter: enforce date_posted matches the requested filter
         // date_posted in DB can be: "March 5, 2026", "2026-03-05", "Recently", "1 week ago", etc.
-        let dateFilteredJobs = dbResult.jobs;
+        let dateFilteredJobs = dbResult.jobs.filter((job: any) => isAllowedApplyUrl(job.apply_url));
         if (date_posted && date_posted !== "all" && date_posted !== "month") {
           const cstNow = getCSTNow();
           const nowMs = cstNow.date.getTime();
@@ -535,9 +645,59 @@ serve(async (req) => {
       } else {
         console.log(`[STEP1] No DB results for "${searchQuery}" with filters, falling through to web search`);
       }
+
+      const scannedResult = await searchScannedJobs(
+        sb,
+        searchQuery,
+        { location, remote_filter, job_type, date_posted },
+        offset,
+        pageSize,
+      );
+      if (scannedResult.jobs.length > 0) {
+        return new Response(
+          JSON.stringify({
+            jobs: scannedResult.jobs,
+            total: scannedResult.total,
+            citations: [],
+            query: searchQuery,
+            elapsed_ms: Date.now() - startTime,
+            from_cache: false,
+            from_db: true,
+            db_total: scannedResult.total,
+            has_more_db: scannedResult.total > offset + pageSize,
+            source_mode: "verified_company_scans",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
-    // ── STEP 2: DB exhausted or force_web_search — Call Perplexity ─────
+    // ── STEP 2: DB exhausted — query public direct-employer feeds ─────
+    const directJobs = await searchDirectJobSources({
+      query: searchQuery,
+      location,
+      remoteFilter: remote_filter,
+      experienceLevel: experience_level,
+      limit: pageSize,
+    });
+    const persistedDirectJobs = await persistDirectJobs(sb, directJobs);
+    if (persistedDirectJobs.length > 0) {
+      return new Response(
+        JSON.stringify({
+          jobs: persistedDirectJobs,
+          total: persistedDirectJobs.length,
+          query: searchQuery,
+          elapsed_ms: Date.now() - startTime,
+          from_cache: false,
+          from_db: false,
+          source_mode: "direct_employer",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── STEP 3: Optional metered discovery expansion ──────────────────
+    await enforceDailyCap(sb, user_id, "search", isPro);
     if (!cachedPerplexityKey) {
       cachedPerplexityKey = Deno.env.get("PERPLEXITY_API_KEY") || "";
       if (!cachedPerplexityKey) {
@@ -550,7 +710,10 @@ serve(async (req) => {
 
     if (!cachedPerplexityKey) {
       return new Response(
-        JSON.stringify({ error: "Perplexity API key not configured" }),
+        JSON.stringify({
+          error: "Job discovery is temporarily unavailable.",
+          code: "SEARCH_UNAVAILABLE",
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -578,15 +741,11 @@ serve(async (req) => {
     });
     console.log(`[STEP2] Falling through to Perplexity. Today (CST): ${todayStr}`);
 
-    const useAllSources = search_source === "all";
-
-    const sourceInstruction = useAllSources
-      ? `- MULTI-SOURCE REQUIREMENT: You MUST search across ALL of these job boards and return jobs from at least 4 different sources: LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, AngelList/Wellfound, company career pages (careers.google.com, jobs.lever.co, greenhouse.io, etc.), USAJobs.gov, Handshake, FlexJobs. For each job, accurately set the "source" field to the job board where you found it.`
-      : `- DIRECT COMPANY SOURCES ONLY: You MUST search ONLY company career pages, hiring platforms, and direct employer portals. Search these sources: Greenhouse (boards.greenhouse.io), Lever (jobs.lever.co), Workday (*.myworkdayjobs.com), iCIMS, Jobvite, BambooHR, SmartRecruiters, company career pages (careers.*.com, *.com/careers, jobs.*.com), and direct employer job postings. Do NOT return jobs from aggregator job boards like Indeed, LinkedIn, ZipRecruiter, Glassdoor, SimplyHired, Monster, or CareerBuilder. The "source" field must be the actual company name or their ATS platform (e.g., "Google Careers", "Greenhouse", "Lever", "Workday"), NEVER a job board aggregator.`;
+    const sourceInstruction = `- DIRECT COMPANY SOURCES ONLY: You MUST search ONLY company career pages, hiring platforms, and direct employer portals. Search Greenhouse, Lever, Ashby, Workday, iCIMS, Jobvite, BambooHR, SmartRecruiters, and company career pages. Do NOT return aggregator pages. The source field must identify the employer or ATS.`;
 
     const systemPrompt = `You are a job search engine for the United States job market ONLY. Return ONLY valid JSON, no markdown, no explanation.
 TODAY'S DATE IS: ${todayStr}. Use this to calculate accurate relative dates for when jobs were posted.
-Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"2 days ago","source":"${useAllSources ? "LinkedIn/Indeed/Glassdoor/etc" : "Company Careers/Greenhouse/Lever/Workday"}","experience_level":"Entry-Level/Mid-Level/Senior/Executive"}]}
+Format: {"jobs":[{"title":"","company":"","location":"","description":"","apply_url":"https://...","salary":"","job_type":"Full-time/Part-time/Contract/Internship","remote":false,"date_posted":"2 days ago","source":"Company Careers/Greenhouse/Lever/Ashby/Workday","experience_level":"Entry-Level/Mid-Level/Senior/Executive"}]}
 CRITICAL RULES:
 - ONLY return jobs located in the United States — absolutely NO jobs from India, Canada, UK, Europe, Asia, or any other country
 - Every location MUST be a US city/state (e.g. "San Francisco, CA", "New York, NY", "Remote (US)")
@@ -606,9 +765,7 @@ ${sourceInstruction}
       ? ` This is page ${pageNum} of search results — return DIFFERENT jobs than typical first-page results. Focus on additional companies, smaller/newer companies, and less-common job boards. Do NOT repeat commonly shown listings.`
       : "";
 
-    const userPrompt = useAllSources
-      ? `Search ALL major US job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice, Built In, SimplyHired, company career pages) and find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs from different US-based companies and different job board sources. Do NOT include any jobs from outside the United States.${resumeHint}${paginationHint}`
-      : `Search company career pages, Greenhouse, Lever, Workday, and direct employer hiring portals to find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15-20 different jobs posted directly by companies on their own career sites. Do NOT include results from job board aggregators like Indeed, LinkedIn, ZipRecruiter, Glassdoor, SimplyHired, or Monster. Only return jobs from direct company career pages and employer ATS platforms. Do NOT include any jobs from outside the United States.${resumeHint}${paginationHint}`;
+    const userPrompt = `Search company career pages, Greenhouse, Lever, Ashby, Workday, and direct employer hiring portals to find real job listings in the UNITED STATES ONLY for: ${parts.join(", ")}. Find at least 15 different jobs posted directly by companies. Do NOT include results from aggregators. Do NOT include jobs from outside the United States.${resumeHint}${paginationHint}`;
 
     let recencyFilter = "month";
     if (date_posted === "today") recencyFilter = "day";
@@ -644,14 +801,21 @@ ${sourceInstruction}
 
       if (!perplexityResponse.ok) {
         const errText = await perplexityResponse.text();
-        console.error("Perplexity API error:", errText);
+        console.error("Metered search provider error:", errText);
         return new Response(
-          JSON.stringify({ error: "Search service temporarily unavailable", details: errText }),
+          JSON.stringify({ error: "Job discovery is temporarily unavailable.", code: "SEARCH_UPSTREAM_FAILED" }),
           { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       const perplexityData = await perplexityResponse.json();
+      await logAiUsage(
+        sb,
+        user_id,
+        "search",
+        Number(perplexityData.usage?.prompt_tokens || 0),
+        Number(perplexityData.usage?.completion_tokens || 0),
+      );
       const content = perplexityData.choices?.[0]?.message?.content || "";
       const citations = perplexityData.citations || [];
 
@@ -834,9 +998,18 @@ ${sourceInstruction}
     }
   } catch (err) {
     console.error("perplexity-job-search error:", err);
+    const isExpected = err instanceof HttpError;
+    const status = isExpected ? err.status : 500;
+    const message = status === 401
+      ? "Please sign in again."
+      : status === 403
+        ? "Job discovery is not available for this account."
+        : status === 429
+          ? "The current job discovery limit has been reached."
+          : "Job discovery is temporarily unavailable.";
     return new Response(
-      JSON.stringify({ error: "Internal error", message: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: message, code: `SEARCH_${status}` }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
