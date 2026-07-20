@@ -28,7 +28,7 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     const { data } = await (supabase as any)
       .from("mc_gmail_connections")
       .select("id,gmail_email,enabled,last_polled_at,token_expires_at")

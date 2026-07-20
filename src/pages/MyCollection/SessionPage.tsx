@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ export default function SessionPage() {
     // URL param takes priority (enables sharing links to specific tabs).
     // Falls back to sessionStorage so tab switches across apps survive.
     const urlTab = searchParams.get("tab");
-    if (urlTab && ["discover", "resumes", "board", "stats"].includes(urlTab)) return urlTab;
+    if (urlTab && ["discover", "resumes", "board", "inbox", "stats"].includes(urlTab)) return urlTab;
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
