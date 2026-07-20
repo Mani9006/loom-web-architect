@@ -39,16 +39,10 @@ verify_jwt = false
 [functions.apply-to-job]
 verify_jwt = false
 
-[functions.job-search-v2]
-verify_jwt = false
-
 [functions.ats-score]
 verify_jwt = false
 
 [functions.perplexity-job-search]
-verify_jwt = false
-
-[functions.kimi-job-finder]
 verify_jwt = false
 
 [functions.match-jobs]
