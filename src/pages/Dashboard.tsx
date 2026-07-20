@@ -57,7 +57,9 @@ export default function Dashboard() {
       setUserEmail(user.email || null);
 
       const [profileResult, conversationsResult, coverLettersResult] = await Promise.all([
-        supabase.from("profiles").select("full_name, email, phone, location, avatar_url" as any).eq("user_id", user.id).maybeSingle() as any,
+        // NOTE: profiles has no `phone` column — selecting it makes PostgREST
+        // reject the whole query. Phone lives in job_preferences.applypass.
+        supabase.from("profiles").select("full_name, email, location, avatar_url, job_preferences" as any).eq("user_id", user.id).maybeSingle() as any,
         supabase.from("conversations").select("id, title, chat_mode, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
         supabase.from("cover_letters").select("id, title, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
       ]);
@@ -68,7 +70,17 @@ export default function Dashboard() {
         ? await supabase.from("messages").select("id, conversation_id, created_at").in("conversation_id", convIds)
         : { data: [] };
 
-      if (profileResult.data) setProfile(profileResult.data);
+      if (profileResult.data) {
+        const row = profileResult.data as Profile & { job_preferences?: Record<string, any> };
+        const application = (row.job_preferences?.applypass?.profile ?? {}) as Record<string, unknown>;
+        setProfile({
+          full_name: row.full_name,
+          email: row.email,
+          location: row.location,
+          avatar_url: row.avatar_url,
+          phone: typeof application.phone === "string" && application.phone ? application.phone : null,
+        });
+      }
 
       const conversations = conversationsResult.data || [];
       const messages = messagesResult.data || [];
@@ -235,6 +247,7 @@ export default function Dashboard() {
                       className="flex items-center justify-between p-3 rounded-xl hover:bg-accent/50 transition-colors cursor-pointer group"
                       onClick={() => {
                         if (activity.type === "conversation") navigate(`/c/${activity.id}`);
+                        else navigate("/chat?mode=cover-letter");
                       }}
                     >
                       <div className="flex items-center gap-3 min-w-0">

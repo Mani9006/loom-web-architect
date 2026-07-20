@@ -55,6 +55,13 @@ export function VoiceInterviewSimulation({
   const [questions, setQuestions] = useState<string[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [transcript, setTranscript] = useState<InterviewTranscript[]>([]);
+  // Ref mirror so completion always hands over the full transcript — a
+  // setState immediately before onComplete would otherwise drop the last Q&A.
+  const transcriptRef = useRef<InterviewTranscript[]>([]);
+  const appendTranscript = (entry: InterviewTranscript) => {
+    transcriptRef.current = [...transcriptRef.current, entry];
+    setTranscript(transcriptRef.current);
+  };
   const [currentAnswer, setCurrentAnswer] = useState("");
   const [currentFeedback, setCurrentFeedback] = useState("");
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
@@ -306,28 +313,22 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
       }
 
       setCurrentFeedback(feedback);
-      
+
       // Save to transcript
-      setTranscript((prev) => [
-        ...prev,
-        {
-          question: questions[currentQuestionIndex],
-          answer: answer,
-          feedback: feedback,
-        },
-      ]);
+      appendTranscript({
+        question: questions[currentQuestionIndex],
+        answer: answer,
+        feedback: feedback,
+      });
 
       setState("feedback");
       speak(feedback);
     } catch {
       // Save without feedback
-      setTranscript((prev) => [
-        ...prev,
-        {
-          question: questions[currentQuestionIndex],
-          answer: answer,
-        },
-      ]);
+      appendTranscript({
+        question: questions[currentQuestionIndex],
+        answer: answer,
+      });
       moveToNextQuestion();
     }
   };
@@ -344,9 +345,9 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
     } else {
       setState("complete");
       speak("Excellent! You've completed the interview simulation. Great job!");
-      onComplete(transcript);
+      onComplete(transcriptRef.current);
     }
-  }, [currentQuestionIndex, questions, speak, transcript, onComplete]);
+  }, [currentQuestionIndex, questions, speak, onComplete]);
 
   const handlePauseResume = () => {
     if (isPaused) {
@@ -373,14 +374,11 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
       clearTimeout(answerTimeoutRef.current);
     }
     
-    setTranscript((prev) => [
-      ...prev,
-      {
-        question: questions[currentQuestionIndex],
-        answer: "(Skipped)",
-      },
-    ]);
-    
+    appendTranscript({
+      question: questions[currentQuestionIndex],
+      answer: "(Skipped)",
+    });
+
     moveToNextQuestion();
   };
 

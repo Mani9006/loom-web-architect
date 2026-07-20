@@ -16,7 +16,7 @@ import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error
 export default function PricingPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { plan: currentPlan, refresh } = useSubscription();
+  const { plan: currentPlan } = useSubscription();
   const [loadingPlan, setLoadingPlan] = useState<BillingPlanId | null>(null);
 
   const handleUpgrade = async (planType: BillingPlanId) => {
@@ -49,8 +49,9 @@ export default function PricingPage() {
         if (data.url) {
           window.location.href = data.url;
         } else {
-          await refresh();
-          toast({ title: "Subscription activated", description: `Welcome to ResumePreps ${planType === "pro" ? "Pro" : "Autopilot"}.` });
+          // create-checkout always returns { url } on success — a missing url
+          // means the checkout session was NOT created; never claim activation.
+          throw new Error("Checkout session was not created (no redirect URL returned).");
         }
       } else {
         const detail = await response.text();

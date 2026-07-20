@@ -201,23 +201,15 @@ export function InterviewPrepPanel({
   };
 
   const handleVoiceSimulationComplete = (transcripts: InterviewTranscript[]) => {
-    // Convert transcript to messages for the chat view
-    transcripts.forEach((t) => {
-      const qMsg: InterviewMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: `**Question:** ${t.question}`,
-        timestamp: new Date(),
-      };
-      const aMsg: InterviewMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: t.answer,
-        timestamp: new Date(),
-      };
-      onSendMessage(`[Voice Interview] ${t.question}`);
-    });
     setShowVoiceSimulation(false);
+    if (transcripts.length === 0) return;
+    // One consolidated follow-up — the previous per-question loop fired one
+    // full AI request per transcript entry and discarded the message objects
+    // it built. Ask the coach for overall feedback on the whole session.
+    const transcriptText = transcripts
+      .map((t, i) => `Q${i + 1}: ${t.question}\nAnswer: ${t.answer}${t.feedback ? `\nCoach note: ${t.feedback}` : ""}`)
+      .join("\n\n");
+    onSendMessage(`[Voice Interview] I just completed a ${transcripts.length}-question voice simulation. Here is the transcript — give me overall feedback on my answers and the top 3 things to improve.\n\n${transcriptText}`);
     setHasGenerated(true);
   };
 

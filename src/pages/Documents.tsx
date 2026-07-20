@@ -40,18 +40,24 @@ export default function Documents() {
     if (!user) return;
 
     // Fetch cover letters
-    const { data: cls } = await supabase
+    const { data: cls, error: clsError } = await supabase
       .from("cover_letters")
       .select("id, title, created_at, job_title")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
     // Fetch user documents
-    const { data: docs } = await supabase
+    const { data: docs, error: docsError } = await supabase
       .from("user_documents" as any)
       .select("id, file_name, file_type, category, file_size, storage_path, created_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
+
+    if (clsError || docsError) {
+      // Without this, a failed query renders as a false "No documents yet".
+      toast({ title: "Couldn't load documents", description: "Refresh to try again.", variant: "destructive" });
+      return;
+    }
 
     const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 
@@ -84,18 +90,27 @@ export default function Documents() {
 
   const handleDownload = async (doc: Document) => {
     if (!doc.storagePath) return;
-    const { data } = await supabase.storage
+    const { data, error } = await supabase.storage
       .from("documents")
       .createSignedUrl(doc.storagePath, 60);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+    if (error || !data?.signedUrl) {
+      toast({ title: "Download failed", description: `Couldn't create a link for "${doc.title}". Try again.`, variant: "destructive" });
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
   };
 
   const handleDelete = async (doc: Document) => {
     if (doc.source === "user_document") {
       if (doc.storagePath) {
+        // Best-effort: a missing storage object must not block the row delete.
         await supabase.storage.from("documents").remove([doc.storagePath]);
       }
-      await supabase.from("user_documents" as any).delete().eq("id", doc.id);
+      const { error } = await supabase.from("user_documents" as any).delete().eq("id", doc.id);
+      if (error) {
+        toast({ title: "Delete failed", description: `"${doc.title}" was not removed. Try again.`, variant: "destructive" });
+        return;
+      }
       toast({ title: "Document deleted", description: `"${doc.title}" has been removed.` });
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
     }

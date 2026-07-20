@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useNavigate } from "react-router-dom";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,11 @@ export default function AIToolbox() {
         });
         if (error) throw error;
         const output = (data as { optimization: { output_text: string; rationale: string } })?.optimization;
-        if (output) setResult(`${output.output_text}\n\n---\nRationale: ${output.rationale}`);
+        if (output) {
+          setResult(`${output.output_text}\n\n---\nRationale: ${output.rationale}`);
+        } else {
+          throw new Error("Empty response from generator");
+        }
         return;
       }
 
@@ -85,7 +90,9 @@ export default function AIToolbox() {
         }
       );
 
-      if (!response.ok) throw new Error("Failed");
+      // Keep the HTTP status in the message so the catch below can map
+      // 412/429 to actionable copy — a bare "Failed" defeated that mapping.
+      if (!response.ok) throw new Error(`Failed (${response.status})`);
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -113,10 +120,12 @@ export default function AIToolbox() {
         }
       }
     } catch (e) {
+      // invoke() failures carry the HTTP status on context, not in message.
+      const status = e instanceof FunctionsHttpError ? e.context.status : undefined;
       const msg = e instanceof Error ? e.message : "Failed to generate content";
-      toast({ title: "Error", description: msg.includes("412")
+      toast({ title: "Error", description: status === 412 || msg.includes("412")
         ? "Upload or build a résumé first — we use it to ground the writing."
-        : msg.includes("429")
+        : status === 429 || msg.includes("429")
         ? "Daily cap hit. Upgrade for more."
         : "Failed to generate content", variant: "destructive" });
     } finally {

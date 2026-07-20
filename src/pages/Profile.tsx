@@ -53,6 +53,13 @@ export default function Profile() {
       supabase.from("profiles").select("full_name,email,job_preferences").eq("user_id", user.id).maybeSingle(),
       supabase.from("resumes").select("id,title,updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
+    if (profileResult.error) {
+      // Without this, a failed read renders as an empty editable form and the
+      // next save can overwrite good data with blanks.
+      toast({ title: "Couldn't load your profile", description: "Refresh to try again before editing.", variant: "destructive" });
+      setLoading(false);
+      return;
+    }
     const row = profileResult.data;
     const preferences = (row?.job_preferences || {}) as Record<string, unknown>;
     const applypass = (preferences.applypass || {}) as Record<string, unknown>;
@@ -74,7 +81,7 @@ export default function Profile() {
     });
     setResume(resumeResult.data || null);
     setLoading(false);
-  }, [user]);
+  }, [user, toast]);
 
   useEffect(() => { void load(); }, [load]);
 
