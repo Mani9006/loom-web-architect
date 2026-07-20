@@ -53,6 +53,32 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/**
+ * Employment history for old-style Greenhouse sections: first 4 entries of the
+ * tailored resume's experience array mapped to the adapter-facing shape
+ * ({ company, title, startDate, endDate, location, current }).
+ * Mirrors mapResumeExperience() in scripts/ats-adapters/helpers.mjs — edge
+ * functions deploy from this directory only, so the mapping is duplicated here.
+ */
+function mapResumeExperienceForSubmit(experience: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(experience)) return [];
+  return experience.slice(0, 4).flatMap((item) => {
+    const entry = asRecord(item);
+    const company = asString(entry.company_or_client) || asString(entry.company);
+    const title = asString(entry.role) || asString(entry.title);
+    if (!company && !title) return [];
+    const endDate = asString(entry.end_date);
+    return [{
+      company,
+      title,
+      startDate: asString(entry.start_date),
+      endDate,
+      location: asString(entry.location),
+      current: /present|current/i.test(endDate),
+    }];
+  });
+}
+
 function answersToMemory(value: unknown): Record<string, string> {
   if (!Array.isArray(value)) return {};
   const entries = value.flatMap((item) => {
@@ -89,7 +115,13 @@ function answersToMemory(value: unknown): Record<string, string> {
 function buildStandardAnswerMemory(
   candidateProfile: Record<string, unknown>,
   storedEeo: Record<string, unknown>,
-  opts: { privacyConsent: boolean; sponsorshipKnown: boolean },
+  opts: {
+    privacyConsent: boolean;
+    sponsorshipKnown: boolean;
+    contactEmployer: boolean;
+    previouslyEmployed: boolean | null;
+    hasExperience: boolean;
+  },
 ): Record<string, string> {
   const memory: Record<string, string> = {};
   const put = (value: unknown, ...questions: string[]) => {
@@ -184,6 +216,34 @@ function buildStandardAnswerMemory(
   put(eeoValue("disability", "disabilityStatus", "disability_status"), "Disability status", "Do you have a disability?");
   put(eeoValue("veteran", "veteranStatus", "veteran_status"), "Veteran status", "Are you a veteran?", "Protected veteran status");
   put(eeoValue("ethnicity", "race", "raceEthnicity", "ethnicity_race"), "Race", "Ethnicity", "Race/Ethnicity", "What is your race or ethnicity?");
+
+  // --- Employment-history companion questions (old-style Greenhouse boards) --
+  // "May we contact your current employer?" defaults to No — the safe norm
+  // during an active job search — unless the user explicitly stored consent.
+  put(opts.contactEmployer === true ? "Yes" : "No",
+    "May we contact your current employer?",
+    "May we contact this employer?",
+    "Can we contact your current employer?",
+    "Do we have permission to contact your current employer?");
+
+  // Prior employment with THIS employer is answered only from an explicitly
+  // stored value — never invented; unset stays blank for review.
+  if (typeof opts.previouslyEmployed === "boolean") {
+    put(opts.previouslyEmployed ? "Yes" : "No",
+      "Have you been employed by this company in the past?",
+      "Have you previously been employed by this company?",
+      "Have you been employed by us in the past?",
+      "Were you previously employed here?",
+      "Have you worked here before?");
+  }
+
+  // Instruction-style acknowledgment, honest only when employment entries
+  // were actually provided in the payload (the adapter fills the blocks).
+  if (opts.hasExperience) {
+    put("Employment history provided above",
+      "Please enter your relevant employment and military service above",
+      "Please enter your relevant employment history above");
+  }
 
   return memory;
 }
@@ -326,6 +386,9 @@ async function enqueueSubmit(userId: string, draftId: string) {
     discoverySource: asString(storedScreening.discoverySource)
       || asString(storedProfile.discoverySource)
       || "ResumePreps job search",
+    // First 4 tailored-resume experience entries for old-style Greenhouse
+    // EMPLOYMENT HISTORY sections (consumed by fillEmploymentHistory).
+    experience: mapResumeExperienceForSubmit(experience),
   };
 
   // Synthesize the standard screening answers and merge them under the
@@ -339,6 +402,13 @@ async function enqueueSubmit(userId: string, draftId: string) {
       privacyConsent: storedProfile.privacyConsent === true || storedConsent.privacyConsent === true,
       sponsorshipKnown: typeof storedProfile.requiresSponsorship === "boolean"
         || typeof prefs?.requires_sponsorship === "boolean",
+      contactEmployer: storedProfile.contactEmployer === true,
+      previouslyEmployed: typeof storedProfile.previouslyEmployedAtThisCompany === "boolean"
+        ? storedProfile.previouslyEmployedAtThisCompany
+        : typeof storedProfile.previouslyEmployed === "boolean"
+          ? storedProfile.previouslyEmployed
+          : null,
+      hasExperience: (candidateProfile.experience as unknown[]).length > 0,
     },
   );
   const answerMemory = { ...standardAnswerMemory, ...answersToMemory(draft.answers) };

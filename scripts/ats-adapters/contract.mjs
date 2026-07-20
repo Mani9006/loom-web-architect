@@ -59,6 +59,7 @@
  * @property {number} totalFields
  * @property {{ fileInputs: number, resumeInputs: number, uploaded: number, requiredMissing: boolean }} upload
  * @property {{ requested: boolean, completed: boolean }} verification Email verification-code step state.
+ * @property {{ detected: boolean, blocksDetected: number, blocksFilled: number, fieldsFilled: number, addedBlocks: number }} [employment] Employment-history section fill summary (Greenhouse old-style boards).
  */
 
 /**
