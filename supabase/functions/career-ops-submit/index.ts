@@ -110,6 +110,15 @@ function buildStandardAnswerMemory(
     "How did you hear about us?",
     "How did you hear about this position?");
 
+  if (opts.privacyConsent === true) {
+    put("I agree",
+      "I certify that the facts set forth in this Application for Employment are true and complete",
+      "I certify that the information provided is true and complete",
+      "I certify that my answers are true and complete to the best of my knowledge",
+      "I agree to the terms and conditions",
+      "I acknowledge and agree");
+  }
+
   put(candidateProfile.noticePeriod || "2 weeks",
     "When can you start a new role?",
     "When can you start?",

@@ -410,7 +410,7 @@ async function runAgent(userId: string, runId: string) {
         && typeof portal === "string"
         && supportedPortals.has(portal)
         && enabledPortals.has(portal)
-        && !/employer verification is required|complete the final check/i.test(draft.error_message ?? "");
+        && !/employer verification is required|complete the final check|required field\(s\) still need review/i.test(draft.error_message ?? "");
     });
 
     const resumeIds = [...new Set(backlog.map((draft) => String(draft.tailored_resume_id)))];
