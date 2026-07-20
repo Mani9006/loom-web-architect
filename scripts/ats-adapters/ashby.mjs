@@ -30,6 +30,7 @@ import { defineAdapter, submitRefusal } from "./contract.mjs";
 import {
   fuzzyMatchAnswer,
   isAffirmativeAnswer,
+  isDeclineAnswer,
   looksLikeConsentLabel,
   normalizeText,
   requiredMissingFromFields,
@@ -417,7 +418,12 @@ export const ashbyAdapter = defineAdapter({
       const wanted = normalizeText(match.answer);
       const option = group.options.find((candidate) => {
         const optionText = normalizeText(candidate.label);
-        return optionText && (optionText === wanted || optionText.includes(wanted) || wanted.includes(optionText));
+        return optionText && (
+          optionText === wanted
+          || optionText.includes(wanted)
+          || wanted.includes(optionText)
+          || (isDeclineAnswer(wanted) && isDeclineAnswer(optionText))
+        );
       });
       if (!option) continue;
       if (await setFieldValueByIndex(page, option.index, "true")) filledCount += 1;

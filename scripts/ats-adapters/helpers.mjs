@@ -84,6 +84,27 @@ export function isAffirmativeAnswer(value) {
   return AFFIRMATIVES.has(normalizeText(value));
 }
 
+/** "Decline to answer" phrasings vary by employer form; treat them as one. */
+const DECLINE_ANSWER_VARIANTS = new Set([
+  "decline to self identify",
+  "decline to self-identify",
+  "i do not want to answer",
+  "i don't want to answer",
+  "do not wish to answer",
+  "i do not wish to answer",
+  "i don't wish to answer",
+  "prefer not to say",
+  "i prefer not to say",
+  "decline to state",
+  "choose not to answer",
+  "not wish to disclose",
+  "prefer not to disclose",
+]);
+
+export function isDeclineAnswer(value) {
+  return DECLINE_ANSWER_VARIANTS.has(normalizeText(value));
+}
+
 /** Heuristic: does a checkbox label look like a consent/legal agreement? */
 export function looksLikeConsentLabel(label) {
   return /(consent|i agree|agree to|acknowledg|privacy (policy|notice)|terms (of|and)|gdpr|data (processing|protection)|opt[ -]?in|authoriz\w* .*(contact|process))/i.test(String(label || ""));

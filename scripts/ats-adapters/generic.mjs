@@ -14,6 +14,7 @@ import {
   inferAuthorizationAnswers,
   inferCountry,
   isAffirmativeAnswer,
+  isDeclineAnswer,
   looksLikeConsentLabel,
   matchingMemoryAnswer,
   normalizeText,
@@ -383,6 +384,12 @@ export async function chooseVisibleOption(target, input, desired, { allowFirstMa
     const optionText = normalizeText(await option.textContent());
     if (!optionText) continue;
     if (optionText === targetText || optionText.startsWith(`${targetText} `) || optionText.startsWith(`${targetText}+`)) {
+      await option.click();
+      return await committed();
+    }
+    // Decline-to-answer aliases: stored "Decline to self identify" must match
+    // "I do not want to answer" / "Prefer not to say" style options.
+    if (isDeclineAnswer(targetText) && isDeclineAnswer(optionText)) {
       await option.click();
       return await committed();
     }
