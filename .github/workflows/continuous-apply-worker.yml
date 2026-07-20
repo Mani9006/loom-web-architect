@@ -1,0 +1,72 @@
+name: Continuous Apply browser worker
+
+on:
+  # Fifteen-minute cadence drains the production queue in small bounded
+  # batches. Runs never overlap (concurrency below) and each run self-limits
+  # to --max-tasks=10, so a single run cannot hold the queue hostage. If a
+  # run is killed mid-task, the DB queue reaper returns the stale task to
+  # pending (see supabase/migrations/20260720020000_queue_reaper.sql).
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      auto_submit:
+        description: "Submit prepared applications (false = dry-run: fill, review, receipts only)"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: continuous-apply-browser-worker
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    name: Process production application queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
+      APPLYPASS_WORKER_TOKEN: ${{ secrets.PROD_APPLYPASS_WORKER_TOKEN }}
+      APPLYPASS_WORKER_ID: github-prod-worker-${{ github.run_id }}
+      APPLYPASS_WORKER_CONCURRENCY: "1"
+      # Scheduled runs submit; manual dispatch can force a dry-run.
+      APPLYPASS_AUTO_SUBMIT: ${{ github.event.inputs.auto_submit == false && 'false' || 'true' }}
+      APPLYPASS_SCREENSHOT_DIR: ${{ runner.temp }}/applypass-screenshots
+      WORKER_LOG: ${{ runner.temp }}/applypass-worker.log
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install worker dependencies
+        run: npm ci --include=dev
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run continuous apply worker
+        run: |
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_ANON_KEY"
+          test -n "$APPLYPASS_WORKER_TOKEN"
+          npm run applypass:worker -- --max-tasks=10 2>&1 | tee "$WORKER_LOG"
+
+      - name: Upload run logs and screenshots
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: applypass-worker-run-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/applypass-worker.log
+            ${{ runner.temp }}/applypass-screenshots
+          if-no-files-found: ignore
+          retention-days: 14
