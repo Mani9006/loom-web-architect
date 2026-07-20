@@ -368,7 +368,15 @@ export async function chooseVisibleOption(target, input, desired, { allowFirstMa
   // implementations) can make scrollIntoViewIfNeeded time out and kill the
   // whole fill. Scrolling is a best-effort affordance, not a hard gate.
   await input.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
-  await input.click();
+  // Some Greenhouse themes hide the raw combobox input until its wrapper is
+  // activated; clicking the input directly then times out. Try the input,
+  // fall back to the closest visible wrapper first.
+  const clicked = await input.click({ timeout: 5000 }).then(() => true).catch(() => false);
+  if (!clicked) {
+    const wrapper = input.locator('xpath=ancestor::*[contains(@class,"select") or contains(@class,"control") or contains(@class,"container")][1]');
+    await wrapper.click({ timeout: 5000 }).catch(() => {});
+    await input.click({ timeout: 5000 }).catch(() => {});
+  }
   if (allowFirstMatch) {
     await input.fill("");
     const query = searchValue || desired;
