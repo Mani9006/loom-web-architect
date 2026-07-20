@@ -1,0 +1,76 @@
+<!doctype html>
+<!-- Local mock of a Greenhouse-hosted application form. The #grnhse_app
+     wrapper and #application-form id make the real greenhouse adapter's
+     page-based detection + form resolution match, so the worker's processJob
+     flow exercises production code paths against this fixture. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="mock greenhouse board">
+  <title>Acme — Senior Frontend Engineer</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    .field { margin-bottom: 1rem; }
+    label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+    input, textarea { width: 24rem; padding: 0.4rem; }
+  </style>
+</head>
+<body>
+  <div id="grnhse_app">
+    <h1>Senior Frontend Engineer</h1>
+    <p>Acme Corp — Remote</p>
+
+    <form id="application-form" action="/submit" method="post" enctype="multipart/form-data">
+      <div class="field">
+        <label for="first_name">First Name *</label>
+        <input type="text" id="first_name" name="first_name" required>
+      </div>
+      <div class="field">
+        <label for="last_name">Last Name *</label>
+        <input type="text" id="last_name" name="last_name" required>
+      </div>
+      <div class="field">
+        <label for="email">Email *</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+      <div class="field">
+        <label for="phone">Phone *</label>
+        <input type="text" id="phone" name="phone" required>
+      </div>
+      <div class="field">
+        <label for="resume">Resume *</label>
+        <input type="file" id="resume" name="resume" accept=".pdf,.docx" required>
+      </div>
+      <div class="field application-question">
+        <label for="question_why">Why do you want to work at Acme? *</label>
+        <textarea id="question_why" name="question_why" rows="3" required></textarea>
+      </div>
+      <div class="field application-question">
+        <label for="question_react">How many years of React experience do you have? *</label>
+        <input type="text" id="question_react" name="question_react" required>
+      </div>
+      <button type="submit" id="submit_app">Submit application</button>
+    </form>
+  </div>
+
+  <script>
+    // Stand-in for the Greenhouse submission endpoint: validate like the real
+    // form would, then render the confirmation container the adapter's
+    // verifyReceipt() looks for.
+    document.getElementById("application-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = event.target;
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+      const confirmation = document.createElement("div");
+      confirmation.id = "application_confirmation";
+      confirmation.innerHTML =
+        "<h2>Thank you for applying!</h2>" +
+        "<p>Your application has been received. Application ID: MOCK-12345</p>";
+      form.replaceWith(confirmation);
+    });
+  </script>
+</body>
+</html>

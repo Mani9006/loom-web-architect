@@ -2,6 +2,7 @@
 
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 import { pickAdapter } from "./ats-adapters/index.mjs";
@@ -375,6 +376,23 @@ async function processTask(task, workerId) {
   const jobResults = [];
   let resumeFile = { directory: null, filePath: null };
 
+  // Heartbeat is only accepted while the task is still 'running'. When the
+  // queue reaper (or a cancel) moves the task on, the next heartbeat is
+  // rejected: this worker no longer owns the task and must stop without
+  // completing/failing it, or the task would be double-processed alongside
+  // the worker that re-claims it. A transient network error fails the same
+  // (safe) way — the reaper eventually re-queues the task.
+  let taskLost = false;
+  const guardedHeartbeat = async (log) => {
+    if (taskLost) return;
+    try {
+      await heartbeat(taskId, log, workerId);
+    } catch (error) {
+      taskLost = true;
+      console.warn(`[ApplyPass Worker] ${workerId} lost task ${taskId}; stopping: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   if (jobs.length === 0) {
     await failTask(taskId, "Task has no jobs.", { jobs: [] }, {
       level: "error",
@@ -389,25 +407,27 @@ async function processTask(task, workerId) {
 
   try {
     resumeFile = await downloadResumeFile(payload);
-    await heartbeat(taskId, {
+    await guardedHeartbeat({
       level: "info",
       workerId,
       at: nowIso(),
-      message: `Started task with ${jobs.length} jobs`,
-    }, workerId);
+      message: `Started task with ${jobs.length} jobs (attempt ${Number(task?.attempt_count || 1)}/${Number(task?.max_attempts || 3)})`,
+    });
 
     for (const job of jobs) {
-      await heartbeat(taskId, {
+      if (taskLost) break;
+      await guardedHeartbeat({
         level: "info",
         workerId,
         at: nowIso(),
         message: `Processing job: ${String(job?.title || "Unknown")}`,
       }, workerId);
 
+      if (taskLost) break;
       const result = await processJob(browser, taskId, job, payload, resumeFile.filePath, workerId);
       jobResults.push(result);
 
-      await heartbeat(taskId, {
+      await guardedHeartbeat({
         level: HANDLED_STATUSES.includes(result.status) ? "info" : "warn",
         workerId,
         at: nowIso(),
@@ -429,6 +449,12 @@ async function processTask(task, workerId) {
   } finally {
     await browser.close();
     if (resumeFile.directory) await rm(resumeFile.directory, { recursive: true, force: true });
+  }
+
+  // Ownership was lost mid-run: leave the task to its new owner / the reaper.
+  if (taskLost) {
+    console.warn(`[ApplyPass Worker] ${workerId} abandoned task ${taskId} after ${jobResults.length} job(s); not reporting completion.`);
+    return;
   }
 
   const success = jobResults.filter((r) => HANDLED_STATUSES.includes(r.status)).length;
@@ -476,7 +502,7 @@ async function runSlot(slotIndex) {
         continue;
       }
 
-      console.log(`[ApplyPass Worker] ${workerId} claimed task ${task.id}`);
+      console.log(`[ApplyPass Worker] ${workerId} claimed task ${task.id} (attempt ${Number(task.attempt_count || 1)}/${Number(task.max_attempts || 3)})`);
       await processTask(task, workerId);
       processed += 1;
 
@@ -500,7 +526,15 @@ async function run() {
   console.log(`[ApplyPass Worker] Exiting. processed=${processed}`);
 }
 
-run().catch((error) => {
-  console.error(`[ApplyPass Worker] Fatal: ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
-});
+// Exported for the local mock e2e test (scripts/ats-adapters/mock-e2e.test.mjs),
+// which drives the real processJob flow against a served fixture.
+export { processJob, processTask };
+
+// Only run the worker loop when executed directly, not when imported.
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (isMain) {
+  run().catch((error) => {
+    console.error(`[ApplyPass Worker] Fatal: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
+}
