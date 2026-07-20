@@ -37,8 +37,8 @@ jobs:
       APPLYPASS_WORKER_CONCURRENCY: "1"
       # Scheduled runs submit; manual dispatch can force a dry-run.
       APPLYPASS_AUTO_SUBMIT: ${{ github.event.inputs.auto_submit == false && 'false' || 'true' }}
-      APPLYPASS_SCREENSHOT_DIR: ${{ runner.temp }}/applypass-screenshots
-      WORKER_LOG: ${{ runner.temp }}/applypass-worker.log
+      APPLYPASS_SCREENSHOT_DIR: /tmp/applypass-screenshots
+      WORKER_LOG: /tmp/applypass-worker.log
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
