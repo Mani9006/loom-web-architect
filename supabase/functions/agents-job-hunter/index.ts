@@ -214,7 +214,9 @@ async function runAgent(userId: string, runId: string) {
     failed += 1;
   }
 
-  const candidates = await listUnscoredMatches(client, userId, prefs, Math.min(15, remaining));
+  const SCORE_BUDGET = Number(Deno.env.get("AGENT_SCORE_BUDGET") || 8);
+  const PREPARE_BUDGET = Number(Deno.env.get("AGENT_PREPARE_BUDGET") || 4);
+  const candidates = await listUnscoredMatches(client, userId, prefs, Math.min(SCORE_BUDGET, remaining));
   for (const job of candidates) {
     if (remaining <= 0) break;
     const input = { user_id: userId, scanned_job_id: job.id };
@@ -259,7 +261,7 @@ async function runAgent(userId: string, runId: string) {
       client,
       userId,
       prefs.auto_apply_min_fit_score ?? 82,
-      Math.min(10, remaining),
+      Math.min(PREPARE_BUDGET, remaining),
     );
     alreadyPrepared = unprepared.alreadyPrepared;
     const evaluations = unprepared.evaluations;
