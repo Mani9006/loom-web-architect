@@ -18,6 +18,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY
 const WORKER_TOKEN = process.env.APPLYPASS_WORKER_TOKEN || process.env.WORKER_AUTH_TOKEN;
 const WORKER_ID = process.env.APPLYPASS_WORKER_ID || `applypass-worker-${os.hostname()}`;
 const POLL_MS = Number(process.env.APPLYPASS_WORKER_POLL_MS || 5000);
+const IDLE_EXIT_MS = Number(process.env.APPLYPASS_IDLE_EXIT_MS || 120000);
 const CONFIGURED_CONCURRENCY = Math.min(12, Math.max(1, Number(process.env.APPLYPASS_WORKER_CONCURRENCY || 4)));
 const AUTO_SUBMIT = String(process.env.APPLYPASS_AUTO_SUBMIT || "false").toLowerCase() === "true";
 const SCREENSHOT_DIR = process.env.APPLYPASS_SCREENSHOT_DIR || "";
@@ -597,6 +598,7 @@ async function processTask(task, workerId) {
 
 async function runSlot(slotIndex) {
   const workerId = `${WORKER_ID}:${slotIndex + 1}`;
+  const slotStartedAt = Date.now();
   let processed = 0;
 
   while (true) {
@@ -606,6 +608,10 @@ async function runSlot(slotIndex) {
       if (!task) {
         if (once) break;
         if (maxTasks > 0 && processed >= maxTasks) break;
+        if (Date.now() - slotStartedAt >= IDLE_EXIT_MS) {
+          console.log(`[ApplyPass Worker] ${workerId} idle for ${IDLE_EXIT_MS}ms with empty queue; exiting slot.`);
+          break;
+        }
         await sleep(POLL_MS);
         continue;
       }
