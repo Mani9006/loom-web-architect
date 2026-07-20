@@ -32,6 +32,40 @@ export async function detectBlockers(target) {
   return classifyBlockers(snapshot);
 }
 
+/**
+ * Liveness pre-check: detect clearly dead postings (expired / removed / 404)
+ * before any filling happens, so the worker can skip the job instead of
+ * burning a submission attempt and quota on a ghost posting. Conservative by
+ * design: only unambiguous title/body phrases and explicit not-found markers
+ * count — ambiguous pages return false and proceed to the normal fill flow.
+ */
+export async function detectPostingExpired(target) {
+  const snapshot = await target.evaluate(() => ({
+    title: document.title || "",
+    text: document.body?.innerText?.slice(0, 3000) || "",
+    hasNotFoundMarker: Boolean(document.querySelector(
+      '.job-post--expired, .posting-expired, .posting--closed, [data-testid="job-not-found"], .job-not-found, .error-404, #not-found'
+    )),
+  }));
+  if (snapshot.hasNotFoundMarker) return true;
+  const title = snapshot.title.toLowerCase();
+  if (/\b404\b|page not found|job not found/.test(title)) return true;
+  const text = snapshot.text.toLowerCase();
+  const signals = [
+    "no longer available",
+    "no longer accepting applications",
+    "no longer open",
+    "job not found",
+    "job posting not found",
+    "posting has expired",
+    "this posting has expired",
+    "position has been filled",
+    "this job has been filled",
+    "vacancy has expired",
+  ];
+  return signals.some((signal) => text.includes(signal));
+}
+
 export async function findVerificationField(target) {
   return await target.evaluate(() => {
     const candidates = Array.from(document.querySelectorAll("input"));
