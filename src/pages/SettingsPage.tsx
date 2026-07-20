@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Bot, CreditCard, FileCheck2, Inbox, Loader2, LogOut, Mail, Save, Settings2, ShieldCheck } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { ApplicationProfileCard } from "@/components/settings/ApplicationProfileCard";
 import { useSubscription } from "@/components/SubscriptionGate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -131,6 +132,8 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        <ApplicationProfileCard />
 
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><FileCheck2 className="h-5 w-5 text-primary" />Résumé optimization</CardTitle><CardDescription>All modes remain grounded in your real experience. ResumePreps never invents employers, dates, skills, or outcomes.</CardDescription></CardHeader>
