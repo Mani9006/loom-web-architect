@@ -197,8 +197,14 @@ serve(async (req: Request) => {
         // enter the worker payload, browser context, logs, or frontend.
         const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
         const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-        let inboxStatus = "INBOX_CHECKED";
-        if (supabaseUrl && serviceRole) {
+        // inbox_status contract consumed by the worker/adapters: OK when a
+        // code is returned; CODE_NOT_RECEIVED keeps the adapter polling;
+        // JOB_INBOX_NOT_LINKED / INBOX_RECONNECT_REQUIRED / INBOX_UNAVAILABLE
+        // are terminal handoff reasons.
+        let inboxStatus = "CODE_NOT_RECEIVED";
+        if (!supabaseUrl || !serviceRole) {
+          inboxStatus = "INBOX_UNAVAILABLE";
+        } else {
           const pollResponse = await fetch(`${supabaseUrl}/functions/v1/mc-gmail-poll`, {
             method: "POST",
             headers: {
@@ -217,33 +223,39 @@ serve(async (req: Request) => {
               inboxStatus = String(failureCodes[0] || "INBOX_CHECK_FAILED");
             }
           }
-        } else {
-          inboxStatus = "INBOX_UNAVAILABLE";
         }
 
         const trackedJobId = String(taskJob.trackedJobId || taskPayload.tracked_job_id || "").trim();
         if (!trackedJobId) return jsonResponse({ ok: true, available: false, inbox_status: "JOB_INBOX_NOT_LINKED" });
-        let codeQuery = serviceClient
+        const { data: codeRows } = await serviceClient
           .from("mc_inbound_emails")
           .select("id,verification_code,verification_code_expires_at")
           .eq("user_id", task.user_id)
+          .eq("tracked_job_id", trackedJobId)
           .not("verification_code", "is", null)
           .gt("verification_code_expires_at", new Date().toISOString())
           .order("received_at", { ascending: false })
           .limit(1);
-        codeQuery = codeQuery.eq("tracked_job_id", trackedJobId);
-        const { data: codeRows } = await codeQuery;
         const codeRow = codeRows?.[0];
         if (!codeRow?.verification_code) return jsonResponse({ ok: true, available: false, inbox_status: inboxStatus });
 
-        await serviceClient.from("mc_inbound_emails").update({
-          verification_code: null,
-          verification_code_expires_at: null,
-          verification_code_used_at: new Date().toISOString(),
-          is_read: true,
-        }).eq("id", codeRow.id);
+        // Single-use: consume only while a code is still present. A concurrent
+        // consumer clears the column first, so an empty update means the code
+        // is gone and this request must report it as not received.
+        const { data: consumed } = await serviceClient
+          .from("mc_inbound_emails")
+          .update({
+            verification_code: null,
+            verification_code_expires_at: null,
+            verification_code_used_at: new Date().toISOString(),
+            is_read: true,
+          })
+          .eq("id", codeRow.id)
+          .not("verification_code", "is", null)
+          .select("id");
+        if (!consumed?.length) return jsonResponse({ ok: true, available: false, inbox_status: "CODE_NOT_RECEIVED" });
 
-        return jsonResponse({ ok: true, available: true, code: codeRow.verification_code, inbox_status: "CODE_AVAILABLE" });
+        return jsonResponse({ ok: true, available: true, code: codeRow.verification_code, inbox_status: "OK" });
       }
 
       if (action === "heartbeat") {
