@@ -7,9 +7,11 @@ import {
   Bot,
   BriefcaseBusiness,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   FileCheck2,
   FileText,
+  History,
   Layers3,
   Lock,
   Mail,
@@ -100,6 +102,7 @@ interface AgentRun {
 
 interface DraftStatusRow {
   id: string;
+  evaluation_id: string | null;
   status: string;
   error_message: string | null;
   updated_at: string;
@@ -182,6 +185,20 @@ function scoreTone(score: number): string {
   return "text-rp-ink-2";
 }
 
+function fitLabel(score: number): string {
+  if (score >= 80) return "Strong fit";
+  if (score >= 60) return "Good fit";
+  return "Possible fit";
+}
+
+/** One short, plain-English reason a user can act on. */
+function shortReason(message: string | null | undefined, fallback: string): string {
+  if (!message) return fallback;
+  const first = message.split(/[.\n]/)[0]?.trim() ?? "";
+  if (!first) return fallback;
+  return first.length > 110 ? `${first.slice(0, 107)}…` : first;
+}
+
 export default function AgentPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -201,7 +218,9 @@ export default function AgentPage() {
   const [controlBusy, setControlBusy] = useState(false);
   const [batchPreparing, setBatchPreparing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [preparingIds, setPreparingIds] = useState<string[]>([]);
   const [matchSetup, setMatchSetup] = useState<"idle" | "building" | "complete" | "error">("idle");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const automaticMatchAttempt = useRef(false);
   const automaticProfilePromise = useRef<Promise<unknown> | null>(null);
 
@@ -238,7 +257,7 @@ export default function AgentPage() {
         .maybeSingle(),
       supabase
         .from("draft_applications")
-        .select("id,status,error_message,updated_at,submitted_at,applypass_task_id,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
+        .select("id,evaluation_id,status,error_message,updated_at,submitted_at,applypass_task_id,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
         .eq("user_id", user.id),
       supabase
         .from("applypass_tasks")
@@ -406,61 +425,128 @@ export default function AgentPage() {
     };
   }, [drafts]);
 
-  // Per-draft live submission pipeline: queued → applying → submitted/failed.
-  // Status comes from draft_applications; the in-flight step and failure
-  // reason come from the linked applypass_tasks row and its worker run_log.
-  const liveSubmissions = useMemo(() => {
-    const taskById = new Map(submitTasks.map((task) => [task.id, task]));
-    return drafts
-      .filter((draft) => ["queued", "submitted", "failed"].includes(draft.status))
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      .slice(0, 6)
-      .map((draft) => {
-        const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
-        const logs = Array.isArray(task?.run_log) ? task.run_log as Array<Record<string, unknown>> : [];
-        const lastMessage = [...logs].reverse().find((entry) => typeof entry?.message === "string")?.message;
-        const title = draft.evaluation?.scanned_job?.title ?? "Application";
-        const company = draft.evaluation?.scanned_job?.company?.name ?? "";
-        if (draft.status === "queued") {
-          const applying = task?.status === "running";
-          return {
-            id: draft.id,
-            title,
-            company,
-            label: applying ? "Applying" : "Queued",
-            tone: applying
-              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-              : "bg-rp-paper-2 text-rp-ink-2",
-            detail: applying
-              ? String(lastMessage ?? "The submission worker is on the employer form.")
-              : "Waiting for the submission worker.",
-            detailTone: "text-rp-ink-2",
-          };
-        }
-        if (draft.status === "submitted") {
-          return {
-            id: draft.id,
-            title,
-            company,
-            label: "Submitted",
-            tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-            detail: draft.submitted_at
-              ? `Receipt confirmed ${formatDistanceToNow(new Date(draft.submitted_at), { addSuffix: true })}`
-              : "Receipt confirmed.",
-            detailTone: "text-rp-ink-2",
-          };
-        }
+  const draftsByEvaluation = useMemo(() => {
+    const map = new Map<string, DraftStatusRow>();
+    for (const draft of drafts) {
+      if (draft.evaluation_id && !map.has(draft.evaluation_id)) map.set(draft.evaluation_id, draft);
+    }
+    return map;
+  }, [drafts]);
+
+  const taskById = useMemo(() => new Map(submitTasks.map((task) => [task.id, task])), [submitTasks]);
+
+  // Per-job plain status for the Top matches list:
+  // Matched → Tailoring resume → Ready → Applying → Applied / Needs you.
+  const matchStatus = useCallback((match: MatchRow) => {
+    const draft = draftsByEvaluation.get(match.id);
+    if (!draft) {
+      if (preparingIds.includes(match.id)) {
         return {
-          id: draft.id,
-          title,
-          company,
-          label: "Failed",
-          tone: "bg-red-500/10 text-red-600 dark:text-red-400",
-          detail: draft.error_message ?? task?.error_message ?? "Submission failed — open the application for details.",
-          detailTone: "text-red-600 dark:text-red-400",
+          key: "tailoring" as const,
+          label: "Tailoring resume…",
+          tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+          detail: "We're customizing your resume for this job right now.",
+          draftId: null as string | null,
         };
+      }
+      return {
+        key: "matched" as const,
+        label: "Matched",
+        tone: "bg-rp-paper-2 text-rp-ink-2",
+        detail: "This job fits your resume — nothing for you to do yet.",
+        draftId: null as string | null,
+      };
+    }
+    if (draft.status === "queued") {
+      const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
+      const running = task?.status === "running";
+      return {
+        key: "applying" as const,
+        label: "Applying",
+        tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+        detail: running ? "We're on the employer's form right now." : "In line — submission starts shortly.",
+        draftId: draft.id,
+      };
+    }
+    if (draft.status === "submitted") {
+      return {
+        key: "applied" as const,
+        label: "Applied ✅",
+        tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+        detail: draft.submitted_at
+          ? `Receipt confirmed ${formatDistanceToNow(new Date(draft.submitted_at), { addSuffix: true })}.`
+          : "Receipt confirmed.",
+        draftId: draft.id,
+      };
+    }
+    if (draft.status === "failed" || draft.status === "skipped") {
+      return {
+        key: "needs_you" as const,
+        label: "Needs you 🟠",
+        tone: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+        detail: shortReason(draft.error_message, "One answer is missing — open it to finish."),
+        draftId: draft.id,
+      };
+    }
+    return {
+      key: "ready" as const,
+      label: "Ready",
+      tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      detail: "Resume tailored — review it and we'll apply.",
+      draftId: draft.id,
+    };
+  }, [draftsByEvaluation, preparingIds, taskById]);
+
+  // Receipts: one plain line per action, newest first.
+  const recentActivity = useMemo(() => {
+    return [...drafts]
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 8)
+      .map((draft) => {
+        const title = draft.evaluation?.scanned_job?.title ?? "a job";
+        const company = draft.evaluation?.scanned_job?.company?.name;
+        const where = company ? `${title} at ${company}` : title;
+        const when = formatDistanceToNow(new Date(draft.updated_at), { addSuffix: true });
+        if (draft.status === "submitted") {
+          return { id: draft.id, kind: "applied" as const, sentence: `Applied to ${where}`, detail: "Receipt confirmed.", when, draftId: draft.id };
+        }
+        if (draft.status === "queued") {
+          const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
+          const logs = Array.isArray(task?.run_log) ? task.run_log as Array<Record<string, unknown>> : [];
+          const lastMessage = [...logs].reverse().find((entry) => typeof entry?.message === "string")?.message;
+          const running = task?.status === "running";
+          return {
+            id: draft.id,
+            kind: "applying" as const,
+            sentence: `Applying to ${where}`,
+            detail: running ? String(lastMessage ?? "On the employer's form right now.") : "In line — the apply helper will submit it for you.",
+            when,
+            draftId: draft.id,
+          };
+        }
+        if (draft.status === "failed") {
+          return {
+            id: draft.id,
+            kind: "needs_you" as const,
+            sentence: `${where} needs you`,
+            detail: shortReason(draft.error_message ?? taskById.get(draft.applypass_task_id ?? "")?.error_message, "Something needs your input before we can finish."),
+            when,
+            draftId: draft.id,
+          };
+        }
+        if (draft.status === "skipped") {
+          return {
+            id: draft.id,
+            kind: "needs_you" as const,
+            sentence: `Skipped ${where}`,
+            detail: shortReason(draft.error_message, "We held this one back — open it to see why."),
+            when,
+            draftId: draft.id,
+          };
+        }
+        return { id: draft.id, kind: "ready" as const, sentence: `Resume tailored for ${where}`, detail: "Ready for your review.", when, draftId: draft.id };
       });
-  }, [drafts, submitTasks]);
+  }, [drafts, taskById]);
 
   const workerOnline = workerHeartbeat
     ? Date.now() - new Date(workerHeartbeat.last_seen).getTime() < 90_000
@@ -492,17 +578,17 @@ export default function AgentPage() {
       }));
       await loadWorkspace();
       if (action === "start") {
-        toast.success("Continuous Apply started. Matching and preparation now continue in the background.");
+        toast.success("Auto-apply is on. We'll match, tailor, and apply for you in the background.");
       } else {
-        toast.success(`${Number(data?.canceled || 0)} queued application${Number(data?.canceled || 0) === 1 ? " was" : "s were"} stopped before submission.`);
+        toast.success(`${Number(data?.canceled || 0)} application${Number(data?.canceled || 0) === 1 ? " was" : "s were"} stopped before submission.`);
       }
     } catch (error) {
       void captureIncident(error, { source: "manual", operation: `continuous_apply_${action}` });
       const safeError = toUserFacingError(error, {
         operation: `continuous_apply_${action}`,
         defaultMessage: action === "start"
-          ? "Continuous Apply could not start. Your current settings are unchanged."
-          : "Continuous Apply could not be stopped. Try again immediately.",
+          ? "Auto-apply could not start. Your current settings are unchanged."
+          : "Auto-apply could not be stopped. Try again immediately.",
       });
       toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
     } finally {
@@ -557,13 +643,13 @@ export default function AgentPage() {
       void captureIncident(new Error(error.message), { source: "manual", operation: "agent_controls_save" });
       const safeError = toUserFacingError(error, {
         operation: "agent_controls_save",
-        defaultMessage: "Your existing Agent policy is unchanged. Try saving again in a moment.",
+        defaultMessage: "Your existing settings are unchanged. Try saving again in a moment.",
       });
       toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
       return;
     }
     setControls(normalized);
-    toast.success(normalized.agent_enabled ? "Agent controls saved" : "Agent paused");
+    toast.success(normalized.agent_enabled ? "Settings saved" : "Auto-apply paused");
   };
 
   const prepareMatches = async (selectedMatches: MatchRow[]) => {
@@ -578,6 +664,7 @@ export default function AgentPage() {
     }
 
     setBatchPreparing(true);
+    setPreparingIds(selected.map((match) => match.id));
     setBatchProgress({ current: 0, total: selected.length });
     let prepared = 0;
     let queued = 0;
@@ -617,107 +704,109 @@ export default function AgentPage() {
     await loadWorkspace();
     setBatchPreparing(false);
     setBatchProgress(null);
+    setPreparingIds([]);
     const reviewReady = Math.max(0, prepared - queued);
     // "prepared" counts packets built or refreshed in this batch; existing
     // packets are reused, so the pipeline tiles may not grow by this amount.
-    toast.success(`${prepared} application packet${prepared === 1 ? "" : "s"} prepared or refreshed · ${queued} queued · ${reviewReady + needsAttention} ready for review`);
+    toast.success(`${prepared} application${prepared === 1 ? "" : "s"} prepared · ${queued} in line to apply · ${reviewReady + needsAttention} to review`);
   };
 
   const prepareTopMatches = async () => prepareMatches(matches.filter((match) => fitScore(match) >= 50).slice(0, 5));
 
   const planName = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
-  const agentStatus = controls.agent_enabled && hasAutoApply ? "monitoring" : "paused";
+  const isRunning = controls.agent_enabled && hasAutoApply;
 
   if (loading) {
     return (
-      <div className="max-w-[1400px] mx-auto px-6 lg:px-10 py-10 space-y-5">
+      <div className="max-w-[1100px] mx-auto px-6 lg:px-10 py-10 space-y-5">
         <div className="h-20 rounded-lg bg-rp-paper animate-pulse" />
-        <div className="grid lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 h-96 rounded-lg bg-rp-paper animate-pulse" />
-          <div className="h-96 rounded-lg bg-rp-paper animate-pulse" />
-        </div>
+        <div className="h-40 rounded-lg bg-rp-paper animate-pulse" />
+        <div className="h-96 rounded-lg bg-rp-paper animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-[1400px] mx-auto px-6 lg:px-10 pt-10 pb-16">
+    <div className="max-w-[1100px] mx-auto px-6 lg:px-10 pt-10 pb-16">
       <PageHeader
-        title="Agent."
-        status={`${planName.toLowerCase()} · ${agentStatus}`}
-        description="Your continuous application workspace: fresh matches, truthful job-specific resumes, ATS checks, queued submissions, and clear outcomes in one place."
+        title="Auto-apply."
+        status={`${planName.toLowerCase()} · ${isRunning ? "running" : "stopped"}`}
+        description="We find jobs that fit your resume, tailor it, and apply for you. You can watch everything here."
       />
 
+      {/* HERO — the one master control: is it working for me right now? */}
       <section className={cn(
-        "mt-7 border p-5 sm:p-6 transition-colors",
-        controls.agent_enabled && hasAutoApply
-          ? "border-emerald-500/40 bg-emerald-500/[0.06]"
-          : "border-rp-rule bg-rp-paper",
-      )} aria-label="Continuous Apply control">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-          <div className="max-w-3xl">
+        "mt-7 border p-6 sm:p-8 transition-colors",
+        isRunning ? "border-emerald-500/40 bg-emerald-500/[0.06]" : "border-rp-rule bg-rp-paper",
+      )} aria-label="Auto-apply control">
+        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="max-w-2xl">
             <div className="flex items-center gap-2">
               <span className={cn(
                 "h-2.5 w-2.5 rounded-full",
-                controls.agent_enabled && hasAutoApply ? "bg-emerald-500 animate-pulse" : "bg-rp-ink-3",
+                isRunning ? "bg-emerald-500 animate-pulse" : "bg-rp-ink-3",
               )} />
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rp-ink-3">
-                {controls.agent_enabled && hasAutoApply ? "Running continuously" : "Stopped"}
+                {isRunning ? "Running" : "Stopped"}
               </p>
             </div>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-rp-ink">
-              {controls.agent_enabled && hasAutoApply ? "Continuous Apply is working for you" : "Start Continuous Apply"}
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-rp-ink">
+              {isRunning ? "Applying to matched jobs for you" : "Start auto-applying"}
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
-              {controls.agent_enabled && hasAutoApply
-                ? "ResumePreps keeps matching fresh roles, tailoring each résumé, checking ATS fit, and automatically submitting eligible supported applications — no per-job clicks — until you press Stop applying. You can close this page."
-                : "One command starts recurring matching and automatic submission: eligible matches that pass your fit and ATS thresholds are applied to for you. Jobs with missing answers, sensitive questions, or unsupported employer steps pause for review instead of being guessed."}
+              {isRunning
+                ? "We're finding jobs that fit your resume, tailoring it for each one, and submitting applications. You can close this page — every step shows up below."
+                : "We find jobs that fit your resume, tailor it, and apply for you. You can watch everything here."}
             </p>
+            {!hasAutoApply && (
+              <p className="mt-2 text-xs text-rp-ink-3">Auto-applying is part of the Autopilot plan — the button takes you to the options.</p>
+            )}
           </div>
           <Button
             size="lg"
             disabled={controlBusy}
-            onClick={() => void setContinuousApply(controls.agent_enabled && hasAutoApply ? "stop" : "start")}
+            onClick={() => void setContinuousApply(isRunning ? "stop" : "start")}
             className={cn(
-              "min-w-[210px]",
-              controls.agent_enabled && hasAutoApply && "bg-red-600 text-white hover:bg-red-700",
+              "min-w-[220px] shrink-0 text-base",
+              isRunning && "bg-red-600 text-white hover:bg-red-700",
             )}
           >
-            {controls.agent_enabled && hasAutoApply ? <Square className="mr-2 h-4 w-4 fill-current" /> : <Play className="mr-2 h-4 w-4 fill-current" />}
-            {controlBusy ? "Updating…" : controls.agent_enabled && hasAutoApply ? "Stop applying" : "Start continuous apply"}
+            {isRunning ? <Square className="mr-2 h-4 w-4 fill-current" /> : <Play className="mr-2 h-4 w-4 fill-current" />}
+            {controlBusy ? "Updating…" : isRunning ? "Stop applying" : "Start auto-applying"}
           </Button>
         </div>
 
         <div className="mt-6 grid gap-4 border-t border-rp-rule pt-5 md:grid-cols-2 xl:grid-cols-[1fr_1fr_auto] xl:items-center">
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-rp-ink">This week</span>
-              <span className="tabular-nums text-rp-ink-2">{usage.weekly} / 400 submitted</span>
+              <span className="font-medium text-rp-ink">Applied this week</span>
+              <span className="tabular-nums text-rp-ink-2">{usage.weekly} / 400</span>
             </div>
             <Progress value={Math.min(100, (usage.weekly / 400) * 100)} className="mt-2 h-2" />
           </div>
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-rp-ink">This month</span>
-              <span className="tabular-nums text-rp-ink-2">{usage.monthly} / 1,600 submitted</span>
+              <span className="font-medium text-rp-ink">Applied this month</span>
+              <span className="tabular-nums text-rp-ink-2">{usage.monthly} / 1,600</span>
             </div>
             <Progress value={Math.min(100, (usage.monthly / 1600) * 100)} className="mt-2 h-2" />
           </div>
           <div className="flex items-center gap-2 text-xs text-rp-ink-2 xl:justify-end">
             <span className={cn("h-2 w-2 rounded-full", counts.queued === 0 || workerOnline ? "bg-emerald-500" : "bg-amber-500")} />
             {counts.queued === 0
-              ? "Queue ready · waiting for the next eligible match"
-              : workerOnline ? "Submission worker processing" : "Queued safely · worker not connected"}
+              ? "Nothing in line — waiting for the next strong match"
+              : workerOnline ? "Applications are being submitted right now" : "In line safely — the apply helper will pick them up"}
           </div>
         </div>
       </section>
 
-      <section className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Agent workspace status">
+      {/* Glanceable counts */}
+      <section className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Auto-apply status at a glance">
         {[
-          { label: "New matches", value: matches.length, icon: Radar, note: plan === "free" ? "personalized feed" : "checked every 10 minutes" },
-          { label: "Latest ATS", value: latestAts ? `${Math.round(latestAts.overall)}%` : "—", icon: FileCheck2, note: latestAts ? "exact resume check" : "run first check" },
-          { label: "Review ready", value: counts.prepared, icon: ShieldCheck, note: `${counts.queued} queued` },
-          { label: "Submitted", value: counts.submitted, icon: Send, note: counts.failed + counts.skipped > 0 ? `${counts.failed + counts.skipped} need attention` : "verified receipts" },
+          { label: "Matches found", value: matches.length, icon: Radar, note: plan === "free" ? "from your resume" : "checked every 10 minutes" },
+          { label: "Resume score", value: latestAts ? `${Math.round(latestAts.overall)}%` : "—", icon: FileCheck2, note: latestAts ? "from your last ATS check" : "no check yet" },
+          { label: "Ready for you", value: counts.prepared, icon: ShieldCheck, note: `${counts.queued} in line to apply` },
+          { label: "Applied", value: counts.submitted, icon: Send, note: counts.failed + counts.skipped > 0 ? `${counts.failed + counts.skipped} need your help` : "confirmed receipts" },
         ].map((item) => (
           <div key={item.label} className="bg-rp-canvas p-4 min-h-28">
             <div className="flex items-center justify-between">
@@ -730,399 +819,455 @@ export default function AgentPage() {
         ))}
       </section>
 
-      <div className="mt-6 grid lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)] gap-6">
-        <div className="space-y-6">
-          <section className="border border-rp-rule bg-rp-paper p-5 sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Bot className="h-5 w-5 text-rp-accent" />
-                  <h2 className="text-lg font-semibold text-rp-ink">Career Agent controls</h2>
-                </div>
-                <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2 max-w-2xl">
-                  Autopilot checks the fresh company-direct inventory every ten minutes, ranks the complete résumé story and skills, then prepares or queues applications according to the policy below.
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={!hasAutoApply}
-                onClick={() => setControls((current) => ({ ...current, agent_enabled: !current.agent_enabled }))}
-                className={cn(
-                  "relative h-8 w-14 shrink-0 overflow-hidden rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                  controls.agent_enabled && hasAutoApply ? "bg-rp-accent" : "bg-rp-paper-2",
-                )}
-                aria-label="Toggle Career Agent"
-                aria-pressed={controls.agent_enabled}
-              >
-                <span className={cn(
-                  "absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform duration-200 ease-out",
-                  controls.agent_enabled && hasAutoApply ? "translate-x-6" : "translate-x-0",
-                )} />
-              </button>
+      {/* TOP MATCHES — one clear status per job */}
+      <section className="mt-6 border border-rp-rule bg-rp-canvas">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rp-rule p-5">
+          <div>
+            <div className="flex items-center gap-2">
+              <Radar className="h-4 w-4 text-rp-accent" />
+              <h2 className="text-base font-semibold text-rp-ink">Top matches</h2>
+              {plan !== "free" && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>}
             </div>
-
-            {!hasAutoApply && (
-              <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-rp-rule bg-rp-canvas p-4">
-                <div className="flex items-start gap-3">
-                  <Lock className="mt-0.5 h-4 w-4 text-rp-ink-2" />
+            <p className="mt-1 text-xs text-rp-ink-2">
+              How it works: Matched → Tailoring resume → Ready → Applying → Applied ✅. You only step in when a job says “Needs you”.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={prepareTopMatches} disabled={batchPreparing || matches.length === 0}>
+              <Layers3 className="mr-2 h-3.5 w-3.5" />
+              {batchProgress ? `Preparing ${batchProgress.current}/${batchProgress.total}` : controls.review_mode === "eligible_only" ? "Prepare & apply top 5" : "Prepare top 5"}
+            </Button>
+            <button
+              onClick={() => void loadWorkspace(true)}
+              className="inline-flex items-center gap-2 px-2 text-xs font-medium text-rp-ink-2 hover:text-rp-ink"
+              disabled={refreshing || batchPreparing}
+            >
+              <RefreshCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> Refresh
+            </button>
+          </div>
+        </div>
+        {matches.length === 0 ? (
+          <div className="p-8 text-center">
+            {matchSetup === "building" ? <RefreshCcw className="mx-auto h-8 w-8 animate-spin text-rp-accent" /> : <BriefcaseBusiness className="mx-auto h-8 w-8 text-rp-ink-3" />}
+            <p className="mt-3 text-sm font-semibold text-rp-ink">
+              {!resume ? "Add your resume to get matches" : matchSetup === "building" ? "Finding jobs that fit your resume…" : matchSetup === "error" ? "The match refresh hit a snag" : "No strong matches right now"}
+            </p>
+            <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-rp-ink-2">
+              {!resume
+                ? "Upload it once — we'll pull out your experience and start finding jobs that fit."
+                : matchSetup === "building"
+                  ? "This takes a minute or two. You can leave this page while it finishes."
+                  : matchSetup === "error"
+                    ? "Your resume is safe — just try the refresh again."
+                    : "We check fresh jobs every hour and will show them here as soon as something fits you."}
+            </p>
+            <div className="mt-4 flex justify-center gap-2">
+              {!resume ? (
+                <Button size="sm" onClick={() => navigate("/resume-builder")}>Upload resume</Button>
+              ) : matchSetup === "error" ? (
+                <Button size="sm" onClick={() => { automaticMatchAttempt.current = false; setMatchSetup("idle"); void loadWorkspace(true); }}>Try again</Button>
+              ) : matchSetup !== "building" ? (
+                <Button size="sm" onClick={() => navigate("/career-ops/preferences")}>Broaden preferences</Button>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="divide-y divide-rp-rule">
+            {matches.map((match) => {
+              const score = fitScore(match);
+              const company = match.scanned_job?.company?.name ?? "Unknown company";
+              const status = matchStatus(match);
+              return (
+                <div key={match.id} className="grid w-full grid-cols-[64px_minmax(0,1fr)] items-center gap-4 p-4 transition-colors hover:bg-rp-paper lg:grid-cols-[64px_minmax(0,1fr)_auto]">
                   <div>
-                    <p className="text-sm font-semibold text-rp-ink">Autopilot controls are locked</p>
-                    <p className="text-xs text-rp-ink-2">Manual ATS checks, job search, matches, and tracking remain available.</p>
+                    <div className={cn("text-xl font-semibold tabular-nums", scoreTone(score))}>{score}%</div>
+                    <p className="mt-0.5 text-[9px] uppercase tracking-wide text-rp-ink-3">{fitLabel(score)}</p>
                   </div>
-                </div>
-                <Button size="sm" onClick={() => navigate("/pricing")}>See Autopilot</Button>
-              </div>
-            )}
-
-            <div className={cn("mt-6 space-y-6", !hasAutoApply && "opacity-50 pointer-events-none")}>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rp-ink-3">Submission policy</p>
-                <div className="mt-3 grid sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setControls((current) => ({ ...current, review_mode: "always", auto_apply_enabled: true }))}
-                    className={cn(
-                      "border p-4 text-left transition-colors",
-                      controls.review_mode !== "eligible_only" ? "border-rp-accent bg-rp-accent/5" : "border-rp-rule hover:border-rp-rule-2",
-                    )}
-                  >
-                    <ShieldCheck className="h-4 w-4 text-rp-accent" />
-                    <p className="mt-3 text-sm font-semibold text-rp-ink">Ask before submit</p>
-                    <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Prepare the tailored resume, answers, and ATS preview; you approve the final queue action.</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setControls((current) => ({ ...current, review_mode: "eligible_only", auto_apply_enabled: true }))}
-                    className={cn(
-                      "border p-4 text-left transition-colors",
-                      controls.review_mode === "eligible_only" ? "border-rp-accent bg-rp-accent/5" : "border-rp-rule hover:border-rp-rule-2",
-                    )}
-                  >
-                    <Send className="h-4 w-4 text-rp-accent" />
-                    <p className="mt-3 text-sm font-semibold text-rp-ink">Apply strong matches automatically</p>
-                  <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Prepare and queue supported jobs above both your career-fit and ATS thresholds. Missing answers, sensitive questions, and portal challenges move to Needs attention instead of being guessed.</p>
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-rp-rule pt-5">
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold text-rp-ink">Minimum fit score</span>
-                  <input
-                    type="number"
-                    min="60"
-                    max="100"
-                    value={controls.auto_apply_min_fit_score}
-                    onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_fit_score: Number(event.target.value) }))}
-                    className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold text-rp-ink">Daily submissions</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="75"
-                    value={controls.daily_apply_cap}
-                    onChange={(event) => setControls((current) => ({ ...current, daily_apply_cap: Number(event.target.value) }))}
-                    className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold text-rp-ink">Daily agent actions</span>
-                  <input
-                    type="number"
-                    min="30"
-                    max="300"
-                    value={controls.agent_max_actions_per_day}
-                    onChange={(event) => setControls((current) => ({ ...current, agent_max_actions_per_day: Number(event.target.value) }))}
-                    className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold text-rp-ink">Minimum ATS score</span>
-                  <input
-                    type="number"
-                    min="70"
-                    max="95"
-                    value={controls.auto_apply_min_ats_score}
-                    onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_ats_score: Number(event.target.value) }))}
-                    className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                  />
-                  <span className="block text-[11px] leading-relaxed text-rp-ink-3">Separate résumé-readiness gate; default 85.</span>
-                </label>
-              </div>
-
-              <div className="border-t border-rp-rule pt-5">
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold text-rp-ink">Tailoring policy</span>
-                  <select
-                    value={controls.tailoring_mode}
-                    onChange={(event) => setControls((current) => ({ ...current, tailoring_mode: event.target.value === "coverage_boost" ? "coverage_boost" : "evidence_only" }))}
-                    className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                  >
-                    <option value="evidence_only">Genuine · source evidence only</option>
-                    <option value="coverage_boost">Coverage boost · source-grounded JD terms</option>
-                  </select>
-                  <span className="block text-[11px] leading-relaxed text-rp-ink-3">Coverage boost can reorder and foreground terms already supported by your résumé. It never invents skills, employers, dates, or results.</span>
-                </label>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rp-rule pt-5">
-                <p className="text-xs text-rp-ink-2">
-                  {controls.agent_actions_today}/{controls.agent_max_actions_per_day} workflow steps today · 400 weekly / 1,600 monthly application allowance
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => navigate("/career-ops/preferences")}>
-                    <Settings2 className="mr-2 h-4 w-4" /> Advanced rules
-                  </Button>
-                  <Button size="sm" onClick={saveControls} disabled={saving}>
-                    {saving ? "Saving…" : "Save Agent controls"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="border border-rp-rule bg-rp-canvas">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rp-rule p-5">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Radar className="h-4 w-4 text-rp-accent" />
-                  <h2 className="text-base font-semibold text-rp-ink">Matches for you</h2>
-                  {plan !== "free" && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>}
-                </div>
-                <p className="mt-1 text-xs text-rp-ink-2">Job sources refresh hourly; Autopilot processes eligible work every ten minutes, even when you are signed out.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" onClick={prepareTopMatches} disabled={batchPreparing || matches.length === 0}>
-                  <Layers3 className="mr-2 h-3.5 w-3.5" />
-                  {batchProgress ? `Preparing ${batchProgress.current}/${batchProgress.total}` : controls.review_mode === "eligible_only" ? "Prepare & apply top 5" : "Prepare top 5"}
-                </Button>
-                <button
-                  onClick={() => void loadWorkspace(true)}
-                  className="inline-flex items-center gap-2 px-2 text-xs font-medium text-rp-ink-2 hover:text-rp-ink"
-                  disabled={refreshing || batchPreparing}
-                >
-                  <RefreshCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> Refresh
-                </button>
-              </div>
-            </div>
-            {matches.length === 0 ? (
-              <div className="p-8 text-center">
-                {matchSetup === "building" ? <RefreshCcw className="mx-auto h-8 w-8 animate-spin text-rp-accent" /> : <BriefcaseBusiness className="mx-auto h-8 w-8 text-rp-ink-3" />}
-                <p className="mt-3 text-sm font-semibold text-rp-ink">
-                  {!resume ? "Add one source résumé" : matchSetup === "building" ? "Building your personalized feed" : matchSetup === "error" ? "Match refresh needs another try" : "No strong current matches yet"}
-                </p>
-                <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-rp-ink-2">
-                  {!resume
-                    ? "Upload once. ResumePreps will extract your experience, roles, skills, location, and reusable application details automatically."
-                    : matchSetup === "building"
-                      ? "We are reading your complete career history, comparing it with fresh company-direct roles, and keeping only jobs above 50% career fit. You can leave this page while it finishes."
-                      : matchSetup === "error"
-                        ? "Your résumé is safe. Retry the match feed without uploading or entering the same information again."
-                        : "We checked the current feed and did not find a role above 50% career fit. Broaden preferences or search directly—your résumé details remain filled in."}
-                </p>
-                <div className="mt-4 flex justify-center gap-2">
-                  {!resume ? (
-                    <Button size="sm" onClick={() => navigate("/resume-builder")}>Upload résumé</Button>
-                  ) : matchSetup === "error" ? (
-                    <Button size="sm" onClick={() => { automaticMatchAttempt.current = false; setMatchSetup("idle"); void loadWorkspace(true); }}>Retry matches</Button>
-                  ) : matchSetup !== "building" ? (
-                    <><Button size="sm" onClick={() => navigate("/career-ops/preferences")}>Broaden preferences</Button><Button variant="outline" size="sm" onClick={() => navigate("/job-search")}>Search jobs</Button></>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div className="divide-y divide-rp-rule">
-                {matches.map((match) => {
-                  const score = fitScore(match);
-                  const company = match.scanned_job?.company?.name ?? "Unknown company";
-                  return (
-                    <div key={match.id} className="grid w-full grid-cols-[52px_minmax(0,1fr)] items-center gap-4 p-4 transition-colors hover:bg-rp-paper lg:grid-cols-[52px_minmax(0,1fr)_auto]">
-                      <div>
-                        <div className={cn("text-xl font-semibold tabular-nums", scoreTone(score))}>{score}%</div>
-                        <p className="mt-0.5 text-[9px] uppercase tracking-wide text-rp-ink-3">
-                          {score >= 80 ? "Strong" : score >= 60 ? "Possible" : "Low"}
-                        </p>
-                      </div>
-                      <button type="button" onClick={() => navigate("/matches")} className="min-w-0 text-left">
-                        <p className="truncate text-sm font-semibold text-rp-ink">{match.scanned_job?.title ?? "Job match"}</p>
-                        <p className="mt-0.5 truncate text-xs text-rp-ink-2">{company}{match.scanned_job?.location ? ` · ${match.scanned_job.location}` : ""}</p>
-                        {match.summary && <p className="mt-1 line-clamp-1 text-xs text-rp-ink-2">{match.summary}</p>}
-                        <Progress value={score} className="mt-2 h-1.5" aria-label={`${score}% career fit`} />
-                      </button>
-                      <div className="col-span-2 flex items-center justify-end gap-2 lg:col-span-1">
-                        <div className="mr-2 hidden text-right xl:block">
-                          <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">Career fit</span>
-                          <p className="mt-1 text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(match.evaluated_at), { addSuffix: true })}</p>
-                        </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-rp-ink">{match.scanned_job?.title ?? "Job match"}</p>
+                    <p className="mt-0.5 truncate text-xs text-rp-ink-2">{company}{match.scanned_job?.location ? ` · ${match.scanned_job.location}` : ""}</p>
+                    {match.summary && <p className="mt-1 line-clamp-1 text-xs text-rp-ink-2">{match.summary}</p>}
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", status.tone)}>{status.label}</span>
+                      <span className="text-[11px] text-rp-ink-2">{status.detail}</span>
+                    </div>
+                  </div>
+                  <div className="col-span-2 flex items-center justify-end gap-2 lg:col-span-1">
+                    {(status.key === "matched" || status.key === "tailoring") && (
+                      <>
                         <Button variant="outline" size="sm" onClick={() => void passMatch(match)} disabled={batchPreparing}>
                           <X className="mr-1.5 h-3.5 w-3.5" /> Pass
                         </Button>
                         <Button size="sm" onClick={() => void prepareMatches([match])} disabled={batchPreparing}>
-                          <Send className="mr-1.5 h-3.5 w-3.5" /> Apply
+                          <Send className="mr-1.5 h-3.5 w-3.5" /> Prepare application
                         </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <button onClick={() => navigate("/matches")} className="flex w-full items-center justify-between border-t border-rp-rule p-4 text-xs font-medium text-rp-ink hover:bg-rp-paper">
-              Open all matches <ArrowUpRight className="h-3.5 w-3.5" />
-            </button>
-          </section>
+                      </>
+                    )}
+                    {status.key === "ready" && status.draftId && (
+                      <Button size="sm" onClick={() => navigate(`/applications/${status.draftId}`)}>Review application</Button>
+                    )}
+                    {(status.key === "applying" || status.key === "applied") && status.draftId && (
+                      <Button variant="outline" size="sm" onClick={() => navigate(`/applications/${status.draftId}`)}>
+                        {status.key === "applied" ? "View receipt" : "Watch progress"}
+                      </Button>
+                    )}
+                    {status.key === "needs_you" && status.draftId && (
+                      <Button size="sm" onClick={() => navigate(`/applications/${status.draftId}`)}>Fix it</Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <button onClick={() => navigate("/matches")} className="flex w-full items-center justify-between border-t border-rp-rule p-4 text-xs font-medium text-rp-ink hover:bg-rp-paper">
+          See all matches <ArrowUpRight className="h-3.5 w-3.5" />
+        </button>
+      </section>
 
-          <section className="border border-rp-rule bg-rp-paper p-5 sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <FileCheck2 className="h-4 w-4 text-rp-accent" />
-                  <h2 className="text-base font-semibold text-rp-ink">ATS preview</h2>
-                </div>
-                <p className="mt-1 text-xs text-rp-ink-2">Manual checks work on every plan. Autopilot also scores each tailored resume against its job.</p>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => navigate("/ats-checker")}>Run manual ATS check</Button>
-            </div>
-            {latestAts ? (
-              <div className="mt-6 grid md:grid-cols-[150px_1fr] gap-6 items-center">
-                <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full border-[10px] border-rp-paper-2 bg-rp-canvas mx-auto">
-                  <span className={cn("text-3xl font-semibold tabular-nums", scoreTone(latestAts.overall))}>{Math.round(latestAts.overall)}</span>
-                  <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">ATS score</span>
-                </div>
-                <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
-                  {ATS_DIMENSIONS.map((dimension) => {
-                    const value = Number(latestAts[dimension.key] ?? 0);
-                    return (
-                      <div key={dimension.key}>
-                        <div className="mb-1.5 flex items-center justify-between text-xs">
-                          <span className="text-rp-ink-2">{dimension.label}</span>
-                          <span className="font-medium tabular-nums text-rp-ink">{Math.round(value)}</span>
-                        </div>
-                        <Progress value={value} className="h-1.5" />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="mt-5 flex items-start gap-3 border border-dashed border-rp-rule-2 bg-rp-canvas p-5">
-                <AlertTriangle className="mt-0.5 h-4 w-4 text-rp-ink-2" />
-                <div>
-                  <p className="text-sm font-semibold text-rp-ink">No ATS result yet</p>
-                  <p className="mt-1 text-xs text-rp-ink-2">Choose a resume and job description to see format, keyword, experience, skill, education, and impact scores.</p>
-                </div>
-              </div>
-            )}
-          </section>
+      {/* RECENT ACTIVITY — receipts for everything */}
+      <section className="mt-6 border border-rp-rule bg-rp-paper p-5 sm:p-6" aria-label="Recent activity">
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-rp-accent" />
+          <h2 className="text-base font-semibold text-rp-ink">Recent activity</h2>
         </div>
+        <p className="mt-1 text-xs text-rp-ink-2">A receipt for everything we do for you — newest first.</p>
+        {recentActivity.length === 0 ? (
+          <p className="mt-5 border border-dashed border-rp-rule-2 bg-rp-canvas p-5 text-center text-xs leading-relaxed text-rp-ink-2">
+            Nothing here yet. Once auto-apply starts working, every match, tailored resume, and application shows up here with a time stamp.
+          </p>
+        ) : (
+          <ul className="mt-4 divide-y divide-rp-rule">
+            {recentActivity.map((item) => (
+              <li key={item.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div className="flex min-w-0 items-start gap-3">
+                  {item.kind === "applied" ? (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                  ) : item.kind === "applying" ? (
+                    <Send className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                  ) : item.kind === "needs_you" ? (
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+                  ) : (
+                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-rp-accent" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm text-rp-ink">
+                      {item.sentence} <span className="text-rp-ink-3">· {item.when}</span>
+                    </p>
+                    <p className={cn("mt-0.5 text-xs leading-relaxed", item.kind === "needs_you" ? "text-orange-600 dark:text-orange-400" : "text-rp-ink-2")}>{item.detail}</p>
+                  </div>
+                </div>
+                {item.kind === "needs_you" ? (
+                  <Button variant="outline" size="sm" className="shrink-0" onClick={() => navigate(`/applications/${item.draftId}`)}>Fix it</Button>
+                ) : item.kind === "ready" ? (
+                  <Button variant="outline" size="sm" className="shrink-0" onClick={() => navigate(`/applications/${item.draftId}`)}>Review</Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-        <aside className="space-y-4">
-          {liveSubmissions.length > 0 && (
-            <section className="border border-rp-rule bg-rp-paper p-5" aria-label="Live submission status">
-              <div className="flex items-center gap-2">
-                <Send className="h-4 w-4 text-rp-accent" />
-                <h2 className="text-sm font-semibold text-rp-ink">Live submissions</h2>
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>
-              </div>
-              <ul className="mt-4 space-y-3">
-                {liveSubmissions.map((item) => (
-                  <li key={item.id} className="border-b border-rp-rule pb-3 last:border-0 last:pb-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="min-w-0 truncate text-xs font-medium text-rp-ink">
-                        {item.title}{item.company ? <span className="text-rp-ink-3"> · {item.company}</span> : null}
-                      </p>
-                      <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", item.tone)}>{item.label}</span>
+      {/* RESUME CHECK (ATS) */}
+      <section className="mt-6 border border-rp-rule bg-rp-paper p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <FileCheck2 className="h-4 w-4 text-rp-accent" />
+              <h2 className="text-base font-semibold text-rp-ink">Resume check (ATS)</h2>
+            </div>
+            <p className="mt-1 text-xs text-rp-ink-2">ATS is the software employers use to screen resumes. We check every tailored resume before applying.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => navigate("/ats-checker")}>Run a manual check</Button>
+        </div>
+        {latestAts ? (
+          <div className="mt-6 grid md:grid-cols-[150px_1fr] gap-6 items-center">
+            <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full border-[10px] border-rp-paper-2 bg-rp-canvas mx-auto">
+              <span className={cn("text-3xl font-semibold tabular-nums", scoreTone(latestAts.overall))}>{Math.round(latestAts.overall)}</span>
+              <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">ATS score</span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+              {ATS_DIMENSIONS.map((dimension) => {
+                const value = Number(latestAts[dimension.key] ?? 0);
+                return (
+                  <div key={dimension.key}>
+                    <div className="mb-1.5 flex items-center justify-between text-xs">
+                      <span className="text-rp-ink-2">{dimension.label}</span>
+                      <span className="font-medium tabular-nums text-rp-ink">{Math.round(value)}</span>
                     </div>
-                    <p className={cn("mt-1 text-[11px] leading-relaxed", item.detailTone)}>{item.detail}</p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          <section className="border border-rp-rule bg-rp-paper p-5">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-rp-accent" />
-              <h2 className="text-sm font-semibold text-rp-ink">Resume source</h2>
-            </div>
-            {resume ? (
-              <>
-                <div className="mt-4 flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-rp-ink">{resume.title || "Untitled resume"}</p>
-                    <p className="mt-1 text-xs text-rp-ink-2">Updated {formatDistanceToNow(new Date(resume.updated_at), { addSuffix: true })}</p>
+                    <Progress value={value} className="h-1.5" />
                   </div>
-                </div>
-                <Button className="mt-4 w-full" variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${resume.id}`)}>Review source resume</Button>
-              </>
-            ) : (
-              <>
-                <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">A source resume is required before the Agent can match evidence or tailor a job-specific version.</p>
-                <Button className="mt-4 w-full" size="sm" onClick={() => navigate("/resume-builder")}>Import resume</Button>
-              </>
-            )}
-          </section>
-
-          <section className="border border-rp-rule bg-rp-canvas p-5">
-            <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-rp-accent" />
-              <h2 className="text-sm font-semibold text-rp-ink">Application verification</h2>
+                );
+              })}
             </div>
-            {gmailConnection ? (
-              <>
-                <div className="mt-4 flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-rp-ink">Inbox connected</p>
-                    <p className="mt-1 truncate text-xs text-rp-ink-2">{gmailConnection.gmail_email}</p>
+          </div>
+        ) : (
+          <div className="mt-5 flex items-start gap-3 border border-dashed border-rp-rule-2 bg-rp-canvas p-5">
+            <AlertTriangle className="mt-0.5 h-4 w-4 text-rp-ink-2" />
+            <div>
+              <p className="text-sm font-semibold text-rp-ink">No resume check yet</p>
+              <p className="mt-1 text-xs text-rp-ink-2">Prepare an application and the tailored resume's score will appear here.</p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* SETTINGS — everything advanced lives behind this one disclosure */}
+      <section className="mt-6 border border-rp-rule bg-rp-paper">
+        <button
+          type="button"
+          onClick={() => setSettingsOpen((open) => !open)}
+          aria-expanded={settingsOpen}
+          className="flex w-full items-center justify-between gap-3 p-5 text-left"
+        >
+          <span className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-rp-accent" />
+            <span className="text-base font-semibold text-rp-ink">Settings</span>
+            <span className="hidden sm:inline text-xs text-rp-ink-2">Thresholds, daily caps, tailoring, connected accounts</span>
+          </span>
+          <ChevronDown className={cn("h-4 w-4 shrink-0 text-rp-ink-2 transition-transform", settingsOpen && "rotate-180")} />
+        </button>
+
+        {settingsOpen && (
+          <div className="border-t border-rp-rule p-5 sm:p-6 space-y-6">
+            <div>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="max-w-2xl">
+                  <div className="flex items-center gap-2">
+                    <Bot className="h-5 w-5 text-rp-accent" />
+                    <h3 className="text-sm font-semibold text-rp-ink">Auto-apply settings</h3>
                   </div>
+                  <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
+                    Choose how bold we should be. Defaults work well for most people — you can change them any time.
+                  </p>
                 </div>
-                <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">The Agent can privately retrieve a job portal's short-lived code, use it once, clear it, and continue. Mailbox passwords are never available to ResumePreps.</p>
-                <Button className="mt-4 w-full" variant="outline" size="sm" onClick={() => navigate("/inbox")}>Open application inbox</Button>
-              </>
-            ) : (
-              <>
-                <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">Connect Gmail once so the Agent can handle application confirmations and verification codes without copy-and-paste.</p>
-                <Button className="mt-4 w-full" size="sm" onClick={() => navigate("/inbox")}>Connect Gmail</Button>
-              </>
-            )}
-          </section>
-
-          <section className="border border-rp-rule bg-rp-canvas p-5">
-            <div className="flex items-center gap-2">
-              <Clock3 className="h-4 w-4 text-rp-accent" />
-              <h2 className="text-sm font-semibold text-rp-ink">Last Agent run</h2>
-            </div>
-            {lastRun ? (
-              <>
-                <div className="mt-4 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  disabled={!hasAutoApply}
+                  onClick={() => setControls((current) => ({ ...current, agent_enabled: !current.agent_enabled }))}
+                  className={cn(
+                    "relative h-8 w-14 shrink-0 overflow-hidden rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                    controls.agent_enabled && hasAutoApply ? "bg-rp-accent" : "bg-rp-paper-2",
+                  )}
+                  aria-label="Toggle auto-apply"
+                  aria-pressed={controls.agent_enabled}
+                >
                   <span className={cn(
-                    "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                    lastRun.status === "completed" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                  )}>{lastRun.status}</span>
-                  <span className="text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(lastRun.started_at), { addSuffix: true })}</span>
-                </div>
-                <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">{lastRun.summary || "No summary was recorded."}</p>
-                <p className="mt-2 text-[10px] leading-relaxed text-rp-ink-3">Run summaries count only that run’s new actions. The workspace tiles above show your full current pipeline, including packets prepared in earlier runs.</p>
-              </>
-            ) : (
-              <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">No runs yet. Your latest résumé now supplies the first role targets automatically; you can refine them any time.</p>
-            )}
-          </section>
+                    "absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform duration-200 ease-out",
+                    controls.agent_enabled && hasAutoApply ? "translate-x-6" : "translate-x-0",
+                  )} />
+                </button>
+              </div>
 
-          <section className="border border-rp-rule bg-rp-paper p-5">
-            <h2 className="text-sm font-semibold text-rp-ink">Human checkpoints</h2>
-            <ul className="mt-4 space-y-3 text-xs text-rp-ink-2">
-              <li className="flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-rp-accent" /> Hard filters always override AI ranking.</li>
-              <li className="flex gap-2"><FileCheck2 className="h-4 w-4 shrink-0 text-rp-accent" /> Tailored resumes cannot invent facts or numbers.</li>
-              <li className="flex gap-2"><Send className="h-4 w-4 shrink-0 text-rp-accent" /> Only a Submitted receipt counts as applied.</li>
-            </ul>
-          </section>
-        </aside>
-      </div>
+              {!hasAutoApply && (
+                <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-rp-rule bg-rp-canvas p-4">
+                  <div className="flex items-start gap-3">
+                    <Lock className="mt-0.5 h-4 w-4 text-rp-ink-2" />
+                    <div>
+                      <p className="text-sm font-semibold text-rp-ink">Auto-apply settings are locked</p>
+                      <p className="text-xs text-rp-ink-2">Manual resume checks, job search, matches, and tracking remain available.</p>
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={() => navigate("/pricing")}>See Autopilot</Button>
+                </div>
+              )}
+
+              <div className={cn("mt-6 space-y-6", !hasAutoApply && "opacity-50 pointer-events-none")}>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rp-ink-3">How should we apply?</p>
+                  <div className="mt-3 grid sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setControls((current) => ({ ...current, review_mode: "always", auto_apply_enabled: true }))}
+                      className={cn(
+                        "border p-4 text-left transition-colors",
+                        controls.review_mode !== "eligible_only" ? "border-rp-accent bg-rp-accent/5" : "border-rp-rule hover:border-rp-rule-2",
+                      )}
+                    >
+                      <ShieldCheck className="h-4 w-4 text-rp-accent" />
+                      <p className="mt-3 text-sm font-semibold text-rp-ink">Ask me before each application</p>
+                      <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">We tailor the resume and answers; you approve each one before it's sent.</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setControls((current) => ({ ...current, review_mode: "eligible_only", auto_apply_enabled: true }))}
+                      className={cn(
+                        "border p-4 text-left transition-colors",
+                        controls.review_mode === "eligible_only" ? "border-rp-accent bg-rp-accent/5" : "border-rp-rule hover:border-rp-rule-2",
+                      )}
+                    >
+                      <Send className="h-4 w-4 text-rp-accent" />
+                      <p className="mt-3 text-sm font-semibold text-rp-ink">Apply to strong matches automatically</p>
+                      <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">We apply to jobs above your score thresholds. Anything missing or sensitive moves to “Needs you” instead of being guessed.</p>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-rp-rule pt-5">
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold text-rp-ink">Minimum fit score</span>
+                    <input
+                      type="number"
+                      min="60"
+                      max="100"
+                      value={controls.auto_apply_min_fit_score}
+                      onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_fit_score: Number(event.target.value) }))}
+                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
+                    />
+                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">Only apply to jobs that fit you at least this well.</span>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold text-rp-ink">Applications per day</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="75"
+                      value={controls.daily_apply_cap}
+                      onChange={(event) => setControls((current) => ({ ...current, daily_apply_cap: Number(event.target.value) }))}
+                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
+                    />
+                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">The most we'll submit in one day.</span>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold text-rp-ink">Checks per day</span>
+                    <input
+                      type="number"
+                      min="30"
+                      max="300"
+                      value={controls.agent_max_actions_per_day}
+                      onChange={(event) => setControls((current) => ({ ...current, agent_max_actions_per_day: Number(event.target.value) }))}
+                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
+                    />
+                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">How much background work we may do daily.</span>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold text-rp-ink">Minimum resume score</span>
+                    <input
+                      type="number"
+                      min="70"
+                      max="95"
+                      value={controls.auto_apply_min_ats_score}
+                      onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_ats_score: Number(event.target.value) }))}
+                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
+                    />
+                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">The tailored resume must score at least this (default 85).</span>
+                  </label>
+                </div>
+
+                <div className="border-t border-rp-rule pt-5">
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold text-rp-ink">How we tailor your resume</span>
+                    <select
+                      value={controls.tailoring_mode}
+                      onChange={(event) => setControls((current) => ({ ...current, tailoring_mode: event.target.value === "coverage_boost" ? "coverage_boost" : "evidence_only" }))}
+                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
+                    >
+                      <option value="evidence_only">Strictly your real experience</option>
+                      <option value="coverage_boost">Highlight matching keywords from your real experience</option>
+                    </select>
+                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">Either way, we never invent skills, employers, dates, or results.</span>
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rp-rule pt-5">
+                  <p className="text-xs text-rp-ink-2">
+                    {controls.agent_actions_today}/{controls.agent_max_actions_per_day} checks used today · 400 weekly / 1,600 monthly application allowance
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => navigate("/career-ops/preferences")}>
+                      <Settings2 className="mr-2 h-4 w-4" /> Job preferences
+                    </Button>
+                    <Button size="sm" onClick={saveControls} disabled={saving}>
+                      {saving ? "Saving…" : "Save settings"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4 border-t border-rp-rule pt-6">
+              <div className="border border-rp-rule bg-rp-canvas p-5">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-rp-accent" />
+                  <h3 className="text-sm font-semibold text-rp-ink">Your resume</h3>
+                </div>
+                {resume ? (
+                  <>
+                    <div className="mt-4 flex items-start gap-3">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-rp-ink">{resume.title || "Untitled resume"}</p>
+                        <p className="mt-1 text-xs text-rp-ink-2">Updated {formatDistanceToNow(new Date(resume.updated_at), { addSuffix: true })}</p>
+                      </div>
+                    </div>
+                    <Button className="mt-4 w-full" variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${resume.id}`)}>Review resume</Button>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">We need one resume before we can match jobs or tailor anything.</p>
+                    <Button className="mt-4 w-full" size="sm" onClick={() => navigate("/resume-builder")}>Import resume</Button>
+                  </>
+                )}
+              </div>
+
+              <div className="border border-rp-rule bg-rp-canvas p-5">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-rp-accent" />
+                  <h3 className="text-sm font-semibold text-rp-ink">Gmail for verification codes</h3>
+                </div>
+                {gmailConnection ? (
+                  <>
+                    <div className="mt-4 flex items-start gap-3">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-rp-ink">Inbox connected</p>
+                        <p className="mt-1 truncate text-xs text-rp-ink-2">{gmailConnection.gmail_email}</p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">We can privately pick up a job portal's one-time code, use it once, and continue. We never see your password.</p>
+                    <Button className="mt-4 w-full" variant="outline" size="sm" onClick={() => navigate("/inbox")}>Open application inbox</Button>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">Connect Gmail once so employer verification codes don't slow your applications down.</p>
+                    <Button className="mt-4 w-full" size="sm" onClick={() => navigate("/inbox")}>Connect Gmail</Button>
+                  </>
+                )}
+              </div>
+
+              <div className="border border-rp-rule bg-rp-canvas p-5">
+                <div className="flex items-center gap-2">
+                  <Clock3 className="h-4 w-4 text-rp-accent" />
+                  <h3 className="text-sm font-semibold text-rp-ink">Last background run</h3>
+                </div>
+                {lastRun ? (
+                  <>
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <span className={cn(
+                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                        lastRun.status === "completed" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                      )}>{lastRun.status}</span>
+                      <span className="text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(lastRun.started_at), { addSuffix: true })}</span>
+                    </div>
+                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">{lastRun.summary || "No summary was recorded."}</p>
+                  </>
+                ) : (
+                  <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">No background runs yet. They start automatically once auto-apply is on.</p>
+                )}
+              </div>
+
+              <div className="border border-rp-rule bg-rp-canvas p-5">
+                <h3 className="text-sm font-semibold text-rp-ink">What we never do</h3>
+                <ul className="mt-4 space-y-3 text-xs text-rp-ink-2">
+                  <li className="flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-rp-accent" /> Your saved preferences always override our matching.</li>
+                  <li className="flex gap-2"><FileCheck2 className="h-4 w-4 shrink-0 text-rp-accent" /> We never invent facts or numbers on your resume.</li>
+                  <li className="flex gap-2"><Send className="h-4 w-4 shrink-0 text-rp-accent" /> Only an “Applied” receipt counts as sent.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
