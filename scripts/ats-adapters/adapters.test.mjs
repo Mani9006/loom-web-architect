@@ -137,11 +137,44 @@ test("requiredMissingFromFields treats checked boxes and uploads as filled", () 
   assert.deepEqual(requiredMissingFromFields(fields), []);
 });
 
-// --- blocker classification (never bypass CAPTCHA / login walls) ------------
+// --- blocker classification (never bypass interactive CAPTCHA / login walls)
 
-test("classifyBlockers flags CAPTCHA widgets and human-check text", () => {
-  assert.equal(classifyBlockers({ hasCaptcha: true })[0]?.kind, "captcha");
+test("classifyBlockers flags human-check and Cloudflare interstitial text", () => {
   assert.equal(classifyBlockers({ text: "Please verify you are a human to continue" })[0]?.kind, "captcha");
+  assert.equal(classifyBlockers({ text: "Verify you are human by completing the action below." })[0]?.kind, "captcha");
+  assert.equal(classifyBlockers({ text: "Checking your browser before accessing example.com" })[0]?.kind, "captcha");
+});
+
+test("classifyBlockers ignores invisible/score-based reCAPTCHA integrations", () => {
+  const badge = { tag: "div", src: "", size: "", inBadge: true, visible: true };
+  const badgeFrame = { tag: "iframe", src: "https://www.google.com/recaptcha/enterprise/badge?k=abc", size: "", inBadge: true, visible: true };
+  const badgeFrameOutsideBadgeClass = { ...badgeFrame, inBadge: false }; // "badge" src is never an anchor/bframe
+  const invisibleWidget = { tag: "div", src: "", size: "invisible", inBadge: false, visible: true };
+  const bareSitekey = { tag: "form", src: "", size: "", inBadge: false, visible: true };
+  const hiddenAnchor = { tag: "iframe", src: "https://www.google.com/recaptcha/api2/anchor?k=abc", size: "", inBadge: false, visible: false };
+  assert.deepEqual(classifyBlockers({ captchaElements: [badge, badgeFrame] }), []);
+  assert.deepEqual(classifyBlockers({ captchaElements: [badgeFrameOutsideBadgeClass] }), []);
+  assert.deepEqual(classifyBlockers({ captchaElements: [invisibleWidget] }), []);
+  assert.deepEqual(classifyBlockers({ captchaElements: [bareSitekey] }), []);
+  assert.deepEqual(classifyBlockers({ captchaElements: [hiddenAnchor] }), []);
+});
+
+test("classifyBlockers flags visible interactive CAPTCHA challenge iframes", () => {
+  const base = { tag: "iframe", size: "", inBadge: false, visible: true };
+  const cases = [
+    { ...base, src: "https://www.google.com/recaptcha/api2/anchor?k=abc" },
+    { ...base, src: "https://www.google.com/recaptcha/enterprise/anchor?k=abc" },
+    { ...base, src: "https://www.google.com/recaptcha/api2/bframe?k=abc" },
+    { ...base, src: "https://newassets.hcaptcha.com/captcha/v1/deadbeef" },
+    { ...base, src: "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/xyz" },
+  ];
+  for (const element of cases) {
+    assert.equal(classifyBlockers({ captchaElements: [element] })[0]?.kind, "captcha", element.src);
+  }
+});
+
+test("classifyBlockers still honors the legacy coarse hasCaptcha signal", () => {
+  assert.equal(classifyBlockers({ hasCaptcha: true })[0]?.kind, "captcha");
 });
 
 test("classifyBlockers flags login walls and passes clean pages", () => {

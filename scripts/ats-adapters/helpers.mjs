@@ -135,17 +135,55 @@ export function requiredMissingFromFields(fields = []) {
 }
 
 /**
- * Classify page snapshot into hard blockers the worker must not work around.
- * We NEVER bypass CAPTCHAs or authenticate through login walls — detection
- * here routes the job to `needs_attention` for a human.
+ * Whether a serialized CAPTCHA-ish element descriptor (produced in-page by
+ * detectBlockers) is a VISIBLE interactive challenge the worker must stop
+ * for. Only rendered, user-facing challenge iframes count:
+ *   - reCAPTCHA v2 checkbox ("anchor") / puzzle ("bframe") iframes
+ *   - hCaptcha and Cloudflare Turnstile challenge iframes
  *
- * @param {{ hasCaptcha?: boolean, hasPassword?: boolean, text?: string }} snapshot
+ * Invisible / score-based integrations are NOT challenges and must not block:
+ *   - the .grecaptcha-badge (reCAPTCHA v3 / Enterprise invisible badge, which
+ *     appears on most Greenhouse forms)
+ *   - .g-recaptcha[data-size="invisible"] containers
+ *   - bare [data-sitekey] containers with no rendered widget iframe
+ *   - hidden nodes (zero bounding box, display:none, aria-hidden)
+ * Widget containers themselves only become interactive once their challenge
+ * iframe renders, so non-iframe elements never count on their own.
+ */
+export function isVisibleInteractiveChallenge(element) {
+  if (!element || element.visible !== true) return false;
+  if (element.inBadge === true) return false;
+  if (String(element.size || "").toLowerCase() === "invisible") return false;
+  if (element.tag !== "iframe") return false;
+  const src = String(element.src || "");
+  return /recaptcha[^"'\s]*(?:anchor|bframe)|hcaptcha|turnstile|challenges\.cloudflare/i.test(src);
+}
+
+/**
+ * Classify page snapshot into hard blockers the worker must not work around.
+ * We NEVER solve or bypass interactive CAPTCHAs or authenticate through login
+ * walls — detection here routes the job to `needs_attention` for a human.
+ *
+ * CAPTCHA classification is deliberately precise: only a VISIBLE interactive
+ * challenge (see isVisibleInteractiveChallenge) or human-verification
+ * interstitial text (including Cloudflare "checking your browser" pages)
+ * blocks the run. Invisible / score-based reCAPTCHA integrations do NOT
+ * block — prepare() proceeds and, if the ATS still rejects the submission,
+ * the receipt check reports that honestly.
+ *
+ * @param {{ captchaElements?: Array, hasCaptcha?: boolean, hasPassword?: boolean, text?: string }} snapshot
  * @returns {Array<{ kind: string, message: string }>}
  */
 export function classifyBlockers(snapshot = {}) {
   const blockers = [];
   const text = normalizeText(snapshot.text || "");
-  if (snapshot.hasCaptcha || /(verify (that )?you are (a )?human|are you a robot|complete the captcha|unusual traffic)/.test(text)) {
+  const elements = Array.isArray(snapshot.captchaElements) ? snapshot.captchaElements : [];
+  const visibleChallenge = elements.some(isVisibleInteractiveChallenge);
+  // `hasCaptcha` is the legacy coarse presence signal; still honored
+  // conservatively (fail closed) for any caller that has not migrated to
+  // captchaElements descriptors.
+  if (snapshot.hasCaptcha === true || visibleChallenge
+    || /(verify (that )?you are (a )?human|are you a robot|complete the captcha|unusual traffic|checking your browser)/.test(text)) {
     blockers.push({
       kind: "captcha",
       message: "CAPTCHA or human-verification challenge detected. The worker never bypasses these; a human must complete this application.",

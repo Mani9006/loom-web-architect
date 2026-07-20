@@ -86,7 +86,7 @@ function standardValueFor(field, profile) {
 }
 
 export const greenhouseAdapter = defineAdapter({
-  metadata: { name: "greenhouse", version: "1.0.0" },
+  metadata: { name: "greenhouse", version: "1.0.1" },
 
   async detect(url, page) {
     if (isGreenhouseUrl(url)) return true;
@@ -114,7 +114,8 @@ export const greenhouseAdapter = defineAdapter({
       }
     }
 
-    // Re-check blockers after navigation/expansion (CAPTCHA may render late).
+    // Re-check blockers after navigation/expansion (an interactive CAPTCHA
+    // challenge may render late; the invisible badge never blocks).
     const lateBlockers = await detectBlockers(await resolveTarget(page));
     if (lateBlockers.length > 0) return { ok: false, blocked: lateBlockers[0] };
 
