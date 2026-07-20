@@ -364,7 +364,10 @@ export async function chooseVisibleOption(target, input, desired, { allowFirstMa
     const selectedText = (element.parentElement?.parentElement?.innerText || "").replace(/\s+/g, " ").trim();
     return Boolean(selectedText) && !/^(select|choose|search)(\.\.\.)?$/i.test(selectedText);
   }).catch(() => false);
-  await input.scrollIntoViewIfNeeded();
+  // Hidden/virtualized comboboxes (e.g. some Greenhouse custom-dropdown
+  // implementations) can make scrollIntoViewIfNeeded time out and kill the
+  // whole fill. Scrolling is a best-effort affordance, not a hard gate.
+  await input.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
   await input.click();
   if (allowFirstMatch) {
     await input.fill("");
