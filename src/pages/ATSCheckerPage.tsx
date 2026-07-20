@@ -192,7 +192,15 @@ export default function ATSCheckerPage() {
   };
 
   const analyze = async () => {
-    if (!resumeText.trim()) return;
+    // Server rejects resume text under 50 chars; fail fast with the same rule.
+    if (resumeText.trim().length < 50) {
+      toast({
+        title: "Add more of your résumé",
+        description: "Paste or upload at least 50 characters of résumé content so the ATS check has something to score.",
+        variant: "destructive",
+      });
+      return;
+    }
     setLoading(true);
     setResult(null);
 
@@ -209,7 +217,11 @@ export default function ATSCheckerPage() {
         body: JSON.stringify({ resumeText, jobDescription: jobDescription || undefined }),
       });
 
-      if (!response.ok) throw new Error(`ATS analysis request failed (${response.status})`);
+      if (!response.ok) {
+        // Function returns { error } on 4xx/5xx — surface it when present.
+        const body = await response.json().catch(() => null);
+        throw new Error(typeof body?.error === "string" ? body.error : `ATS analysis request failed (${response.status})`);
+      }
 
       const data = await response.json();
       setResult(data);
@@ -220,7 +232,7 @@ export default function ATSCheckerPage() {
       console.error("ATS analysis failed:", err);
       toast({
         title: "We could not complete the ATS check",
-        description: "Your résumé is safe. Try again in a moment.",
+        description: err instanceof Error && err.message ? err.message : "Your résumé is safe. Try again in a moment.",
         variant: "destructive",
       });
     } finally {
