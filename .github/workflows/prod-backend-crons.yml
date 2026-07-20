@@ -8,7 +8,8 @@ name: Prod backend crons
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/15 * * * *"   # tick: gmail-poll + agents-orchestrator
+    - cron: "7 * * * *"      # hourly: career-ops-scan
   workflow_dispatch: {}
 
 concurrency:
@@ -50,7 +51,7 @@ jobs:
             -d '{}'
 
       - name: career-ops-scan (hourly job-board refresh)
-        if: ${{ github.run_number % 4 == 1 || github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '7 * * * *' }}
         continue-on-error: true
         run: |
           curl --fail-with-body --silent --show-error --max-time 300 \
