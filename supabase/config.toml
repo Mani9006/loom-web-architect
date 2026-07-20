@@ -67,6 +67,9 @@ verify_jwt = false
 [functions.agents-orchestrator]
 verify_jwt = false
 
+[functions.career-ops-scan]
+verify_jwt = false
+
 [functions.agents-job-hunter]
 verify_jwt = false
 
