@@ -9,6 +9,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Constant-time string comparison so the service-key check doesn't leak via timing.
+function timingSafeEqual(a: string, b: string): boolean {
+  const bufA = new TextEncoder().encode(a);
+  const bufB = new TextEncoder().encode(b);
+  if (bufA.length !== bufB.length) return false;
+  let diff = 0;
+  for (let i = 0; i < bufA.length; i++) diff |= bufA[i] ^ bufB[i];
+  return diff === 0;
+}
+
 interface UserProfile {
   user_id: string;
   desired_roles: string[];
@@ -208,6 +218,38 @@ serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // This function has verify_jwt=false at the platform level, so it must
+    // verify the caller itself. A Bearer token that is merely *present* is not
+    // proof of identity: previously any caller could pass any user_id and read
+    // that user's full profile through the service-role client below (IDOR).
+    //
+    // Two caller classes are accepted:
+    //   1. End users — their JWT is verified via auth.getUser() and they may
+    //      only compute matches for their own user_id.
+    //   2. Internal backend callers presenting the service-role key, which may
+    //      compute matches for any user_id.
+    const token = authHeader.slice("Bearer ".length).trim();
+    const isServiceCaller = timingSafeEqual(token, serviceKey);
+
+    let verifiedUserId: string | null = null;
+    if (!isServiceCaller) {
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false },
+      });
+      const { data: { user }, error: authError } = await userClient.auth.getUser();
+      if (authError || !user) {
+        console.warn(`Match jobs auth failed: ${authError?.message || "no user"}`);
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      verifiedUserId = user.id;
+    }
+
     const supabase = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
@@ -220,6 +262,16 @@ serve(async (req: Request) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (!isServiceCaller && verifiedUserId !== userId) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden: cannot compute matches for another user" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     // Get user profile
