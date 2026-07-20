@@ -388,6 +388,9 @@ async function runAgent(userId: string, runId: string) {
       .select("id,tailored_resume_id,error_message,evaluation:job_evaluations(fit_score,eligible,dismissed_at,scanned_jobs(id,company:scan_companies(api_type)))")
       .eq("user_id", userId)
       .eq("status", "ready")
+      // Actionable drafts first: without this, a backlog full of error-marked
+      // drafts starves the 25-row batch and clean drafts never get queued.
+      .order("error_message", { ascending: true, nullsFirst: true })
       .order("updated_at", { ascending: true })
       .limit(25);
 
