@@ -1,5 +1,5 @@
 /**
- * agents-orchestrator — Hourly fan-out for autopilot agents.
+ * agents-orchestrator — Ten-minute fan-out for autopilot agents.
  *
  * Picks users with `agent_enabled=true` whose last_agent_run_at is older
  * than ~9 minutes (or null) and dispatches `agents-job-hunter` for each,
@@ -20,6 +20,8 @@ const corsHeaders = {
 const CONCURRENCY = 4;
 const STALE_MINUTES = 9;
 const MAX_USERS_PER_RUN = 200;
+const SCAN_STALE_HOURS = 6;
+const SCAN_WAIT_MS = 90_000;
 
 function svc() {
   return createClient(
@@ -112,12 +114,52 @@ serve(async (req) => {
     });
     await Promise.all(workers);
 
+    // Scan backstop: career-ops-scan normally runs on its own hourly pg_cron.
+    // If the newest posting is stale >6h that schedule is likely down, so kick
+    // one scan here (service-role, same internal pattern as the fan-out). The
+    // backstop is best-effort and never fails the fan-out response.
+    let scanRefresh = "fresh";
+    try {
+      const { data: newest } = await client
+        .from("scanned_jobs")
+        .select("last_seen_at")
+        .order("last_seen_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const newestTs = newest?.last_seen_at ? Date.parse(newest.last_seen_at) : 0;
+      if (newestTs < Date.now() - SCAN_STALE_HOURS * 3600_000) {
+        scanRefresh = "triggered";
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), SCAN_WAIT_MS);
+        try {
+          const scanRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/career-ops-scan`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ source: "orchestrator-stale-backstop" }),
+            signal: controller.signal,
+          });
+          // A client-side abort leaves the accepted scan running server-side.
+          scanRefresh = scanRes.ok ? "completed" : `http_${scanRes.status}`;
+        } catch (scanError) {
+          scanRefresh = scanError instanceof Error && scanError.name === "AbortError" ? "started_timeout" : "failed";
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+    } catch {
+      scanRefresh = "check_failed";
+    }
+
     const ok = results.filter((r) => r.ok).length;
     return new Response(JSON.stringify({
       dispatched: ok,
       failed: results.length - ok,
       total_eligible: users.length,
       skipped_unentitled: candidates.length - users.length,
+      scan_refresh: scanRefresh,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

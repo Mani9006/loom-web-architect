@@ -244,15 +244,16 @@ async function runAgent(userId: string, runId: string) {
     remaining -= 1;
   }
 
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const { count: queuedToday } = await client.from("draft_applications")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .in("status", ["queued", "submitted"])
+    .gte("updated_at", dayStart.toISOString());
+  let submissionsRemaining = Math.max(0, (prefs.daily_apply_cap ?? 10) - (queuedToday ?? 0));
+
   if (remaining > 0) {
-    const dayStart = new Date();
-    dayStart.setUTCHours(0, 0, 0, 0);
-    const { count: queuedToday } = await client.from("draft_applications")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .in("status", ["queued", "submitted"])
-      .gte("updated_at", dayStart.toISOString());
-    let submissionsRemaining = Math.max(0, (prefs.daily_apply_cap ?? 10) - (queuedToday ?? 0));
     const unprepared = await listUnpreparedEvaluations(
       client,
       userId,
@@ -364,6 +365,98 @@ async function runAgent(userId: string, runId: string) {
         failed += 1;
         remaining -= 1;
       }
+    }
+  }
+
+  // "Eligible only" must not depend on when a packet was tailored: ready
+  // drafts from earlier runs (or prepared from the Agent page) that already
+  // pass the fit and tailored-ATS gates are queued here, so no per-job click
+  // is ever required. career-ops-submit re-checks every guard and is
+  // idempotent, so overlap with the in-run leg above resolves to one task.
+  if (remaining > 0
+    && submissionsRemaining > 0
+    && prefs.auto_apply_enabled
+    && prefs.review_mode === "eligible_only") {
+    const minFit = prefs.auto_apply_min_fit_score ?? 82;
+    const minAts = prefs.auto_apply_min_ats_score ?? 85;
+    const supportedPortals = new Set(["greenhouse", "ashby", "lever"]);
+    const enabledPortals = new Set(prefs.auto_apply_portals ?? []);
+    const { data: readyDrafts } = await client.from("draft_applications")
+      .select("id,tailored_resume_id,error_message,evaluation:job_evaluations(fit_score,eligible,dismissed_at,scanned_jobs(id,company:scan_companies(api_type)))")
+      .eq("user_id", userId)
+      .eq("status", "ready")
+      .order("updated_at", { ascending: true })
+      .limit(25);
+
+    const backlog = ((readyDrafts ?? []) as unknown as Array<{
+      id: string;
+      tailored_resume_id: string | null;
+      error_message: string | null;
+      evaluation: {
+        fit_score: number | null;
+        eligible: boolean | null;
+        dismissed_at: string | null;
+        scanned_jobs: { id: string; company: { api_type: string | null } | null } | null;
+      } | null;
+    }>).filter((draft) => {
+      const portal = draft.evaluation?.scanned_jobs?.company?.api_type ?? null;
+      return Boolean(draft.tailored_resume_id)
+        && draft.evaluation?.eligible === true
+        && !draft.evaluation.dismissed_at
+        && Number(draft.evaluation.fit_score ?? 0) >= minFit
+        && typeof portal === "string"
+        && supportedPortals.has(portal)
+        && enabledPortals.has(portal)
+        && !/employer verification is required|complete the final check/i.test(draft.error_message ?? "");
+    });
+
+    const resumeIds = [...new Set(backlog.map((draft) => String(draft.tailored_resume_id)))];
+    const { data: atsRows } = resumeIds.length > 0
+      ? await client.from("ats_scores")
+        .select("resume_id,scanned_job_id,overall,created_at")
+        .eq("user_id", userId)
+        .in("resume_id", resumeIds)
+        .order("created_at", { ascending: false })
+      : { data: [] };
+    // Rows arrive newest-first; the first row per resume+job pair is the
+    // latest tailored ATS result.
+    const latestAtsByPair = new Map<string, number>();
+    for (const row of (atsRows ?? []) as Array<{ resume_id: string; scanned_job_id: string; overall: number | null }>) {
+      const key = `${row.resume_id}:${row.scanned_job_id}`;
+      if (!latestAtsByPair.has(key)) latestAtsByPair.set(key, Number(row.overall ?? 0));
+    }
+
+    for (const draft of backlog) {
+      if (remaining <= 0 || submissionsRemaining <= 0) break;
+      const portal = String(draft.evaluation?.scanned_jobs?.company?.api_type ?? "");
+      const jobId = String(draft.evaluation?.scanned_jobs?.id ?? "");
+      const atsOverall = latestAtsByPair.get(`${draft.tailored_resume_id}:${jobId}`) ?? 0;
+      // Below-threshold packets stay ready for human review; they are not
+      // failures and must not flood the action log every run.
+      if (atsOverall < minAts) continue;
+      try {
+        const submitResponse = await callEdgeFunction("career-ops-submit", {
+          user_id: userId,
+          draft_application_id: draft.id,
+        });
+        actions.push({
+          tool: "queue_submit",
+          input: { draft_application_id: draft.id, portal, source: "ready_backlog" },
+          result: asRecord(submitResponse.task),
+          ts: new Date().toISOString(),
+        });
+        queued += 1;
+        submissionsRemaining -= 1;
+      } catch (error) {
+        actions.push({
+          tool: "queue_submit",
+          input: { draft_application_id: draft.id, portal, source: "ready_backlog" },
+          result: { error: error instanceof Error ? error.message : String(error) },
+          ts: new Date().toISOString(),
+        });
+        failed += 1;
+      }
+      remaining -= 1;
     }
   }
 
