@@ -96,7 +96,11 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
       .update({ is_read: true })
       .eq("session_id", sessionId)
       .eq("is_read", false);
-    if (!error) setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
+    if (error) {
+      toast({ title: "Couldn't mark all read", description: error.message, variant: "destructive" });
+    } else {
+      setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
+    }
   }
 
   async function copyCode(code: string) {

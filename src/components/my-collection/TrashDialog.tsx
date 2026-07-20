@@ -59,7 +59,7 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
   }
 
   useEffect(() => {
-    if (open) load();
+    if (open) load().catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sessionId]);
 

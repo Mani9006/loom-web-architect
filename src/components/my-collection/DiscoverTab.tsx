@@ -621,14 +621,18 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         .update({ tailored_resume_id: tailored.id })
         .eq("id", trackedJobId);
       if (linkErr) {
-
         console.error("Couldn't link tailored resume to card:", linkErr.message);
+        toast({
+          title: "Resume saved but not linked",
+          description: "The tailored resume was saved, but couldn't be attached to the board card. Check the Resumes tab.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Tailored resume ready",
+          description: `${job.company} · ${job.title} — see the Resumes tab.`,
+        });
       }
-
-      toast({
-        title: "Tailored resume ready",
-        description: `${job.company} · ${job.title} — see the Resumes tab.`,
-      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Tailor failed", description: msg, variant: "destructive" });

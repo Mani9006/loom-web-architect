@@ -200,7 +200,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && handleCancel()}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>New Session</DialogTitle>

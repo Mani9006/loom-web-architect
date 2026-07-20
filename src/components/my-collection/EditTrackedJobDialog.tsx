@@ -48,16 +48,17 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Sync local form state with whichever job was opened.
+  // Sync local form state whenever the dialog opens or a different job is passed in.
+  // Using [job, open] so that closing and reopening the same job resets stale edits.
   useEffect(() => {
-    if (!job) return;
+    if (!open || !job) return;
     setCompany(job.company ?? "");
     setJobTitle(job.job_title ?? "");
     setLocation(job.location ?? "");
     setApplyUrl(job.apply_url ?? "");
     setJdMd(job.jd_md ?? "");
     setNotes(job.notes ?? "");
-  }, [job]);
+  }, [job, open]);
 
   async function save() {
     if (!job) return;
