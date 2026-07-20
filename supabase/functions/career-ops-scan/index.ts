@@ -2,7 +2,8 @@
  * career-ops-scan — Zero-LLM portal scanner
  *
  * Ported from santifer/career-ops `scan.mjs`. Fetches Greenhouse / Ashby /
- * Lever public job-board APIs for every enabled company in `scan_companies`,
+ * Lever public job-board APIs plus the no-key aggregate feeds (Remotive,
+ * Arbeitnow) and Adzuna for every enabled company in `scan_companies`,
  * upserts live postings into `scanned_jobs`, and marks stale ones `is_live=false`.
  *
  * Safe to run on a schedule (pg_cron → net.http_post hits this function).
@@ -24,7 +25,7 @@ const CONCURRENCY = 6;
 const FETCH_TIMEOUT_MS = 15_000;
 const STALE_AFTER_HOURS = 24 * 7; // mark is_live=false if not seen in a week
 
-type ApiType = "greenhouse" | "ashby" | "lever";
+type ApiType = "greenhouse" | "ashby" | "lever" | "remotive" | "arbeitnow" | "adzuna";
 interface ScanCompany {
   id: string;
   slug: string;
@@ -142,11 +143,108 @@ async function fetchLever(ident: string): Promise<Posting[]> {
   })).filter((p) => p.apply_url);
 }
 
+async function fetchRemotive(ident: string): Promise<Posting[]> {
+  // No key required. ident = Remotive category slug ("software-dev", ...);
+  // "all" pulls the full remote feed.
+  const url = ident === "all"
+    ? "https://remotive.com/api/remote-jobs?limit=500"
+    : `https://remotive.com/api/remote-jobs?category=${encodeURIComponent(ident)}&limit=500`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`remotive ${res.status}`);
+  const json = await res.json();
+  const jobs: any[] = json.jobs || [];
+  return jobs.map((j) => ({
+    external_id: String(j.id),
+    title: j.title || "",
+    location: j.candidate_required_location || "Anywhere",
+    department: j.category ?? null,
+    employment_type: j.job_type ?? null,
+    remote_policy: "Remote",
+    compensation_text: j.salary || null,
+    description_md: stripHtml(j.description),
+    apply_url: j.url || "",
+    posted_at: j.publication_date || null,
+    raw: j,
+  })).filter((p) => p.apply_url);
+}
+
+async function fetchArbeitnow(_ident: string): Promise<Posting[]> {
+  // No key required. Paginated board API (~100/page); first 3 pages keeps
+  // the hourly scan bounded while covering fresh postings.
+  const postings: Posting[] = [];
+  for (let page = 1; page <= 3; page++) {
+    const res = await fetchWithTimeout(`https://www.arbeitnow.com/api/job-board-api?page=${page}`);
+    if (!res.ok) throw new Error(`arbeitnow ${res.status}`);
+    const json = await res.json();
+    const jobs: any[] = json.data || [];
+    if (jobs.length === 0) break;
+    postings.push(...jobs.map((j) => ({
+      external_id: String(j.slug),
+      title: j.title || "",
+      location: j.location ?? null,
+      department: null,
+      employment_type: j.job_types?.[0] ?? null,
+      remote_policy: j.remote ? "Remote" : null,
+      compensation_text: null,
+      description_md: stripHtml(j.description),
+      apply_url: j.url || "",
+      posted_at: j.created_at ? new Date(Number(j.created_at) * 1000).toISOString() : null,
+      raw: j,
+    })).filter((p) => p.apply_url));
+    if (!json.links?.next) break;
+  }
+  return postings;
+}
+
+// Adzuna free tier: 25 calls/min. Two category pages per scan with a gap
+// stays well under the cap. US board, 50 results/page.
+const ADZUNA_CATEGORIES = ["it-jobs", "engineering-jobs"] as const;
+const ADZUNA_RESULTS_PER_PAGE = 50;
+const ADZUNA_REQUEST_GAP_MS = 2_600;
+
+async function fetchAdzuna(ident: string): Promise<Posting[]> {
+  const appId = Deno.env.get("ADZUNA_APP_ID");
+  const appKey = Deno.env.get("ADZUNA_APP_KEY");
+  if (!appId || !appKey) throw new Error("adzuna credentials not configured");
+  const country = (ident || "us").toLowerCase(); // ident = Adzuna country code
+  const postings: Posting[] = [];
+  for (const [i, category] of ADZUNA_CATEGORIES.entries()) {
+    if (i > 0) await new Promise((r) => setTimeout(r, ADZUNA_REQUEST_GAP_MS));
+    const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1`
+      + `?app_id=${encodeURIComponent(appId)}&app_key=${encodeURIComponent(appKey)}`
+      + `&results_per_page=${ADZUNA_RESULTS_PER_PAGE}&category=${category}`
+      + `&content-type=application/json`;
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) throw new Error(`adzuna ${res.status}`);
+    const json = await res.json();
+    const jobs: any[] = json.results || [];
+    postings.push(...jobs.map((j) => ({
+      external_id: String(j.id),
+      title: stripHtml(j.title) || "",
+      location: j.location?.display_name ?? null,
+      department: j.category?.label ?? null,
+      employment_type: j.contract_time ?? null,
+      remote_policy: /remote/i.test(`${j.title || ""} ${j.description || ""}`) ? "Remote" : null,
+      compensation_text: j.salary_min && j.salary_max
+        ? `${Math.round(j.salary_min)}-${Math.round(j.salary_max)} ${j.salary_is_predicted ? "(est.)" : ""}`.trim()
+        : null,
+      description_md: j.description || null,
+      apply_url: j.redirect_url || "",
+      posted_at: j.created || null,
+      raw: j,
+    })).filter((p) => p.apply_url));
+  }
+  return postings;
+}
+
 async function fetchCompany(c: ScanCompany): Promise<Posting[]> {
   switch (c.api_type) {
     case "greenhouse": return fetchGreenhouse(c.api_identifier);
     case "ashby":      return fetchAshby(c.api_identifier);
     case "lever":      return fetchLever(c.api_identifier);
+    case "remotive":   return fetchRemotive(c.api_identifier);
+    case "arbeitnow":  return fetchArbeitnow(c.api_identifier);
+    case "adzuna":     return fetchAdzuna(c.api_identifier);
   }
 }
 
