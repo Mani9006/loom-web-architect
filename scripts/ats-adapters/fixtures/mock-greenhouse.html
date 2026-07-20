@@ -20,7 +20,7 @@
     <h1>Senior Frontend Engineer</h1>
     <p>Acme Corp — Remote</p>
 
-    <form id="application-form" action="/submit" method="post" enctype="multipart/form-data">
+    <form id="application-form" action="/submit" method="post" enctype="multipart/form-data" data-sitekey="mock-invisible-sitekey">
       <div class="field">
         <label for="first_name">First Name *</label>
         <input type="text" id="first_name" name="first_name" required>
@@ -52,6 +52,13 @@
       <button type="submit" id="submit_app">Submit application</button>
     </form>
   </div>
+
+  <!-- Invisible reCAPTCHA Enterprise markers, as on real Greenhouse boards:
+       a fixed visible badge, a hidden invisible-size widget container, and a
+       v3 script tag. These must NOT be classified as a CAPTCHA blocker. -->
+  <div class="grecaptcha-badge" style="position: fixed; right: 14px; bottom: 14px; width: 70px; height: 60px;"></div>
+  <div class="g-recaptcha" data-sitekey="mock-invisible-sitekey" data-size="invisible" style="display: none;"></div>
+  <script src="/recaptcha-enterprise.js" async></script>
 
   <script>
     // Stand-in for the Greenhouse submission endpoint: validate like the real

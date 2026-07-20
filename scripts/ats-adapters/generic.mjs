@@ -20,15 +20,49 @@ import {
 // Shared browser routines (used by generic + ATS-specific adapters)
 // ---------------------------------------------------------------------------
 
-/** Detect CAPTCHA / login walls. We never bypass these -> needs_attention. */
+/**
+ * Detect CAPTCHA challenges / login walls.
+ *
+ * Visibility is evaluated IN-PAGE (bounding box, computed style, aria-hidden,
+ * offsetParent), not by selector presence alone. Invisible / score-based
+ * integrations — the reCAPTCHA Enterprise badge (.grecaptcha-badge, present
+ * on most Greenhouse forms), .g-recaptcha[data-size="invisible"], v3 script
+ * tags, bare [data-sitekey] containers, and hidden nodes — are NON-blocking:
+ * prepare() proceeds and a later ATS rejection is reported by the receipt
+ * check. Only a VISIBLE interactive challenge (reCAPTCHA anchor/bframe
+ * iframe, hCaptcha / Turnstile widget) or a human-verification interstitial
+ * is a hard blocker. We never solve or bypass interactive CAPTCHAs ->
+ * needs_attention.
+ */
 export async function detectBlockers(target) {
-  const snapshot = await target.evaluate(() => ({
-    hasCaptcha: Boolean(document.querySelector(
-      'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="turnstile"], .g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]'
-    )),
-    hasPassword: Boolean(document.querySelector('input[type="password"]')),
-    text: document.body?.innerText?.slice(0, 4000) || "",
-  }));
+  const snapshot = await target.evaluate(() => {
+    const nodes = Array.from(document.querySelectorAll(
+      'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="turnstile"], iframe[src*="challenges.cloudflare"], .g-recaptcha, .h-captcha, .cf-turnstile, .grecaptcha-badge, [data-sitekey]'
+    ));
+    const captchaElements = nodes.map((el) => {
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      // offsetParent is null for position:fixed nodes too, so keep those
+      // eligible via the computed position (the badge is fixed and still
+      // excluded by the inBadge rule below).
+      const visible = rect.width > 4 && rect.height > 4
+        && style.display !== "none" && style.visibility !== "hidden"
+        && el.getAttribute("aria-hidden") !== "true"
+        && (el.offsetParent !== null || style.position === "fixed");
+      return {
+        tag: el.tagName.toLowerCase(),
+        src: el.getAttribute("src") || "",
+        size: el.getAttribute("data-size") || "",
+        inBadge: el.classList.contains("grecaptcha-badge") || Boolean(el.closest(".grecaptcha-badge")),
+        visible,
+      };
+    });
+    return {
+      captchaElements,
+      hasPassword: Boolean(document.querySelector('input[type="password"]')),
+      text: document.body?.innerText?.slice(0, 4000) || "",
+    };
+  });
   return classifyBlockers(snapshot);
 }
 
@@ -649,7 +683,7 @@ export async function confirmSubmission(page, previousUrl) {
 // ---------------------------------------------------------------------------
 
 export const genericAdapter = defineAdapter({
-  metadata: { name: "generic", version: "1.1.0" },
+  metadata: { name: "generic", version: "1.1.1" },
 
   detect() {
     // Fallback adapter: matches everything. pickAdapter() tries it last.

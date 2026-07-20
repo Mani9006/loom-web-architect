@@ -12,8 +12,13 @@
 //   approval receipt). The worker additionally re-checks continuous-apply
 //   authorization immediately before calling `submit()`; adapters must not
 //   submit outside that call.
-// - Never bypass CAPTCHAs, login walls, or anti-bot measures. Surface them as
-//   blockers from `prepare()` so the worker records `needs_attention`.
+// - Never solve or bypass INTERACTIVE CAPTCHA challenges, login walls, or
+//   anti-bot measures. Surface them as blockers from `prepare()` so the
+//   worker records `needs_attention`. Invisible / score-based CAPTCHA
+//   integrations (e.g. the reCAPTCHA Enterprise badge present on most
+//   Greenhouse forms) are not interactive challenges: proceeding past them
+//   is not a bypass — the form is attempted normally and any ATS rejection
+//   is reported by the receipt check.
 // - Never auto-accept consent checkboxes unless the user's answer memory
 //   contains an explicit affirmative for that question.
 // - Leave unmatched REQUIRED questions blank and report them via
