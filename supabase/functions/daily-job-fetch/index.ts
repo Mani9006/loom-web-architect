@@ -133,6 +133,19 @@ serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // This is meant to be cron-only (pg_cron / an external scheduler), not a
+    // public endpoint — it burns RapidAPI/Remotive/Arbeitnow quota per call.
+    // verify_jwt is off at the gateway (schedulers don't carry a user JWT),
+    // so enforce it here: only the service-role key is accepted.
+    const authHeader = req.headers.get("authorization") ?? "";
+    if (authHeader.replace(/^Bearer\s+/i, "") !== serviceKey) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
