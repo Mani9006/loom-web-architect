@@ -40,7 +40,12 @@ export async function resolveTarget(page) {
   if (typeof page?.frames === "function") {
     for (const frame of page.frames()) {
       try {
-        if (/greenhouse\.io/i.test(frame.url()) && frame !== page.mainFrame()) {
+        // Match by HOSTNAME only. Matching the raw URL also hits frames like
+        // Google Drive's upload proxy (content.googleapis.com/...&parent=
+        // https://job-boards.greenhouse.io/...), which made the adapter drive
+        // an empty proxy frame and fill 0 fields on new-style Greenhouse boards.
+        const host = new URL(frame.url()).hostname;
+        if (/(^|\.)greenhouse\.io$/i.test(host) && frame !== page.mainFrame()) {
           return frame;
         }
       } catch {
