@@ -214,7 +214,7 @@ async function runAgent(userId: string, runId: string) {
     failed += 1;
   }
 
-  const candidates = await listUnscoredMatches(client, userId, prefs, Math.min(5, remaining));
+  const candidates = await listUnscoredMatches(client, userId, prefs, Math.min(15, remaining));
   for (const job of candidates) {
     if (remaining <= 0) break;
     const input = { user_id: userId, scanned_job_id: job.id };
