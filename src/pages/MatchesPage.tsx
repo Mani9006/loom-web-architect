@@ -71,10 +71,16 @@ function careerFitScore(evaluation: Evaluation): number {
   return evaluation.fit_score ?? Math.round(evaluation.score * 20);
 }
 
+function fitChip(score: number): { label: string; tone: string } {
+  if (score >= 80) return { label: `Strong fit ${score}%`, tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" };
+  if (score >= 65) return { label: `Good fit ${score}%`, tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400" };
+  return { label: `Possible fit ${score}%`, tone: "bg-foreground/5 text-muted-foreground" };
+}
+
 function safeMatchSummary(value: string | null): string | null {
   if (!value) return null;
   return value
-    .replace(/blocked by a hard preference:?/gi, "Autopilot review needed:")
+    .replace(/blocked by a hard preference:?/gi, "Needs your review:")
     .replace(/\bblocked\b/gi, "held for review");
 }
 
@@ -101,6 +107,8 @@ export default function MatchesPage() {
   const [evaluating, setEvaluating] = useState<string | null>(null);
   const [preparing, setPreparing] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { id: string; status: string }>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
 
   const loadMatches = useCallback(async (announce = false) => {
     if (!user) return;
@@ -190,7 +198,7 @@ export default function MatchesPage() {
           void captureIncident(error, { source: "manual", operation: "career_match_refresh" }, "warning");
         }
         const count = await readStoredMatches();
-        toast.success(`${count} resume-aligned roles are ready to review.`);
+        toast.success(`${count} jobs that fit your resume are ready to review.`);
       } else {
         await readStoredMatches();
         void refreshSources()
@@ -203,7 +211,7 @@ export default function MatchesPage() {
       void captureIncident(error, { source: "manual", operation: "personalized_matches_load" });
       const safeError = toUserFacingError(error, {
         operation: "personalized_matches_load",
-        defaultMessage: "Your personalized match feed could not be refreshed. Try again in a moment.",
+        defaultMessage: "Your matches could not be refreshed. Try again in a moment.",
       });
       toast.error(withSupportReference(safeError));
     } finally {
@@ -248,27 +256,41 @@ export default function MatchesPage() {
     };
   }, [evaluations, prefs]);
 
+  // evaluation_id → scanned_job_id lookup for batch preparation.
+  const jobIdByEvaluation = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const job of jobs) {
+      const evaluation = evaluations[job.id];
+      if (evaluation) map.set(evaluation.id, job.id);
+    }
+    return map;
+  }, [jobs, evaluations]);
+
+  // Shared single-application preparation (tailor + ATS check). Returns the
+  // new draft id and ATS score when available; throws on failure.
+  const prepareOne = useCallback(async (evaluationId: string, scannedJobId: string): Promise<{ draftId: string; atsScore: number | null }> => {
+    const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
+      body: { evaluation_id: evaluationId, allow_outside_preferences: true },
+    });
+    if (error) throw error;
+    const draft = (data as { draft: { id: string; status: string; tailored_resume_id?: string | null } }).draft;
+    setDrafts((prev) => ({ ...prev, [evaluationId]: { id: draft.id, status: draft.status } }));
+    if (!draft.tailored_resume_id) return { draftId: draft.id, atsScore: null };
+    const { data: atsData, error: atsError } = await supabase.functions.invoke("career-ops-ats", {
+      body: { resume_id: draft.tailored_resume_id, scanned_job_id: scannedJobId },
+    });
+    if (atsError) throw atsError;
+    return { draftId: draft.id, atsScore: Number(atsData?.ats?.overall ?? 0) };
+  }, []);
+
   const prepareApplication = async (evaluationId: string, scannedJobId: string) => {
     setPreparing(evaluationId);
     try {
-      const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
-        body: { evaluation_id: evaluationId, allow_outside_preferences: true },
-      });
-      if (error) throw error;
-      const draft = (data as { draft: { id: string; status: string; tailored_resume_id?: string | null } }).draft;
-      setDrafts((prev) => ({ ...prev, [evaluationId]: { id: draft.id, status: draft.status } }));
-      let atsScore: number | null = null;
-      if (draft.tailored_resume_id) {
-        const { data: atsData, error: atsError } = await supabase.functions.invoke("career-ops-ats", {
-          body: { resume_id: draft.tailored_resume_id, scanned_job_id: scannedJobId },
-        });
-        if (atsError) throw atsError;
-        atsScore = Number(atsData?.ats?.overall ?? 0);
-      }
+      const { draftId, atsScore } = await prepareOne(evaluationId, scannedJobId);
       toast.success(atsScore
-        ? `Application prepared · ${Math.round(atsScore)} ATS — review before submitting`
-        : "Application prepared — review before submitting");
-      navigate(`/applications/${draft.id}`);
+        ? `Application ready · resume scores ${Math.round(atsScore)} — take a look before we submit`
+        : "Application ready — take a look before we submit");
+      navigate(`/applications/${draftId}`);
     } catch (e: unknown) {
       void captureIncident(e, { source: "manual", operation: "match_prepare" });
       const safeError = toUserFacingError(e, {
@@ -278,6 +300,46 @@ export default function MatchesPage() {
       toast.error(withSupportReference(safeError));
     } finally {
       setPreparing(null);
+    }
+  };
+
+  const toggleSelected = (evaluationId: string) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(evaluationId)) next.delete(evaluationId);
+      else next.add(evaluationId);
+      return next;
+    });
+  };
+
+  const prepareSelected = async () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setBatchProgress({ current: 0, total: ids.length });
+    let prepared = 0;
+    let failed = 0;
+    for (let index = 0; index < ids.length; index += 1) {
+      const evaluationId = ids[index];
+      setBatchProgress({ current: index + 1, total: ids.length });
+      const scannedJobId = jobIdByEvaluation.get(evaluationId);
+      if (!scannedJobId) {
+        failed += 1;
+        continue;
+      }
+      try {
+        await prepareOne(evaluationId, scannedJobId);
+        prepared += 1;
+      } catch (error) {
+        failed += 1;
+        void captureIncident(error, { source: "manual", operation: "match_batch_prepare" });
+      }
+    }
+    setBatchProgress(null);
+    setSelected(new Set());
+    if (failed === 0) {
+      toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready — review them in Applications`);
+    } else {
+      toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready · ${failed} need${failed === 1 ? "s" : ""} another try`);
     }
   };
 
@@ -291,11 +353,11 @@ export default function MatchesPage() {
       const ev = (data as { evaluation: Evaluation }).evaluation;
       setEvaluations((prev) => ({ ...prev, [scannedJobId]: ev }));
       const score = careerFitScore(ev);
-      toast.success(`${score >= 80 ? "Strong fit" : score >= 65 ? "Good fit" : "Potential fit"} · ${score}%`);
+      toast.success(`${score >= 80 ? "Strong fit" : score >= 65 ? "Good fit" : "Possible fit"} · ${score}%`);
     } catch (e: unknown) {
       const safeError = toUserFacingError(e, {
         operation: "match_rescore",
-        defaultMessage: "This role could not be rescored. Try again in a moment.",
+        defaultMessage: "This job could not be rescored. Try again in a moment.",
       });
       toast.error(withSupportReference(safeError));
     } finally {
@@ -303,10 +365,12 @@ export default function MatchesPage() {
     }
   };
 
+  const filtersActive = filter !== "recommended" || locationMode !== "all" || matchSearch.trim() !== "";
+
   if (loading) {
     return (
       <div className="px-6 lg:px-12 py-12 max-w-[1280px] mx-auto" role="status" aria-live="polite">
-        <p className="mb-5 text-sm text-muted-foreground">Loading your résumé-aligned matches…</p>
+        <p className="mb-5 text-sm text-muted-foreground">Finding jobs that fit your resume…</p>
         <div className="h-10 w-40 rounded-full bg-foreground/5 animate-pulse mb-8" />
         <div className="space-y-3">
           {[...Array(8)].map((_, i) => (
@@ -318,11 +382,11 @@ export default function MatchesPage() {
   }
 
   return (
-    <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-10">
+    <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-24 space-y-10">
       <PageHeader
-        title="Your job matches"
-        status="resume evidence · 50%+ only"
-        description="Only fresh roles that clear the match threshold appear here. Scores use every client and role, tools demonstrated in context, non-overlapping experience dates, seniority, location, and saved preferences."
+        title="Jobs that fit you"
+        status="only 50%+ fits"
+        description="Fresh jobs matched to your resume. Press “Prepare application” and we'll tailor your resume for that job — you review it before anything is sent."
       />
 
       <div className="-mt-6 flex justify-end">
@@ -332,14 +396,14 @@ export default function MatchesPage() {
           disabled={refreshing}
           className="inline-flex h-9 items-center rounded-md border border-border px-3.5 text-[12px] font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
         >
-          {refreshing ? "Reviewing resume + jobs…" : "Refresh career matches"}
+          {refreshing ? "Checking fresh jobs…" : "Check for new matches"}
         </button>
       </div>
 
       {/* Stat strip */}
       <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-5 sm:p-6 flex flex-wrap gap-8">
         <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Current matches</p>
+          <p className="text-[11.5px] font-medium text-muted-foreground">Matches found</p>
           <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.total}</div>
         </div>
         <div>
@@ -347,7 +411,7 @@ export default function MatchesPage() {
           <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.scored}</div>
         </div>
         <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Autopilot ready</p>
+          <p className="text-[11.5px] font-medium text-muted-foreground">Ready to auto-apply</p>
           <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.top}</div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
@@ -362,7 +426,7 @@ export default function MatchesPage() {
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
-              {k === "recommended" ? "Recommended" : k === "strong" ? "Strong · 80%+" : "Autopilot ready"}
+              {k === "recommended" ? "Recommended" : k === "strong" ? "Strong · 80%+" : "Ready to auto-apply"}
             </button>
           ))}
         </div>
@@ -373,7 +437,7 @@ export default function MatchesPage() {
           aria-label="Filter job matches"
           value={matchSearch}
           onChange={(event) => setMatchSearch(event.target.value)}
-          placeholder="Filter matches by role, company, or city"
+          placeholder="Filter by role, company, or city"
           className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-[12.5px] outline-none focus:border-foreground/30"
         />
         <div className="flex flex-wrap gap-1.5">
@@ -396,24 +460,51 @@ export default function MatchesPage() {
           onClick={() => navigate("/career-ops/preferences")}
           className="h-9 rounded-md border border-border px-3 text-[12px] font-medium text-foreground hover:bg-muted"
         >
-          Customize match rules
+          Match preferences
         </button>
       </div>
 
       {/* Table */}
       {filtered.length === 0 ? (
         <div className="glass-card p-12 text-center">
-          <p className="text-[16px] font-semibold text-foreground">No match fits the current view.</p>
-          <p className="text-[13px] text-muted-foreground mt-2">
-            Clear the local filters, customize your genuine location and work-mode preferences, or use General Job Search for broader exploration.
-          </p>
+          {jobs.length === 0 ? (
+            <>
+              <p className="text-[16px] font-semibold text-foreground">We're still finding jobs that fit your resume.</p>
+              <p className="text-[13px] text-muted-foreground mt-2">
+                Fresh jobs are checked every hour — give it a moment, then refresh.
+              </p>
+              <button
+                type="button"
+                onClick={() => void loadMatches(true)}
+                disabled={refreshing}
+                className="mt-5 inline-flex h-9 items-center rounded-md bg-foreground px-4 text-[12.5px] font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
+              >
+                {refreshing ? "Checking…" : "Refresh now"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-[16px] font-semibold text-foreground">Nothing fits these filters.</p>
+              <p className="text-[13px] text-muted-foreground mt-2">
+                Your matches are still here — clear the filters to see them all.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setFilter("recommended"); setLocationMode("all"); setMatchSearch(""); }}
+                className="mt-5 inline-flex h-9 items-center rounded-md bg-foreground px-4 text-[12.5px] font-medium text-background hover:bg-foreground/90"
+              >
+                Clear filters
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={2} className="glass-card overflow-hidden">
           <table className="w-full text-[13.5px]">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-5 py-3 w-20">Fit</th>
+                <th className="w-10 px-3 py-3" aria-label="Select" />
+                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 w-28">Fit</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Role</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Location</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 hidden lg:table-cell">Seen</th>
@@ -422,16 +513,23 @@ export default function MatchesPage() {
             </thead>
             <tbody>
               {filtered.map(({ job, evaluation }) => (
-                <tr key={job.id} className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors">
-                  <td className="px-5 py-4">
+                <tr key={job.id} className={cn("border-b border-border last:border-0 hover:bg-muted/40 transition-colors", selected.has(evaluation.id) && "bg-muted/50")}>
+                  <td className="px-3 py-4 align-middle">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${job.title} at ${job.company.name}`}
+                      checked={selected.has(evaluation.id)}
+                      onChange={() => toggleSelected(evaluation.id)}
+                      disabled={Boolean(batchProgress)}
+                      className="h-4 w-4 rounded border-border accent-foreground align-middle"
+                    />
+                  </td>
+                  <td className="px-3 py-4">
                     {evaluation ? (
-                      <div className="w-24 space-y-1">
-                        <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
-                          <span>{careerFitScore(evaluation)}%</span>
-                          <span className="text-[10px] font-medium text-muted-foreground">
-                            {careerFitScore(evaluation) >= 80 ? "Strong" : careerFitScore(evaluation) >= 65 ? "Good" : "Potential"}
-                          </span>
-                        </div>
+                      <div className="w-28 space-y-1.5">
+                        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap", fitChip(careerFitScore(evaluation)).tone)}>
+                          {fitChip(careerFitScore(evaluation)).label}
+                        </span>
                         <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                           <div className="h-full rounded-full bg-foreground transition-[width]" style={{ width: `${careerFitScore(evaluation)}%` }} />
                         </div>
@@ -451,11 +549,11 @@ export default function MatchesPage() {
                     ) : null}
                     {evaluation && !evaluation.eligible ? (
                       <div className="text-[11.5px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">
-                        Outside a saved preference · {evaluation.hard_filters?.[0] ?? "Review your preferences before enabling Autopilot"}
+                        Outside your saved preferences · {evaluation.hard_filters?.[0] ?? "review your preferences if you want us to auto-apply to jobs like this"}
                       </div>
                     ) : evaluation?.fit_confidence != null ? (
                       <div className="text-[11px] text-muted-foreground/80 mt-1">
-                        {Math.round(evaluation.fit_confidence * 100)}% confidence in the available job and resume evidence
+                        {Math.round(evaluation.fit_confidence * 100)}% confidence in this match
                       </div>
                     ) : null}
                   </td>
@@ -472,16 +570,16 @@ export default function MatchesPage() {
                             onClick={() => navigate(`/applications/${drafts[evaluation.id].id}`)}
                             className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
                           >
-                            Review
+                            Review application
                           </button>
                         ) : (
                           <button
                             onClick={() => prepareApplication(evaluation.id, job.id)}
-                            disabled={preparing === evaluation.id}
-                            title={!evaluation.eligible ? "You can still prepare this application; Autopilot will not submit it automatically." : undefined}
+                            disabled={preparing === evaluation.id || Boolean(batchProgress)}
+                            title={!evaluation.eligible ? "You can still prepare this application; we just won't auto-submit it." : undefined}
                             className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
                           >
-                            {preparing === evaluation.id ? "Preparing…" : "Prepare"}
+                            {preparing === evaluation.id ? "Preparing…" : "Prepare application"}
                           </button>
                         )}
                         <button
@@ -511,7 +609,7 @@ export default function MatchesPage() {
 
       <div className="flex items-center justify-between text-[12px] text-muted-foreground mt-6">
         <p>
-          Direct-employer sources refresh hourly · manual applications are available for every match shown
+          Jobs come straight from employer sites and refresh hourly · every match can be prepared manually
         </p>
         <button
           onClick={() => navigate("/job-search")}
@@ -520,6 +618,33 @@ export default function MatchesPage() {
           Open General Job Search →
         </button>
       </div>
+
+      {/* Batch bar — appears only when something is selected */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-full border border-border bg-background px-5 py-3 shadow-lg">
+            <span className="text-[13px] font-medium text-foreground">
+              {selected.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => void prepareSelected()}
+              disabled={Boolean(batchProgress)}
+              className="inline-flex h-9 items-center rounded-full bg-foreground px-4 text-[12.5px] font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
+            >
+              {batchProgress ? `Preparing ${batchProgress.current}/${batchProgress.total}…` : `Prepare ${selected.size} application${selected.size === 1 ? "" : "s"}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              disabled={Boolean(batchProgress)}
+              className="text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
