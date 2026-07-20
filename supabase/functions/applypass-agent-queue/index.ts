@@ -73,10 +73,14 @@ async function syncCareerDraft(
   if (!draftId || !userId) return;
 
   if (outcome === "fail") {
-    await serviceClient.from("draft_applications").update({
+    // Supabase query errors resolve on `error`, they don't throw — capture and
+    // surface the failure instead of swallowing it, or the draft silently
+    // stays "queued" while the worker believes the sync happened.
+    const { error } = await serviceClient.from("draft_applications").update({
       status: "failed",
       error_message: (errorMessage || "Worker execution failed").slice(0, 1500),
     }).eq("id", draftId).eq("user_id", userId);
+    if (error) console.error("[applypass-agent-queue] draft_applications fail-sync failed:", error.message);
     return;
   }
 
@@ -86,11 +90,12 @@ async function syncCareerDraft(
     .map((job) => asRecord(job).error)
     .find((message) => typeof message === "string" && message.trim());
 
-  await serviceClient.from("draft_applications").update({
+  const { error: draftSyncError } = await serviceClient.from("draft_applications").update({
     status: submitted ? "submitted" : "ready",
     submitted_at: submitted ? new Date().toISOString() : null,
     error_message: submitted ? null : typeof firstIssue === "string" ? firstIssue.slice(0, 1500) : null,
   }).eq("id", draftId).eq("user_id", userId);
+  if (draftSyncError) console.error("[applypass-agent-queue] draft_applications complete-sync failed:", draftSyncError.message);
 
   if (submitted && trackedJobId) {
     await serviceClient.from("mc_tracked_jobs").update({

@@ -41,8 +41,8 @@ export function useResumeParser(
     const titleMatch = content.match(/^\*\*([^*]+)\*\*$/m);
     if (titleMatch) {
       updates.header = {
-        ...updates.header,
         ...resumeData.header,
+        ...updates.header,
         title: titleMatch[1].trim(),
       };
     }

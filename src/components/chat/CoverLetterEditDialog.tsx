@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,11 +30,14 @@ export function CoverLetterEditDialog({
   const [content, setContent] = useState(letter?.content || "");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Reset form when letter changes
-  if (letter && title !== letter.title && content !== letter.content) {
-    setTitle(letter.title);
-    setContent(letter.content);
-  }
+  // Reset form when a different letter is opened for editing.
+  useEffect(() => {
+    if (letter) {
+      setTitle(letter.title);
+      setContent(letter.content);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [letter?.id]);
 
   const handleSave = async () => {
     if (!letter || !title.trim() || !content.trim()) return;

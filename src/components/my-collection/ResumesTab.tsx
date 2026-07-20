@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,13 +36,22 @@ interface TailoredResume {
   updated_at: string;
 }
 
-export default function ResumesTab({ sessionId }: { sessionId: string }) {
+export default function ResumesTab({
+  sessionId,
+  focusResumeId,
+}: {
+  sessionId: string;
+  /** When set (e.g. from a "View tailored resume" deep link), that resume's
+   *  editor opens automatically once the list has loaded. */
+  focusResumeId?: string | null;
+}) {
   const { toast } = useToast();
   const [resumes, setResumes] = useState<TailoredResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const focusHandled = useRef(false);
 
   async function load() {
     setLoading(true);
@@ -63,11 +72,36 @@ export default function ResumesTab({ sessionId }: { sessionId: string }) {
     load();
   }, [sessionId]);
 
+  // Open the deep-linked resume's editor once, as soon as it's in the loaded list.
+  useEffect(() => {
+    if (focusHandled.current || !focusResumeId || loading) return;
+    const match = resumes.find((r) => r.id === focusResumeId);
+    focusHandled.current = true;
+    if (match) {
+      setEditing(match);
+    } else {
+      toast({
+        title: "Couldn't find that resume",
+        description: "It may have been deleted or renamed.",
+        variant: "destructive",
+      });
+    }
+  }, [focusResumeId, resumes, loading, toast]);
+
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
     const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
-    if (error) toast({ title: "Delete failed", description: error.message, variant: "destructive" });
-    else load();
+    if (error) {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    // Unlink from any board card that pointed at this resume so "View
+    // tailored resume" doesn't dead-end on a card that still thinks it has one.
+    await (supabase as any)
+      .from("mc_tracked_jobs")
+      .update({ tailored_resume_id: null })
+      .eq("tailored_resume_id", id);
+    load();
   }
 
   async function commitRename() {
@@ -250,6 +284,7 @@ function CanvasEditor({
   const [cv, setCv] = useState(resume.cv_md);
   const [saving, setSaving] = useState(false);
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [selectedRange, setSelectedRange] = useState<{ start: number; end: number } | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
@@ -291,9 +326,11 @@ function CanvasEditor({
   }
 
   function applySuggestion(text: string) {
-    if (!selectedLine) return;
-    setCv((c) => c.replace(selectedLine, text));
+    if (!selectedLine || !selectedRange) return;
+    const { start, end } = selectedRange;
+    setCv((c) => c.slice(0, start) + text + c.slice(end));
     setSelectedLine(text);
+    setSelectedRange({ start, end: start + text.length });
     setAiSuggestions([]);
   }
 
@@ -333,6 +370,7 @@ function CanvasEditor({
               onChange={(e) => {
                 setCv(e.target.value);
                 setSelectedLine(null);
+                setSelectedRange(null);
               }}
               onSelect={(e) => {
                 const el = e.currentTarget;
@@ -343,7 +381,10 @@ function CanvasEditor({
                 const lineEndOff = cv.indexOf("\n", start);
                 const lineEnd = lineEndOff === -1 ? cv.length : lineEndOff;
                 const line = cv.slice(lineStart, lineEnd).trim();
-                if (line.length > 5 && line !== selectedLine) setSelectedLine(line);
+                if (line.length > 5 && line !== selectedLine) {
+                  setSelectedLine(line);
+                  setSelectedRange({ start: lineStart, end: lineEnd });
+                }
               }}
               className="font-mono text-xs flex-1 resize-none"
             />

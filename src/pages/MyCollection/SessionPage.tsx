@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -29,12 +29,17 @@ interface MCSession {
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(() => {
-    // Restore the active tab on remount (tab switches, browser back/forward)
-    // so a tab-app switch doesn't reset the user to "discover".
+    // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
+    // takes priority so deep links land on the right tab.
+    const fromQuery = searchParams.get("tab");
+    if (fromQuery) return fromQuery;
+    // Otherwise restore the active tab on remount (tab switches, browser
+    // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
@@ -47,6 +52,7 @@ export default function SessionPage() {
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+  const focusResumeId = searchParams.get("resume");
 
   useEffect(() => {
     try {
@@ -55,6 +61,16 @@ export default function SessionPage() {
       // sessionStorage can throw in private mode — non-fatal
     }
   }, [tab]);
+
+  // A link elsewhere in the app (e.g. BoardTab's "View tailored resume")
+  // navigates to this same route with a new ?tab= — since the route doesn't
+  // remount, pick up the change here instead of only reading it once at
+  // mount via useState's initializer.
+  useEffect(() => {
+    const fromQuery = searchParams.get("tab");
+    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -142,7 +158,16 @@ export default function SessionPage() {
         </div>
       </div>
 
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs
+        value={tab}
+        onValueChange={(v) => {
+          setTab(v);
+          // Clear any deep-link query params once the user manually
+          // switches tabs, so navigating back to Resumes later doesn't
+          // keep re-opening the same tailored resume.
+          if (searchParams.toString()) setSearchParams({}, { replace: true });
+        }}
+      >
         <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
           <TabsTrigger value="discover" className="gap-2">
             <Search className="w-4 h-4" /> Discover
@@ -165,7 +190,7 @@ export default function SessionPage() {
           <DiscoverTab sessionId={session.id} session={session} />
         </TabsContent>
         <TabsContent value="resumes" className="mt-6">
-          <ResumesTab sessionId={session.id} />
+          <ResumesTab sessionId={session.id} focusResumeId={focusResumeId} />
         </TabsContent>
         <TabsContent value="board" className="mt-6">
           <BoardTab sessionId={session.id} key={boardReloadKey} />
