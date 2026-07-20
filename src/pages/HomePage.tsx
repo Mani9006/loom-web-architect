@@ -27,6 +27,7 @@ import {
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { TerminalText } from "@/components/Terminal";
 
@@ -111,6 +112,7 @@ function applicationStatusLabel(status: string): string {
 export default function HomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [displayName, setDisplayName] = useState("");
   const [stats, setStats] = useState<Stats>({ saved: 0, applied: 0, interviewing: 0, offer: 0, rejected: 0 });
   const [loading, setLoading] = useState(true);
@@ -213,10 +215,15 @@ export default function HomePage() {
           setAgentSummary({ runs24h: list.length, lastSummary: list[0].summary, lastAt: list[0].started_at });
         }
       } catch { /* agent_runs may 404 for users without the feature */ }
-
-      setLoading(false);
-    })();
-  }, [user]);
+    })()
+      .catch((err) => {
+        // Without this, any failed query left the skeleton up forever with
+        // no feedback.
+        console.error("Home load failed:", err);
+        toast({ title: "Couldn't load your home page", description: "Refresh to try again.", variant: "destructive" });
+      })
+      .finally(() => setLoading(false));
+  }, [user, toast]);
 
   const now = useMemo(() => new Date(), []);
   const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";

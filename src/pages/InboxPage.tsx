@@ -200,13 +200,20 @@ export default function InboxPage() {
   async function markRead(id: string, isRead: boolean) {
     setMessages((current) => current.map((item) => item.id === id ? { ...item, is_read: isRead } : item));
     const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
-    if (error) await load();
+    if (error) {
+      await load();
+      toast({ title: "Read state wasn't saved", description: "The message was restored to its previous state.", variant: "destructive" });
+    }
   }
 
   async function markAllRead() {
     if (!user || !unread || !supportsReadState) return;
     const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: true }).eq("user_id", user.id).eq("is_read", false);
-    if (!error) setMessages((current) => current.map((item) => ({ ...item, is_read: true })));
+    if (error) {
+      toast({ title: "Couldn't mark all as read", description: "Try again in a moment.", variant: "destructive" });
+      return;
+    }
+    setMessages((current) => current.map((item) => ({ ...item, is_read: true })));
   }
 
   return (
@@ -251,7 +258,7 @@ export default function InboxPage() {
           const codeActive = Boolean(message.verification_code && (!message.verification_code_expires_at || new Date(message.verification_code_expires_at).getTime() > loadedAt));
           return <article key={message.id} className={`grid gap-3 p-4 sm:grid-cols-[28px_minmax(0,1fr)_auto] ${message.is_read ? "" : "bg-primary/[0.035]"}`}>
             <button disabled={!supportsReadState} className="mt-0.5 h-7 w-7 rounded-full text-muted-foreground hover:bg-muted disabled:opacity-40" onClick={() => markRead(message.id, !message.is_read)} aria-label={message.is_read ? "Mark unread" : "Mark read"}>{message.is_read ? <MailOpen className="mx-auto h-4 w-4" /> : <Check className="mx-auto h-4 w-4" />}</button>
-            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{message.subject || "Application update"}</p>{message.classification && <Badge variant="secondary">{labels[message.classification] || "Update"}</Badge>}</div><p className="mt-0.5 truncate text-xs text-muted-foreground">{message.from_email}</p>{message.classification_summary && <p className="mt-2 text-sm">{message.classification_summary}</p>}{message.body_preview && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}{message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}{codeActive && <div className="mt-3 inline-flex items-center gap-3 border border-primary/20 bg-primary/5 px-3 py-2"><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Verification code</p><p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p></div><Button variant="outline" size="sm" onClick={async () => { await navigator.clipboard.writeText(message.verification_code!); toast({ title: "Verification code copied" }); }}><Clipboard className="mr-1.5 h-3.5 w-3.5" />Copy</Button></div>}</div>
+            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{message.subject || "Application update"}</p>{message.classification && <Badge variant="secondary">{labels[message.classification] || "Update"}</Badge>}</div><p className="mt-0.5 truncate text-xs text-muted-foreground">{message.from_email}</p>{message.classification_summary && <p className="mt-2 text-sm">{message.classification_summary}</p>}{message.body_preview && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}{message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}{codeActive && <div className="mt-3 inline-flex items-center gap-3 border border-primary/20 bg-primary/5 px-3 py-2"><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Verification code</p><p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p></div><Button variant="outline" size="sm" onClick={async () => { try { await navigator.clipboard.writeText(message.verification_code!); toast({ title: "Verification code copied" }); } catch { toast({ title: "Couldn't copy the code", description: "Select and copy it manually.", variant: "destructive" }); } }}><Clipboard className="mr-1.5 h-3.5 w-3.5" />Copy</Button></div>}</div>
             <div className="flex flex-col items-end gap-2"><time className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(message.received_at), { addSuffix: true })}</time>{message.tracked_job_id && <Button variant="ghost" size="sm" onClick={() => navigate("/job-tracker")}>Open application</Button>}</div>
           </article>;
         })}</div>}

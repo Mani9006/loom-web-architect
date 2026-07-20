@@ -306,7 +306,9 @@ export default function JobSearchPage() {
 
   const cancelSearch = useCallback(() => {
     if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+      // Reason matters: the fetch catch suppresses the timeout toast only
+      // when signal.reason === "user-cancel".
+      abortControllerRef.current.abort("user-cancel");
       abortControllerRef.current = null;
     }
     if (progressIntervalRef.current) {
@@ -321,7 +323,7 @@ export default function JobSearchPage() {
 
   useEffect(() => {
     return () => {
-      if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (abortControllerRef.current) abortControllerRef.current.abort("user-cancel");
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     };
   }, []);
