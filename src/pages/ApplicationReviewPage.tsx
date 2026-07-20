@@ -4,11 +4,13 @@ import { Activity, AlertTriangle, Check, Copy as CopyIcon, Download, ExternalLin
 
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import TailoringReportCard from "@/components/TailoringReportCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { captureIncident } from "@/lib/incidents";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import type { TailoringReport } from "../../supabase/functions/_shared/tailoring-report-core.ts";
 
 type DraftStatus = "draft" | "ready" | "queued" | "submitted" | "skipped" | "failed";
 type DetailTab = "form" | "resume" | "cover" | "activity";
@@ -100,6 +102,23 @@ export default function ApplicationReviewPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [marking, setMarking] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [report, setReport] = useState<TailoringReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  const loadReport = useCallback(async (draftId: string) => {
+    setReportLoading(true);
+    const { data, error } = await supabase.functions.invoke("career-ops-tailor-report", {
+      body: { draft_application_id: draftId },
+    });
+    setReportLoading(false);
+    if (error || !data?.report) {
+      // Expected while the tailored packet is not ready; the card renders a
+      // graceful "report generating" placeholder instead of an error toast.
+      setReport(null);
+      return;
+    }
+    setReport(data.report as TailoringReport);
+  }, []);
 
   const load = useCallback(async (initial = false) => {
     if (!user || !id) return;
@@ -142,6 +161,12 @@ export default function ApplicationReviewPage() {
     const poll = window.setInterval(() => { if (draft?.status === "queued") void load(); }, 10_000);
     return () => { window.clearInterval(poll); void supabase.removeChannel(channel); };
   }, [draft?.status, id, load, user]);
+
+  // "What changed" report: fetch on mount and whenever the packet is refreshed
+  // (updated_at moves when the tailor regenerates the résumé/answers).
+  useEffect(() => {
+    if (draft?.id && draft.tailored_resume_id) void loadReport(draft.id);
+  }, [draft?.id, draft?.tailored_resume_id, draft?.updated_at, loadReport]);
 
   const coverNote = useMemo(() => draft?.answers.find((answer) => /cover (letter|note)/i.test(answer.question)) || null, [draft]);
   const formAnswers = useMemo(() => draft?.answers.filter((answer) => !/cover (letter|note)/i.test(answer.question)) || [], [draft]);
@@ -237,7 +262,7 @@ export default function ApplicationReviewPage() {
 
       <section className="min-h-80 border border-t-0 border-rp-rule bg-rp-paper p-5 sm:p-6">
         {tab === "form" && <div><div className="flex items-center justify-between"><div><h2 className="text-base font-semibold">Application answers</h2><p className="mt-1 text-xs text-muted-foreground">The exact reusable answers prepared for this employer.</p></div></div>{formAnswers.length ? <ol className="mt-6 divide-y divide-rp-rule">{formAnswers.map((answer, index) => <li key={`${answer.question}-${index}`} className="grid gap-2 py-4 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)_auto]"><p className="text-xs font-semibold">{answer.question}</p><p className="text-sm leading-relaxed text-muted-foreground">{answer.answer}</p><CopyButton value={answer.answer} /></li>)}</ol> : <Empty text="No additional employer questions were saved for this application." />}</div>}
-        {tab === "resume" && <div><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Tailored résumé</h2><p className="mt-1 text-xs text-muted-foreground">The text below is an audit preview. The application uses the generated, ATS-friendly PDF artifact.</p></div><div className="flex gap-2">{draft.tailored_resume_id && <Button variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}>Open editor</Button>}{draft.tailored_resume_id && <Button size="sm" onClick={() => void downloadPdf()} disabled={rendering}><Download className="mr-2 h-4 w-4" />{rendering ? "Rendering…" : "Download PDF"}</Button>}</div></div>{draft.tailored_cv_md ? <pre className="mt-6 max-h-[700px] overflow-y-auto whitespace-pre-wrap border border-rp-rule bg-background p-6 font-sans text-sm leading-relaxed">{draft.tailored_cv_md}</pre> : <Empty text="No tailored résumé was generated." />}</div>}
+        {tab === "resume" && <div><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Tailored résumé</h2><p className="mt-1 text-xs text-muted-foreground">The text below is an audit preview. The application uses the generated, ATS-friendly PDF artifact.</p></div><div className="flex gap-2">{draft.tailored_resume_id && <Button variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}>Open editor</Button>}{draft.tailored_resume_id && <Button size="sm" onClick={() => void downloadPdf()} disabled={rendering}><Download className="mr-2 h-4 w-4" />{rendering ? "Rendering…" : "Download PDF"}</Button>}</div></div><div className="mt-6"><TailoringReportCard report={report} loading={reportLoading} /></div>{draft.tailored_cv_md ? <pre className="mt-6 max-h-[700px] overflow-y-auto whitespace-pre-wrap border border-rp-rule bg-background p-6 font-sans text-sm leading-relaxed">{draft.tailored_cv_md}</pre> : <Empty text="No tailored résumé was generated." />}</div>}
         {tab === "cover" && <div><h2 className="text-base font-semibold">Cover note</h2><p className="mt-1 text-xs text-muted-foreground">Generated only when useful or requested by the employer.</p>{coverNote ? <div className="mt-6 border border-rp-rule bg-background p-6"><div className="flex justify-end"><CopyButton value={coverNote.answer} /></div><p className="whitespace-pre-wrap text-sm leading-relaxed">{coverNote.answer}</p></div> : <Empty text="No cover note is attached to this application." />}</div>}
         {tab === "activity" && <div><h2 className="text-base font-semibold">Application activity</h2><p className="mt-1 text-xs text-muted-foreground">Preparation, queue attempts, worker checks, and outcome for this job.</p><div className="mt-6 space-y-3"><ActivityRow title="Packet prepared" date={draft.created_at} detail="Tailored résumé and application answers created." />{task && <ActivityRow title={`Submission ${task.status}`} date={task.completed_at || task.started_at || task.created_at} detail={`Attempt ${task.attempt_count} of ${task.max_attempts}${task.error_message ? ` · ${task.error_message}` : ""}`} />}{logs.map((entry, index) => <ActivityRow key={index} title={String(entry.step || entry.status || entry.event || `Worker event ${index + 1}`)} date={typeof entry.at === "string" ? entry.at : typeof entry.timestamp === "string" ? entry.timestamp : null} detail={String(entry.message || entry.detail || "Application check recorded.")} />)}{draft.submitted_at && <ActivityRow title="Submitted" date={draft.submitted_at} detail="Submission recorded successfully." />}{!task && !draft.submitted_at && <ActivityRow title="Awaiting your decision" date={draft.updated_at} detail="Review the packet, queue supported automation, or open the employer portal." />}</div></div>}
       </section>
