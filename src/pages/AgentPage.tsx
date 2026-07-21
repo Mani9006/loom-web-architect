@@ -12,7 +12,6 @@ import {
   FileCheck2,
   FileText,
   History,
-  Layers3,
   Lock,
   Mail,
   Play,
@@ -35,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { captureIncident } from "@/lib/incidents";
 import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
+import { selectAppliableNow, selectTopNow } from "@/lib/top-now";
 import { toast } from "sonner";
 
 type ReviewMode = "always" | "low_confidence" | "eligible_only";
@@ -185,10 +185,11 @@ function scoreTone(score: number): string {
   return "text-rp-ink-2";
 }
 
-function fitLabel(score: number): string {
-  if (score >= 80) return "Strong fit";
-  if (score >= 60) return "Good fit";
-  return "Possible fit";
+/** Fit % chip for the Top 5 strip — our own badge style, tone follows the score. */
+function fitChipClasses(score: number): string {
+  if (score >= 85) return "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+  if (score >= 70) return "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400";
+  return "border-rp-rule bg-rp-paper-2 text-rp-ink-2";
 }
 
 /** One short, plain-English reason a user can act on. */
@@ -239,8 +240,10 @@ export default function AgentPage() {
         .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
         .eq("user_id", user.id)
         .is("dismissed_at", null)
+        .eq("eligible", true)
+        .gte("fit_score", 50)
         .order("fit_score", { ascending: false })
-        .limit(5),
+        .limit(12),
       migratedTables
         .from("ats_scores")
         .select("id,overall,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords,created_at")
@@ -380,9 +383,10 @@ export default function AgentPage() {
           .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
           .eq("user_id", user.id)
           .is("dismissed_at", null)
+          .eq("eligible", true)
           .gte("fit_score", 50)
           .order("fit_score", { ascending: false })
-          .limit(5);
+          .limit(12);
         if (error) throw error;
         setMatches((data || []) as unknown as MatchRow[]);
         setMatchSetup("complete");
@@ -435,6 +439,13 @@ export default function AgentPage() {
 
   const taskById = useMemo(() => new Map(submitTasks.map((task) => [task.id, task])), [submitTasks]);
 
+  // Top 5 right now: highest-fit eligible matches whose application isn't
+  // submitted yet — submitted ones graduate to the activity receipts below.
+  const topNow = useMemo(() => selectTopNow(matches, drafts), [matches, drafts]);
+
+  // Cards with no packet yet — the ones "Apply to all 5" still starts.
+  const applyAllTargets = useMemo(() => selectAppliableNow(topNow, drafts), [topNow, drafts]);
+
   // Per-job plain status for the Top matches list:
   // Matched → Tailoring resume → Ready → Applying → Applied / Needs you.
   const matchStatus = useCallback((match: MatchRow) => {
@@ -462,9 +473,9 @@ export default function AgentPage() {
       const running = task?.status === "running";
       return {
         key: "applying" as const,
-        label: "Applying",
+        label: running ? "Applying now" : "Queued",
         tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-        detail: running ? "We're on the employer's form right now." : "In line — submission starts shortly.",
+        detail: running ? "We're on the employer's form right now." : "In line — we start applying shortly.",
         draftId: draft.id,
       };
     }
@@ -711,7 +722,10 @@ export default function AgentPage() {
     toast.success(`${prepared} application${prepared === 1 ? "" : "s"} prepared · ${queued} in line to apply · ${reviewReady + needsAttention} to review`);
   };
 
-  const prepareTopMatches = async () => prepareMatches(matches.filter((match) => fitScore(match) >= 50).slice(0, 5));
+  // "Apply to all 5" — tailor (and queue, per review settings) every strip
+  // card that doesn't have a packet yet. prepareMatches re-filters and caps
+  // at 5, so the batch stays inside the existing pipeline limits.
+  const prepareTopMatches = async () => prepareMatches(applyAllTargets);
 
   const planName = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
   const isRunning = controls.agent_enabled && hasAutoApply;
@@ -803,7 +817,7 @@ export default function AgentPage() {
       {/* Glanceable counts */}
       <section className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Auto-apply status at a glance">
         {[
-          { label: "Matches found", value: matches.length, icon: Radar, note: plan === "free" ? "from your resume" : "checked every 10 minutes" },
+          { label: "Matches found", value: matches.length, icon: Radar, note: plan === "free" ? "eligible, from your resume" : "eligible, checked every 10 minutes" },
           { label: "Resume score", value: latestAts ? `${Math.round(latestAts.overall)}%` : "—", icon: FileCheck2, note: latestAts ? "from your last ATS check" : "no check yet" },
           { label: "Ready for you", value: counts.prepared, icon: ShieldCheck, note: `${counts.queued} in line to apply` },
           { label: "Applied", value: counts.submitted, icon: Send, note: counts.failed + counts.skipped > 0 ? `${counts.failed + counts.skipped} need your help` : "confirmed receipts" },
@@ -819,23 +833,24 @@ export default function AgentPage() {
         ))}
       </section>
 
-      {/* TOP MATCHES — one clear status per job */}
-      <section className="mt-6 border border-rp-rule bg-rp-canvas">
+      {/* TOP 5 RIGHT NOW — five cards, one click to apply to all */}
+      <section className="mt-6 border border-rp-rule bg-rp-canvas" aria-label="Top 5 right now">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rp-rule p-5">
           <div>
             <div className="flex items-center gap-2">
               <Radar className="h-4 w-4 text-rp-accent" />
-              <h2 className="text-base font-semibold text-rp-ink">Top matches</h2>
+              <h2 className="text-base font-semibold text-rp-ink">Top 5 right now</h2>
               {plan !== "free" && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>}
             </div>
             <p className="mt-1 text-xs text-rp-ink-2">
-              How it works: Matched → Tailoring resume → Ready → Applying → Applied ✅. You only step in when a job says “Needs you”.
+              We tailor your resume for each job, then apply for you. Watch it happen below.
+              {controls.review_mode !== "eligible_only" && " You approve each one before it's sent."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={prepareTopMatches} disabled={batchPreparing || matches.length === 0}>
-              <Layers3 className="mr-2 h-3.5 w-3.5" />
-              {batchProgress ? `Preparing ${batchProgress.current}/${batchProgress.total}` : controls.review_mode === "eligible_only" ? "Prepare & apply top 5" : "Prepare top 5"}
+            <Button size="sm" onClick={prepareTopMatches} disabled={batchPreparing || applyAllTargets.length === 0}>
+              <Send className="mr-2 h-3.5 w-3.5" />
+              {batchProgress ? `Tailoring ${batchProgress.current}/${batchProgress.total}…` : controls.review_mode === "eligible_only" ? "Apply to all 5" : "Prepare all 5"}
             </Button>
             <button
               onClick={() => void loadWorkspace(true)}
@@ -871,48 +886,72 @@ export default function AgentPage() {
               ) : null}
             </div>
           </div>
+        ) : topNow.length === 0 ? (
+          <div className="p-8 text-center">
+            <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+            <p className="mt-3 text-sm font-semibold text-rp-ink">All top matches are in flight</p>
+            <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-rp-ink-2">
+              Every strong match already has an application going — watch it in Recent activity below. New matches land here as we find them.
+            </p>
+            <div className="mt-4 flex justify-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => navigate("/job-tracker")}>Track applications</Button>
+            </div>
+          </div>
         ) : (
-          <div className="divide-y divide-rp-rule">
-            {matches.map((match) => {
+          <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {topNow.map((match) => {
               const score = fitScore(match);
+              const title = match.scanned_job?.title ?? "Job match";
               const company = match.scanned_job?.company?.name ?? "Unknown company";
               const status = matchStatus(match);
+              const why = match.summary?.trim() || "This job fits your resume — open Matches for the full breakdown.";
               return (
-                <div key={match.id} className="grid w-full grid-cols-[64px_minmax(0,1fr)] items-center gap-4 p-4 transition-colors hover:bg-rp-paper lg:grid-cols-[64px_minmax(0,1fr)_auto]">
-                  <div>
-                    <div className={cn("text-xl font-semibold tabular-nums", scoreTone(score))}>{score}%</div>
-                    <p className="mt-0.5 text-[9px] uppercase tracking-wide text-rp-ink-3">{fitLabel(score)}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-rp-ink">{match.scanned_job?.title ?? "Job match"}</p>
-                    <p className="mt-0.5 truncate text-xs text-rp-ink-2">{company}{match.scanned_job?.location ? ` · ${match.scanned_job.location}` : ""}</p>
-                    {match.summary && <p className="mt-1 line-clamp-1 text-xs text-rp-ink-2">{match.summary}</p>}
-                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", status.tone)}>{status.label}</span>
-                      <span className="text-[11px] text-rp-ink-2">{status.detail}</span>
-                    </div>
-                  </div>
-                  <div className="col-span-2 flex items-center justify-end gap-2 lg:col-span-1">
+                <div key={match.id} className="flex flex-col border border-rp-rule bg-rp-paper p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tabular-nums", fitChipClasses(score))}>
+                      {score}% fit
+                    </span>
                     {(status.key === "matched" || status.key === "tailoring") && (
-                      <>
-                        <Button variant="outline" size="sm" onClick={() => void passMatch(match)} disabled={batchPreparing}>
-                          <X className="mr-1.5 h-3.5 w-3.5" /> Pass
-                        </Button>
-                        <Button size="sm" onClick={() => void prepareMatches([match])} disabled={batchPreparing}>
-                          <Send className="mr-1.5 h-3.5 w-3.5" /> Prepare application
-                        </Button>
-                      </>
+                      <button
+                        type="button"
+                        onClick={() => void passMatch(match)}
+                        disabled={batchPreparing}
+                        className="text-rp-ink-3 transition-colors hover:text-rp-ink disabled:opacity-50"
+                        aria-label={`Pass on ${title} at ${company}`}
+                        title="Pass — stop showing this job"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-3 truncate text-sm font-semibold text-rp-ink" title={title}>{title}</p>
+                  <p className="mt-0.5 truncate text-xs text-rp-ink-2">{company}{match.scanned_job?.location ? ` · ${match.scanned_job.location}` : ""}</p>
+                  <p className="mt-2 line-clamp-2 min-h-8 text-xs leading-relaxed text-rp-ink-2">{why}</p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", status.tone)}>{status.label}</span>
+                    <span className="truncate text-[11px] text-rp-ink-3" title={status.detail}>{status.detail}</span>
+                  </div>
+                  <div className="mt-auto pt-3">
+                    {status.key === "matched" && (
+                      <Button size="sm" className="w-full" onClick={() => void prepareMatches([match])} disabled={batchPreparing}>
+                        <Send className="mr-1.5 h-3.5 w-3.5" /> Apply
+                      </Button>
+                    )}
+                    {status.key === "tailoring" && (
+                      <Button size="sm" className="w-full" disabled>
+                        <RefreshCcw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Tailoring…
+                      </Button>
                     )}
                     {status.key === "ready" && status.draftId && (
-                      <Button size="sm" onClick={() => navigate(`/applications/${status.draftId}`)}>Review application</Button>
+                      <Button size="sm" className="w-full" onClick={() => navigate(`/applications/${status.draftId}`)}>Review & apply</Button>
                     )}
                     {(status.key === "applying" || status.key === "applied") && status.draftId && (
-                      <Button variant="outline" size="sm" onClick={() => navigate(`/applications/${status.draftId}`)}>
-                        {status.key === "applied" ? "View receipt" : "Watch progress"}
+                      <Button variant="outline" size="sm" className="w-full" onClick={() => navigate(`/applications/${status.draftId}`)}>
+                        {status.key === "applied" ? "View receipt" : "Watch it live"}
                       </Button>
                     )}
                     {status.key === "needs_you" && status.draftId && (
-                      <Button size="sm" onClick={() => navigate(`/applications/${status.draftId}`)}>Fix it</Button>
+                      <Button size="sm" className="w-full" onClick={() => navigate(`/applications/${status.draftId}`)}>Fix it</Button>
                     )}
                   </div>
                 </div>
