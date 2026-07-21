@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { PageHeader } from "@/components/PageHeader";
+import ApplyProgressModal from "@/components/agent/ApplyProgressModal";
+import type { ApplyProgressJob } from "@/components/agent/apply-progress-core";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -109,6 +111,9 @@ export default function MatchesPage() {
   const [drafts, setDrafts] = useState<Record<string, { id: string; status: string }>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [applyJobs, setApplyJobs] = useState<ApplyProgressJob[]>([]);
+  const [applyErrors, setApplyErrors] = useState<Record<string, string>>({});
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
 
   const loadMatches = useCallback(async (announce = false) => {
     if (!user) return;
@@ -316,6 +321,19 @@ export default function MatchesPage() {
     const ids = [...selected];
     if (ids.length === 0) return;
     setBatchProgress({ current: 0, total: ids.length });
+    // Live animation for small batches (the modal shows up to 5 parallel rows).
+    if (ids.length <= 5) {
+      setApplyErrors({});
+      setApplyJobs(ids.map((evaluationId) => {
+        const job = jobs.find((item) => item.id === jobIdByEvaluation.get(evaluationId));
+        return {
+          evaluationId,
+          title: job?.title ?? "Job match",
+          company: job?.company.name ?? "Unknown company",
+        };
+      }));
+      setApplyModalOpen(true);
+    }
     let prepared = 0;
     let failed = 0;
     for (let index = 0; index < ids.length; index += 1) {
@@ -324,6 +342,7 @@ export default function MatchesPage() {
       const scannedJobId = jobIdByEvaluation.get(evaluationId);
       if (!scannedJobId) {
         failed += 1;
+        setApplyErrors((current) => ({ ...current, [evaluationId]: "This job is no longer available to prepare." }));
         continue;
       }
       try {
@@ -331,6 +350,7 @@ export default function MatchesPage() {
         prepared += 1;
       } catch (error) {
         failed += 1;
+        setApplyErrors((current) => ({ ...current, [evaluationId]: "Tailoring failed — try again in a moment." }));
         void captureIncident(error, { source: "manual", operation: "match_batch_prepare" });
       }
     }
@@ -645,6 +665,17 @@ export default function MatchesPage() {
           </div>
         </div>
       )}
+
+      <ApplyProgressModal
+        open={applyModalOpen}
+        jobs={applyJobs}
+        errors={applyErrors}
+        onClose={() => setApplyModalOpen(false)}
+        onOpenApplication={(draftId) => {
+          setApplyModalOpen(false);
+          navigate(`/applications/${draftId}`);
+        }}
+      />
     </div>
   );
 }
