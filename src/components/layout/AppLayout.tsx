@@ -48,7 +48,7 @@ const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
   { label: "Job Search", icon: Search, path: "/job-search" },
   { label: "Matches", icon: Sparkles, path: "/matches" },
-  { label: "Applications", icon: Columns3, path: "/job-tracker" },
+  { label: "Applications", icon: Columns3, path: "/applications" },
   { label: "Inbox", icon: Inbox, path: "/inbox" },
   { label: "Resume", icon: FileText, path: "/resume-builder" },
   { label: "ATS Checker", icon: Gauge, path: "/ats-checker" },
