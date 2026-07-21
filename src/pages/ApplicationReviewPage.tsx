@@ -128,7 +128,7 @@ export default function ApplicationReviewPage() {
       .eq("id", id).eq("user_id", user.id).maybeSingle();
     if (error || !data) {
       toast.error("Application record not found");
-      navigate("/job-tracker");
+      navigate("/applications");
       return;
     }
     const nextDraft = { ...(data as unknown as Draft), answers: normalizeAnswers(data.answers) };
@@ -241,7 +241,7 @@ export default function ApplicationReviewPage() {
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 lg:px-10 pt-10 pb-16">
-      <button onClick={() => navigate("/job-tracker")} className="text-xs text-muted-foreground hover:text-foreground">← Applications</button>
+      <button onClick={() => navigate("/applications")} className="text-xs text-muted-foreground hover:text-foreground">← Applications</button>
       <header className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-medium text-muted-foreground">{job.company.name}</span><span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", draft.status === "submitted" ? "bg-emerald-500/10 text-emerald-600" : draft.status === "failed" || handoffRequired ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" : "bg-primary/10 text-primary")}>{handoffRequired ? "Verification required" : statusLabel(draft.status)}</span></div><h1 className="mt-2 text-3xl font-bold tracking-tight">{job.title}</h1>{draft.evaluation.summary && <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{draft.evaluation.summary}</p>}</div>
         <div className="flex flex-wrap items-center gap-2"><div className="mr-2 text-center"><p className="text-2xl font-bold tabular-nums">{fit}%</p><p className="text-[10px] uppercase tracking-wide text-muted-foreground">career fit</p></div><Button asChild><a href={job.apply_url} target="_blank" rel="noreferrer noopener"><ExternalLink className="mr-2 h-4 w-4" />{handoffRequired ? "Finish verification" : "Employer portal"}</a></Button>{!(["submitted", "queued"] as DraftStatus[]).includes(draft.status) && <><Button variant="outline" onClick={refreshPacket} disabled={refreshing}><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />{refreshing ? "Refreshing…" : "Refresh packet"}</Button>{!handoffRequired && <Button variant="outline" onClick={queueApplication} disabled={queueing}><Send className="mr-2 h-4 w-4" />{queueing ? "Queueing…" : "Queue application"}</Button>}<Button variant="ghost" onClick={markSubmitted} disabled={marking}>{marking ? "Saving…" : handoffRequired ? "I finished — mark submitted" : "Mark submitted"}</Button></>}</div>
