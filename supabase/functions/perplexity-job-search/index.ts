@@ -339,9 +339,15 @@ async function searchDatabase(
     }
   }
 
-  // Exclude already-shown fingerprints
+  // Exclude already-shown fingerprints. PostgREST's `in` list syntax splits
+  // on unquoted commas and treats bare parentheses as structure, so a raw
+  // join breaks (and silently returns a query error -> empty results, see
+  // searchDatabase's catch below) the moment a title/company contains a
+  // comma ("Software Engineer, Backend") or parens ("SRE (Site Reliability
+  // Engineer)") — quote each value per PostgREST's list-literal syntax.
   if (excludeFingerprints.length > 0) {
-    dbQuery = dbQuery.not("job_fingerprint", "in", `(${excludeFingerprints.join(",")})`);
+    const quoted = excludeFingerprints.map((fp) => `"${fp.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
+    dbQuery = dbQuery.not("job_fingerprint", "in", `(${quoted.join(",")})`);
   }
 
   // Pagination and ordering

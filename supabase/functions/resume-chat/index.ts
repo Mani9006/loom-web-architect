@@ -351,7 +351,11 @@ function transformAnthropicStream(response: Response): ReadableStream {
         return;
       }
 
-      const text = decoder.decode(value);
+      // { stream: true } buffers a multi-byte UTF-8 sequence that's split
+      // across a chunk boundary instead of emitting it as U+FFFD — the
+      // resume system prompt uses multi-byte glyphs (📍✉️📞🔗, em-dashes),
+      // so without this a chunk split mid-character corrupted the output.
+      const text = decoder.decode(value, { stream: true });
       const lines = text.split("\n");
 
       for (const line of lines) {

@@ -21,6 +21,21 @@ const STATUS_MAP: Record<string, string> = {
   offer: "offer",
 };
 
+// Funnel order for auto-applied (source="email") status moves only — manual
+// board drags are unrestricted. Without this, a later, lower-signal email
+// (e.g. a duplicate ATS "application received" confirmation arriving after
+// an interview invite) would silently regress a job's kanban status, since
+// the classifier has no memory of what's already been recorded.
+// rejected/offer share the top rank because they're terminal outcomes that
+// should always be recorded once seen, never re-opened by an older signal.
+const STATUS_RANK: Record<string, number> = {
+  discovered: 0, saved: 1, applied: 2, viewed: 3, interview: 4, take_home: 5, offer: 6, rejected: 6,
+};
+function isForwardStatusMove(from: string, to: string): boolean {
+  if (to === "rejected" || to === "offer") return true;
+  return (STATUS_RANK[to] ?? 0) > (STATUS_RANK[from] ?? -1);
+}
+
 type Classification = keyof typeof STATUS_MAP | "verification" | "other_recruiter" | "irrelevant";
 interface ClassifiedEmail {
   classification: Classification;
@@ -214,7 +229,7 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
       ? await classifyEmail({ subject, from: fromEmail, body: bodyText })
       : { classification: "verification" as Classification, confidence: 1, summary: "Employer verification code" };
 
-    const { data: emailRow } = await admin
+    const { data: emailRow, error: insertError } = await admin
       .from("mc_inbound_emails")
       .insert({
         user_id: connection.user_id,
@@ -239,10 +254,24 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
       })
       .select("id")
       .single();
+    if (insertError) {
+      // message_id is UNIQUE — this fires when two overlapping polls (e.g. a
+      // cron tick racing a user-triggered "Check inbox now") both pass the
+      // non-atomic existence check above. Don't count it as processed or
+      // apply a status move a concurrent call already recorded.
+      console.error("mc-gmail-poll insert", connection.id, messageRef.id, insertError);
+      continue;
+    }
     processed += 1;
 
     const newStatus = STATUS_MAP[classification.classification];
-    if (matched && newStatus && classification.confidence >= 0.8 && newStatus !== matched.status) {
+    if (
+      matched &&
+      newStatus &&
+      classification.confidence >= 0.8 &&
+      newStatus !== matched.status &&
+      isForwardStatusMove(matched.status, newStatus)
+    ) {
       await admin.from("mc_tracked_jobs").update({ status: newStatus }).eq("id", matched.id);
       await admin.from("mc_status_history").insert({
         tracked_job_id: matched.id,

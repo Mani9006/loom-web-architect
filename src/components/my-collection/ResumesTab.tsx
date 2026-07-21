@@ -253,19 +253,87 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
   window.open(data.url, "_blank");
 }
 
+// Converts the tailored resume's markdown into a lightweight Word document.
+// mc_tailored_resumes only stores markdown (cv_md), not the structured
+// ResumeJSON the main Resume Builder's DOCX exporter (use-resume-export.ts)
+// needs — so this walks the markdown line-by-line instead, mirroring how
+// mc-render-resume's PDF exporter turns the same markdown into plain lines.
+/* eslint-disable @typescript-eslint/no-explicit-any -- dynamically-imported docx types */
+function markdownToDocxParagraphs(md: string, docx: any): any[] {
+  const { Paragraph, TextRun, BorderStyle } = docx;
+  const paragraphs: any[] = [];
+
+  for (const raw of md.split(/\r?\n/)) {
+    const headingMatch = raw.match(/^(#{1,6})\s*(.+)$/);
+    const bulletMatch = raw.match(/^\s*[-*]\s+(.+)$/);
+    const clean = (s: string) => s.replace(/\*\*/g, "").replace(/__/g, "").trim();
+
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const text = clean(headingMatch[2]);
+      paragraphs.push(
+        new Paragraph({
+          spacing: { before: level === 1 ? 0 : 200, after: 80 },
+          border: level === 2 ? { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000" } } : undefined,
+          children: [
+            new TextRun({ text, bold: true, size: level === 1 ? 32 : level === 2 ? 24 : 22, font: "Calibri" }),
+          ],
+        }),
+      );
+    } else if (bulletMatch) {
+      paragraphs.push(
+        new Paragraph({
+          bullet: { level: 0 },
+          spacing: { before: 30 },
+          children: [new TextRun({ text: clean(bulletMatch[1]), size: 20, font: "Calibri" })],
+        }),
+      );
+    } else if (!raw.trim()) {
+      paragraphs.push(new Paragraph({ children: [new TextRun({ text: "" })] }));
+    } else {
+      paragraphs.push(
+        new Paragraph({
+          spacing: { after: 40 },
+          children: [new TextRun({ text: clean(raw), size: 20, font: "Calibri" })],
+        }),
+      );
+    }
+  }
+
+  return paragraphs;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    const docx = await import("docx");
+    const { saveAs } = await import("file-saver");
+    const { Document, Packer } = docx;
+
+    const doc = new Document({
+      sections: [
+        {
+          properties: {
+            page: {
+              size: { width: 12240, height: 15840 },
+              margin: { top: 720, right: 864, bottom: 720, left: 864 },
+            },
+          },
+          children: markdownToDocxParagraphs(r.cv_md, docx),
+        },
+      ],
+    });
+
+    const blob = await Packer.toBlob(doc);
+    if (blob.size < 500) throw new Error("Generated Word document did not pass the file integrity check.");
+    saveAs(blob, `${r.name}.docx`);
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : "Couldn't generate the Word document.",
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────
