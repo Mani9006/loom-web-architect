@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import ApplyProgressModal from "@/components/agent/ApplyProgressModal";
+import type { ApplyProgressJob } from "@/components/agent/apply-progress-core";
 import { useSubscription } from "@/components/SubscriptionGate";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -221,6 +223,9 @@ export default function AgentPage() {
   const [preparingIds, setPreparingIds] = useState<string[]>([]);
   const [matchSetup, setMatchSetup] = useState<"idle" | "building" | "complete" | "error">("idle");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [applyJobs, setApplyJobs] = useState<ApplyProgressJob[]>([]);
+  const [applyErrors, setApplyErrors] = useState<Record<string, string>>({});
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
   const automaticMatchAttempt = useRef(false);
   const automaticProfilePromise = useRef<Promise<unknown> | null>(null);
 
@@ -666,6 +671,13 @@ export default function AgentPage() {
     setBatchPreparing(true);
     setPreparingIds(selected.map((match) => match.id));
     setBatchProgress({ current: 0, total: selected.length });
+    setApplyErrors({});
+    setApplyJobs(selected.map((match) => ({
+      evaluationId: match.id,
+      title: match.scanned_job?.title ?? "Job match",
+      company: match.scanned_job?.company?.name ?? "Unknown company",
+    })));
+    setApplyModalOpen(true);
     let prepared = 0;
     let queued = 0;
     let needsAttention = 0;
@@ -697,6 +709,10 @@ export default function AgentPage() {
         }
       } catch (error) {
         needsAttention += 1;
+        setApplyErrors((current) => ({
+          ...current,
+          [match.id]: shortReason(error instanceof Error ? error.message : null, "Tailoring failed — try again in a moment."),
+        }));
         void captureIncident(error, { source: "manual", operation: "agent_batch_prepare" });
       }
     }
@@ -1268,6 +1284,17 @@ export default function AgentPage() {
           </div>
         )}
       </section>
+
+      <ApplyProgressModal
+        open={applyModalOpen}
+        jobs={applyJobs}
+        errors={applyErrors}
+        onClose={() => setApplyModalOpen(false)}
+        onOpenApplication={(draftId) => {
+          setApplyModalOpen(false);
+          navigate(`/applications/${draftId}`);
+        }}
+      />
     </div>
   );
 }
