@@ -48,6 +48,7 @@ const AdminPortal = lazy(() => import("./pages/AdminPortal"));
 const AgentPage = lazy(() => import("./pages/AgentPage"));
 const MatchesPage = lazy(() => import("./pages/MatchesPage"));
 const ApplicationReviewPage = lazy(() => import("./pages/ApplicationReviewPage"));
+const ApplicationsBoardPage = lazy(() => import("./pages/ApplicationsBoardPage"));
 const CareerOpsPreferencesPage = lazy(() => import("./pages/CareerOpsPreferencesPage"));
 const FeedbackPage = lazy(() => import("./pages/FeedbackPage"));
 const DocsPage = lazy(() => import("./pages/DocsPage"));
@@ -118,7 +119,7 @@ const App = () => {
                     <Route path="/job-tracker" element={<JobTracker />} />
                     <Route path="/inbox" element={<InboxPage />} />
                     <Route path="/matches" element={<MatchesPage />} />
-                    <Route path="/applications" element={<Navigate to="/job-tracker" replace />} />
+                    <Route path="/applications" element={<ApplicationsBoardPage />} />
                     <Route path="/applications/:id" element={<ApplicationReviewPage />} />
                     <Route path="/career-ops/preferences" element={<CareerOpsPreferencesPage />} />
                     <Route path="/feedback" element={<FeedbackPage />} />

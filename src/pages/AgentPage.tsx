@@ -927,9 +927,14 @@ export default function AgentPage() {
 
       {/* RECENT ACTIVITY — receipts for everything */}
       <section className="mt-6 border border-rp-rule bg-rp-paper p-5 sm:p-6" aria-label="Recent activity">
-        <div className="flex items-center gap-2">
-          <History className="h-4 w-4 text-rp-accent" />
-          <h2 className="text-base font-semibold text-rp-ink">Recent activity</h2>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-rp-accent" />
+            <h2 className="text-base font-semibold text-rp-ink">Recent activity</h2>
+          </div>
+          <button onClick={() => navigate("/applications")} className="inline-flex items-center gap-1.5 text-xs font-medium text-rp-ink hover:text-rp-accent">
+            See all applications <ArrowUpRight className="h-3.5 w-3.5" />
+          </button>
         </div>
         <p className="mt-1 text-xs text-rp-ink-2">A receipt for everything we do for you — newest first.</p>
         {recentActivity.length === 0 ? (
