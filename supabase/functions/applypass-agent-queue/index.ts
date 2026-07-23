@@ -58,6 +58,75 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+async function getUserEmail(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  userId: string,
+): Promise<string | null> {
+  const { data } = await serviceClient.auth.admin.getUserById(userId);
+  return data?.user?.email || null;
+}
+
+// Best-effort outcome notification. A failed email send must NEVER break
+// complete/fail processing, so every failure path here only logs.
+async function notifyApplyOutcome(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  taskContext: Record<string, unknown>,
+  outcome: "submitted" | "failed",
+  detail: { submittedAt?: string; errorMessage?: string },
+) {
+  try {
+    const payload = asRecord(taskContext.payload);
+    const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+    const firstJob = asRecord(jobs[0]);
+    const jobTitle = asString(payload.job_title) || asString(firstJob.title);
+    const company = asString(payload.company_name) || asString(firstJob.company);
+    const portal = asString(payload.portal);
+    const userId = asString(taskContext.user_id);
+    if (!userId) return;
+
+    const to = await getUserEmail(serviceClient, userId);
+    if (!to) {
+      console.warn(`[applypass-agent-queue] outcome email skipped: no email for user ${userId}`);
+      return;
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceKey = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!supabaseUrl || !serviceKey) return;
+
+    const internalToken = Deno.env.get("INTERNAL_EMAIL_TOKEN") || "";
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${serviceKey}`,
+    };
+    if (internalToken) headers["x-internal-token"] = internalToken;
+
+    const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type: outcome === "submitted" ? "application-submitted" : "application-failed",
+        to,
+        data: {
+          job_title: jobTitle,
+          company,
+          portal,
+          submitted_at: detail.submittedAt,
+          reason: detail.errorMessage,
+        },
+      }),
+    });
+    if (!res.ok) console.error(`[applypass-agent-queue] outcome email failed (${outcome}):`, await res.text());
+    else console.log(`[applypass-agent-queue] sent ${outcome} outcome email for task user ${userId}`);
+  } catch (err) {
+    console.error(`[applypass-agent-queue] outcome email error (${outcome}):`, err);
+  }
+}
+
 async function syncCareerDraft(
   serviceClient: ReturnType<typeof createServiceClient>,
   taskContext: Record<string, unknown> | null,
@@ -72,6 +141,17 @@ async function syncCareerDraft(
   const userId = typeof taskContext.user_id === "string" ? taskContext.user_id : "";
   if (!draftId || !userId) return;
 
+  // Read the current draft status first so outcome emails only fire on an
+  // actual status transition — retried complete/fail calls that find the
+  // draft already in its terminal state do not re-notify the user.
+  const { data: existingDraft } = await serviceClient
+    .from("draft_applications")
+    .select("status")
+    .eq("id", draftId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  const previousStatus = asString(existingDraft?.status);
+
   if (outcome === "fail") {
     // Supabase query errors resolve on `error`, they don't throw — capture and
     // surface the failure instead of swallowing it, or the draft silently
@@ -80,7 +160,15 @@ async function syncCareerDraft(
       status: "failed",
       error_message: (errorMessage || "Worker execution failed").slice(0, 1500),
     }).eq("id", draftId).eq("user_id", userId);
-    if (error) console.error("[applypass-agent-queue] draft_applications fail-sync failed:", error.message);
+    if (error) {
+      console.error("[applypass-agent-queue] draft_applications fail-sync failed:", error.message);
+      return;
+    }
+    if (previousStatus !== "failed") {
+      await notifyApplyOutcome(serviceClient, taskContext, "failed", {
+        errorMessage: errorMessage || "Worker execution failed",
+      });
+    }
     return;
   }
 
@@ -90,9 +178,10 @@ async function syncCareerDraft(
     .map((job) => asRecord(job).error)
     .find((message) => typeof message === "string" && message.trim());
 
+  const submittedAt = submitted ? new Date().toISOString() : null;
   const { error: draftSyncError } = await serviceClient.from("draft_applications").update({
     status: submitted ? "submitted" : "ready",
-    submitted_at: submitted ? new Date().toISOString() : null,
+    submitted_at: submittedAt,
     error_message: submitted ? null : typeof firstIssue === "string" ? firstIssue.slice(0, 1500) : null,
   }).eq("id", draftId).eq("user_id", userId);
   if (draftSyncError) console.error("[applypass-agent-queue] draft_applications complete-sync failed:", draftSyncError.message);
@@ -108,6 +197,12 @@ async function syncCareerDraft(
       status_from: "saved",
       status_to: "applied",
       source: "auto_apply",
+    });
+  }
+
+  if (submitted && !draftSyncError && previousStatus !== "submitted") {
+    await notifyApplyOutcome(serviceClient, taskContext, "submitted", {
+      submittedAt: submittedAt || new Date().toISOString(),
     });
   }
 }
