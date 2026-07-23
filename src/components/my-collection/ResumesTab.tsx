@@ -253,19 +253,47 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
   window.open(data.url, "_blank");
 }
 
+// Splits a line on **bold** markers into alternating plain/bold runs.
+function markdownRuns(line: string, TextRun: typeof import("docx").TextRun) {
+  const parts = line.split(/\*\*(.+?)\*\*/g);
+  return parts
+    .filter((part) => part.length > 0)
+    .map((part, i) => new TextRun({ text: part, bold: i % 2 === 1, font: "Calibri", size: 20 }));
+}
+
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "docx" },
-  });
-  if (error || !data?.url) {
+  try {
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
+    const { saveAs } = await import("file-saver");
+
+    const children = r.cv_md.split(/\r?\n/).map((raw) => {
+      const line = raw.trimEnd();
+      if (!line.trim()) return new Paragraph({ text: "" });
+      if (line.startsWith("# ")) {
+        return new Paragraph({ heading: HeadingLevel.TITLE, children: markdownRuns(line.slice(2), TextRun) });
+      }
+      if (line.startsWith("## ")) {
+        return new Paragraph({ heading: HeadingLevel.HEADING_1, spacing: { before: 200 }, children: markdownRuns(line.slice(3), TextRun) });
+      }
+      if (line.startsWith("### ")) {
+        return new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 120 }, children: markdownRuns(line.slice(4), TextRun) });
+      }
+      if (/^[-*]\s+/.test(line)) {
+        return new Paragraph({ bullet: { level: 0 }, children: markdownRuns(line.replace(/^[-*]\s+/, ""), TextRun) });
+      }
+      return new Paragraph({ spacing: { after: 60 }, children: markdownRuns(line, TextRun) });
+    });
+
+    const doc = new Document({ sections: [{ children }] });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, `${r.name}.docx`);
+  } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: error?.message ?? "The server didn't return a download URL.",
+      description: e instanceof Error ? e.message : String(e),
       variant: "destructive",
     });
-    return;
   }
-  window.open(data.url, "_blank");
 }
 
 // ── Canvas editor ─────────────────────────────────────────────────────
