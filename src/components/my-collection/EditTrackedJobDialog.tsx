@@ -93,13 +93,13 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
 
   async function deleteJob() {
     if (!job) return;
-    if (!confirm(`Move this card to trash?\n\n${job.company} · ${job.job_title}\n\nYou can restore it from Trash later.`)) {
+    if (!confirm(`Move this card to trash?\n\n${job.company} · ${job.job_title}\n\nYou can restore it later from the Trash dialog.`)) {
       return;
     }
     setSaving(true);
-    // Soft-delete, matching the board's trash-icon flow (BoardTab.trashJob) —
-    // a hard delete here would silently break the Trash/restore safety net
-    // users learn from that other flow.
+    // Soft-delete (deleted_at) so this goes through the same Trash/restore
+    // flow as the board's inline trash button, instead of silently bypassing
+    // it with a hard delete the Trash dialog can never recover.
     const { error } = await (supabase as any)
       .from("mc_tracked_jobs")
       .update({ deleted_at: new Date().toISOString() })
