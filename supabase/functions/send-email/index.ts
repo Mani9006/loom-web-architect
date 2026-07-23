@@ -107,6 +107,8 @@ const BRAND = {
   supportFrom: "ResumePreps Support <support@resumepreps.com>",
 };
 
+const APPLICATIONS_URL = "https://www.resumepreps.com/applications";
+
 function baseLayout(title: string, content: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -355,6 +357,92 @@ function billingReceiptEmail(
   };
 }
 
+function applicationSubmittedEmail(
+  jobTitle: string,
+  company: string,
+  portal: string,
+  submittedAt: string,
+): { subject: string; html: string } {
+  // Job/company/portal values originate from external job boards, so they
+  // are escaped before interpolation into the email markup.
+  const safeTitle = escapeHtml(jobTitle || "your job");
+  const safeCompany = escapeHtml(company || "the company");
+  const safePortal = escapeHtml(portal || "");
+  const safeSubmittedAt = escapeHtml(submittedAt || "");
+  return {
+    subject: `Application submitted: ${jobTitle || "your application"} at ${company || "the company"} — ${BRAND.name}`,
+    html: baseLayout("Application Submitted", `
+      <h2 style="margin:0 0 16px;color:#18181b;font-size:22px;font-weight:700;">Application submitted 🎉</h2>
+      <p style="color:#3f3f46;font-size:15px;line-height:1.6;margin:0 0 24px;">
+        Great news — your auto-apply agent just submitted an application on your behalf.
+      </p>
+      <div style="padding:20px;background:#fafafa;border-radius:12px;border:1px solid #e4e4e7;margin:0 0 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">Job</td>
+            <td style="padding:8px 0;color:#18181b;font-size:14px;font-weight:600;text-align:right;">${safeTitle}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">Company</td>
+            <td style="padding:8px 0;color:#18181b;font-size:14px;text-align:right;">${safeCompany}</td>
+          </tr>
+          ${safePortal ? `<tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">Portal</td>
+            <td style="padding:8px 0;color:#18181b;font-size:14px;text-align:right;">${safePortal}</td>
+          </tr>` : ""}
+          ${safeSubmittedAt ? `<tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">Submitted at</td>
+            <td style="padding:8px 0;color:#18181b;font-size:14px;text-align:right;">${safeSubmittedAt}</td>
+          </tr>` : ""}
+        </table>
+      </div>
+      ${buttonHtml("View My Applications", APPLICATIONS_URL)}
+      <p style="color:#71717a;font-size:13px;text-align:center;margin:0;">
+        Track this application and manage follow-ups from your dashboard.
+      </p>
+    `),
+  };
+}
+
+function applicationFailedEmail(
+  jobTitle: string,
+  company: string,
+  reason: string,
+): { subject: string; html: string } {
+  const safeTitle = escapeHtml(jobTitle || "your job");
+  const safeCompany = escapeHtml(company || "the company");
+  const safeReason = escapeHtml(reason || "The application could not be completed automatically.");
+  return {
+    subject: `Application needs attention: ${jobTitle || "your application"} at ${company || "the company"} — ${BRAND.name}`,
+    html: baseLayout("Application Needs Attention", `
+      <h2 style="margin:0 0 16px;color:#18181b;font-size:22px;font-weight:700;">Application needs your attention</h2>
+      <p style="color:#3f3f46;font-size:15px;line-height:1.6;margin:0 0 24px;">
+        Your auto-apply agent couldn't submit this application. You can review it and finish it manually from your dashboard.
+      </p>
+      <div style="padding:20px;background:#fafafa;border-radius:12px;border:1px solid #e4e4e7;margin:0 0 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">Job</td>
+            <td style="padding:8px 0;color:#18181b;font-size:14px;font-weight:600;text-align:right;">${safeTitle}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">Company</td>
+            <td style="padding:8px 0;color:#18181b;font-size:14px;text-align:right;">${safeCompany}</td>
+          </tr>
+        </table>
+      </div>
+      <div style="padding:16px;background:#fef2f2;border-radius:8px;border-left:4px solid #ef4444;margin:0 0 24px;">
+        <p style="margin:0;color:#991b1b;font-size:14px;font-weight:600;">Why it needs attention</p>
+        <p style="margin:8px 0 0;color:#7f1d1d;font-size:14px;line-height:1.5;">${safeReason}</p>
+      </div>
+      ${buttonHtml("Review Application", APPLICATIONS_URL)}
+      <p style="color:#71717a;font-size:13px;text-align:center;margin:0;">
+        Need help? Email us at ${BRAND.supportEmail}
+      </p>
+    `),
+  };
+}
+
 function marketingEmail(subject: string, heading: string, body: string, ctaText?: string, ctaUrl?: string): { subject: string; html: string } {
   // All caller-supplied fields are HTML-escaped before interpolation so a
   // marketing request cannot inject markup/scripts into outgoing email.
@@ -540,6 +628,21 @@ async function handleDirectEmail(body: any): Promise<Response> {
         data.plan_name || "Premium",
         data.invoice_date || new Date().toLocaleDateString(),
         data.invoice_url,
+      );
+      break;
+    case "application-submitted":
+      emailContent = applicationSubmittedEmail(
+        data.job_title || "",
+        data.company || "",
+        data.portal || "",
+        data.submitted_at || "",
+      );
+      break;
+    case "application-failed":
+      emailContent = applicationFailedEmail(
+        data.job_title || "",
+        data.company || "",
+        data.reason || "",
       );
       break;
     case "marketing":
