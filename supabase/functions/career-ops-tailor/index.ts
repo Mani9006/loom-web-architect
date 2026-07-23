@@ -9,6 +9,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { truncate } from "../_shared/ai.ts";
 import { callLlmWithFallback } from "../_shared/llm.ts";
+import { resumeToPlainText, scoreResumeDeterministic } from "../_shared/ats-deterministic.ts";
+import { criticFeedbackToPrompt, runTailorCritic } from "../_shared/tailor-critic.ts";
 import {
   corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
@@ -397,6 +399,8 @@ serve(async (req) => {
       return jsonResponse({ draft: { ...existingDraft, answers }, reused: true });
     }
 
+    // The entire critic loop below counts as ONE tailor for quota purposes:
+    // a single enforceDailyCap here, one logAiUsage with summed tokens at end.
     await enforceDailyCap(svc, user.id, "tailor", isPro);
 
     let baseResume: any = null;
@@ -418,32 +422,115 @@ serve(async (req) => {
     const tailoringMode = preferenceRow?.tailoring_mode === "coverage_boost"
       ? "coverage_boost"
       : "evidence_only";
-    const result = await callLlmWithFallback<TailorPayload>({
-      tier: "standard",
-      system: SYSTEM_PROMPT,
-      cachedContext: `Candidate base résumé:\n\n${buildResumePrompt(baseResume)}`,
-      user:
-        `Company: ${companyName}\n` +
-        `Title: ${job.title}\n` +
-        `Location: ${job.location ?? "n/a"}\n` +
-        `Compensation: ${job.compensation_text ?? "not disclosed"}\n\n` +
-        `JD:\n${truncate(job.description_md, MAX_DESC)}\n\n` +
-        `Prior evaluation strengths: ${(ev.keyword_matches || []).join(", ")}. ` +
-        `Gaps: ${(ev.gaps || []).join(", ")}.\n\n` +
-        `Tailoring policy: ${tailoringMode === "coverage_boost"
-          ? "coverage_boost — foreground and reorder job terms only when the source résumé already supports them; never add unsupported skills, employers, dates, or metrics."
-          : "evidence_only — preserve the candidate story and use only directly supported language; do not add job terms that are not evidenced in the source résumé."}`,
-      maxTokens: 3500,
-      temperature: 0.3,
-      parseJson: true,
-    });
-    const payload = result.text;
+
+    const jdText = truncate(job.description_md, MAX_DESC);
+    const baseResumeText = buildResumePrompt(baseResume);
+    const tailorUserPrompt =
+      `Company: ${companyName}\n` +
+      `Title: ${job.title}\n` +
+      `Location: ${job.location ?? "n/a"}\n` +
+      `Compensation: ${job.compensation_text ?? "not disclosed"}\n\n` +
+      `JD:\n${jdText}\n\n` +
+      `Prior evaluation strengths: ${(ev.keyword_matches || []).join(", ")}. ` +
+      `Gaps: ${(ev.gaps || []).join(", ")}.\n\n` +
+      `Tailoring policy: ${tailoringMode === "coverage_boost"
+        ? "coverage_boost — foreground and reorder job terms only when the source résumé already supports them; never add unsupported skills, employers, dates, or metrics."
+        : "evidence_only — preserve the candidate story and use only directly supported language; do not add job terms that are not evidenced in the source résumé."}`;
+
+    // Deterministic keyword set for the early-exit no-improvement check.
+    const jdKeywords = [...(ev.keyword_matches || []), ...(ev.gaps || [])].map(String).filter(Boolean);
+    // Number of critic-driven rewrites allowed AFTER the first tailor pass.
+    const maxCriticIters = Math.max(0, Number(Deno.env.get("TAILOR_CRITIC_MAX_ITERS") ?? "2") || 0);
 
     const sourceExperience = Array.isArray(baseResume.experience) ? baseResume.experience : [];
     const sourceProjects = Array.isArray(baseResume.projects) ? baseResume.projects : [];
-    const tailoredExperience = mergeExperience(payload.tailored_resume.experience, sourceExperience);
-    const tailoredProjects = mergeProjects(payload.tailored_resume.projects, sourceProjects);
-    const tailoredSkills = constrainSkills(payload.tailored_resume.skills, baseResume.skills, job.description_md ?? "");
+
+    let payload: TailorPayload | null = null;
+    let tailoredExperience: Array<Record<string, unknown>> = [];
+    let tailoredProjects: Array<Record<string, unknown>> = [];
+    let tailoredSkills: Record<string, string[]> = {};
+    let tokensIn = 0;
+    let tokensOut = 0;
+    const criticIterations: Array<Record<string, unknown>> = [];
+    let userPrompt = tailorUserPrompt;
+    let prevMissingCount = -1;
+
+    // ── Tailor → sanitize → critic loop ────────────────────────────────
+    // Iteration 0 is the original tailor pass. Each later iteration re-runs
+    // the SAME prompt plus a critic feedback section, then the full
+    // deterministic sanitizer pipeline again (identity re-pin, skill
+    // intersection, answer guards) so hard honesty rules always hold.
+    for (let iteration = 0; ; iteration++) {
+      const result = await callLlmWithFallback<TailorPayload>({
+        tier: "standard",
+        system: SYSTEM_PROMPT,
+        cachedContext: `Candidate base résumé:\n\n${baseResumeText}`,
+        user: userPrompt,
+        maxTokens: 3500,
+        temperature: 0.3,
+        parseJson: true,
+      });
+      tokensIn += result.tokens_in;
+      tokensOut += result.tokens_out;
+      payload = result.text;
+
+      // Full sanitizer pipeline on every iteration's output.
+      tailoredExperience = mergeExperience(payload.tailored_resume.experience, sourceExperience);
+      tailoredProjects = mergeProjects(payload.tailored_resume.projects, sourceProjects);
+      tailoredSkills = constrainSkills(payload.tailored_resume.skills, baseResume.skills, job.description_md ?? "");
+
+      if (iteration >= maxCriticIters) break;
+
+      const tailoredSnapshot = {
+        personal_info: baseResume.personal_info,
+        summary: payload.tailored_resume.summary,
+        experience: tailoredExperience,
+        education: baseResume.education || [],
+        skills: tailoredSkills,
+        projects: tailoredProjects,
+      };
+
+      let critic;
+      try {
+        const c = await runTailorCritic({
+          baseResumeText,
+          tailoredResumeText: resumeToPlainText(tailoredSnapshot),
+          jobDescription: jdText,
+          company: companyName,
+          title: job.title,
+          missingKeywords: Array.isArray(ev.gaps) ? ev.gaps.map(String) : [],
+        });
+        critic = c.result;
+        tokensIn += c.tokens_in;
+        tokensOut += c.tokens_out;
+      } catch {
+        // Critic failure must never block a tailor that already succeeded —
+        // proceed to storage with the current sanitized draft.
+        break;
+      }
+
+      criticIterations.push({
+        iteration,
+        pass: critic.pass,
+        top_rejection_reasons: critic.top_rejection_reasons,
+        fixes: critic.fixes,
+      });
+      if (critic.pass) break;
+
+      // Early exit: if deterministic ATS missing-keyword coverage did not
+      // improve versus the previous iteration, more rewrites are unlikely to
+      // help — stop spending tokens.
+      if (jdKeywords.length > 0) {
+        const missingCount = scoreResumeDeterministic(tailoredSnapshot, jdKeywords).missing_keywords.length;
+        if (prevMissingCount >= 0 && missingCount >= prevMissingCount) break;
+        prevMissingCount = missingCount;
+      }
+
+      userPrompt = `${tailorUserPrompt}\n\n${criticFeedbackToPrompt(critic.fixes, critic.ats_review.weak_keywords)}`;
+    }
+
+    if (!payload) throw new HttpError(500, "tailor produced no output");
+
     const childTitle = `${companyName} — ${job.title} · application resume`.slice(0, 120);
     const sourcePersonalInfo = asRecord(baseResume.personal_info);
     const sourceExtras = asRecord(sourcePersonalInfo._v2_extras);
@@ -496,11 +583,12 @@ serve(async (req) => {
         ...safeApplicationAnswers(payload.answers, workAuthorization, companyName),
         { question: "Cover note", answer: payload.cover_note },
       ],
+      critic_iterations: criticIterations,
       status: "ready",
     }, { onConflict: "user_id,evaluation_id" }).select().single();
     if (draftErr) throw new HttpError(500, `save draft: ${draftErr.message}`);
 
-    await logAiUsage(svc, user.id, "tailor", result.tokens_in, result.tokens_out);
+    await logAiUsage(svc, user.id, "tailor", tokensIn, tokensOut);
     return jsonResponse({ draft });
   });
 });
