@@ -463,6 +463,83 @@ function applicationFailedEmail(
   };
 }
 
+function applicationStatusUpdateEmail(
+  jobTitle: string,
+  company: string,
+  newStatus: string,
+  note?: string,
+): { subject: string; html: string } {
+  // Job/company/note values originate from external employer emails, so they
+  // are escaped before interpolation into the email markup.
+  const safeTitle = escapeHtml(jobTitle || "your job");
+  const safeCompany = escapeHtml(company || "the company");
+  const safeNote = escapeHtml(note || "");
+  // Friendly per-status copy. `rejected` deliberately uses neutral styling —
+  // no red alarm treatment for a routine application outcome.
+  const copy: Record<string, { heading: string; statusLabel: string; message: string }> = {
+    interview: {
+      heading: "Interview invitation 🎉",
+      statusLabel: "Interview",
+      message: "Great news — this employer wants to interview you. Confirm your availability and start preparing!",
+    },
+    take_home: {
+      heading: "New assessment to complete",
+      statusLabel: "Assessment",
+      message: "You've been asked to complete an assessment. Check the instructions and deadline so you don't miss it.",
+    },
+    offer: {
+      heading: "Job offer received 🎉🎉",
+      statusLabel: "Offer",
+      message: "Congratulations — you received an offer! Review the details and the response deadline.",
+    },
+    rejected: {
+      heading: "Application update",
+      statusLabel: "Not selected",
+      message: "This application didn't move forward this time. Your other applications are still in progress — keep going!",
+    },
+  };
+  const selected = copy[newStatus] || {
+    heading: "Application update",
+    statusLabel: escapeHtml(newStatus || "Update"),
+    message: "There's a new update on one of your tracked applications.",
+  };
+  return {
+    subject: `${selected.heading.replace(/\p{Extended_Pictographic}/gu, "").trim()}: ${jobTitle || "your application"} at ${company || "the company"} — ${BRAND.name}`,
+    html: baseLayout(selected.heading.replace(/\p{Extended_Pictographic}/gu, "").trim() || "Application Update", `
+      <h2 style="margin:0 0 16px;color:#18181b;font-size:22px;font-weight:700;">${selected.heading}</h2>
+      <p style="color:#3f3f46;font-size:15px;line-height:1.6;margin:0 0 24px;">
+        ${selected.message}
+      </p>
+      <div style="padding:20px;background:#fafafa;border-radius:12px;border:1px solid #e4e4e7;margin:0 0 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">Job</td>
+            <td style="padding:8px 0;color:#18181b;font-size:14px;font-weight:600;text-align:right;">${safeTitle}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">Company</td>
+            <td style="padding:8px 0;color:#18181b;font-size:14px;text-align:right;">${safeCompany}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">New status</td>
+            <td style="padding:8px 0;text-align:right;">
+              <span style="display:inline-block;padding:4px 12px;background:${BRAND.color}20;color:${BRAND.colorDark};font-size:13px;font-weight:600;border-radius:99px;">${selected.statusLabel}</span>
+            </td>
+          </tr>
+          ${safeNote ? `<tr>
+            <td style="padding:8px 0;color:#71717a;font-size:14px;">Next step</td>
+            <td style="padding:8px 0;color:#18181b;font-size:14px;text-align:right;">${safeNote}</td>
+          </tr>` : ""}
+        </table>
+      </div>
+      ${buttonHtml("View My Applications", APPLICATIONS_URL)}
+      <p style="color:#71717a;font-size:13px;text-align:center;margin:0;">
+        We spotted this update in your connected inbox and moved the card on your board.
+      </p>
+    `),
+  };
+}
+
 function marketingEmail(subject: string, heading: string, body: string, ctaText?: string, ctaUrl?: string): { subject: string; html: string } {
   // All caller-supplied fields are HTML-escaped before interpolation so a
   // marketing request cannot inject markup/scripts into outgoing email.
@@ -663,6 +740,14 @@ async function handleDirectEmail(body: any): Promise<Response> {
         data.job_title || "",
         data.company || "",
         data.reason || "",
+      );
+      break;
+    case "application-status-update":
+      emailContent = applicationStatusUpdateEmail(
+        data.job_title || "",
+        data.company || "",
+        data.new_status || "",
+        data.note,
       );
       break;
     case "marketing":
