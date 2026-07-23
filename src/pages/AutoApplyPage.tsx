@@ -23,7 +23,7 @@ import {
   CheckCircle2, Clock, XCircle, FileText, User, GraduationCap,
   Wrench, AlertCircle, Building2, Sparkles, Send, ChevronRight, Crown,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useSubscription } from "@/components/SubscriptionGate";
 import { cn } from "@/lib/utils";
 import LocationAutocomplete from "@/components/LocationAutocomplete";
@@ -65,6 +65,8 @@ interface MatchedJob {
   company: string;
   location: string;
   description: string;
+  apply_url?: string | null;
+  source?: string | null;
   match_score: number;
   match_reasons: any;
   applied?: boolean;
@@ -74,6 +76,7 @@ interface MatchedJob {
 export default function AutoApplyPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { hasAutoApply, loading: subLoading } = useSubscription();
 
   const [loading, setLoading] = useState(true);
@@ -417,6 +420,8 @@ export default function AutoApplyPage() {
             company: m.jobs.company,
             location: m.jobs.location || "Unknown",
             description: m.jobs.description || "",
+            apply_url: m.jobs.apply_url || null,
+            source: m.jobs.source || null,
             match_score: m.match_score,
             match_reasons: m.match_reasons,
             applied: false,
@@ -456,32 +461,91 @@ export default function AutoApplyPage() {
   };
 
   // ─── Auto Apply ───
+  // Real pipeline (same flow as JobApplyButton): career-ops-one-click prepares
+  // the tailored packet and queues supported portals. Queueing is NOT a
+  // verified submission, so we never write job_applications status='applied'
+  // here — the worker records the receipt after it actually submits.
   const handleAutoApply = async (job: MatchedJob) => {
     if (!user) return;
+    if (!hasAutoApply && !isOwnerOrAdmin) {
+      toast({
+        title: "Premium Feature",
+        description: "Cloud Auto-Apply requires an Autopilot subscription.",
+      });
+      navigate("/pricing");
+      return;
+    }
+
     setApplyingJobId(job.id);
     try {
-      // Record the application
-      const { error } = await supabase.from("job_applications").upsert({
-        user_id: user.id,
-        job_id: job.id,
-        title: job.title,
-        company: job.company,
-        status: "applied",
-        applied_at: new Date().toISOString(),
-      } as any, { onConflict: "user_id,job_id" });
-      // Supabase query errors resolve on `error`, they don't throw — without
-      // this check a failed write still fell through to the success toast
-      // below, telling the user they'd applied when nothing was saved.
-      if (error) throw error;
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
-      // Move job from available to applied
-      setMatchedJobs((prev) => prev.filter((j) => j.id !== job.id));
-      setAppliedJobs((prev) => [{ ...job, applied: true }, ...prev]);
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/career-ops-one-click`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token || anonKey}`,
+          },
+          body: JSON.stringify({
+            title: job.title,
+            company: job.company,
+            location: job.location,
+            description: job.description,
+            apply_url: job.apply_url,
+            source: job.source,
+            queue_if_supported: true,
+          }),
+        }
+      );
 
-      toast({ title: "Application submitted!", description: `Applied to ${job.title} at ${job.company}` });
+      if (response.ok) {
+        const result = await response.json();
+        // A packet/draft now exists for this job, so it leaves the
+        // "available" list — but nothing is claimed as submitted.
+        setMatchedJobs((prev) => prev.filter((j) => j.id !== job.id));
+
+        if (result.status === "queued") {
+          toast({
+            title: "Application queued — the agent will submit it",
+            description: `ResumePreps prepared the tailored packet and queued the ${job.company} application.`,
+          });
+        } else {
+          toast({
+            title: "Application packet ready for review",
+            description: result.queue_notice || `Review the tailored packet for ${job.company}, then submit it from the review page.`,
+          });
+        }
+
+        if (result.draft_id) {
+          navigate(`/applications/${result.draft_id}`);
+        } else if (result.needs_user_action && result.direct_apply_url) {
+          // Portal can't be queued — honest manual path (same as
+          // JobApplyButton's handleManualApply).
+          window.open(result.direct_apply_url, "_blank", "noopener,noreferrer");
+        }
+      } else {
+        await response.json().catch(() => ({}));
+        toast({
+          title: "Application could not be prepared",
+          description: response.status === 412
+            ? "Add or finish your source resume, then try again."
+            : "Try again in a moment. You can still open the employer application directly.",
+          variant: "destructive",
+        });
+        // Honest manual fallback when the pipeline can't take this job.
+        if (job.apply_url) window.open(job.apply_url, "_blank", "noopener,noreferrer");
+      }
     } catch (err) {
       console.error("Apply error:", err);
-      toast({ title: "Application failed", variant: "destructive" });
+      toast({
+        title: "Application could not be prepared",
+        description: "Try again in a moment. You can still open the employer application directly.",
+        variant: "destructive",
+      });
     } finally {
       setApplyingJobId(null);
     }
