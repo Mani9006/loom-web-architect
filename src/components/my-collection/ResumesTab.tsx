@@ -253,12 +253,17 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
   window.open(data.url, "_blank");
 }
 
-// Splits a line on **bold** markers into alternating plain/bold runs.
+// Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness
+// is derived from each part's index in the raw split (odd = inside **markers**)
+// before empty parts are dropped, since a bold span at the very start or end of
+// a line produces an empty leading/trailing part that would otherwise shift
+// every later index and flip bold/non-bold for the rest of the line.
 function markdownRuns(line: string, TextRun: typeof import("docx").TextRun) {
-  const parts = line.split(/\*\*(.+?)\*\*/g);
-  return parts
-    .filter((part) => part.length > 0)
-    .map((part, i) => new TextRun({ text: part, bold: i % 2 === 1, font: "Calibri", size: 20 }));
+  return line
+    .split(/\*\*(.+?)\*\*/g)
+    .map((part, i) => ({ part, bold: i % 2 === 1 }))
+    .filter(({ part }) => part.length > 0)
+    .map(({ part, bold }) => new TextRun({ text: part, bold, font: "Calibri", size: 20 }));
 }
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
