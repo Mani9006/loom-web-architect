@@ -75,7 +75,6 @@ function timingSafeEqual(a: string, b: string): boolean {
 //   1. the shared internal secret via the `x-internal-token` header
 //      (Deno env: INTERNAL_EMAIL_TOKEN), or
 //   2. the project service-role key as a Bearer token (backend-to-backend).
-// The Supabase Auth send-email hook path is unaffected by this check.
 function isAuthorizedDirectRequest(req: Request): boolean {
   const internalToken = Deno.env.get("INTERNAL_EMAIL_TOKEN");
   const providedToken = req.headers.get("x-internal-token");
@@ -91,6 +90,27 @@ function isAuthorizedDirectRequest(req: Request): boolean {
   }
 
   return false;
+}
+
+// The Supabase Auth "Send Email" hook is the OTHER way this function gets
+// called (payload shaped like {user, email_data} instead of {type, to,
+// data}), and this function's verify_jwt is off (supabase/config.toml), so
+// that branch was reachable by anyone on the public internet with zero
+// authentication — a POST of a fabricated {user:{email:"victim@..."},
+// email_data:{...}} body would make our own Resend account send a branded,
+// attacker-chosen-redirect email (signup/magic-link/reset/email-change) to
+// any address. Close it the same way handleDirectEmail is closed: require a
+// shared secret, configured as the AUTH_EMAIL_HOOK_SECRET function secret and
+// sent back as the `x-auth-hook-token` custom header on the Supabase Auth
+// Hook (Dashboard → Authentication → Hooks → Send Email → HTTP → Custom
+// Headers). Fails OPEN (unchanged behavior) until that secret is set, so
+// wiring this up doesn't require synchronized deploys — but it means the
+// hole stays open until an operator actually configures both sides.
+function isAuthorizedAuthHookRequest(req: Request): boolean {
+  const hookSecret = Deno.env.get("AUTH_EMAIL_HOOK_SECRET");
+  if (!hookSecret) return true;
+  const providedToken = req.headers.get("x-auth-hook-token") ?? "";
+  return Boolean(providedToken) && timingSafeEqual(providedToken, hookSecret);
 }
 
 // ── Email Templates ─────────────────────────────────────────────────────
@@ -681,6 +701,13 @@ serve(async (req) => {
 
     // If this is a Supabase Auth hook call (has user + email_data)
     if (body.user && body.email_data) {
+      if (!isAuthorizedAuthHookRequest(req)) {
+        console.warn("send-email: unauthorized auth-hook send attempt rejected");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       return await handleAuthHook(body);
     }
 

@@ -112,7 +112,8 @@ function computeMatchScore(profile: UserProfile, job: Job): MatchResult {
     const matchedSkills = profile.skills.filter((skill) =>
       descLower.includes(skill.toLowerCase())
     );
-    skillsScore = Math.round((matchedSkills.length / Math.min(profile.skills.length, 10)) * 25);
+    const skillsDenominator = Math.min(profile.skills.length, 10);
+    skillsScore = Math.round((Math.min(matchedSkills.length, skillsDenominator) / skillsDenominator) * 25);
     if (matchedSkills.length > 0) {
       details.push(`Skills match: ${matchedSkills.slice(0, 5).join(", ")}`);
     }
