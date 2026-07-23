@@ -99,7 +99,9 @@ serve(async (req) => {
 
       let status = "ready";
       let queueNotice: string | null = null;
-      if (body.queue_if_supported && portal.supported && portal.type === "greenhouse") {
+      // Queue every portal career-ops-submit accepts (greenhouse, ashby,
+      // lever). Workday/Oracle/iCIMS stay review-only (supported = false).
+      if (body.queue_if_supported && portal.supported) {
         try {
           const submitResult = await callAsUser("career-ops-submit", authorization, {
             draft_application_id: draft.id,
@@ -146,6 +148,8 @@ async function callAsUser(name: string, authorization: string, body: Record<stri
   return JSON.parse(text) as Record<string, unknown>;
 }
 
+// supported must mirror the portal set career-ops-submit accepts
+// (greenhouse, ashby, lever); anything else stays review-only.
 function detectPortal(value: string): { type: "greenhouse" | "ashby" | "lever"; identifier: string; supported: boolean } {
   const url = new URL(value);
   const parts = url.pathname.split("/").filter(Boolean);
@@ -153,8 +157,8 @@ function detectPortal(value: string): { type: "greenhouse" | "ashby" | "lever"; 
     const boardsIndex = parts.findIndex((part) => ["boards", "job-boards"].includes(part));
     return { type: "greenhouse", identifier: parts[boardsIndex + 1] || parts[0] || "unknown", supported: true };
   }
-  if (/ashbyhq\.com$/i.test(url.hostname)) return { type: "ashby", identifier: parts[0] || "unknown", supported: false };
-  if (/lever\.co$/i.test(url.hostname)) return { type: "lever", identifier: parts[0] || "unknown", supported: false };
+  if (/ashbyhq\.com$/i.test(url.hostname)) return { type: "ashby", identifier: parts[0] || "unknown", supported: true };
+  if (/lever\.co$/i.test(url.hostname)) return { type: "lever", identifier: parts[0] || "unknown", supported: true };
   return { type: "lever", identifier: "manual", supported: false };
 }
 
