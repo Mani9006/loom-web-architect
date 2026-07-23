@@ -277,7 +277,17 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
       newStatus !== matched.status &&
       isForwardStatusMove(matched.status, newStatus)
     ) {
-      await admin.from("mc_tracked_jobs").update({ status: newStatus }).eq("id", matched.id);
+      const { error: statusUpdateError } = await admin
+        .from("mc_tracked_jobs")
+        .update({ status: newStatus })
+        .eq("id", matched.id);
+      if (statusUpdateError) {
+        // The status never changed in the DB, so skip the history row and the
+        // status-change email — the user must not be alerted to a move that
+        // didn't happen.
+        console.error("mc-gmail-poll status update", connection.id, matched.id, statusUpdateError);
+        continue;
+      }
       await admin.from("mc_status_history").insert({
         tracked_job_id: matched.id,
         user_id: connection.user_id,
