@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
-import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
+import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
 
@@ -219,6 +219,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       setSelected((cur) => (cur && cur.id === job.id ? { ...cur, tailored_resume_id: tailoredRow.id } : cur));
       toast({ title: "Tailored resume ready", description: "Open it in the Resumes tab." });
     } catch (e) {
+      // The user switched away mid-tailor (runOnLocalWorker was aborted on
+      // unmount) — not a real failure, so stay silent rather than toast.
+      if (isJobCancelled(e)) return;
       const msg = (e as Error).message || String(e);
       toast({ title: "Tailoring failed", description: msg, variant: "destructive" });
     } finally {

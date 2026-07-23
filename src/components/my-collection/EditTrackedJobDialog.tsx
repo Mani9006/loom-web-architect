@@ -106,7 +106,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       .eq("id", job.id);
     setSaving(false);
     if (error) {
-      toast({ title: "Couldn't delete", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't move to trash", description: error.message, variant: "destructive" });
       return;
     }
     toast({ title: "Moved to trash" });

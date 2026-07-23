@@ -46,6 +46,17 @@ export function defaultModelFor(kind: JobKind): JobModel {
   return DEFAULT_MODEL_FOR_KIND[kind] ?? "haiku-4-5";
 }
 
+/**
+ * True when an error from waitForJob/runOnLocalWorker is the "Cancelled"
+ * rejection produced by an aborted signal, rather than a real job failure.
+ * Callers that pass a signal tied to their own unmount should check this
+ * before showing an error toast, so switching tabs mid-job doesn't look
+ * like a failure to the user.
+ */
+export function isJobCancelled(error: unknown): boolean {
+  return error instanceof Error && error.message === "Cancelled";
+}
+
 export interface AIJob {
   id: string;
   user_id: string;
@@ -131,6 +142,10 @@ export async function waitForJob(
   // First, check if it's already done.
   const initial = await fetchJob(jobId);
   if (!initial) throw new Error("Job not found");
+  // Abort events aren't replayed, so a signal that fired while the fetch
+  // above was in flight would otherwise go unnoticed — re-check here,
+  // before subscribing, rather than relying solely on the listener below.
+  if (opts.signal?.aborted) throw new Error("Cancelled");
   opts.onProgress?.(initial.status);
   if (initial.status === "done") return initial;
   if (initial.status === "failed") throw new Error(initial.error || "Job failed");

@@ -23,6 +23,7 @@ import {
   resumeRowToMarkdown,
   waitForJob,
   enqueueJob,
+  isJobCancelled,
   type JobStatus,
   type AIJob,
 } from "@/lib/mc-ai-jobs";
@@ -454,6 +455,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       });
       await handleSearchResult(finished, history);
     } catch (e) {
+      // The user switched away mid-search (waitForJob was aborted on
+      // unmount) — not a real failure, so stay silent rather than toast.
+      if (isJobCancelled(e)) return;
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Search failed", description: msg, variant: "destructive" });
     } finally {
@@ -644,6 +648,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         description: `${job.company} · ${job.title} — see the Resumes tab.`,
       });
     } catch (e) {
+      // The user switched away mid-tailor (runOnLocalWorker was aborted on
+      // unmount) — not a real failure, so stay silent rather than toast.
+      if (isJobCancelled(e)) return;
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Tailor failed", description: msg, variant: "destructive" });
     } finally {
