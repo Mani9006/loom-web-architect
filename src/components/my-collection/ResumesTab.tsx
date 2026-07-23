@@ -253,49 +253,84 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
   window.open(data.url, "_blank");
 }
 
-// Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness
-// is derived from each part's index in the raw split (odd = inside **markers**)
-// before empty parts are dropped, since a bold span at the very start or end of
-// a line produces an empty leading/trailing part that would otherwise shift
-// every later index and flip bold/non-bold for the rest of the line.
-function markdownRuns(line: string, TextRun: typeof import("docx").TextRun) {
-  return line
-    .split(/\*\*(.+?)\*\*/g)
-    .map((part, i) => ({ part, bold: i % 2 === 1 }))
-    .filter(({ part }) => part.length > 0)
-    .map(({ part, bold }) => new TextRun({ text: part, bold, font: "Calibri", size: 20 }));
+// Converts the tailored resume's markdown into a lightweight Word document.
+// mc_tailored_resumes only stores markdown (cv_md), not the structured
+// ResumeJSON the main Resume Builder's DOCX exporter (use-resume-export.ts)
+// needs — so this walks the markdown line-by-line instead, mirroring how
+// mc-render-resume's PDF exporter turns the same markdown into plain lines.
+/* eslint-disable @typescript-eslint/no-explicit-any -- dynamically-imported docx types */
+function markdownToDocxParagraphs(md: string, docx: any): any[] {
+  const { Paragraph, TextRun, BorderStyle } = docx;
+  const paragraphs: any[] = [];
+
+  for (const raw of md.split(/\r?\n/)) {
+    const headingMatch = raw.match(/^(#{1,6})\s*(.+)$/);
+    const bulletMatch = raw.match(/^\s*[-*]\s+(.+)$/);
+    const clean = (s: string) => s.replace(/\*\*/g, "").replace(/__/g, "").trim();
+
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const text = clean(headingMatch[2]);
+      paragraphs.push(
+        new Paragraph({
+          spacing: { before: level === 1 ? 0 : 200, after: 80 },
+          border: level === 2 ? { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000" } } : undefined,
+          children: [
+            new TextRun({ text, bold: true, size: level === 1 ? 32 : level === 2 ? 24 : 22, font: "Calibri" }),
+          ],
+        }),
+      );
+    } else if (bulletMatch) {
+      paragraphs.push(
+        new Paragraph({
+          bullet: { level: 0 },
+          spacing: { before: 30 },
+          children: [new TextRun({ text: clean(bulletMatch[1]), size: 20, font: "Calibri" })],
+        }),
+      );
+    } else if (!raw.trim()) {
+      paragraphs.push(new Paragraph({ children: [new TextRun({ text: "" })] }));
+    } else {
+      paragraphs.push(
+        new Paragraph({
+          spacing: { after: 40 },
+          children: [new TextRun({ text: clean(raw), size: 20, font: "Calibri" })],
+        }),
+      );
+    }
+  }
+
+  return paragraphs;
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
   try {
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
+    const docx = await import("docx");
     const { saveAs } = await import("file-saver");
+    const { Document, Packer } = docx;
 
-    const children = r.cv_md.split(/\r?\n/).map((raw) => {
-      const line = raw.trimEnd();
-      if (!line.trim()) return new Paragraph({ text: "" });
-      if (line.startsWith("# ")) {
-        return new Paragraph({ heading: HeadingLevel.TITLE, children: markdownRuns(line.slice(2), TextRun) });
-      }
-      if (line.startsWith("## ")) {
-        return new Paragraph({ heading: HeadingLevel.HEADING_1, spacing: { before: 200 }, children: markdownRuns(line.slice(3), TextRun) });
-      }
-      if (line.startsWith("### ")) {
-        return new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 120 }, children: markdownRuns(line.slice(4), TextRun) });
-      }
-      if (/^[-*]\s+/.test(line)) {
-        return new Paragraph({ bullet: { level: 0 }, children: markdownRuns(line.replace(/^[-*]\s+/, ""), TextRun) });
-      }
-      return new Paragraph({ spacing: { after: 60 }, children: markdownRuns(line, TextRun) });
+    const doc = new Document({
+      sections: [
+        {
+          properties: {
+            page: {
+              size: { width: 12240, height: 15840 },
+              margin: { top: 720, right: 864, bottom: 720, left: 864 },
+            },
+          },
+          children: markdownToDocxParagraphs(r.cv_md, docx),
+        },
+      ],
     });
 
-    const doc = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(doc);
+    if (blob.size < 500) throw new Error("Generated Word document did not pass the file integrity check.");
     saveAs(blob, `${r.name}.docx`);
   } catch (e) {
     toast({
       title: "DOCX export failed",
-      description: e instanceof Error ? e.message : String(e),
+      description: e instanceof Error ? e.message : "Couldn't generate the Word document.",
       variant: "destructive",
     });
   }
