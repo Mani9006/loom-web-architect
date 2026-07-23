@@ -18,7 +18,7 @@ import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Home, FileText, Search, Bot, Columns3, Sparkles, Map, Inbox,
-  ShieldCheck, Crown, LogOut, Settings, Gauge,
+  ShieldCheck, Crown, LogOut, Settings, Gauge, FolderOpen,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
   HelpCircle, Sun, Moon, BookOpen, MessageSquare, CreditCard,
   ArrowUpRight } from "lucide-react";
@@ -49,6 +49,7 @@ const mainNav: NavItem[] = [
   { label: "Job Search", icon: Search, path: "/job-search" },
   { label: "Matches", icon: Sparkles, path: "/matches" },
   { label: "Applications", icon: Columns3, path: "/applications" },
+  { label: "My Collection", icon: FolderOpen, path: "/my-collection" },
   { label: "Inbox", icon: Inbox, path: "/inbox" },
   { label: "Resume", icon: FileText, path: "/resume-builder" },
   { label: "ATS Checker", icon: Gauge, path: "/ats-checker" },
