@@ -46,6 +46,17 @@ export function defaultModelFor(kind: JobKind): JobModel {
   return DEFAULT_MODEL_FOR_KIND[kind] ?? "haiku-4-5";
 }
 
+/**
+ * True when an error from waitForJob/runOnLocalWorker is the "Cancelled"
+ * rejection produced by an aborted signal, rather than a real job failure.
+ * Callers that pass a signal tied to their own unmount should check this
+ * before showing an error toast, so switching tabs mid-job doesn't look
+ * like a failure to the user.
+ */
+export function isJobCancelled(error: unknown): boolean {
+  return error instanceof Error && error.message === "Cancelled";
+}
+
 export interface AIJob {
   id: string;
   user_id: string;
@@ -121,14 +132,20 @@ export async function enqueueJob(args: EnqueueArgs): Promise<EnqueueResult> {
  */
 export async function waitForJob(
   jobId: string,
-  opts: { timeoutMs?: number; onProgress?: (status: JobStatus) => void } = {}
+  opts: { timeoutMs?: number; onProgress?: (status: JobStatus) => void; signal?: AbortSignal } = {}
 ): Promise<AIJob> {
   const timeoutMs = opts.timeoutMs ?? 5 * 60 * 1000;
   const start = Date.now();
 
+  if (opts.signal?.aborted) throw new Error("Cancelled");
+
   // First, check if it's already done.
   const initial = await fetchJob(jobId);
   if (!initial) throw new Error("Job not found");
+  // Abort events aren't replayed, so a signal that fired while the fetch
+  // above was in flight would otherwise go unnoticed — re-check here,
+  // before subscribing, rather than relying solely on the listener below.
+  if (opts.signal?.aborted) throw new Error("Cancelled");
   opts.onProgress?.(initial.status);
   if (initial.status === "done") return initial;
   if (initial.status === "failed") throw new Error(initial.error || "Job failed");
@@ -143,6 +160,7 @@ export async function waitForJob(
       if (resolved) return;
       resolved = true;
       if (pollHandle) clearInterval(pollHandle);
+      opts.signal?.removeEventListener("abort", onAbort);
       try {
         channel.unsubscribe();
       } catch { /* Realtime cleanup is best-effort. */ }
@@ -150,6 +168,13 @@ export async function waitForJob(
       else if (job) resolve(job);
       else reject(new Error("Job vanished"));
     };
+
+    // Lets a caller tear down the realtime subscription and poll interval
+    // when it no longer cares about the result (e.g. the component that
+    // started waiting unmounted) instead of leaking both until the job
+    // reaches a terminal state or the timeout fires.
+    const onAbort = () => finish(null, new Error("Cancelled"));
+    opts.signal?.addEventListener("abort", onAbort);
 
     const channel = supabase
       .channel(`mc_ai_job_${jobId}`)
@@ -204,12 +229,13 @@ async function fetchJob(jobId: string): Promise<AIJob | null> {
  * Throws on error/timeout.
  */
 export async function runOnLocalWorker(
-  args: EnqueueArgs & { timeoutMs?: number; onProgress?: (status: JobStatus) => void }
+  args: EnqueueArgs & { timeoutMs?: number; onProgress?: (status: JobStatus) => void; signal?: AbortSignal }
 ): Promise<{ result: string; resultJson: unknown; jobId: string }> {
   const { jobId } = await enqueueJob(args);
   const job = await waitForJob(jobId, {
     timeoutMs: args.timeoutMs,
     onProgress: args.onProgress,
+    signal: args.signal,
   });
   return {
     jobId,

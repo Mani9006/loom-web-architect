@@ -23,6 +23,7 @@ import {
   resumeRowToMarkdown,
   waitForJob,
   enqueueJob,
+  isJobCancelled,
   type JobStatus,
   type AIJob,
 } from "@/lib/mc-ai-jobs";
@@ -128,6 +129,17 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
+  // Ties every waitForJob/runOnLocalWorker call below to this component
+  // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
+  // Tabs unmounts inactive content) tears down the realtime subscription
+  // and poll interval instead of leaking them until the AI job times out.
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    return () => controller.abort();
+  }, []);
+
   // Mirror state to sessionStorage on every change.
   useEffect(() => {
     writePersisted(sessionId, {
@@ -164,6 +176,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           onProgress: (s) => {
             if (!cancelled) setProgress(s);
           },
+          signal: abortRef.current?.signal,
         });
         if (cancelled) return;
         await handleSearchResult(job, activeJobHistory);
@@ -438,9 +451,13 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       const finished = await waitForJob(enq.jobId, {
         timeoutMs: 6 * 60 * 1000,
         onProgress: (s) => setProgress(s),
+        signal: abortRef.current?.signal,
       });
       await handleSearchResult(finished, history);
     } catch (e) {
+      // The user switched away mid-search (waitForJob was aborted on
+      // unmount) — not a real failure, so stay silent rather than toast.
+      if (isJobCancelled(e)) return;
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Search failed", description: msg, variant: "destructive" });
     } finally {
@@ -598,6 +615,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         input: { tracked_job_id: trackedJobId, company: job.company, job_title: job.title },
         timeoutMs: 6 * 60 * 1000,
         onProgress: (s) => setTailoringStatus(s),
+        signal: abortRef.current?.signal,
       });
 
       // 3. Save tailored resume + link it to the tracked job.
@@ -630,6 +648,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         description: `${job.company} · ${job.title} — see the Resumes tab.`,
       });
     } catch (e) {
+      // The user switched away mid-tailor (runOnLocalWorker was aborted on
+      // unmount) — not a real failure, so stay silent rather than toast.
+      if (isJobCancelled(e)) return;
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Tailor failed", description: msg, variant: "destructive" });
     } finally {

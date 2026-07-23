@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
-import { runOnLocalWorker, resumeRowToMarkdown, type JobStatus } from "@/lib/mc-ai-jobs";
+import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
 
@@ -69,6 +69,17 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
 
+  // Ties the tailor pipeline's waitForJob subscription to this component
+  // instance's lifetime, so switching away from the Board tab mid-tailor
+  // (Radix Tabs unmounts inactive content) tears down the realtime
+  // subscription and poll interval instead of leaking them.
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    return () => controller.abort();
+  }, []);
+
   async function tailorJob(job: TrackedJob) {
     if (!job.jd_md || !job.jd_md.trim()) {
       toast({
@@ -76,6 +87,11 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         description: "Add the JD to this card first, then try again.",
         variant: "destructive",
       });
+      return;
+    }
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) {
+      toast({ title: "Not signed in", variant: "destructive" });
       return;
     }
     // Pull a base resume to feed into the tailor prompt. Three-tier lookup:
@@ -169,14 +185,21 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         input: { tracked_job_id: job.id, company: job.company, job_title: job.job_title },
         timeoutMs: 6 * 60 * 1000,
         onProgress: (s) => setTailoring({ jobId: job.id, status: s }),
+        signal: abortRef.current?.signal,
       });
       void aiJobId;
 
-      const { data: userData } = await supabase.auth.getUser();
+      // Re-check auth rather than reusing the check above — tailoring can
+      // take up to 6 minutes, long enough for the session to expire.
+      const { data: freshUserData } = await supabase.auth.getUser();
+      if (!freshUserData?.user) {
+        toast({ title: "Not signed in", description: "Sign in again to save the tailored resume.", variant: "destructive" });
+        return;
+      }
       const { data: tailoredRow, error: insertErr } = await (supabase as any)
         .from("mc_tailored_resumes")
         .insert({
-          user_id: userData?.user?.id,
+          user_id: freshUserData.user.id,
           session_id: sessionId,
           source_job_id: null,
           name: `${job.company} — ${job.job_title}`,
@@ -197,6 +220,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       setSelected((cur) => (cur && cur.id === job.id ? { ...cur, tailored_resume_id: tailoredRow.id } : cur));
       toast({ title: "Tailored resume ready", description: "Open it in the Resumes tab." });
     } catch (e) {
+      // The user switched away mid-tailor (runOnLocalWorker was aborted on
+      // unmount) — not a real failure, so stay silent rather than toast.
+      if (isJobCancelled(e)) return;
       const msg = (e as Error).message || String(e);
       toast({ title: "Tailoring failed", description: msg, variant: "destructive" });
     } finally {
