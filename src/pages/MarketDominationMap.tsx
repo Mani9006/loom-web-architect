@@ -182,7 +182,7 @@ const kpiSections: { section: string; icon: React.ElementType; rows: KpiRow[] }[
     section: "Product Quality",
     icon: CheckCircle2,
     rows: [
-      { kpi: "ATS pass rate (user resumes)", target: "≥ 70% score ≥ 80", validation: "In-app ATS score event" },
+      { kpi: "Generic résumé-quality rate", target: "≥ 70% score ≥ 80", validation: "In-app résumé-quality event" },
       { kpi: "NPS", target: "≥ 45", validation: "In-app NPS survey (monthly)" },
       { kpi: "Crash / error rate", target: "< 0.5%", validation: "Error tracking (Sentry / logs)" },
       { kpi: "Interview Readiness Score usage", target: "30% of resume creators", validation: "interview_readiness_viewed event" },

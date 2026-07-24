@@ -667,7 +667,13 @@ export const greenhouseAdapter = defineAdapter({
         const rect = element.getBoundingClientRect();
         const disabled = element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true";
         if ((accepted.test(label) || element.id === "submit_app") && rect.width > 0 && rect.height > 0 && !disabled) {
-          return { index, label: label || "submit" };
+          const form = element.form || element.closest("form");
+          return {
+            index,
+            label: label || "submit",
+            formAction: element.formAction || form?.action || null,
+            formMethod: (element.formMethod || form?.method || "post").toUpperCase(),
+          };
         }
       }
       return null;
@@ -695,8 +701,14 @@ export const greenhouseAdapter = defineAdapter({
       const bodyText = document.body?.innerText || "";
       const text = bodyText.slice(0, 8000);
       const idMatch = text.match(/application (?:id|#)\s*[:#]?\s*([A-Za-z0-9-]{4,})/i);
+      const confirmationRect = confirmationNode?.getBoundingClientRect();
       return {
-        hasConfirmationContainer: Boolean(confirmationNode),
+        hasConfirmationContainer: Boolean(
+          confirmationNode
+          && confirmationRect
+          && confirmationRect.width > 0
+          && confirmationRect.height > 0
+        ),
         containerText: confirmationNode ? (confirmationNode.textContent || "").replace(/\s+/g, " ").trim().slice(0, 300) : null,
         text: text.toLowerCase(),
         applicationId: idMatch ? idMatch[1] : null,
@@ -712,14 +724,13 @@ export const greenhouseAdapter = defineAdapter({
           .slice(0, 5),
       };
     });
-    const textConfirmed = /(thank you for applying|thanks for applying|your application has been (received|submitted)|application submitted)/i.test(state.text);
-    const confirmed = state.hasConfirmationContainer || textConfirmed;
+    const confirmed = state.hasConfirmationContainer || Boolean(state.applicationId);
     return {
       confirmed,
       evidence: {
         url: page.url(),
         urlChanged: page.url() !== (ctx.previousUrl || ""),
-        signal: state.hasConfirmationContainer ? "greenhouse-confirmation-container" : textConfirmed ? "confirmation-text" : null,
+        signal: state.hasConfirmationContainer ? "greenhouse-confirmation-container" : null,
         containerText: state.containerText,
         applicationId: state.applicationId,
         invalidFields: state.invalidFields,

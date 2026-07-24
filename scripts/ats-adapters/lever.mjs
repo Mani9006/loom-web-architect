@@ -179,7 +179,13 @@ export const leverAdapter = defineAdapter({
         const disabled = element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true";
         const isTemplateButton = element.classList.contains("postings-btn") && element.getAttribute("type") === "submit";
         if ((accepted.test(label) || isTemplateButton) && rect.width > 0 && rect.height > 0 && !disabled) {
-          return { index, label: label || "submit application" };
+          const form = element.form || element.closest("form");
+          return {
+            index,
+            label: label || "submit application",
+            formAction: element.formAction || form?.action || null,
+            formMethod: (element.formMethod || form?.method || "post").toUpperCase(),
+          };
         }
       }
       return null;
@@ -203,10 +209,18 @@ export const leverAdapter = defineAdapter({
     const state = await page.evaluate(() => {
       const confirmationNode = document.querySelector('.confirmation, [data-qa="confirmation"], .posting-thanks');
       const bodyText = document.body?.innerText || "";
+      const idMatch = bodyText.match(/application (?:id|#|reference)\s*[:#]?\s*([A-Za-z0-9-]{4,})/i);
+      const confirmationRect = confirmationNode?.getBoundingClientRect();
       return {
-        hasConfirmationContainer: Boolean(confirmationNode),
+        hasConfirmationContainer: Boolean(
+          confirmationNode
+          && confirmationRect
+          && confirmationRect.width > 0
+          && confirmationRect.height > 0
+        ),
         containerText: confirmationNode ? (confirmationNode.textContent || "").replace(/\s+/g, " ").trim().slice(0, 300) : null,
         text: bodyText.slice(0, 8000).toLowerCase(),
+        applicationId: idMatch ? idMatch[1] : null,
         invalidFields: document.querySelectorAll(':invalid, [aria-invalid="true"]').length,
         verificationRequired: /(verification code was sent|enter the .*code|security code|confirm you(?:'|’)re human)/i.test(bodyText),
         visibleAlerts: Array.from(document.querySelectorAll('[role="alert"], .error, .field-error'))
@@ -219,15 +233,15 @@ export const leverAdapter = defineAdapter({
           .slice(0, 5),
       };
     });
-    const textConfirmed = /(application (?:has been )?(?:received|submitted)|thank you for applying|thanks for applying)/i.test(state.text);
-    const confirmed = onThanksPage || state.hasConfirmationContainer || textConfirmed;
+    const confirmed = onThanksPage || state.hasConfirmationContainer || Boolean(state.applicationId);
     return {
       confirmed,
       evidence: {
         url,
         urlChanged: url !== (ctx.previousUrl || ""),
-        signal: onThanksPage ? "lever-thanks-url" : state.hasConfirmationContainer ? "lever-confirmation-container" : textConfirmed ? "confirmation-text" : null,
+        signal: onThanksPage ? "lever-thanks-url" : state.hasConfirmationContainer ? "lever-confirmation-container" : null,
         containerText: state.containerText,
+        applicationId: state.applicationId,
         invalidFields: state.invalidFields,
         verificationRequired: state.verificationRequired,
         visibleAlerts: state.visibleAlerts,

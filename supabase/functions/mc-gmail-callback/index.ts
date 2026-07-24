@@ -1,13 +1,18 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { encryptSecret, verifySignedState } from "../_shared/oauth-crypto.ts";
+import {
+  gmailPollFailureHealth,
+  gmailPollSuccessHealth,
+} from "../_shared/gmail-poll-failure.ts";
+import {
+  encryptSecret,
+  hashOpaqueOAuthState,
+} from "../_shared/oauth-crypto.ts";
 
-interface OAuthState {
+interface OAuthStateRecord {
   session_id: string;
   user_id: string;
-  exp: number;
-  nonce: string;
-  return_to?: string;
+  return_to: string;
 }
 
 function safeRedirect(baseUrl: string, path: string, params: Record<string, string>): Response {
@@ -28,10 +33,6 @@ serve(async (req) => {
   const stateRaw = requestUrl.searchParams.get("state") || "";
   const providerError = requestUrl.searchParams.get("error");
 
-  if (providerError) {
-    return safeRedirect(appBaseUrl, "/inbox", { inbox: "cancelled" });
-  }
-
   const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID") || "";
   const googleClientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET") || "";
   const redirectUri = Deno.env.get("GOOGLE_REDIRECT_URI") || "";
@@ -39,29 +40,43 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-  if (!code || !stateRaw || !googleClientId || !googleClientSecret || !redirectUri ||
-      !encryptionKey || !supabaseUrl || !serviceKey) {
+  if (!stateRaw || !supabaseUrl || !serviceKey) {
     return safeRedirect(appBaseUrl, "/inbox", { inbox: "unavailable" });
   }
 
-  let state: OAuthState | null = null;
+  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  let state: OAuthStateRecord | null = null;
   try {
-    state = await verifySignedState<OAuthState>(stateRaw, encryptionKey);
+    const stateHash = await hashOpaqueOAuthState(stateRaw);
+    const { data: stateRows, error: stateError } = await admin.rpc(
+      "mc_consume_gmail_oauth_state",
+      { p_state_hash: stateHash },
+    );
+    if (stateError) throw stateError;
+    state = Array.isArray(stateRows)
+      ? (stateRows[0] as OAuthStateRecord | undefined) ?? null
+      : null;
   } catch (error) {
     console.error("mc-gmail-callback state", error);
   }
-  if (!state?.session_id || !state?.user_id || !state?.nonce) {
+  if (!state?.session_id || !state?.user_id || !state?.return_to) {
     return safeRedirect(appBaseUrl, "/inbox", { inbox: "invalid_link" });
   }
 
-  const redirectBase = state.return_to || appBaseUrl;
+  const redirectBase = state.return_to;
+  if (providerError) {
+    return safeRedirect(redirectBase, "/inbox", { inbox: "cancelled" });
+  }
+  if (!code || !googleClientId || !googleClientSecret || !redirectUri || !encryptionKey) {
+    return safeRedirect(redirectBase, "/inbox", { inbox: "unavailable" });
+  }
 
-  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   const { data: session } = await admin
     .from("mc_sessions")
     .select("id")
     .eq("id", state.session_id)
     .eq("user_id", state.user_id)
+    .neq("status", "deleted")
     .maybeSingle();
   if (!session) return safeRedirect(appBaseUrl, "/inbox", { inbox: "invalid_link" });
 
@@ -93,6 +108,7 @@ serve(async (req) => {
         .from("mc_gmail_connections")
         .select("id")
         .eq("session_id", state.session_id)
+        .eq("user_id", state.user_id)
         .maybeSingle();
       if (existingConnection?.id) {
         const { data: existingTokens } = await admin.rpc("mc_get_gmail_tokens", {
@@ -119,7 +135,7 @@ serve(async (req) => {
         gmail_email: profile.email,
         token_expires_at: expiresAt,
         scopes: String(tokens.scope || "").split(" ").filter(Boolean),
-        enabled: true,
+        ...gmailPollSuccessHealth(),
       }, { onConflict: "session_id" })
       .select("id")
       .single();
@@ -137,7 +153,17 @@ serve(async (req) => {
       p_refresh_ciphertext: refreshCiphertext,
     });
     if (tokenStoreError) {
-      await admin.from("mc_gmail_connections").update({ enabled: false }).eq("id", connection.id);
+      const failureHealth = gmailPollFailureHealth(
+        "secure_tokens_missing",
+        0,
+        new Date().toISOString(),
+      );
+      await admin
+        .from("mc_gmail_connections")
+        .update(failureHealth.update)
+        .eq("id", connection.id)
+        .eq("user_id", state.user_id)
+        .eq("session_id", state.session_id);
       throw new Error("token_store_failed");
     }
 

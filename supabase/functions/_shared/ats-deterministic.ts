@@ -1,12 +1,13 @@
 /**
- * Shared deterministic ATS scoring, extracted verbatim from career-ops-ats so
- * other functions can score a resume against the SAME scale that writes
- * public.ats_scores rows (weighted six dimensions, 0-100 overall).
+ * Shared deterministic résumé-quality and job-description match scoring.
  *
- * Used by career-ops-tailor-report to compute the "before" score of the master
- * resume so it is directly comparable with the stored "after" score of the
- * tailored resume. career-ops-ats keeps its own inline copy for now; adopting
- * this shared module there is a follow-up (no behavior change intended).
+ * These are deliberately separate measurements:
+ *   - resume_quality_score: job-independent evidence/structure quality.
+ *   - job_match_score: coverage of the requirements extracted from one JD.
+ *
+ * `career-ops-ats` is the only server endpoint allowed to publish the
+ * job-specific score. Keeping the arithmetic here lets the tailor report use
+ * the exact same deterministic method without creating another scorer.
  */
 
 import {
@@ -14,7 +15,15 @@ import {
 } from "./ats-impact.ts";
 import { ATS_PDF_SPEC } from "./resume-pdf-layout.ts";
 
-export const ATS_WEIGHTS = { format: 0.15, keywords: 0.25, experience: 0.25, skills: 0.15, education: 0.05, impact: 0.15 } as const;
+export const ATS_QUALITY_WEIGHTS = {
+  format: 0.15,
+  experience: 0.25,
+  skills: 0.15,
+  education: 0.05,
+  impact: 0.15,
+} as const;
+const ATS_QUALITY_WEIGHT_TOTAL = Object.values(ATS_QUALITY_WEIGHTS)
+  .reduce((sum, weight) => sum + weight, 0);
 
 const STRONG_VERBS = new Set([
   "led", "built", "shipped", "designed", "architected", "scaled",
@@ -157,7 +166,13 @@ export function computeKeywordScore(resumeText: string, keywords: string[]): {
 }
 
 export function normalizeForMatch(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").replace(/\s+/g, " ").trim();
+  // A trailing sentence period must not glue to the final token ("systems."
+  // ≠ "systems"), while interior dots in names like "Node.js"/".NET" stay.
+  return value.toLowerCase()
+    .replace(/\.(?![a-z0-9+#])/gi, " ")
+    .replace(/[^a-z0-9+#.]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // ─── Pagination / format risk estimation ────────────────────────────────────
@@ -276,7 +291,16 @@ export function resumeToPlainText(r: any): string {
 }
 
 export interface AtsDimensionScores {
+  /**
+   * Backwards-compatible effective score stored in ats_scores.overall.
+   * It is the job match when a JD keyword set exists, otherwise résumé quality.
+   * Consumers should prefer the explicitly named fields below.
+   */
   overall: number;
+  score_kind: "resume_quality" | "job_match";
+  resume_quality_score: number;
+  job_match_score: number | null;
+  job_match_basis: "jd_requirement_coverage" | null;
   dim_format: number;
   dim_keywords: number;
   dim_experience: number;
@@ -287,21 +311,37 @@ export interface AtsDimensionScores {
   missing_keywords: string[];
 }
 
-/** Weighted 0-100 score identical to the row career-ops-ats writes to ats_scores. */
+/** Job-independent quality, normalized to 0-100 across non-JD dimensions. */
+export function computeResumeQualityScore(det: DetReport): number {
+  const weighted =
+    det.format * ATS_QUALITY_WEIGHTS.format +
+    det.experience * ATS_QUALITY_WEIGHTS.experience +
+    det.skills * ATS_QUALITY_WEIGHTS.skills +
+    det.education * ATS_QUALITY_WEIGHTS.education +
+    det.impact * ATS_QUALITY_WEIGHTS.impact;
+  return Math.round((weighted / ATS_QUALITY_WEIGHT_TOTAL) * 10) / 10;
+}
+
+/**
+ * Score a structured résumé without conflating generic quality and JD match.
+ *
+ * `overall` remains only as a compatibility field for existing database
+ * consumers. New code must use resume_quality_score or job_match_score.
+ */
 // deno-lint-ignore no-explicit-any
 export function scoreResumeDeterministic(resume: any, jdKeywords: string[]): AtsDimensionScores {
   const det = deterministicAnalysis(resume);
   const resumeText = resumeToPlainText(resume);
   const kw = computeKeywordScore(resumeText, jdKeywords);
-  const overall =
-    det.format * ATS_WEIGHTS.format +
-    kw.score * ATS_WEIGHTS.keywords +
-    det.experience * ATS_WEIGHTS.experience +
-    det.skills * ATS_WEIGHTS.skills +
-    det.education * ATS_WEIGHTS.education +
-    det.impact * ATS_WEIGHTS.impact;
+  const resumeQualityScore = computeResumeQualityScore(det);
+  const hasJobMatch = jdKeywords.some((keyword) => normalizeForMatch(String(keyword)).length > 0);
+  const jobMatchScore = hasJobMatch ? kw.score : null;
   return {
-    overall: Math.round(overall * 10) / 10,
+    overall: jobMatchScore ?? resumeQualityScore,
+    score_kind: hasJobMatch ? "job_match" : "resume_quality",
+    resume_quality_score: resumeQualityScore,
+    job_match_score: jobMatchScore,
+    job_match_basis: hasJobMatch ? "jd_requirement_coverage" : null,
     dim_format: det.format,
     dim_keywords: kw.score,
     dim_experience: det.experience,

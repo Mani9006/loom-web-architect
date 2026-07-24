@@ -17,6 +17,7 @@ import {
   Lightbulb, ChevronDown, ChevronUp, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { normalizeScore } from "@/lib/score-truth";
 
 interface SectionScore {
   score: number;
@@ -28,35 +29,51 @@ interface SectionScore {
 
 interface ATSResult {
   overallScore: number;
-  sections: {
-    formatting: SectionScore;
-    keywords: SectionScore;
-    experience: SectionScore;
-    skills: SectionScore;
-    education: SectionScore;
-    impact: SectionScore;
-  };
+  scoreType: "resume_quality";
+  sections: Partial<Record<"formatting" | "keywords" | "experience" | "skills" | "education" | "impact", SectionScore>>;
+  jobMatch: {
+    score: number;
+    matched: string[];
+    missing: string[];
+    basis: "jd_requirement_coverage";
+  } | null;
   summary: string;
   topImprovements: string[];
 }
 
 const SECTION_CONFIG = [
-  { key: "formatting" as const, label: "Formatting & Structure", icon: Layout, weight: "15%", color: "blue" },
-  { key: "keywords" as const, label: "Keyword Match", icon: Key, weight: "25%", color: "purple" },
-  { key: "experience" as const, label: "Experience Relevance", icon: Briefcase, weight: "25%", color: "orange" },
-  { key: "skills" as const, label: "Skills Coverage", icon: Sparkles, weight: "15%", color: "cyan" },
-  { key: "education" as const, label: "Education", icon: GraduationCap, weight: "5%", color: "green" },
-  { key: "impact" as const, label: "Impact & Achievements", icon: TrendingUp, weight: "15%", color: "pink" },
+  { key: "formatting" as const, label: "Formatting & Structure", icon: Layout, weight: "20%", color: "blue" },
+  { key: "keywords" as const, label: "Job requirement coverage", icon: Key, weight: "job only", color: "purple" },
+  { key: "experience" as const, label: "Experience Evidence", icon: Briefcase, weight: "33%", color: "orange" },
+  { key: "skills" as const, label: "Skills Structure", icon: Sparkles, weight: "20%", color: "cyan" },
+  { key: "education" as const, label: "Education", icon: GraduationCap, weight: "7%", color: "green" },
+  { key: "impact" as const, label: "Impact & Achievements", icon: TrendingUp, weight: "20%", color: "pink" },
 ];
 
-function ScoreRing({ score, size = 120, strokeWidth = 10 }: { score: number; size?: number; strokeWidth?: number }) {
+function ScoreRing({
+  score,
+  label,
+  size = 120,
+  strokeWidth = 10,
+}: {
+  score: number;
+  label: string;
+  size?: number;
+  strokeWidth?: number;
+}) {
+  const normalized = normalizeScore(score) ?? 0;
   const r = (size - strokeWidth) / 2;
   const circ = 2 * Math.PI * r;
-  const offset = circ - (score / 100) * circ;
-  const color = score >= 80 ? "text-green-500" : score >= 60 ? "text-yellow-500" : score >= 40 ? "text-orange-500" : "text-red-500";
+  const offset = circ - (normalized / 100) * circ;
+  const color = normalized >= 80 ? "text-green-500" : normalized >= 60 ? "text-yellow-500" : normalized >= 40 ? "text-orange-500" : "text-red-500";
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div
+      className="relative"
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label={`${label} ${normalized} percent`}
+    >
       <svg className="w-full h-full -rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={strokeWidth} className="text-muted/30" />
         <circle
@@ -66,7 +83,7 @@ function ScoreRing({ score, size = 120, strokeWidth = 10 }: { score: number; siz
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-bold">{score}</span>
+        <span className="text-3xl font-bold">{normalized}</span>
         <span className="text-xs text-muted-foreground">/ 100</span>
       </div>
     </div>
@@ -179,7 +196,7 @@ export default function ATSCheckerPage() {
   const [jobDescription, setJobDescription] = usePersistedState("atsChecker.jobDescription", "", "localStorage");
   const [uploadedFileName, setUploadedFileName] = usePersistedState<string | null>("atsChecker.fileName", null, "sessionStorage");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = usePersistedState<ATSResult | null>("atsChecker.result", null, "sessionStorage");
+  const [result, setResult] = usePersistedState<ATSResult | null>("atsChecker.result.v2", null, "sessionStorage");
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
 
   const handleDocumentExtracted = (text: string, fileName: string) => {
@@ -201,6 +218,14 @@ export default function ATSCheckerPage() {
       });
       return;
     }
+    if (jobDescription.trim().length > 0 && jobDescription.trim().length <= 100) {
+      toast({
+        title: "Add the complete job description",
+        description: "Paste more than 100 characters so requirement coverage is based on the actual posting.",
+        variant: "destructive",
+      });
+      return;
+    }
     setLoading(true);
     setResult(null);
 
@@ -211,11 +236,19 @@ export default function ATSCheckerPage() {
 
       const baseUrl = import.meta.env.VITE_SUPABASE_URL;
 
-      const response = await fetch(`${baseUrl}/functions/v1/ats-score`, {
+      // Generic quality is intentionally computed without the JD. The JD is
+      // sent only to career-ops-ats, the authoritative requirement-coverage scorer.
+      const qualityRequest = fetch(`${baseUrl}/functions/v1/ats-score`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ resumeText, jobDescription: jobDescription || undefined }),
+        body: JSON.stringify({ resumeText }),
       });
+      const matchRequest = jobDescription.trim().length > 100
+        ? supabase.functions.invoke("career-ops-ats", {
+          body: { resume_text: resumeText, job_description: jobDescription },
+        })
+        : Promise.resolve({ data: null, error: null });
+      const [response, matchResponse] = await Promise.all([qualityRequest, matchRequest]);
 
       if (!response.ok) {
         // Function returns { error } on 4xx/5xx — surface it when present.
@@ -224,9 +257,40 @@ export default function ATSCheckerPage() {
       }
 
       const data = await response.json();
-      setResult(data);
+      if (matchResponse.error) throw matchResponse.error;
+      const qualitySections = { ...(data.sections ?? {}) } as ATSResult["sections"];
+      delete qualitySections.keywords;
+      const match = matchResponse.data?.ats;
+      const matchScore = match?.job_match_score;
+      const normalizedQualityScore = normalizeScore(data.resumeQualityScore ?? data.overallScore);
+      if (normalizedQualityScore === null) {
+        throw new Error("Résumé quality was not measured.");
+      }
+      const normalizedMatchScore = matchScore === null || matchScore === undefined
+        ? null
+        : normalizeScore(matchScore);
+      if (jobDescription.trim().length > 100 && normalizedMatchScore === null) {
+        throw new Error("Job-requirement coverage was not measured.");
+      }
+      const jobMatch = normalizedMatchScore === null
+        ? null
+        : {
+          score: normalizedMatchScore,
+          matched: Array.isArray(match.matched_keywords) ? match.matched_keywords.map(String) : [],
+          missing: Array.isArray(match.missing_keywords) ? match.missing_keywords.map(String) : [],
+          basis: "jd_requirement_coverage" as const,
+        };
+      const normalized: ATSResult = {
+        overallScore: normalizedQualityScore,
+        scoreType: "resume_quality",
+        sections: qualitySections,
+        jobMatch,
+        summary: String(data.summary || "Résumé quality analysis completed."),
+        topImprovements: Array.isArray(data.topImprovements) ? data.topImprovements.map(String) : [],
+      };
+      setResult(normalized);
       // Expand all sections that need attention (score < 70)
-      const weak = SECTION_CONFIG.filter((c) => data.sections?.[c.key]?.score < 70).map((c) => c.key);
+      const weak = SECTION_CONFIG.filter((c) => normalized.sections[c.key]?.score !== undefined && normalized.sections[c.key]!.score < 70).map((c) => c.key);
       setExpandedSections(weak.length > 0 ? weak : [SECTION_CONFIG[0].key]);
     } catch (err) {
       console.error("ATS analysis failed:", err);
@@ -259,25 +323,25 @@ export default function ATSCheckerPage() {
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <div>
-                <h1 className="text-xl font-bold">ATS Analysis Results</h1>
-                <p className="text-sm text-muted-foreground">Detailed résumé-readiness breakdown</p>
+                <h1 className="text-xl font-bold">Résumé analysis results</h1>
+                <p className="text-sm text-muted-foreground">Separate quality and job-requirement measurements</p>
               </div>
             </div>
 
             <div className="rounded-lg border bg-background px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-              This is the standalone ATS résumé-readiness estimate. Job matching uses a separate career-fit score that also considers role, experience level, location, compensation, and authorization; the two percentages should not be added together or treated as the same score.
+              Résumé quality checks structure and evidence without a job description. Job-requirement coverage checks extracted posting requirements against the résumé text. Career fit separately considers role, experience level, location, compensation, and authorization. These measurements are not interchangeable or additive.
             </div>
 
             {/* Overall Score Card */}
             <Card className="overflow-hidden">
               <CardContent className="p-6">
                 <div className="flex items-center gap-6">
-                  <ScoreRing score={result.overallScore} />
+                  <ScoreRing score={result.overallScore} label="Résumé quality" />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h2 className="text-lg font-bold">ATS Compatibility: {label}</h2>
+                      <h2 className="text-lg font-bold">Résumé quality: {label}</h2>
                       <Badge variant={result.overallScore >= 70 ? "default" : "destructive"} className="text-xs">
-                        {result.overallScore >= 80 ? "Pass" : result.overallScore >= 60 ? "Borderline" : "Fail"}
+                        {result.overallScore >= 80 ? "Strong" : result.overallScore >= 60 ? "Review" : "Needs work"}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">{result.summary}</p>
@@ -285,6 +349,38 @@ export default function ATSCheckerPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {result.jobMatch && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Key className="w-4 h-4 text-purple-500" /> Job-requirement coverage
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="grid gap-5 sm:grid-cols-[140px_1fr] sm:items-center">
+                    <ScoreRing score={result.jobMatch.score} label="Job-requirement coverage" size={112} strokeWidth={9} />
+                    <div className="space-y-3">
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Percentage of the requirements extracted from this posting that are evidenced in the résumé text. This is the job-requirement coverage score used by the tailoring flow, not a career-fit score or a guarantee of interview selection.
+                      </p>
+                      {result.jobMatch.matched.length > 0 && (
+                        <div>
+                          <p className="mb-1.5 text-xs font-medium text-green-700 dark:text-green-400">Evidenced requirements</p>
+                          <div className="flex flex-wrap gap-1.5">{result.jobMatch.matched.map((item) => <Badge key={item} variant="secondary" className="text-[11px]">{item}</Badge>)}</div>
+                        </div>
+                      )}
+                      {result.jobMatch.missing.length > 0 && (
+                        <div>
+                          <p className="mb-1.5 text-xs font-medium text-muted-foreground">Not evidenced</p>
+                          <div className="flex flex-wrap gap-1.5">{result.jobMatch.missing.map((item) => <Badge key={item} variant="outline" className="text-[11px]">{item}</Badge>)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Top Improvements */}
             {result.topImprovements && result.topImprovements.length > 0 && (
@@ -311,7 +407,7 @@ export default function ATSCheckerPage() {
 
             {/* Section Scores */}
             <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3">SECTION BREAKDOWN</h3>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3">RÉSUMÉ QUALITY BREAKDOWN</h3>
               <div className="space-y-2">
                 {SECTION_CONFIG.map((config) => {
                   const data = result.sections[config.key];
@@ -347,9 +443,9 @@ export default function ATSCheckerPage() {
       <ScrollArea className="h-[calc(100vh-68px)]">
         <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-6">
           <PageHeader
-            title="Score it."
-            status="ats · 6 dimensions"
-            description="Deep analysis across formatting, keywords, experience relevance, skills coverage, education, and content quality. Paste your résumé and a job description; we'll tell you exactly what to fix."
+            title="Measure it clearly."
+            status="quality + job coverage"
+            description="Get a generic résumé-quality estimate and, when you provide a job description, a separate requirement-coverage score. Career fit remains a different measurement."
           />
 
 
@@ -390,7 +486,7 @@ export default function ATSCheckerPage() {
                 <Badge variant="secondary" className="text-[10px]">Recommended</Badge>
               </Label>
               <p className="text-sm text-muted-foreground">
-                Paste the job posting to get keyword match analysis and tailored recommendations
+                Paste the full posting to measure how many extracted requirements your résumé actually evidences. We do not blend this with résumé quality.
               </p>
               <Textarea
                 aria-label="Target job description"
@@ -407,7 +503,7 @@ export default function ATSCheckerPage() {
             <CardContent className="p-4">
               <p className="text-xs font-medium text-muted-foreground mb-2">SCORING DIMENSIONS</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {SECTION_CONFIG.map((config) => {
+                {SECTION_CONFIG.filter((config) => config.key !== "keywords").map((config) => {
                   const Icon = config.icon;
                   return (
                     <div key={config.key} className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -424,9 +520,9 @@ export default function ATSCheckerPage() {
           {/* Analyze Button */}
           <Button onClick={analyze} disabled={!resumeText.trim() || loading} className="w-full gap-2" size="lg">
             {loading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing across 6 dimensions...</>
+              <><Loader2 className="w-4 h-4 animate-spin" /> Measuring résumé quality{jobDescription.trim() ? " and job coverage" : ""}...</>
             ) : (
-              <><Target className="w-4 h-4" /> Analyze ATS Compatibility</>
+              <><Target className="w-4 h-4" /> Measure résumé{jobDescription.trim() ? " + job coverage" : " quality"}</>
             )}
           </Button>
         </div>

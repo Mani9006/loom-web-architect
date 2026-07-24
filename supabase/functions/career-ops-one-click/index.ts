@@ -13,6 +13,7 @@ import {
   serviceClient,
   withErrorHandler,
 } from "../_shared/guards.ts";
+import { classifyAtsApplyUrl } from "../_shared/ats-url-policy.ts";
 
 interface IntakeBody {
   title?: string;
@@ -33,10 +34,10 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({})) as IntakeBody;
     const title = clean(body.title, 240);
     const companyName = clean(body.company, 180);
-    const applyUrl = safeUrl(body.apply_url);
+    const portal = classifyAtsApplyUrl(body.apply_url);
+    const applyUrl = portal.normalizedUrl;
     if (!title || !companyName || !applyUrl) throw new HttpError(400, "Job title, company, and direct link are required");
 
-    const portal = detectPortal(applyUrl);
     const companySlug = `intake-${slug(companyName)}-${(await shortHash(companyName.toLowerCase())).slice(0, 8)}`;
     const db = serviceClient();
     const { data: company, error: companyError } = await db.from("scan_companies").upsert({
@@ -99,8 +100,8 @@ serve(async (req) => {
 
       let status = "ready";
       let queueNotice: string | null = null;
-      // Queue every portal career-ops-submit accepts (greenhouse, ashby,
-      // lever). Workday/Oracle/iCIMS stay review-only (supported = false).
+      // Queue every verified portal career-ops-submit accepts. Other public
+      // links still receive a packet, but remain review-only.
       if (body.queue_if_supported && portal.supported) {
         try {
           const submitResult = await callAsUser("career-ops-submit", authorization, {
@@ -148,27 +149,6 @@ async function callAsUser(name: string, authorization: string, body: Record<stri
   return JSON.parse(text) as Record<string, unknown>;
 }
 
-// supported must mirror the portal set career-ops-submit accepts
-// (greenhouse, ashby, lever, workable); anything else stays review-only.
-function detectPortal(value: string): { type: "greenhouse" | "ashby" | "lever" | "workable"; identifier: string; supported: boolean } {
-  const url = new URL(value);
-  const parts = url.pathname.split("/").filter(Boolean);
-  if (/greenhouse\.io$/i.test(url.hostname)) {
-    const boardsIndex = parts.findIndex((part) => ["boards", "job-boards"].includes(part));
-    return { type: "greenhouse", identifier: parts[boardsIndex + 1] || parts[0] || "unknown", supported: true };
-  }
-  if (/ashbyhq\.com$/i.test(url.hostname)) return { type: "ashby", identifier: parts[0] || "unknown", supported: true };
-  if (/lever\.co$/i.test(url.hostname)) return { type: "lever", identifier: parts[0] || "unknown", supported: true };
-  // apply.workable.com/<slug>/j/<shortcode>/ (and legacy <slug>.workable.com).
-  if (/workable\.com$/i.test(url.hostname)) {
-    const identifier = url.hostname === "apply.workable.com" || url.hostname === "www.workable.com"
-      ? parts[0] || "unknown"
-      : url.hostname.split(".")[0] || "unknown";
-    return { type: "workable", identifier, supported: true };
-  }
-  return { type: "lever", identifier: "manual", supported: false };
-}
-
 function clean(value: unknown, max: number): string {
   return typeof value === "string"
     ? Array.from(value, (character) => {
@@ -176,16 +156,6 @@ function clean(value: unknown, max: number): string {
       return code <= 31 || code === 127 ? " " : character;
     }).join("").replace(/\s+/g, " ").trim().slice(0, max)
     : "";
-}
-
-function safeUrl(value: unknown): string {
-  const text = clean(value, 2000);
-  try {
-    const url = new URL(text);
-    return ["http:", "https:"].includes(url.protocol) ? url.toString() : "";
-  } catch {
-    return "";
-  }
 }
 
 function slug(value: string): string {

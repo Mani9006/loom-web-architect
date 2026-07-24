@@ -314,7 +314,10 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
     setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...updates } as TrackedJob) : cur));
 
-    const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
+    const { data: movedRows, error } = await (supabase as any).rpc("mc_move_tracked_job", {
+      p_job_id: jobId,
+      p_new_status: status,
+    });
     if (error) {
       // Roll back the optimistic update on failure.
       setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
@@ -322,16 +325,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       toast({ title: "Move failed", description: error.message, variant: "destructive" });
       return;
     }
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await (supabase as any).from("mc_status_history").insert({
-        tracked_job_id: jobId,
-        user_id: user.id,
-        status_from: previousStatus,
-        status_to: status,
-        source: "manual",
-      });
+    const moved = Array.isArray(movedRows) ? movedRows[0] : movedRows;
+    if (moved?.applied_at) {
+      setJobs((arr) => arr.map((item) =>
+        item.id === jobId ? { ...item, applied_at: moved.applied_at } : item
+      ));
+      setSelected((current) =>
+        current?.id === jobId ? { ...current, applied_at: moved.applied_at } : current
+      );
     }
   }
 

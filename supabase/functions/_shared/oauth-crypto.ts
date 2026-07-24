@@ -7,11 +7,15 @@ function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function base64UrlToBytes(value: string): Uint8Array {
+function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   const binary = atob(padded);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 async function deriveAesKey(secret: string): Promise<CryptoKey> {
@@ -27,6 +31,31 @@ async function deriveHmacKey(secret: string): Promise<CryptoKey> {
     false,
     ["sign", "verify"],
   );
+}
+
+const OPAQUE_OAUTH_STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * Generate a 256-bit bearer value for an OAuth authorization request.
+ *
+ * The value itself must never be persisted. Store only hashOpaqueOAuthState's
+ * output so a database read cannot recover or replay an in-flight state.
+ */
+export function createOpaqueOAuthState(): string {
+  return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+/**
+ * Hash an opaque OAuth state into the fixed-width lookup key persisted by the
+ * server. Rejecting every other shape also bounds callback input before it is
+ * handed to WebCrypto.
+ */
+export async function hashOpaqueOAuthState(state: string): Promise<string> {
+  if (!OPAQUE_OAUTH_STATE_PATTERN.test(state)) {
+    throw new Error("Invalid OAuth state");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(state));
+  return bytesToBase64Url(new Uint8Array(digest));
 }
 
 export async function encryptSecret(value: string, secret: string): Promise<string> {

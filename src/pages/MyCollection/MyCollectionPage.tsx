@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { hasApplicationEvidence, type ApplicationFunnelRow } from "@/lib/application-funnel";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
 interface MCSession {
@@ -46,6 +47,7 @@ export default function MyCollectionPage() {
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
+      .neq("status", "deleted")
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
@@ -63,16 +65,16 @@ export default function MyCollectionPage() {
     try {
       const { data } = await (supabase as any)
         .from("mc_tracked_jobs")
-        .select("session_id,status")
+        .select("session_id,status,applied_at")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
-      const rows: { session_id: string; status: string }[] = data ?? [];
+      const rows: (ApplicationFunnelRow & { session_id: string })[] = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
         const jobRows = rows.filter((r) => r.session_id === sid);
         map[sid] = {
           discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
+          applied: jobRows.filter(hasApplicationEvidence).length,
           interviews:
             jobRows.filter((r) => r.status === "interview").length +
             jobRows.filter((r) => r.status === "take_home").length,
@@ -125,8 +127,8 @@ export default function MyCollectionPage() {
   }
 
   async function deleteSession(id: string) {
-    if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
-    const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
+    if (!confirm("Delete this session? It disappears from your list along with its board, resumes, and history.")) return;
+    const { error } = await (supabase as any).from("mc_sessions").update({ status: "deleted" }).eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {

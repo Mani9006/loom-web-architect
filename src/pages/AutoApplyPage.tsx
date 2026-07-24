@@ -28,6 +28,7 @@ import { useSubscription } from "@/components/SubscriptionGate";
 import { cn } from "@/lib/utils";
 import LocationAutocomplete from "@/components/LocationAutocomplete";
 import { JOB_ROLES, COMMON_SKILLS } from "@/data/job-roles";
+import { normalizeScore } from "@/lib/score-truth";
 
 // ─── Types ───
 interface ProfileData {
@@ -351,33 +352,52 @@ export default function AutoApplyPage() {
     return Math.min(score, 100);
   };
 
-  // ─── Resume Score ───
+  // ─── Generic résumé quality ───
   const computeResumeScore = async () => {
     if (!user || !profile.resume_json) return;
     setScoreLoading(true);
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ats-score`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token || anonKey}`,
-          },
-          body: JSON.stringify({ resumeData: profile.resume_json, targetRole: profile.target_role }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setResumeScore(data);
+      const { data, error } = await supabase.functions.invoke("ats-score-v2", {
+        body: { resume: profile.resume_json },
+      });
+      if (error) throw error;
+      if (data?.score_kind !== "resume_quality") {
+        throw new Error("A typed résumé-quality result was not returned.");
       }
+
+      const score = normalizeScore(data.resume_quality_score ?? data.overall);
+      if (score === null) throw new Error("Résumé quality was not measured.");
+
+      const sections = Array.isArray(data.sections) ? data.sections : [];
+      const issues = sections.flatMap((section: Record<string, unknown>) => {
+        if (!Array.isArray(section.issues)) return [];
+        return section.issues.map((rawIssue) => {
+          const issue = rawIssue && typeof rawIssue === "object"
+            ? rawIssue as Record<string, unknown>
+            : {};
+          return {
+            type: String(section.name ?? "Résumé quality"),
+            message: String(issue.description ?? issue.title ?? "Review this résumé section."),
+            severity: String(issue.severity ?? "suggestion"),
+          };
+        });
+      });
+
+      setResumeScore({
+        score,
+        issues,
+        suggestions: issues
+          .filter((issue) => issue.severity === "suggestion")
+          .map((issue) => issue.message)
+          .slice(0, 5),
+      });
     } catch (err) {
-      console.error("Score error:", err);
+      console.error("Résumé quality error:", err);
+      toast({
+        title: "Résumé quality is unavailable",
+        description: "Your résumé is safe. Try the check again in a moment.",
+        variant: "destructive",
+      });
     } finally {
       setScoreLoading(false);
     }
@@ -659,7 +679,7 @@ export default function AutoApplyPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="setup" className="gap-1.5"><User className="w-4 h-4" /> Profile</TabsTrigger>
-            <TabsTrigger value="score" className="gap-1.5" disabled={!profile.resume_json}><FileText className="w-4 h-4" /> Resume Score</TabsTrigger>
+            <TabsTrigger value="score" className="gap-1.5" disabled={!profile.resume_json}><FileText className="w-4 h-4" /> Résumé Quality</TabsTrigger>
             <TabsTrigger value="jobs" className="gap-1.5" disabled={!profileComplete}><Briefcase className="w-4 h-4" /> Available Jobs</TabsTrigger>
             <TabsTrigger value="applied" className="gap-1.5" disabled={!profileComplete}><ClipboardList className="w-4 h-4" /> Applied</TabsTrigger>
           </TabsList>
@@ -943,15 +963,15 @@ export default function AutoApplyPage() {
             </Card>
           </TabsContent>
 
-          {/* ═══ RESUME SCORE TAB ═══ */}
+          {/* ═══ GENERIC RÉSUMÉ QUALITY TAB ═══ */}
           <TabsContent value="score" className="space-y-5 mt-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="w-5 h-5 text-primary" />
-                  Resume Score Analysis
+                  Generic résumé quality
                 </CardTitle>
-                <CardDescription>See how your resume scores against ATS systems</CardDescription>
+                <CardDescription>Structure and evidence quality, independent of any particular job</CardDescription>
               </CardHeader>
               <CardContent>
                 {!resumeScore && (
@@ -967,7 +987,7 @@ export default function AutoApplyPage() {
                   <div className="space-y-4">
                     <div className="text-center">
                       <p className={cn("text-5xl font-bold", scoreColor(resumeScore.score))}>{resumeScore.score}</p>
-                      <p className="text-sm text-muted-foreground mt-1">out of 100</p>
+                      <p className="text-sm text-muted-foreground mt-1">résumé quality out of 100</p>
                     </div>
                     {resumeScore.issues && resumeScore.issues.length > 0 && (
                       <div className="space-y-2">
@@ -1028,8 +1048,12 @@ export default function AutoApplyPage() {
               <Card key={job.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex gap-3">
-                    <div className={cn("w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0", scoreColor(job.match_score), "bg-muted")}>
-                      <span className="text-lg font-bold">{job.match_score}</span>
+                    <div
+                      className={cn("w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0", scoreColor(job.match_score), "bg-muted")}
+                      aria-label={`Career fit ${normalizeScore(job.match_score) ?? "not measured"}${normalizeScore(job.match_score) === null ? "" : " percent"}`}
+                    >
+                      <span className="text-lg font-bold">{normalizeScore(job.match_score) ?? "—"}</span>
+                      <span className="text-[8px] uppercase leading-none">career fit</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">

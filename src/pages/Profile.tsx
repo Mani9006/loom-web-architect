@@ -13,6 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  selectProfileSourceResume,
+  type ProfileResumeCandidate,
+} from "@/lib/resume-source-selection";
 
 interface ProfileState {
   full_name: string;
@@ -49,9 +53,13 @@ export default function Profile() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const [profileResult, resumeResult] = await Promise.all([
-      supabase.from("profiles").select("full_name,email,job_preferences").eq("user_id", user.id).maybeSingle(),
-      supabase.from("resumes").select("id,title,updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+    const [profileResult, resumesResult] = await Promise.all([
+      supabase.from("profiles").select("full_name,email,job_preferences,primary_resume_id").eq("user_id", user.id).maybeSingle(),
+      supabase
+        .from("resumes")
+        .select("id,user_id,title,updated_at,created_at,source_document_id,personal_info")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false }),
     ]);
     if (profileResult.error) {
       // Without this, a failed read renders as an empty editable form and the
@@ -79,7 +87,27 @@ export default function Profile() {
       notice_period: String(application.noticePeriod || ""),
       requires_sponsorship: application.requiresSponsorship === true,
     });
-    setResume(resumeResult.data || null);
+    if (resumesResult.error) {
+      toast({
+        title: "Couldn't load your source résumé",
+        description: "Your profile is still available, but résumé details could not be verified. Refresh to try again.",
+        variant: "destructive",
+      });
+      setResume(null);
+    } else {
+      const selectedResume = selectProfileSourceResume(
+        (resumesResult.data || []) as unknown as ProfileResumeCandidate[],
+        row?.primary_resume_id ?? null,
+        user.id,
+      );
+      setResume(selectedResume
+        ? {
+          id: selectedResume.id,
+          title: selectedResume.title ?? "",
+          updated_at: selectedResume.updated_at,
+        }
+        : null);
+    }
     setLoading(false);
   }, [user, toast]);
 

@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { toUserFacingError } from "@/lib/user-facing-error";
-import { Check, CheckCheck, Clipboard, Inbox, MailOpen, RefreshCw, ShieldCheck } from "lucide-react";
+import { Check, CheckCheck, Inbox, MailOpen, RefreshCw, ShieldCheck } from "lucide-react";
 import GmailConnectCard from "./GmailConnectCard";
 
 interface InboxMessage {
@@ -18,7 +18,7 @@ interface InboxMessage {
   classification: string | null;
   classification_summary: string | null;
   next_action: string | null;
-  verification_code: string | null;
+  verification_code_available: boolean;
   verification_code_expires_at: string | null;
   is_read: boolean;
   received_at: string;
@@ -43,7 +43,7 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   const load = useCallback(async () => {
     const { data, error } = await (supabase as any)
       .from("mc_inbound_emails")
-      .select("id,from_email,subject,body_preview,classification,classification_summary,next_action,verification_code,verification_code_expires_at,is_read,received_at")
+      .select("id,from_email,subject,body_preview,classification,classification_summary,next_action,verification_code_available,verification_code_expires_at,is_read,received_at")
       .eq("session_id", sessionId)
       .order("received_at", { ascending: false })
       .limit(100);
@@ -68,7 +68,9 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function refresh() {
     setRefreshing(true);
     try {
-      const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+      const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {
+        body: { session_id: sessionId },
+      });
       if (error) throw error;
       await load();
       toast({ title: "Inbox is up to date" });
@@ -97,11 +99,6 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
       .eq("session_id", sessionId)
       .eq("is_read", false);
     if (!error) setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
-  }
-
-  async function copyCode(code: string) {
-    await navigator.clipboard.writeText(code);
-    toast({ title: "Verification code copied" });
   }
 
   return (
@@ -153,7 +150,7 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
       ) : (
         <div className="space-y-3">
           {messages.map((message) => {
-            const codeActive = Boolean(message.verification_code && message.verification_code_expires_at &&
+            const codeActive = Boolean(message.verification_code_available && message.verification_code_expires_at &&
               new Date(message.verification_code_expires_at).getTime() > Date.now());
             return (
               <Card key={message.id} className={`p-4 transition-colors ${message.is_read ? "" : "border-primary/35 bg-primary/[0.025]"}`}>
@@ -176,14 +173,12 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
                     {message.body_preview && <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}
                     {message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}
                     {codeActive && (
-                      <div className="mt-3 inline-flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                      <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                        <ShieldCheck className="h-4 w-4 text-primary" />
                         <div>
-                          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Verification code</p>
-                          <p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p>
+                          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Secure employer code ready</p>
+                          <p className="text-xs font-medium">The application agent will use it automatically.</p>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => copyCode(message.verification_code!)}>
-                          <Clipboard className="mr-1.5 h-3.5 w-3.5" /> Copy
-                        </Button>
                       </div>
                     )}
                   </div>

@@ -1,0 +1,111 @@
+name: DEV ApplyPass browser worker
+
+on:
+  # Run one bounded, no-submit smoke task when this guarded workflow first
+  # lands on develop. Ongoing runs remain explicit manual dispatches.
+  push:
+    branches: [develop]
+    paths:
+      - ".github/workflows/continuous-apply-worker-dev.yml"
+  workflow_dispatch:
+    inputs:
+      max_tasks:
+        description: "Maximum DEV queue tasks to process"
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "5"
+      diagnostic_screenshots:
+        description: "Persist DEV-only browser screenshots (may contain test applicant data)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-applypass-browser-worker
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    name: Process DEV application queue (no submit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+      APPLYPASS_WORKER_TOKEN: ${{ secrets.DEV_APPLYPASS_WORKER_TOKEN }}
+      APPLYPASS_WORKER_ID: github-dev-worker-${{ github.run_id }}-${{ github.run_attempt }}
+      APPLYPASS_WORKER_CONCURRENCY: "1"
+      APPLYPASS_AUTO_SUBMIT: "false"
+      APPLYPASS_RUNTIME_ENV: development
+      APPLYPASS_DEV_DIAGNOSTIC_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_screenshots == true && 'true' || 'false' }}
+      APPLYPASS_SCREENSHOT_DIR: /tmp/applypass-dev-worker-artifacts/screenshots
+      WORKER_ARTIFACT_DIR: /tmp/applypass-dev-worker-artifacts
+      WORKER_LOG: /tmp/applypass-dev-worker-artifacts/worker.log
+      DEV_MAX_TASKS: ${{ inputs.max_tasks || '1' }}
+      EXPECTED_DEV_SUPABASE_HOST: vrtkizyddcoqazcrbulp.supabase.co
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install worker dependencies
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Install matching Patchright Chromium
+        run: npx --no-install patchright install --with-deps chromium
+
+      - name: Run bounded DEV worker
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          mkdir -p "$WORKER_ARTIFACT_DIR"
+          if [ "$APPLYPASS_DEV_DIAGNOSTIC_SCREENSHOTS" = "true" ]; then
+            mkdir -p "$APPLYPASS_SCREENSHOT_DIR"
+          fi
+          : > "$WORKER_LOG"
+          printf 'worker_exit_status=not_started\n' > "$WORKER_ARTIFACT_DIR/run-status.txt"
+
+          test -n "${SUPABASE_URL:-}"
+          test -n "${SUPABASE_ANON_KEY:-}"
+          test -n "${APPLYPASS_WORKER_TOKEN:-}"
+          [[ "$DEV_MAX_TASKS" =~ ^(1|2|5)$ ]]
+          [[ "$APPLYPASS_AUTO_SUBMIT" == "false" ]]
+          actual_supabase_host="$(
+            node -e 'process.stdout.write(new URL(process.argv[1]).hostname)' "$SUPABASE_URL"
+          )"
+          [[ "$actual_supabase_host" == "$EXPECTED_DEV_SUPABASE_HOST" ]]
+
+          worker_status=0
+          npm run applypass:worker -- --max-tasks="$DEV_MAX_TASKS" \
+            2>&1 | tee "$WORKER_LOG" || worker_status=$?
+
+          {
+            printf 'worker_exit_status=%s\n' "$worker_status"
+            printf 'auto_submit=%s\n' "$APPLYPASS_AUTO_SUBMIT"
+            printf 'max_tasks=%s\n' "$DEV_MAX_TASKS"
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'run_attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+          } > "$WORKER_ARTIFACT_DIR/run-status.txt"
+
+          exit "$worker_status"
+
+      - name: Upload DEV worker diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: applypass-dev-worker-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/applypass-dev-worker-artifacts
+          if-no-files-found: error
+          retention-days: 7

@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { classifyAtsApplyUrl } from "../_shared/ats-url-policy.ts";
+import { enforceAutoApplyEntitlement, HttpError, serviceClient } from "../_shared/guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,15 +26,6 @@ type BrowserSession = {
   }>;
   createdAt: string;
 };
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 async function navigateSessionToUrl(wsUrl: string, targetUrl: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -253,8 +246,13 @@ serve(async (req) => {
     const projectId = env("BROWSERBASE_PROJECT_ID");
 
     if (action === "create") {
+      await enforceAutoApplyEntitlement(serviceClient(), user.id);
       const region = Deno.env.get("BROWSERBASE_REGION") || "us-west-2";
       const initialUrl = typeof body.initialUrl === "string" ? body.initialUrl.trim() : "";
+      const initialTarget = initialUrl ? classifyAtsApplyUrl(initialUrl) : null;
+      if (initialUrl && !initialTarget?.supported) {
+        return jsonResponse({ error: "This employer link is not supported in the secure application browser." }, 400);
+      }
       const metadata = asObject(body.metadata);
 
       // Browserbase metadata only accepts short alphanumeric-ish values.
@@ -279,9 +277,9 @@ serve(async (req) => {
       if (!sessionId) throw new Error("Browserbase session creation returned no id.");
 
       let live = await getDebugData(sessionId);
-      if (initialUrl && isHttpUrl(initialUrl) && typeof live.wsUrl === "string" && live.wsUrl) {
+      if (initialTarget?.supported && typeof live.wsUrl === "string" && live.wsUrl) {
         try {
-          await navigateSessionToUrl(live.wsUrl, initialUrl);
+          await navigateSessionToUrl(live.wsUrl, initialTarget.normalizedUrl);
           // Allow Browserbase to register the new target before reading live URLs again.
           await new Promise((resolve) => setTimeout(resolve, 700));
           live = await getDebugData(sessionId);
@@ -309,9 +307,11 @@ serve(async (req) => {
 
     if (action === "open-url") {
       const url = typeof body.url === "string" ? body.url.trim() : "";
-      if (!isHttpUrl(url)) {
-        return jsonResponse({ error: "A valid http/https URL is required." }, 400);
+      const target = classifyAtsApplyUrl(url);
+      if (!target.supported) {
+        return jsonResponse({ error: "This employer link is not supported in the secure application browser." }, 400);
       }
+      await enforceAutoApplyEntitlement(serviceClient(), user.id);
 
       const debug = await getDebugData(sessionId);
       const wsUrl = typeof debug.wsUrl === "string" ? debug.wsUrl : "";
@@ -319,7 +319,7 @@ serve(async (req) => {
         return jsonResponse({ error: "Cloud browser debug websocket URL unavailable for this session." }, 500);
       }
 
-      await navigateSessionToUrl(wsUrl, url);
+      await navigateSessionToUrl(wsUrl, target.normalizedUrl);
       await new Promise((resolve) => setTimeout(resolve, 600));
       const live = await getDebugData(sessionId);
       const session = normalizeSession(existing, live);
@@ -343,10 +343,12 @@ serve(async (req) => {
 
     return jsonResponse({ error: `Unsupported action: ${action}` }, 400);
   } catch (error) {
+    if (error instanceof HttpError) {
+      return jsonResponse({ error: error.message }, error.status);
+    }
+    console.error("applypass-browser-session", error);
     return jsonResponse(
-      {
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "The secure application browser request could not be completed." },
       500,
     );
   }

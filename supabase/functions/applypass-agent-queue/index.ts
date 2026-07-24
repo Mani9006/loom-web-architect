@@ -4,6 +4,18 @@ import {
   enforceAutoApplyEntitlement,
   enforceMonthlyAutoApplyExecutionCap,
 } from "../_shared/guards.ts";
+import { classifyAtsApplyUrl } from "../_shared/ats-url-policy.ts";
+import { decryptSecret } from "../_shared/oauth-crypto.ts";
+import {
+  getResumeReviewState,
+  RESUME_REVIEW_REQUIRED_MESSAGE,
+} from "../_shared/resume-review.ts";
+import {
+  senderDomainBoundToOtpTarget,
+  verifyOtpJobTarget,
+  type OtpVerifiedSource,
+} from "../_shared/gmail-otp-trust.ts";
+import { hasVerifiedSubmissionEvidence } from "../_shared/submission-receipt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +30,7 @@ type QueueAction =
   | "heartbeat"
   | "authorization-status"
   | "verification-code"
+  | "verification-code-result"
   | "complete"
   | "fail";
 
@@ -60,6 +73,53 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+async function recordSubmissionReceipts(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  taskId: string,
+  workerId: string,
+  taskContext: Record<string, unknown>,
+  result: unknown,
+): Promise<void> {
+  const payload = asRecord(taskContext.payload);
+  const expectedJobs = Array.isArray(payload.jobs) ? payload.jobs.map(asRecord) : [];
+  const resultJobs = Array.isArray(asRecord(result).jobs)
+    ? (asRecord(result).jobs as unknown[]).map(asRecord)
+    : [];
+
+  for (const resultJob of resultJobs) {
+    if (!hasVerifiedSubmissionEvidence(resultJob, payload)) continue;
+    const expected = expectedJobs.find((job) => asString(job.id) === asString(resultJob.jobId));
+    if (!expected) continue;
+    const target = classifyAtsApplyUrl(expected.url);
+    if (!target.supported) continue;
+
+    const submittedAt = new Date().toISOString();
+    const evidence = {
+      receipt: asRecord(resultJob.receipt),
+      submission_response_status: Number(resultJob.submissionResponseStatus) || null,
+      submission_response_path: asString(resultJob.submissionResponsePath) || null,
+      submission_request_matched: resultJob.submissionRequestMatched === true,
+      transport_signal: asString(resultJob.submissionTransportSignal) || null,
+      transport_application_id: asString(resultJob.submissionTransportApplicationId) || null,
+      transport_confirmed: resultJob.submissionTransportConfirmed === true,
+      adapter: asString(resultJob.adapter) || target.type,
+      captured_at: submittedAt,
+    };
+    const { error } = await serviceClient
+      .rpc("record_application_submission_receipt", {
+        p_task_id: taskId,
+        p_worker_id: workerId,
+        p_tracked_job_id: asString(expected.trackedJobId) || asString(payload.tracked_job_id) || null,
+        p_draft_application_id: asString(payload.draft_application_id) || null,
+        p_job_id: asString(expected.id),
+        p_provider: target.type,
+        p_apply_url: target.normalizedUrl,
+        p_evidence: evidence,
+      });
+    if (error) throw new Error(`submission_receipt_store_failed:${error.message}`);
+  }
 }
 
 async function getUserEmail(
@@ -173,7 +233,9 @@ async function syncCareerDraft(
   }
 
   const jobs = Array.isArray(asRecord(result).jobs) ? asRecord(result).jobs as unknown[] : [];
-  const submitted = jobs.some((job) => asRecord(job).status === "submitted" && asRecord(job).submitted === true);
+  const submitted = jobs.some((job) =>
+    hasVerifiedSubmissionEvidence(asRecord(job), payload)
+  );
   const firstIssue = jobs
     .map((job) => asRecord(job).error)
     .find((message) => typeof message === "string" && message.trim());
@@ -187,17 +249,49 @@ async function syncCareerDraft(
   if (draftSyncError) console.error("[applypass-agent-queue] draft_applications complete-sync failed:", draftSyncError.message);
 
   if (submitted && trackedJobId) {
-    await serviceClient.from("mc_tracked_jobs").update({
-      status: "applied",
-      applied_at: new Date().toISOString(),
-    }).eq("id", trackedJobId).eq("user_id", userId);
-    await serviceClient.from("mc_status_history").insert({
-      tracked_job_id: trackedJobId,
-      user_id: userId,
-      status_from: "saved",
-      status_to: "applied",
-      source: "auto_apply",
-    });
+    const { data: trackedJob } = await serviceClient
+      .from("mc_tracked_jobs")
+      .select("status")
+      .eq("id", trackedJobId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    const previousTrackedStatus = asString(trackedJob?.status);
+    const canMoveToApplied = previousTrackedStatus === "discovered" || previousTrackedStatus === "saved";
+
+    if (canMoveToApplied) {
+      const { data: updatedTracked, error: trackedUpdateError } = await serviceClient
+        .from("mc_tracked_jobs")
+        .update({
+          status: "applied",
+          applied_at: submittedAt,
+        })
+        .eq("id", trackedJobId)
+        .eq("user_id", userId)
+        // Do not regress a Gmail-driven interview/viewed transition that won
+        // a race with this worker completion callback.
+        .eq("status", previousTrackedStatus)
+        .select("id")
+        .maybeSingle();
+      if (trackedUpdateError) {
+        console.error("[applypass-agent-queue] tracked job sync failed:", trackedUpdateError.message);
+      } else if (updatedTracked) {
+        await serviceClient.from("mc_status_history").insert({
+          tracked_job_id: trackedJobId,
+          user_id: userId,
+          status_from: previousTrackedStatus,
+          status_to: "applied",
+          source: "auto_apply",
+        });
+      }
+    } else if (previousTrackedStatus) {
+      // Preserve any later funnel status while still recording the known
+      // submission timestamp.
+      await serviceClient
+        .from("mc_tracked_jobs")
+        .update({ applied_at: submittedAt })
+        .eq("id", trackedJobId)
+        .eq("user_id", userId);
+    }
   }
 
   if (submitted && !draftSyncError && previousStatus !== "submitted") {
@@ -216,16 +310,25 @@ serve(async (req: Request) => {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const action = String(body?.action || "enqueue") as QueueAction;
 
-    const workerActions = new Set<QueueAction>(["claim-next", "heartbeat", "authorization-status", "verification-code", "complete", "fail"]);
+    const workerActions = new Set<QueueAction>([
+      "claim-next",
+      "heartbeat",
+      "authorization-status",
+      "verification-code",
+      "verification-code-result",
+      "complete",
+      "fail",
+    ]);
     if (workerActions.has(action)) {
       if (!workerAuthorized(req, body)) {
         return jsonResponse({ error: "Unauthorized worker action." }, 401);
       }
 
       const serviceClient = createServiceClient();
-      const workerId =
+      const rawWorkerId =
         String(body?.workerId || req.headers.get("x-worker-id") || "applypass-worker").trim() ||
         "applypass-worker";
+      const workerId = rawWorkerId.replace(/[^a-zA-Z0-9._:-]/g, "_").slice(0, 120);
 
       if (action === "claim-next") {
         const { data, error } = await serviceClient.rpc("claim_applypass_task", {
@@ -235,7 +338,72 @@ serve(async (req: Request) => {
         if (error) throw error;
 
         const rows = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>;
-        return jsonResponse({ ok: true, task: rows[0] || null });
+        const task = rows[0] || null;
+        if (task) {
+          const payload = asRecord(task.payload);
+          const storagePath = asString(payload.resumeStoragePath);
+          const taskUserId = asString(task.user_id);
+          if (!storagePath) {
+            // Legacy tasks stored an expiring signed URL directly in the
+            // payload. Never hand that stale capability to a worker: it can
+            // fail nondeterministically and, worse, bypass the current
+            // owner/path validation. The originating review flow can safely
+            // regenerate an immutable artifact and enqueue a new task.
+            await serviceClient.from("applypass_tasks").update({
+              status: "failed",
+              result: {
+                submitted: false,
+                code: "RESUME_ARTIFACT_REGENERATION_REQUIRED",
+              },
+              error_message: "The résumé artifact must be regenerated before this application can run.",
+              completed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).eq("id", asString(task.id)).eq("locked_by", workerId).eq("status", "running");
+            return jsonResponse({
+              ok: true,
+              task: null,
+              rejected_task: asString(task.id),
+              message: "The task résumé artifact must be regenerated.",
+              code: "RESUME_ARTIFACT_REGENERATION_REQUIRED",
+            });
+          }
+          if (!taskUserId || !storagePath.startsWith(`${taskUserId}/generated/`)) {
+            await serviceClient.from("applypass_tasks").update({
+              status: "failed",
+              error_message: "The private résumé artifact failed validation.",
+              completed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).eq("id", asString(task.id)).eq("locked_by", workerId).eq("status", "running");
+            return jsonResponse({
+              ok: true,
+              task: null,
+              rejected_task: asString(task.id),
+              message: "The task résumé artifact is invalid.",
+              code: "RESUME_ARTIFACT_INVALID",
+            });
+          }
+          const { data: signed, error: signedError } = await serviceClient.storage
+            .from("documents")
+            .createSignedUrl(storagePath, 3600);
+          if (signedError || !signed?.signedUrl) {
+            const attemptsExhausted =
+              Number(task.attempt_count || 0) >= Number(task.max_attempts || 3);
+            await serviceClient.from("applypass_tasks").update({
+              status: attemptsExhausted ? "failed" : "pending",
+              locked_by: null,
+              locked_at: null,
+              heartbeat_at: null,
+              completed_at: attemptsExhausted ? new Date().toISOString() : null,
+              error_message: attemptsExhausted
+                ? "The private résumé artifact could not be signed after all retries."
+                : "The private résumé artifact could not be signed; the task will retry.",
+              updated_at: new Date().toISOString(),
+            }).eq("id", asString(task.id)).eq("locked_by", workerId).eq("status", "running");
+            return jsonResponse({ error: "The task résumé artifact could not be opened." }, 503);
+          }
+          task.payload = { ...payload, resumeFileUrl: signed.signedUrl };
+        }
+        return jsonResponse({ ok: true, task });
       }
 
       const taskId = String(body?.taskId || "").trim();
@@ -246,8 +414,9 @@ serve(async (req: Request) => {
       if (action === "authorization-status") {
         const { data: task } = await serviceClient
           .from("applypass_tasks")
-          .select("id,user_id,status,task_type")
+          .select("id,user_id,status,task_type,locked_by")
           .eq("id", taskId)
+          .eq("locked_by", workerId)
           .maybeSingle();
         if (!task) return jsonResponse({ ok: true, authorized: false, reason: "task_not_active" });
 
@@ -277,9 +446,10 @@ serve(async (req: Request) => {
 
         const { data: task } = await serviceClient
           .from("applypass_tasks")
-          .select("id,user_id,payload,status")
+          .select("id,user_id,payload,status,locked_by")
           .eq("id", taskId)
-          .in("status", ["pending", "running"])
+          .eq("status", "running")
+          .eq("locked_by", workerId)
           .maybeSingle();
         if (!task) return jsonResponse({ error: "Active task not found" }, 404);
 
@@ -287,6 +457,82 @@ serve(async (req: Request) => {
         const taskJobs = Array.isArray(taskPayload.jobs) ? taskPayload.jobs.map(asRecord) : [];
         const taskJob = taskJobs.find((job) => String(job.id || "") === jobId);
         if (!taskJob) return jsonResponse({ error: "Job does not belong to this task" }, 403);
+
+        const trackedJobId = asString(taskJob.trackedJobId)
+          || asString(taskJob.tracked_job_id)
+          || asString(taskPayload.tracked_job_id);
+        if (!trackedJobId) {
+          return jsonResponse({
+            ok: true,
+            available: false,
+            inbox_status: "JOB_INBOX_NOT_LINKED",
+          });
+        }
+        const { data: trackedJob, error: trackedJobError } = await serviceClient
+          .from("mc_tracked_jobs")
+          .select("id,company,job_title,apply_url,scanned_job_id")
+          .eq("id", trackedJobId)
+          .eq("user_id", task.user_id)
+          .is("deleted_at", null)
+          .maybeSingle();
+        if (trackedJobError || !trackedJob) {
+          return jsonResponse({
+            ok: true,
+            available: false,
+            inbox_status: "JOB_INBOX_NOT_LINKED",
+          });
+        }
+
+        let verifiedSource: OtpVerifiedSource | null = null;
+        if (trackedJob.scanned_job_id) {
+          const { data: sourceRow, error: sourceError } = await serviceClient
+            .from("scanned_jobs")
+            .select("id,apply_url,company:scan_companies(name,api_type,api_identifier,careers_url)")
+            .eq("id", trackedJob.scanned_job_id)
+            .maybeSingle();
+          const sourceCompany = Array.isArray(sourceRow?.company)
+            ? sourceRow.company[0]
+            : sourceRow?.company;
+          if (!sourceError && sourceRow && sourceCompany) {
+            verifiedSource = {
+              scannedJobId: String(sourceRow.id || ""),
+              company: String(sourceCompany.name || ""),
+              provider: String(sourceCompany.api_type || ""),
+              providerIdentifier: String(sourceCompany.api_identifier || ""),
+              applyUrl: String(sourceRow.apply_url || ""),
+              companyUrl: sourceCompany.careers_url
+                ? String(sourceCompany.careers_url)
+                : null,
+            };
+          }
+        }
+        const targetEvidence = {
+          trackedJobId,
+          company: asString(taskJob.company) || asString(taskPayload.company_name),
+          jobTitle: asString(taskJob.title) || asString(taskPayload.job_title),
+          applyUrl: asString(taskJob.url) || asString(taskPayload.apply_url),
+          provider: asString(taskJob.portal) || asString(taskPayload.portal),
+          jobId: asString(taskJob.id) || null,
+          providerIdentifier:
+            asString(taskJob.api_identifier) ||
+            asString(taskPayload.api_identifier) ||
+            null,
+        };
+        const exactTarget = verifyOtpJobTarget(
+          trackedJob,
+          targetEvidence,
+          verifiedSource,
+        );
+        if (!exactTarget) {
+          // Never lease a code using only a tracked-job UUID. The running
+          // task must still match that job's verified provider, company, job
+          // identity, and exact application URL.
+          return jsonResponse({
+            ok: true,
+            available: false,
+            inbox_status: "JOB_INBOX_NOT_LINKED",
+          });
+        }
 
         // Poll through the server-side Gmail connection. OAuth tokens never
         // enter the worker payload, browser context, logs, or frontend.
@@ -320,37 +566,125 @@ serve(async (req: Request) => {
           }
         }
 
-        const trackedJobId = String(taskJob.trackedJobId || taskPayload.tracked_job_id || "").trim();
-        if (!trackedJobId) return jsonResponse({ ok: true, available: false, inbox_status: "JOB_INBOX_NOT_LINKED" });
-        const { data: codeRows } = await serviceClient
+        // The Gmail poll can take several network round trips. Re-read the
+        // mutable tracked row immediately before reservation so provider,
+        // company, job identity, or URL drift during the poll fails closed.
+        const { data: leaseTrackedJob, error: leaseTrackedJobError } =
+          await serviceClient
+            .from("mc_tracked_jobs")
+            .select("id,company,job_title,apply_url,scanned_job_id")
+            .eq("id", trackedJobId)
+            .eq("user_id", task.user_id)
+            .is("deleted_at", null)
+            .maybeSingle();
+        const leaseTarget = leaseTrackedJobError || !leaseTrackedJob
+          ? null
+          : verifyOtpJobTarget(
+            leaseTrackedJob,
+            targetEvidence,
+            verifiedSource,
+          );
+        if (!leaseTarget) {
+          return jsonResponse({
+            ok: true,
+            available: false,
+            inbox_status: "JOB_INBOX_NOT_LINKED",
+          });
+        }
+
+        const { data: codeRows, error: reserveError } = await serviceClient.rpc(
+          "mc_reserve_verification_code",
+          {
+            p_task_id: taskId,
+            p_worker_id: workerId,
+            p_user_id: task.user_id,
+            p_tracked_job_id: trackedJobId,
+          },
+        );
+        if (reserveError) throw reserveError;
+        const codeRow = Array.isArray(codeRows) ? codeRows[0] : null;
+        if (!codeRow?.code_ciphertext || !codeRow?.reservation_id) {
+          return jsonResponse({ ok: true, available: false, inbox_status: inboxStatus });
+        }
+        const { data: codeEmail, error: codeEmailError } = await serviceClient
           .from("mc_inbound_emails")
-          .select("id,verification_code,verification_code_expires_at")
+          .select("id,from_email,tracked_job_id")
+          .eq("id", codeRow.email_id)
           .eq("user_id", task.user_id)
           .eq("tracked_job_id", trackedJobId)
-          .not("verification_code", "is", null)
-          .gt("verification_code_expires_at", new Date().toISOString())
-          .order("received_at", { ascending: false })
-          .limit(1);
-        const codeRow = codeRows?.[0];
-        if (!codeRow?.verification_code) return jsonResponse({ ok: true, available: false, inbox_status: inboxStatus });
+          .maybeSingle();
+        if (
+          codeEmailError ||
+          !codeEmail ||
+          !senderDomainBoundToOtpTarget(String(codeEmail.from_email || ""), leaseTarget)
+        ) {
+          // The private store only receives authenticated senders, and the
+          // lease re-binds its public provenance to the task's current exact
+          // target. Discard a stale or inconsistent row rather than releasing
+          // it for repeated reservation attempts.
+          await serviceClient.rpc("mc_ack_verification_code", {
+            p_reservation_id: codeRow.reservation_id,
+            p_task_id: taskId,
+            p_worker_id: workerId,
+            p_accepted: true,
+          });
+          return jsonResponse({
+            ok: true,
+            available: false,
+            inbox_status: "JOB_INBOX_NOT_LINKED",
+          });
+        }
 
-        // Single-use: consume only while a code is still present. A concurrent
-        // consumer clears the column first, so an empty update means the code
-        // is gone and this request must report it as not received.
-        const { data: consumed } = await serviceClient
-          .from("mc_inbound_emails")
-          .update({
-            verification_code: null,
-            verification_code_expires_at: null,
-            verification_code_used_at: new Date().toISOString(),
-            is_read: true,
-          })
-          .eq("id", codeRow.id)
-          .not("verification_code", "is", null)
-          .select("id");
-        if (!consumed?.length) return jsonResponse({ ok: true, available: false, inbox_status: "CODE_NOT_RECEIVED" });
+        const encryptionKey = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY") || "";
+        if (!encryptionKey) {
+          await serviceClient.rpc("mc_ack_verification_code", {
+            p_reservation_id: codeRow.reservation_id,
+            p_task_id: taskId,
+            p_worker_id: workerId,
+            p_accepted: false,
+          });
+          return jsonResponse({ ok: true, available: false, inbox_status: "INBOX_UNAVAILABLE" });
+        }
+        try {
+          const code = await decryptSecret(codeRow.code_ciphertext, encryptionKey);
+          return jsonResponse({
+            ok: true,
+            available: true,
+            code,
+            reservation_id: codeRow.reservation_id,
+            inbox_status: "OK",
+          });
+        } catch (error) {
+          console.error("[applypass-agent-queue] verification decrypt failed", error);
+          await serviceClient.rpc("mc_ack_verification_code", {
+            p_reservation_id: codeRow.reservation_id,
+            p_task_id: taskId,
+            p_worker_id: workerId,
+            p_accepted: false,
+          });
+          return jsonResponse({ ok: true, available: false, inbox_status: "INBOX_UNAVAILABLE" });
+        }
+      }
 
-        return jsonResponse({ ok: true, available: true, code: codeRow.verification_code, inbox_status: "OK" });
+      if (action === "verification-code-result") {
+        const reservationId = asString(body?.reservationId);
+        if (!reservationId || typeof body?.accepted !== "boolean") {
+          return jsonResponse({ error: "reservationId and accepted are required" }, 400);
+        }
+        const { data: acknowledged, error } = await serviceClient.rpc(
+          "mc_ack_verification_code",
+          {
+            p_reservation_id: reservationId,
+            p_task_id: taskId,
+            p_worker_id: workerId,
+            p_accepted: body.accepted,
+          },
+        );
+        if (error) throw error;
+        if (acknowledged !== true) {
+          return jsonResponse({ error: "The verification-code lease is no longer active." }, 409);
+        }
+        return jsonResponse({ ok: true, acknowledged: true });
       }
 
       if (action === "heartbeat") {
@@ -359,6 +693,7 @@ serve(async (req: Request) => {
           .update({ heartbeat_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq("id", taskId)
           .eq("status", "running")
+          .eq("locked_by", workerId)
           .select("id,user_id,status,heartbeat_at,updated_at")
           .single();
 
@@ -386,7 +721,19 @@ serve(async (req: Request) => {
           .from("applypass_tasks")
           .select("task_type,payload,user_id")
           .eq("id", taskId)
+          .eq("status", "running")
+          .eq("locked_by", workerId)
           .maybeSingle();
+        if (!taskContext) {
+          return jsonResponse({ error: "The task lease is no longer active." }, 409);
+        }
+        await recordSubmissionReceipts(
+          serviceClient,
+          taskId,
+          workerId,
+          taskContext as Record<string, unknown>,
+          body?.result,
+        );
         const { data, error } = await serviceClient
           .from("applypass_tasks")
           .update({
@@ -398,7 +745,8 @@ serve(async (req: Request) => {
             updated_at: new Date().toISOString(),
           })
           .eq("id", taskId)
-          .in("status", ["running", "pending"])
+          .eq("status", "running")
+          .eq("locked_by", workerId)
           .select("id,status,completed_at,updated_at")
           .single();
 
@@ -422,7 +770,12 @@ serve(async (req: Request) => {
           .from("applypass_tasks")
           .select("task_type,payload,user_id")
           .eq("id", taskId)
+          .eq("status", "running")
+          .eq("locked_by", workerId)
           .maybeSingle();
+        if (!taskContext) {
+          return jsonResponse({ error: "The task lease is no longer active." }, 409);
+        }
 
         const { data, error } = await serviceClient
           .from("applypass_tasks")
@@ -435,7 +788,8 @@ serve(async (req: Request) => {
             updated_at: new Date().toISOString(),
           })
           .eq("id", taskId)
-          .in("status", ["running", "pending"])
+          .eq("status", "running")
+          .eq("locked_by", workerId)
           .select("id,status,error_message,completed_at,updated_at")
           .single();
 
@@ -499,7 +853,8 @@ serve(async (req: Request) => {
         return jsonResponse({ error: "taskId is required" }, 400);
       }
 
-      const { data, error } = await supabase
+      const serviceClient = createServiceClient();
+      const { data, error } = await serviceClient
         .from("applypass_tasks")
         .update({ status: "canceled", updated_at: new Date().toISOString() })
         .eq("id", taskId)
@@ -526,21 +881,94 @@ serve(async (req: Request) => {
     await enforceAutoApplyEntitlement(serviceClient, user.id);
     await enforceMonthlyAutoApplyExecutionCap(serviceClient, user.id, jobs.length);
 
+    const approvedAt = new Date().toISOString();
+    const trustedJobs = jobs.map((rawJob, index) => {
+      const job = asRecord(rawJob);
+      const target = classifyAtsApplyUrl(job.url);
+      const title = asString(job.title).slice(0, 240);
+      const company = asString(job.company).slice(0, 180);
+      if (!target.supported || !title || !company) {
+        const error = new Error(`Job ${index + 1} is not available for secure automatic submission.`);
+        (error as { status?: number }).status = 422;
+        throw error;
+      }
+      return {
+        id: asString(job.id).slice(0, 160) || crypto.randomUUID(),
+        title,
+        company,
+        location: asString(job.location).slice(0, 180) || null,
+        url: target.normalizedUrl,
+        description: asString(job.description).slice(0, 24_000) || null,
+        portal: target.type,
+        approvalReceipt: {
+          approved: true,
+          reviewedAt: approvedAt,
+          source: "user_queue_action",
+        },
+      };
+    });
+
+    const resumeId = asString(body?.resumeId);
+    if (!resumeId) {
+      const error = new Error("Choose a reviewed résumé before starting automatic applications.");
+      (error as { status?: number }).status = 412;
+      throw error;
+    }
+    const { data: sourceResume } = await serviceClient
+      .from("resumes")
+      .select("id,parse_quality,source_hash,source_document_id,parser_version,parsed_at")
+      .eq("id", resumeId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!sourceResume) {
+      const error = new Error("The selected résumé is not available.");
+      (error as { status?: number }).status = 404;
+      throw error;
+    }
+    if (!getResumeReviewState(sourceResume).allowed) {
+      const error = new Error(RESUME_REVIEW_REQUIRED_MESSAGE);
+      (error as { status?: number }).status = 412;
+      throw error;
+    }
+
+    const renderSupabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const renderResponse = await fetch(`${renderSupabaseUrl}/functions/v1/mc-render-resume`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${serviceRole}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ resume_id: resumeId, format: "pdf", user_id: user.id }),
+    });
+    const rendered = await renderResponse.json().catch(() => ({}));
+    if (!renderResponse.ok || typeof rendered?.url !== "string" || !rendered.url) {
+      const error = new Error("The reviewed résumé PDF could not be prepared.");
+      (error as { status?: number }).status = 412;
+      throw error;
+    }
+
     const taskPayload = {
-      jobs,
-      resumeId: body?.resumeId || null,
+      jobs: trustedJobs,
+      resumeId,
+      resumeStoragePath: asString(rendered.storage_path),
       candidateProfile: body?.candidateProfile || null,
       answerMemory: body?.answerMemory || null,
-      source: body?.source || "applypass_workspace",
+      source: "applypass_workspace",
       createdBy: user.email || user.id,
-      createdAt: new Date().toISOString(),
+      createdAt: approvedAt,
     };
+    if (!taskPayload.resumeStoragePath.startsWith(`${user.id}/generated/`)) {
+      const error = new Error("The reviewed résumé artifact was not stored correctly.");
+      (error as { status?: number }).status = 500;
+      throw error;
+    }
 
-    const { data, error } = await supabase
+    const { data, error } = await serviceClient
       .from("applypass_tasks")
       .insert({
         user_id: user.id,
-        task_type: String(body?.taskType || "bulk_apply"),
+        task_type: "bulk_apply",
         status: "pending",
         payload: taskPayload,
       })

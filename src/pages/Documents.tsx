@@ -17,6 +17,7 @@ import {
 import { Search, Plus, Download, Trash2, MoreVertical, FileText, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { isMissingStorageObjectError } from "@/lib/storage-errors";
 
 interface Document {
   id: string;
@@ -103,8 +104,15 @@ export default function Documents() {
   const handleDelete = async (doc: Document) => {
     if (doc.source === "user_document") {
       if (doc.storagePath) {
-        // Best-effort: a missing storage object must not block the row delete.
-        await supabase.storage.from("documents").remove([doc.storagePath]);
+        const { error: storageError } = await supabase.storage.from("documents").remove([doc.storagePath]);
+        if (storageError && !isMissingStorageObjectError(storageError)) {
+          toast({
+            title: "Delete failed",
+            description: `"${doc.title}" is still in your library because its file could not be removed. Try again.`,
+            variant: "destructive",
+          });
+          return;
+        }
       }
       const { error } = await supabase.from("user_documents" as any).delete().eq("id", doc.id);
       if (error) {

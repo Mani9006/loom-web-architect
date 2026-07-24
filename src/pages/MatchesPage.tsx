@@ -9,6 +9,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { captureIncident } from "@/lib/incidents";
+import {
+  careerFitFromEvaluation,
+  jobRequirementCoverageFromStoredScore,
+  JOB_REQUIREMENT_SCORE_MODEL_PATTERN,
+  normalizeScore,
+} from "@/lib/score-truth";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 
 interface ScannedJob {
@@ -70,7 +76,7 @@ function relativeTime(iso: string): string {
 }
 
 function careerFitScore(evaluation: Evaluation): number {
-  return evaluation.fit_score ?? Math.round(evaluation.score * 20);
+  return careerFitFromEvaluation(evaluation.fit_score, evaluation.score) ?? 0;
 }
 
 function fitChip(score: number): { label: string; tone: string } {
@@ -109,6 +115,7 @@ export default function MatchesPage() {
   const [evaluating, setEvaluating] = useState<string | null>(null);
   const [preparing, setPreparing] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { id: string; status: string }>>({});
+  const [coverageByEvaluation, setCoverageByEvaluation] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [applyJobs, setApplyJobs] = useState<ApplyProgressJob[]>([]);
@@ -156,8 +163,9 @@ export default function MatchesPage() {
           .maybeSingle(),
         supabase
           .from("draft_applications")
-          .select("id,evaluation_id,status")
-          .eq("user_id", user.id),
+          .select("id,evaluation_id,tailored_resume_id,status,updated_at")
+          .eq("user_id", user.id)
+          .order("updated_at", { ascending: false }),
       ]);
       if (evalRes.error) throw evalRes.error;
 
@@ -179,11 +187,62 @@ export default function MatchesPage() {
       setJobs(orderedJobs);
       setEvaluations(map);
 
+      type StoredDraft = {
+        id: string;
+        evaluation_id: string;
+        tailored_resume_id: string | null;
+        status: string;
+      };
+      const storedDrafts = (draftsRes.data || []) as StoredDraft[];
+      const newestDraftByEvaluation = new Map<string, StoredDraft>();
       const draftMap: Record<string, { id: string; status: string }> = {};
-      for (const draft of (draftsRes.data || []) as Array<{ id: string; evaluation_id: string; status: string }>) {
+      for (const draft of storedDrafts) {
+        if (newestDraftByEvaluation.has(draft.evaluation_id)) continue;
+        newestDraftByEvaluation.set(draft.evaluation_id, draft);
         draftMap[draft.evaluation_id] = { id: draft.id, status: draft.status };
       }
       setDrafts(draftMap);
+
+      const resumeIds = [...new Set(
+        [...newestDraftByEvaluation.values()]
+          .map((draft) => draft.tailored_resume_id)
+          .filter((id): id is string => Boolean(id)),
+      )];
+      const scoreRes = resumeIds.length > 0
+        ? await supabase
+          .from("ats_scores")
+          .select("resume_id,scanned_job_id,overall,model,created_at")
+          .eq("user_id", user.id)
+          .in("resume_id", resumeIds)
+          .like("model", JOB_REQUIREMENT_SCORE_MODEL_PATTERN)
+          .order("created_at", { ascending: false })
+        : { data: [], error: null };
+      if (scoreRes.error) {
+        void captureIncident(
+          scoreRes.error,
+          { source: "manual", operation: "match_resume_coverage_load" },
+          "warning",
+        );
+      }
+
+      const scoreByPair = new Map<string, number>();
+      for (const score of scoreRes.error ? [] : scoreRes.data || []) {
+        const key = `${score.resume_id}:${score.scanned_job_id}`;
+        const value = jobRequirementCoverageFromStoredScore(score);
+        if (!scoreByPair.has(key) && value !== null) {
+          scoreByPair.set(key, value);
+        }
+      }
+      const coverageMap: Record<string, number> = {};
+      for (const evaluation of personalized) {
+        const draft = newestDraftByEvaluation.get(evaluation.id);
+        if (!draft?.tailored_resume_id) continue;
+        const value = scoreByPair.get(
+          `${draft.tailored_resume_id}:${evaluation.scanned_job_id}`,
+        );
+        if (value !== undefined) coverageMap[evaluation.id] = value;
+      }
+      setCoverageByEvaluation(coverageMap);
       setPrefs((prefRes.data as UserPrefs | null) ?? {
         target_roles: [],
         negative_keywords: [],
@@ -271,8 +330,8 @@ export default function MatchesPage() {
     return map;
   }, [jobs, evaluations]);
 
-  // Shared single-application preparation (tailor + ATS check). Returns the
-  // new draft id and ATS score when available; throws on failure.
+  // Shared single-application preparation. The server returns job-requirement
+  // coverage separately from generic résumé quality and career fit.
   const prepareOne = useCallback(async (evaluationId: string, scannedJobId: string): Promise<{ draftId: string; atsScore: number | null }> => {
     const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
       body: { evaluation_id: evaluationId, allow_outside_preferences: true },
@@ -285,15 +344,19 @@ export default function MatchesPage() {
       body: { resume_id: draft.tailored_resume_id, scanned_job_id: scannedJobId },
     });
     if (atsError) throw atsError;
-    return { draftId: draft.id, atsScore: Number(atsData?.ats?.overall ?? 0) };
+    const rawMatch = atsData?.ats?.job_match_score;
+    return {
+      draftId: draft.id,
+      atsScore: normalizeScore(rawMatch),
+    };
   }, []);
 
   const prepareApplication = async (evaluationId: string, scannedJobId: string) => {
     setPreparing(evaluationId);
     try {
       const { draftId, atsScore } = await prepareOne(evaluationId, scannedJobId);
-      toast.success(atsScore
-        ? `Application ready · resume scores ${Math.round(atsScore)} — take a look before we submit`
+      toast.success(atsScore !== null
+        ? `Application ready · ${Math.round(atsScore)}% of extracted job requirements are covered — review before submit`
         : "Application ready — take a look before we submit");
       navigate(`/applications/${draftId}`);
     } catch (e: unknown) {
@@ -524,7 +587,7 @@ export default function MatchesPage() {
             <thead>
               <tr className="border-b border-border">
                 <th className="w-10 px-3 py-3" aria-label="Select" />
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 w-28">Fit</th>
+                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 w-40">Career fit / job-requirement coverage</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Role</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Location</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 hidden lg:table-cell">Seen</th>
@@ -546,13 +609,18 @@ export default function MatchesPage() {
                   </td>
                   <td className="px-3 py-4">
                     {evaluation ? (
-                      <div className="w-28 space-y-1.5">
+                      <div className="w-40 space-y-1.5">
                         <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap", fitChip(careerFitScore(evaluation)).tone)}>
                           {fitChip(careerFitScore(evaluation)).label}
                         </span>
                         <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                           <div className="h-full rounded-full bg-foreground transition-[width]" style={{ width: `${careerFitScore(evaluation)}%` }} />
                         </div>
+                        <p className="text-[10.5px] leading-tight text-muted-foreground">
+                          {coverageByEvaluation[evaluation.id] !== undefined
+                            ? `Job-requirement coverage ${coverageByEvaluation[evaluation.id]}%`
+                            : "Job-requirement coverage after tailoring"}
+                        </p>
                       </div>
                     ) : (
                       <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-dashed border-border text-muted-foreground text-[11px]">—</span>

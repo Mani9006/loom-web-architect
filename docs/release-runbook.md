@@ -7,25 +7,27 @@ Infrastructure and cost decisions are documented in `docs/infrastructure-decisio
 | Environment | Git branch | Frontend | Database/functions | Data policy |
 |---|---|---|---|---|
 | Local | feature branch | local Vite | local or dedicated development Supabase | synthetic only |
-| Staging | `main` | Vercel staging project/domain | staging Supabase project | synthetic QA users; no production email connections |
-| Production | `production` | production domain | production Supabase project | real users plus two restricted smoke accounts |
+| Staging | `develop` | Vercel Preview deployment | staging Supabase project | synthetic QA users; no production email connections |
+| Production | `main` | production domain | production Supabase project | real users plus two restricted smoke accounts |
 
 The two Supabase projects must use different project references, service keys, database passwords, OAuth credentials, Stripe modes, email providers, and storage buckets. Never point a preview build at the production database.
 
 ## Promotion flow
 
-1. Create a `codex/*` or normal feature branch from the latest `main`.
+1. Create a `codex/*` or normal feature branch from the latest `develop`.
 2. Make schema changes backward-compatible: add columns first, deploy readers/writers, migrate data, and remove old fields only in a later release.
-3. Open a pull request into `main`.
+3. Open a pull request into `develop`.
 4. Require type check, tests, build, high-severity dependency audit, and review.
-5. Merge to `main`; migrations and edge functions deploy to staging and Vercel deploys the staging frontend.
+5. Merge to `develop`; migrations and edge functions deploy to staging and Vercel deploys a Preview frontend.
 6. Run the staging smoke matrix below.
-7. Open a promotion pull request from `main` into `production` with release notes and migration impact.
-8. Require a human production approval and green staging evidence.
-9. Merge to `production`; the same immutable commit is deployed to production.
+7. Open a promotion pull request from `develop` into `main` with release notes and migration impact.
+8. Require green staging evidence and review before merging to `main`.
+9. From `main`, manually dispatch the production deployment and enter
+   `DEPLOY_PRODUCTION_FROM_MAIN`; the same immutable commit is deployed.
 10. Run restricted smoke tests and monitor errors, application failures, AI cost, and auth for at least one normal traffic window.
 
-Do not develop directly on `production`. Do not cherry-pick untested fixes into production except through an incident branch that is also merged back to `main`.
+Do not develop directly on `main`. Do not cherry-pick untested fixes into
+production; incident repair branches also target `develop`.
 
 ## Required GitHub environments and secrets
 
@@ -45,6 +47,30 @@ Production:
 - `SUPABASE_ACCESS_TOKEN`
 
 Set environment protection on `production` with required reviewers. Store runtime model/API keys in the corresponding Supabase project secrets, not GitHub build variables or the repository.
+
+### Supabase Auth email hook
+
+The `send-email` Edge Function accepts direct service calls and the Supabase
+HTTP **Send Email** Auth Hook through different authentication paths. The Auth
+Hook must use Supabase's generated Standard Webhooks signature; a custom static
+header is not sufficient.
+
+For each environment:
+
+1. In Supabase, open **Authentication → Hooks → Send Email** and choose HTTPS.
+2. Use that environment's `/functions/v1/send-email` URL.
+3. Generate the hook secret in the Supabase dashboard.
+4. Store the exact generated value as the Edge Function secret
+   `SEND_EMAIL_HOOK_SECRET` (never in Vercel, GitHub source, logs, or a
+   migration).
+5. Deploy `send-email`, then verify signup confirmation, magic link, password
+   reset, and email-change messages in that environment.
+6. Confirm an unsigned request and a request with a modified body both return
+   `401`.
+
+The function intentionally fails closed when the signing secret or Standard
+Webhooks headers are missing. Do not enable or promote the hook until the
+secret and smoke tests are complete.
 
 ## QA accounts
 

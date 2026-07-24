@@ -1,0 +1,12 @@
+{
+  "name": "@resumepreps/applypass-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "patchright": "1.61.1"
+  }
+}

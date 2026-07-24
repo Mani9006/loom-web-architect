@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { resolveJobUrl } from "@/lib/job-url";
 import { trackProductEvent } from "@/lib/product-analytics";
 import { useNavigate } from "react-router-dom";
+import { normalizeScore } from "@/lib/score-truth";
 
 interface JobApplyButtonProps {
   job: {
@@ -125,6 +126,7 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
 
       if (response.ok) {
         const result = await response.json();
+        const jobCoverage = normalizeScore(result.ats_score);
         await recordApplicationAction("auto");
         setActionComplete(result.status === "queued" ? "queued" : "prepared");
         onApplied?.();
@@ -132,7 +134,7 @@ export function JobApplyButton({ job, variant = "default", onApplied }: JobApply
           title: result.status === "queued" ? "Added to application queue" : "Application packet ready",
           description: result.status === "queued"
             ? `ResumePreps prepared the tailored packet and queued the ${job.company} application.`
-            : `The tailored resume and answers are ready for review${result.ats_score ? ` · ${Math.round(result.ats_score)}% ATS` : ""}.`,
+            : `The tailored resume and answers are ready for review${jobCoverage !== null ? ` · Job-requirement coverage ${jobCoverage}%` : ""}.`,
         });
         if (result.draft_id) navigate(`/applications/${result.draft_id}`);
       } else {

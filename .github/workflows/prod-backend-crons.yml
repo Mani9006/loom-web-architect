@@ -4,13 +4,19 @@ name: Prod backend crons
 # app.settings.* GUCs (only settable by dashboard superuser).
 # Every 15 minutes: Gmail inbox poll + agents orchestrator fan-out.
 # Hourly (every 4th tick, and on manual dispatch): career-ops job scan.
-# Auth: functions accept WORKER_AUTH_TOKEN as a trusted caller.
+# Gmail polling uses a dedicated least-privilege cron credential. The other
+# worker functions retain their separate worker credential.
 
 on:
   schedule:
     - cron: "*/15 * * * *"   # tick: gmail-poll + agents-orchestrator
     - cron: "7 * * * *"      # hourly: career-ops-scan
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: "Type RUN_PRODUCTION_CRONS_FROM_MAIN"
+        required: true
+        type: string
 
 concurrency:
   group: prod-backend-crons
@@ -24,11 +30,29 @@ jobs:
       PROD_SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
       PROD_SUPABASE_ANON_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
       PROD_WORKER_AUTH_TOKEN: ${{ secrets.PROD_WORKER_AUTH_TOKEN }}
+      PROD_GMAIL_POLL_CRON_TOKEN: ${{ secrets.PROD_GMAIL_POLL_CRON_TOKEN }}
+      PRODUCTION_CONFIRMATION: ${{ inputs.confirm_production }}
     steps:
+      - name: Validate production boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [ "$GITHUB_REF" = "refs/heads/main" ] || {
+            echo "::error::Production cron workflow is restricted to refs/heads/main."
+            exit 1
+          }
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            [ "$PRODUCTION_CONFIRMATION" = "RUN_PRODUCTION_CRONS_FROM_MAIN" ] || {
+              echo "::error::Production cron confirmation phrase did not match."
+              exit 1
+            }
+          fi
+
       - name: Guard required secrets
         run: |
           test -n "$PROD_SUPABASE_URL" || { echo "::error::PROD_SUPABASE_URL missing"; exit 1; }
           test -n "$PROD_WORKER_AUTH_TOKEN" || { echo "::error::PROD_WORKER_AUTH_TOKEN missing"; exit 1; }
+          test -n "$PROD_GMAIL_POLL_CRON_TOKEN" || { echo "::error::PROD_GMAIL_POLL_CRON_TOKEN missing"; exit 1; }
 
       - name: mc-gmail-poll (inbox + OTP ingestion)
         continue-on-error: true
@@ -36,7 +60,7 @@ jobs:
           curl --fail-with-body --silent --show-error --max-time 120 \
             -X POST "$PROD_SUPABASE_URL/functions/v1/mc-gmail-poll" \
             -H "apikey: $PROD_SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $PROD_WORKER_AUTH_TOKEN" \
+            -H "Authorization: Bearer $PROD_GMAIL_POLL_CRON_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{}'
 

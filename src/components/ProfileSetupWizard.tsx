@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { normalizeScore } from "@/lib/score-truth";
 
 const STEPS = [
   { icon: User, label: "General Info", desc: "Your basic profile" },
@@ -27,7 +28,7 @@ const STEPS = [
   { icon: Shield, label: "Work Authorization", desc: "Visa & work status" },
   { icon: GraduationCap, label: "Education", desc: "Degrees & certs" },
   { icon: Briefcase, label: "Experience", desc: "Your career summary" },
-  { icon: FileText, label: "Resume & Score", desc: "Upload & analyze" },
+  { icon: FileText, label: "Resume & Quality", desc: "Upload & analyze" },
 ];
 
 const SENIORITY_LEVELS = ["Entry Level", "Mid Level", "Senior", "Lead", "Staff", "Principal", "Executive"];
@@ -40,6 +41,36 @@ const COMMON_SKILLS = [
   "Machine Learning", "Data Analysis", "Product Management", "UI/UX Design",
   "Agile/Scrum", "Leadership", "Communication", "Problem Solving",
 ];
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function resumeRowForQualityScore(row: Record<string, unknown>): Record<string, unknown> {
+  const personal = asRecord(row.personal_info);
+  const skills = Array.isArray(row.skills)
+    ? { general: row.skills.map(String) }
+    : asRecord(row.skills);
+
+  return {
+    header: {
+      name: String(personal.name ?? personal.full_name ?? personal.fullName ?? ""),
+      title: String(personal.title ?? ""),
+      location: String(personal.location ?? ""),
+      email: String(personal.email ?? ""),
+      phone: String(personal.phone ?? ""),
+      linkedin: String(personal.linkedin ?? personal.linkedin_url ?? ""),
+    },
+    summary: String(row.summary ?? personal.summary ?? ""),
+    experience: Array.isArray(row.experience) ? row.experience : [],
+    education: Array.isArray(row.education) ? row.education : [],
+    skills,
+    projects: Array.isArray(row.projects) ? row.projects : [],
+    certifications: Array.isArray(row.certifications) ? row.certifications : [],
+  };
+}
 
 export function ProfileSetupWizard() {
   const { user } = useAuth();
@@ -253,31 +284,20 @@ export function ProfileSetupWizard() {
         return;
       }
 
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ats-score`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token || anonKey}`,
-          },
-          body: JSON.stringify({
-            resumeId: resume.id,
-            targetRole: profile.desired_roles[0] || "Software Engineer",
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setAtsScore(data.overall_score || data.score || 0);
-      }
+      const { data, error } = await supabase.functions.invoke("ats-score-v2", {
+        body: { resume: resumeRowForQualityScore(resume as unknown as Record<string, unknown>) },
+      });
+      if (error) throw error;
+      const score = normalizeScore(data?.resume_quality_score ?? data?.overall);
+      if (score === null) throw new Error("Résumé quality was not returned.");
+      setAtsScore(score);
     } catch (err) {
-      console.error("ATS score error:", err);
+      console.error("Résumé quality error:", err);
+      toast({
+        title: "Résumé quality is unavailable",
+        description: "Your résumé is safe. Try the check again in a moment.",
+        variant: "destructive",
+      });
     } finally {
       setAtsLoading(false);
     }
@@ -554,7 +574,7 @@ export function ProfileSetupWizard() {
               </div>
 
               <div className="border rounded-lg p-6 text-center">
-                <h3 className="font-semibold mb-2">Resume ATS Score</h3>
+                <h3 className="font-semibold mb-2">Generic résumé quality</h3>
                 {atsScore !== null ? (
                   <div>
                     <div className={cn(
@@ -565,12 +585,12 @@ export function ProfileSetupWizard() {
                     </div>
                     <p className="text-sm text-muted-foreground">out of 100</p>
                     <p className="text-xs text-muted-foreground mt-2">
-                      {atsScore >= 80 ? "Great resume! Ready for applications." : atsScore >= 60 ? "Good resume. Some improvements possible." : "Needs work. Use the Resume Builder to improve."}
+                      {atsScore >= 80 ? "Strong quality signals under the generic checklist." : atsScore >= 60 ? "Review the quality suggestions before applying." : "Important quality gaps need attention in the résumé builder."}
                     </p>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-muted-foreground text-sm mb-3">Check how ATS-friendly your resume is</p>
+                    <p className="text-muted-foreground text-sm mb-3">Measure structure and evidence quality independently of any job</p>
                     <Button onClick={runAtsScore} disabled={atsLoading}>
                       {atsLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Analyzing...</> : "Analyze Resume"}
                     </Button>

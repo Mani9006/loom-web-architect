@@ -1566,7 +1566,12 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
                             <p className="text-xs text-muted-foreground line-clamp-1">{job.location || "Location not listed"}</p>
                             <div className="mt-2 flex items-center gap-2 flex-wrap">
                               {typeof job.matchScore === "number" && (
-                                <Badge variant="secondary">{job.matchScore}% match</Badge>
+                                <Badge
+                                  variant="secondary"
+                                  title="Career-fit estimate from the search result; tailored job-requirement coverage is measured separately."
+                                >
+                                  {job.matchScore}% career-fit estimate
+                                </Badge>
                               )}
                               <Badge variant="outline" className="text-[10px]">{domainFromUrl(job.url)}</Badge>
                               <Badge variant={badgeVariantForStatus(state)} className="text-[10px]">{statusLabel(state)}</Badge>

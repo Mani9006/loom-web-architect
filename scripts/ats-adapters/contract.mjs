@@ -40,9 +40,9 @@
  * @property {string} taskId
  * @property {string} jobId
  * @property {string} workerId
- * @property {() => Promise<string|null>} requestVerificationCode  One-shot fetch of an emailed code from the queue API.
+ * @property {() => Promise<{code: string|null, inboxStatus: string, reservationId: string|null}>} requestVerificationCode  Lease an emailed code from the queue API.
  * @property {(log: Object) => Promise<unknown>} heartbeat         Stream a progress log entry to the queue.
- * @property {{ index: number, label: string }|null} [submitButton] Pre-detected submit button (set by the worker before submit()).
+ * @property {{ index: number, label: string, formAction?: string|null, formMethod?: string|null }|null} [submitButton] Pre-detected submit button and request correlation hints.
  * @property {string} [previousUrl] URL captured just before the submit click (set by the worker before verifyReceipt()).
  */
 
@@ -58,7 +58,7 @@
  * @property {number} filledCount
  * @property {number} totalFields
  * @property {{ fileInputs: number, resumeInputs: number, uploaded: number, requiredMissing: boolean }} upload
- * @property {{ requested: boolean, completed: boolean }} verification Email verification-code step state.
+ * @property {{ requested: boolean, completed: boolean, reservationId?: string|null }} verification Email verification-code step state.
  * @property {{ detected: boolean, blocksDetected: number, blocksFilled: number, fieldsFilled: number, addedBlocks: number }} [employment] Employment-history section fill summary (Greenhouse old-style boards).
  */
 
@@ -89,10 +89,10 @@
  * @property {(page: Object, ctx: AdapterContext) => Promise<AdapterPrepareResult>} prepare
  * @property {(page: Object, ctx: AdapterContext) => Promise<AdapterFillResult>} fillFields
  * @property {(page: Object) => Promise<AdapterReviewState>} reviewState
- * @property {(page: Object) => Promise<{ index: number, label: string }|null>} findSubmitButton
+ * @property {(page: Object) => Promise<{ index: number, label: string, formAction?: string|null, formMethod?: string|null }|null>} findSubmitButton
  * @property {(page: Object, ctx: AdapterContext) => Promise<AdapterSubmitResult>} submit
  * @property {(page: Object, ctx: AdapterContext) => Promise<AdapterReceipt>} verifyReceipt
- * @property {(page: Object, ctx: AdapterContext) => Promise<{ requested: boolean, completed: boolean, reason?: string }>} handleVerification Re-run the emailed verification-code loop post-submit (Greenhouse 428 handoff step).
+ * @property {(page: Object, ctx: AdapterContext) => Promise<{ requested: boolean, completed: boolean, reason?: string, reservationId?: string|null }>} handleVerification Re-run the emailed verification-code loop post-submit (Greenhouse 428 handoff step).
  */
 
 const REQUIRED_METHODS = [

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -27,9 +27,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { captureIncident } from "@/lib/incidents";
 import { cn } from "@/lib/utils";
+import { resolveAutomationDraftState } from "@/lib/application-funnel";
 import {
   rowMatchesTab,
   tabCounts,
+  taskJobResult,
   toBoardRow,
   type BoardDraft,
   type BoardRow,
@@ -37,6 +39,11 @@ import {
   type BoardTab,
   type BoardTask,
 } from "@/lib/application-board";
+
+interface SubmissionReceiptEvidence {
+  draft_application_id: string;
+  submitted_at: string;
+}
 
 const TABS: Array<{ key: BoardTab; label: string }> = [
   { key: "all", label: "All" },
@@ -79,9 +86,11 @@ export default function ApplicationsBoardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [tab, setTab] = useState<BoardTab>("all");
+  const loadRequestId = useRef(0);
 
   const load = useCallback(async (showSpinner = false) => {
     if (!user) return;
+    const requestId = ++loadRequestId.current;
     if (showSpinner) setRefreshing(true);
 
     const { data: draftData, error: draftError } = await supabase
@@ -90,6 +99,7 @@ export default function ApplicationsBoardPage() {
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
 
+    if (requestId !== loadRequestId.current) return;
     if (draftError) {
       void captureIncident(new Error(draftError.message), { source: "manual", operation: "applications_board_load" });
       // Honest failure: don't fall through to the "No applications yet"
@@ -104,21 +114,76 @@ export default function ApplicationsBoardPage() {
 
     const drafts = (draftData || []) as unknown as BoardDraft[];
     const taskIds = [...new Set(drafts.map((draft) => draft.applypass_task_id).filter((id): id is string => Boolean(id)))];
+    const draftIds = drafts.map((draft) => draft.id);
+
+    const { data: heartbeatData, error: heartbeatError } = await supabase
+      .from("mc_worker_heartbeats")
+      .select("last_seen")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (requestId !== loadRequestId.current) return;
+    if (heartbeatError) {
+      void captureIncident(new Error(heartbeatError.message), { source: "manual", operation: "applications_board_heartbeat" }, "warning");
+    }
+    const heartbeatAt = (heartbeatData as { last_seen?: string } | null)?.last_seen;
+    const workerRecentlyActive = Boolean(
+      heartbeatAt && Date.now() - new Date(heartbeatAt).getTime() < 90_000,
+    );
 
     let taskById = new Map<string, BoardTask>();
+    let receiptByDraftId = new Map<string, SubmissionReceiptEvidence>();
     if (taskIds.length > 0) {
       const { data: taskData, error: taskError } = await supabase
         .from("applypass_tasks")
         .select("id,status,error_message,result,created_at")
         .in("id", taskIds);
+      if (requestId !== loadRequestId.current) return;
       if (taskError) {
         void captureIncident(new Error(taskError.message), { source: "manual", operation: "applications_board_tasks" }, "warning");
+        setLoadError(true);
+        setLoading(false);
+        setRefreshing(false);
+        return;
       }
-      taskById = new Map(((taskData || []) as unknown as BoardTask[]).map((task) => [task.id, task]));
+      taskById = new Map(((taskData || []) as unknown as BoardTask[]).map((task) => [
+        task.id,
+        { ...task, workerRecentlyActive },
+      ]));
+    }
+
+    if (draftIds.length > 0) {
+      const { data: receiptData, error: receiptError } = await supabase
+        .from("application_submission_receipts")
+        .select("draft_application_id,submitted_at")
+        .in("draft_application_id", draftIds);
+      if (requestId !== loadRequestId.current) return;
+      if (receiptError) {
+        void captureIncident(new Error(receiptError.message), { source: "manual", operation: "applications_board_receipts" }, "warning");
+        setLoadError(true);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      receiptByDraftId = new Map(
+        ((receiptData || []) as SubmissionReceiptEvidence[]).map((receipt) => [receipt.draft_application_id, receipt]),
+      );
     }
 
     const boardRows = drafts
-      .map((draft) => toBoardRow(draft, taskById))
+      .map((draft) => {
+        const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
+        const receipt = receiptByDraftId.get(draft.id);
+        const state = resolveAutomationDraftState({
+          draftStatus: draft.status,
+          taskStatus: task?.status,
+          taskOutcome: taskJobResult(task)?.status ?? null,
+          hasSubmissionReceipt: Boolean(receipt),
+        });
+        return toBoardRow(draft, taskById, {
+          state,
+          receiptSubmittedAt: receipt?.submitted_at,
+        });
+      })
       .sort((a, b) => new Date(b.activityAt).getTime() - new Date(a.activityAt).getTime());
     setRows(boardRows);
     setLoading(false);
@@ -127,25 +192,37 @@ export default function ApplicationsBoardPage() {
 
   useEffect(() => {
     if (!user) return;
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
 
     const channel = supabase
       .channel(`applications-board-${user.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "draft_applications", filter: `user_id=eq.${user.id}` }, () => void load())
       .on("postgres_changes", { event: "*", schema: "public", table: "applypass_tasks", filter: `user_id=eq.${user.id}` }, () => void load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "application_submission_receipts", filter: `user_id=eq.${user.id}` }, () => void load())
       .subscribe();
 
     // Realtime may be unavailable in a preview project; bounded polling keeps
     // an open board current without a background browser process.
-    const poll = window.setInterval(() => void load(), 30_000);
+    const poll = window.setInterval(() => void load(), 15_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
+      window.clearTimeout(initialLoad);
       window.clearInterval(poll);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      loadRequestId.current += 1;
       void supabase.removeChannel(channel);
     };
   }, [load, user]);
 
   const counts = useMemo(() => tabCounts(rows), [rows]);
   const visibleRows = useMemo(() => rows.filter((row) => rowMatchesTab(row, tab)), [rows, tab]);
+  const activeCount = useMemo(
+    () => rows.filter((row) => ["tailoring", "queued", "applying"].includes(row.status.key)).length,
+    [rows],
+  );
 
   const emptyCopy: EmptyCopy = useMemo(() => {
     switch (tab) {
@@ -207,9 +284,9 @@ export default function ApplicationsBoardPage() {
   if (loading) {
     return (
       <div className="max-w-[1100px] mx-auto px-6 lg:px-10 py-10 space-y-5">
-        <div className="h-20 rounded-lg bg-rp-paper animate-pulse" />
-        <div className="h-10 rounded-lg bg-rp-paper animate-pulse" />
-        <div className="h-96 rounded-lg bg-rp-paper animate-pulse" />
+        <div className="h-20 rounded-lg bg-rp-paper animate-pulse motion-reduce:animate-none" />
+        <div className="h-10 rounded-lg bg-rp-paper animate-pulse motion-reduce:animate-none" />
+        <div className="h-96 rounded-lg bg-rp-paper animate-pulse motion-reduce:animate-none" />
       </div>
     );
   }
@@ -219,7 +296,7 @@ export default function ApplicationsBoardPage() {
       <PageHeader
         title="All applications."
         status={`auto-apply · ${counts.all} total`}
-        description="Every application we're preparing, sending, or have sent for you — with a receipt for each step."
+        description="Every application we're preparing, sending, or have sent for you — with confirmed submission receipts and clear next steps."
       />
 
       {/* Tabs with counts */}
@@ -256,9 +333,20 @@ export default function ApplicationsBoardPage() {
           className="mb-1 inline-flex items-center gap-2 px-2 text-xs font-medium text-rp-ink-2 hover:text-rp-ink"
           disabled={refreshing}
         >
-          <RefreshCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> Refresh
+          <RefreshCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin motion-reduce:animate-none")} /> Refresh
         </button>
       </div>
+      <p className="mt-3 flex items-center gap-2 text-[11px] text-rp-ink-2" role="status" aria-live="polite">
+        <span className="relative flex h-2 w-2" aria-hidden="true">
+          {activeCount > 0 && (
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60 motion-reduce:animate-none" />
+          )}
+          <span className={cn("relative inline-flex h-2 w-2 rounded-full", activeCount > 0 ? "bg-amber-500" : "bg-emerald-500")} />
+        </span>
+        {activeCount > 0
+          ? `${activeCount} application${activeCount === 1 ? "" : "s"} moving now · status updates live`
+          : "Live updates are on · Applied always means a receipt was confirmed"}
+      </p>
 
       {/* Board */}
       {loadError ? (
@@ -266,7 +354,7 @@ export default function ApplicationsBoardPage() {
           <AlertTriangle className="mx-auto h-8 w-8 text-rp-ink-3" strokeWidth={1.6} />
           <p className="mt-3 text-sm font-semibold text-rp-ink">Your applications couldn't be loaded</p>
           <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-rp-ink-2">
-            Nothing is lost — this is a connection hiccup on our side. We retry automatically every 30 seconds, or you can try now.
+            Nothing is lost — this is a connection hiccup on our side. We retry automatically every 15 seconds, or you can try now.
           </p>
           <Button size="sm" className="mt-4" onClick={() => void load(true)} disabled={refreshing}>
             {refreshing ? "Retrying…" : "Try again"}
@@ -288,7 +376,7 @@ export default function ApplicationsBoardPage() {
                 <TableHead className="w-[110px] text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Resume</TableHead>
                 <TableHead className="w-[110px] text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Cover letter</TableHead>
                 <TableHead className="w-[220px] text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Status</TableHead>
-                <TableHead className="w-[130px] text-right text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Applied</TableHead>
+                <TableHead className="w-[130px] text-right text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Activity</TableHead>
                 <TableHead className="w-[40px]" />
               </TableRow>
             </TableHeader>
@@ -318,7 +406,7 @@ export default function ApplicationsBoardPage() {
                       </span>
                     ) : row.resumeState === "tailoring" ? (
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Tailoring…
+                        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Tailoring…
                       </span>
                     ) : (
                       <span className="text-xs text-rp-ink-3">—</span>
@@ -332,7 +420,13 @@ export default function ApplicationsBoardPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold", STATUS_TONES[row.status.key])}>
+                    <span
+                      className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold", STATUS_TONES[row.status.key])}
+                      aria-live={["tailoring", "queued", "applying"].includes(row.status.key) ? "polite" : undefined}
+                    >
+                      {["tailoring", "queued", "applying"].includes(row.status.key) && (
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none" aria-hidden="true" />
+                      )}
                       {row.status.label}
                     </span>
                     <p className="mt-1 line-clamp-1 text-[11px] text-rp-ink-2">{row.status.detail}</p>

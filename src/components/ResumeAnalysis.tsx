@@ -11,6 +11,7 @@ import {
   TrendingUp, Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { normalizeScore } from "@/lib/score-truth";
 
 interface ScoreBreakdown {
   category: string;
@@ -22,6 +23,7 @@ interface ScoreBreakdown {
 
 interface AnalysisResult {
   overallScore: number;
+  scoreKind: "resume_quality";
   breakdown: ScoreBreakdown[];
   suggestions: string[];
   keywords: string[];
@@ -61,12 +63,18 @@ function StatusIcon({ status }: { status: "good" | "warning" | "poor" }) {
 }
 
 interface ResumeAnalysisProps {
-  resumeUrl?: string | null;
+  resumeText?: string | null;
   compact?: boolean;
   onScoreComputed?: (score: number) => void;
 }
 
-export function ResumeAnalysis({ resumeUrl, compact, onScoreComputed }: ResumeAnalysisProps) {
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+export function ResumeAnalysis({ resumeText, compact, onScoreComputed }: ResumeAnalysisProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -77,86 +85,59 @@ export function ResumeAnalysis({ resumeUrl, compact, onScoreComputed }: ResumeAn
       toast({ title: "Sign in required", description: "Please sign in to analyze your resume." });
       return;
     }
+    if (!resumeText || resumeText.trim().length < 50) {
+      toast({
+        title: "Add more résumé text",
+        description: "At least 50 characters are needed for a meaningful quality check.",
+      });
+      return;
+    }
 
     setLoading(true);
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+      const { data, error } = await supabase.functions.invoke("ats-score", {
+        body: { resumeText },
+      });
+      if (error) throw error;
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ats-score`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token || anonKey}`,
-          },
-          body: JSON.stringify({
-            user_id: user.id,
-            resume_url: resumeUrl,
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const score = data.score || data.overall_score || 0;
-
-        const breakdown: ScoreBreakdown[] = [
-          {
-            category: "Contact Information",
-            score: data.contact_score || Math.min(Math.round(score * 0.15), 15),
-            maxScore: 15,
-            feedback: data.contact_feedback || "Include email, phone, LinkedIn",
-            status: (data.contact_score || score * 0.15) >= 12 ? "good" : (data.contact_score || score * 0.15) >= 8 ? "warning" : "poor",
-          },
-          {
-            category: "Work Experience",
-            score: data.experience_score || Math.min(Math.round(score * 0.30), 30),
-            maxScore: 30,
-            feedback: data.experience_feedback || "Use action verbs and quantify results",
-            status: (data.experience_score || score * 0.30) >= 24 ? "good" : (data.experience_score || score * 0.30) >= 15 ? "warning" : "poor",
-          },
-          {
-            category: "Skills & Keywords",
-            score: data.skills_score || Math.min(Math.round(score * 0.25), 25),
-            maxScore: 25,
-            feedback: data.skills_feedback || "Include relevant technical and soft skills",
-            status: (data.skills_score || score * 0.25) >= 20 ? "good" : (data.skills_score || score * 0.25) >= 13 ? "warning" : "poor",
-          },
-          {
-            category: "Education",
-            score: data.education_score || Math.min(Math.round(score * 0.15), 15),
-            maxScore: 15,
-            feedback: data.education_feedback || "List relevant degrees and certifications",
-            status: (data.education_score || score * 0.15) >= 12 ? "good" : (data.education_score || score * 0.15) >= 8 ? "warning" : "poor",
-          },
-          {
-            category: "Formatting & ATS",
-            score: data.format_score || Math.min(Math.round(score * 0.15), 15),
-            maxScore: 15,
-            feedback: data.format_feedback || "Use clean formatting, no tables or images",
-            status: (data.format_score || score * 0.15) >= 12 ? "good" : (data.format_score || score * 0.15) >= 8 ? "warning" : "poor",
-          },
-        ];
-
-        const analysis: AnalysisResult = {
-          overallScore: score,
-          breakdown,
-          suggestions: data.suggestions || data.improvements || [],
-          keywords: data.keywords || data.matched_keywords || [],
-        };
-
-        setResult(analysis);
-        onScoreComputed?.(score);
-      } else {
-        // Fallback: generate a placeholder analysis
-        toast({
-          title: "Analysis unavailable",
-          description: "Upload a resume and complete your profile for accurate scoring.",
-        });
+      const score = normalizeScore(data?.resumeQualityScore ?? data?.overallScore);
+      if (score === null || data?.scoreType !== "resume_quality") {
+        throw new Error("A typed résumé-quality result was not returned.");
       }
+
+      const rawSections = record(data.sections);
+      const sectionConfig = [
+        ["formatting", "Formatting & structure"],
+        ["experience", "Experience evidence"],
+        ["skills", "Skills structure"],
+        ["education", "Education"],
+        ["impact", "Impact & achievements"],
+      ] as const;
+      const breakdown: ScoreBreakdown[] = sectionConfig.flatMap(([key, category]) => {
+        const section = record(rawSections[key]);
+        const sectionScore = normalizeScore(section.score);
+        if (sectionScore === null) return [];
+        const issues = Array.isArray(section.issues) ? section.issues.map(String) : [];
+        const tips = Array.isArray(section.tips) ? section.tips.map(String) : [];
+        return [{
+          category,
+          score: sectionScore,
+          maxScore: 100,
+          feedback: tips[0] ?? issues[0] ?? "No specific change recommended.",
+          status: sectionScore >= 80 ? "good" as const : sectionScore >= 60 ? "warning" as const : "poor" as const,
+        }];
+      });
+
+      const analysis: AnalysisResult = {
+        overallScore: score,
+        scoreKind: "resume_quality",
+        breakdown,
+        suggestions: Array.isArray(data.topImprovements) ? data.topImprovements.map(String) : [],
+        keywords: [],
+      };
+
+      setResult(analysis);
+      onScoreComputed?.(score);
     } catch {
       toast({
         title: "Analysis error",
@@ -172,7 +153,7 @@ export function ResumeAnalysis({ resumeUrl, compact, onScoreComputed }: ResumeAn
     return (
       <Button variant="outline" size="sm" className="gap-2" onClick={analyzeResume} disabled={loading}>
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Award className="w-4 h-4" />}
-        {loading ? "Analyzing..." : "Check ATS Score"}
+        {loading ? "Analyzing..." : "Check résumé quality"}
       </Button>
     );
   }
@@ -184,7 +165,7 @@ export function ResumeAnalysis({ resumeUrl, compact, onScoreComputed }: ResumeAn
           <ScoreGauge score={result.overallScore} />
         </div>
         <div className="text-sm">
-          <p className="font-medium">ATS Score</p>
+          <p className="font-medium">Résumé quality</p>
           <p className="text-muted-foreground">
             {result.overallScore >= 80 ? "Great!" : result.overallScore >= 60 ? "Needs improvement" : "Needs attention"}
           </p>
@@ -201,7 +182,7 @@ export function ResumeAnalysis({ resumeUrl, compact, onScoreComputed }: ResumeAn
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <TrendingUp className="w-5 h-5 text-primary" />
-          Resume ATS Analysis
+          Generic résumé quality
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -209,7 +190,7 @@ export function ResumeAnalysis({ resumeUrl, compact, onScoreComputed }: ResumeAn
           <div className="text-center py-8">
             <FileText className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
             <p className="text-sm text-muted-foreground mb-4">
-              Analyze your resume to see how it scores against ATS systems
+              Measure résumé structure and evidence quality independently of any job
             </p>
             <Button onClick={analyzeResume} disabled={loading} className="gap-2">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Award className="w-4 h-4" />}
@@ -225,7 +206,7 @@ export function ResumeAnalysis({ resumeUrl, compact, onScoreComputed }: ResumeAn
 
             {/* Breakdown */}
             <div className="space-y-3">
-              <h4 className="text-sm font-semibold">Score Breakdown</h4>
+              <h4 className="text-sm font-semibold">Résumé quality breakdown</h4>
               {result.breakdown.map((item) => (
                 <div key={item.category} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">

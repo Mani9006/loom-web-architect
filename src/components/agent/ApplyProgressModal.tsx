@@ -11,12 +11,13 @@
  *   apply — <reason> / ✓ Ready for review (review-mode terminal).
  *
  * Self-contained: polls draft_applications + applypass_tasks while open
- * (Realtime on AgentPage keeps flowing too — no backend changes) and lazily
- * fetches career-ops-tailor-report once per draft for the green lines.
+ * + immutable submission receipts while open (Realtime on AgentPage keeps
+ * flowing too — no backend changes) and lazily fetches
+ * career-ops-tailor-report once per draft for the green lines.
  * Status logic lives in ./apply-progress-core (unit-tested).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowUpRight, CheckCircle2, FileText, Loader2, XCircle } from "lucide-react";
 
@@ -30,6 +31,7 @@ import type { TailoringChange } from "../../../supabase/functions/_shared/tailor
 import {
   ApplyDraftRow,
   ApplyProgressJob,
+  ApplyReceiptRow,
   ApplyStepInfo,
   ApplyTaskRow,
   deriveApplyStep,
@@ -49,16 +51,18 @@ const TAILOR_MESSAGES = [
 /** Graceful fallback while no tailoring report exists yet: shimmering
  * résumé lines + one rotating typewriter status, in our CLI aesthetic. */
 function ShimmerPreview() {
+  const reduceMotion = useReducedMotion();
   const [messageIndex, setMessageIndex] = useState(0);
   useEffect(() => {
+    if (reduceMotion) return undefined;
     const timer = window.setInterval(() => setMessageIndex((i) => (i + 1) % TAILOR_MESSAGES.length), 2600);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [reduceMotion]);
   return (
     <div className="border border-rp-rule/70 bg-background/70 p-3" aria-label="Tailoring in progress">
       <div className="space-y-1.5">
         {[92, 78, 88, 64].map((width, i) => (
-          <div key={i} className="h-2 animate-pulse rounded-sm bg-rp-paper-2" style={{ width: `${width}%`, animationDelay: `${i * 180}ms` }} />
+          <div key={i} className="h-2 animate-pulse rounded-sm bg-rp-paper-2 motion-reduce:animate-none" style={{ width: `${width}%`, animationDelay: `${i * 180}ms` }} />
         ))}
       </div>
       <p className="mt-2.5 text-[11px] text-rp-ink-2">
@@ -70,6 +74,7 @@ function ShimmerPreview() {
 
 /** The real thing: edited résumé lines fade in one by one, GREEN highlight. */
 function ChangesPreview({ changes }: { changes: TailoringChange[] }) {
+  const reduceMotion = useReducedMotion();
   const lines = useMemo(
     () => changes.filter((change) => change.after && change.after.trim()).slice(0, 4),
     [changes],
@@ -84,9 +89,9 @@ function ChangesPreview({ changes }: { changes: TailoringChange[] }) {
         {lines.map((change, i) => (
           <motion.li
             key={`${change.section}-${change.bullet_index ?? i}`}
-            initial={{ opacity: 0, x: -6 }}
+            initial={reduceMotion ? false : { opacity: 0, x: -6 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.25 + i * 0.45, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            transition={reduceMotion ? { duration: 0 } : { delay: 0.25 + i * 0.45, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
             className="line-clamp-1 rounded-sm bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800 dark:text-emerald-200"
           >
             {change.after}
@@ -107,7 +112,7 @@ function StepNode({ state, label }: { state: NodeState; label: string }) {
       {state === "done" ? (
         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
       ) : state === "active" ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500 motion-reduce:animate-none" />
       ) : (
         <span className="h-3.5 w-3.5 rounded-full border border-rp-rule-2" />
       )}
@@ -128,31 +133,34 @@ function StepConnector({ done }: { done: boolean }) {
 }
 
 function ResultLine({ info }: { info: ApplyStepInfo }) {
+  const reduceMotion = useReducedMotion();
+  const initial = reduceMotion ? false : { opacity: 0, y: 4 };
+  const transition = reduceMotion ? { duration: 0 } : undefined;
   if (info.step === "applied") {
     const when = info.submittedAt ? formatDistanceToNow(new Date(info.submittedAt), { addSuffix: true }) : "just now";
     return (
-      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
+      <motion.p initial={initial} animate={{ opacity: 1, y: 0 }} transition={transition} className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
         ✅ Applied · {when}
       </motion.p>
     );
   }
   if (info.step === "needs_you") {
     return (
-      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-medium text-orange-600 dark:text-orange-400">
+      <motion.p initial={initial} animate={{ opacity: 1, y: 0 }} transition={transition} className="text-[12px] font-medium text-orange-600 dark:text-orange-400">
         🟠 Needs you — {info.reason}
       </motion.p>
     );
   }
   if (info.step === "couldnt_apply") {
     return (
-      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-medium text-rose-600 dark:text-rose-400">
+      <motion.p initial={initial} animate={{ opacity: 1, y: 0 }} transition={transition} className="text-[12px] font-medium text-rose-600 dark:text-rose-400">
         🔴 Couldn't apply — {info.reason}
       </motion.p>
     );
   }
   if (info.step === "ready") {
     return (
-      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
+      <motion.p initial={initial} animate={{ opacity: 1, y: 0 }} transition={transition} className="text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
         ✓ Résumé tailored — ready for your review
       </motion.p>
     );
@@ -180,8 +188,10 @@ export default function ApplyProgressModal({
   onOpenApplication?: (draftId: string) => void;
 }) {
   const { user } = useAuth();
+  const reduceMotion = useReducedMotion();
   const [draftsByEvaluation, setDraftsByEvaluation] = useState<Map<string, ApplyDraftRow>>(new Map());
   const [tasksById, setTasksById] = useState<Map<string, ApplyTaskRow>>(new Map());
+  const [receiptsByDraftId, setReceiptsByDraftId] = useState<Map<string, ApplyReceiptRow>>(new Map());
   // draftId → changes | null (report not ready) | undefined (not attempted)
   const [changesByDraft, setChangesByDraft] = useState<Map<string, TailoringChange[] | null>>(new Map());
   const retriedRef = useRef<Set<string>>(new Set());
@@ -191,47 +201,69 @@ export default function ApplyProgressModal({
 
   // Reset local state whenever a new batch of jobs opens the modal.
   useEffect(() => {
-    if (open) {
+    if (!open) return undefined;
+    const resetTimer = window.setTimeout(() => {
       setDraftsByEvaluation(new Map());
       setTasksById(new Map());
+      setReceiptsByDraftId(new Map());
       setChangesByDraft(new Map());
       retriedRef.current = new Set();
       setClosingIn(null);
-    }
+    }, 0);
+    return () => window.clearTimeout(resetTimer);
   }, [open, sessionKey]);
 
   const poll = useCallback(async () => {
     if (!user || jobs.length === 0) return;
     const ids = jobs.map((job) => job.evaluationId);
-    const { data: drafts } = await supabase
+    const { data: drafts, error: draftsError } = await supabase
       .from("draft_applications")
       .select("id,evaluation_id,status,error_message,submitted_at,applypass_task_id")
       .eq("user_id", user.id)
       .in("evaluation_id", ids);
+    if (draftsError) return;
+
     const rows = (drafts ?? []) as ApplyDraftRow[];
     const byEvaluation = new Map<string, ApplyDraftRow>();
     for (const row of rows) {
       if (row.evaluation_id && !byEvaluation.has(row.evaluation_id)) byEvaluation.set(row.evaluation_id, row);
     }
-    setDraftsByEvaluation(byEvaluation);
 
     const taskIds = rows.map((row) => row.applypass_task_id).filter((id): id is string => Boolean(id));
-    if (taskIds.length > 0) {
-      const { data: tasks } = await supabase
-        .from("applypass_tasks")
-        .select("id,status,error_message,run_log")
-        .in("id", taskIds);
-      setTasksById(new Map(((tasks ?? []) as ApplyTaskRow[]).map((task) => [task.id, task])));
-    }
+    const draftIds = rows.map((row) => row.id);
+    const [tasksResult, receiptsResult] = await Promise.all([
+      taskIds.length > 0
+        ? supabase
+          .from("applypass_tasks")
+          .select("id,status,error_message,result,run_log")
+          .in("id", taskIds)
+        : Promise.resolve({ data: [], error: null }),
+      draftIds.length > 0
+        ? supabase
+          .from("application_submission_receipts")
+          .select("draft_application_id,submitted_at")
+          .in("draft_application_id", draftIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (tasksResult.error || receiptsResult.error) return;
+
+    setDraftsByEvaluation(byEvaluation);
+    setTasksById(new Map(((tasksResult.data ?? []) as ApplyTaskRow[]).map((task) => [task.id, task])));
+    setReceiptsByDraftId(new Map(
+      ((receiptsResult.data ?? []) as ApplyReceiptRow[]).map((receipt) => [receipt.draft_application_id, receipt]),
+    ));
   }, [jobs, user]);
 
   // Poll immediately, then on an interval while open. Realtime on AgentPage
   // also updates the underlying rows; this keeps the modal truthful anywhere.
   useEffect(() => {
     if (!open) return undefined;
-    void poll();
+    const initialPoll = window.setTimeout(() => void poll(), 0);
     const timer = window.setInterval(() => void poll(), POLL_MS);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(initialPoll);
+      window.clearInterval(timer);
+    };
   }, [open, poll]);
 
   const infos = useMemo(() => {
@@ -239,10 +271,11 @@ export default function ApplyProgressModal({
     for (const job of jobs) {
       const draft = draftsByEvaluation.get(job.evaluationId) ?? null;
       const task = draft?.applypass_task_id ? tasksById.get(draft.applypass_task_id) ?? null : null;
-      map.set(job.evaluationId, deriveApplyStep(draft, task, errors[job.evaluationId]));
+      const receipt = draft ? receiptsByDraftId.get(draft.id) ?? null : null;
+      map.set(job.evaluationId, deriveApplyStep(draft, task, receipt, errors[job.evaluationId]));
     }
     return map;
-  }, [jobs, draftsByEvaluation, tasksById, errors]);
+  }, [jobs, draftsByEvaluation, tasksById, receiptsByDraftId, errors]);
 
   const doneCount = useMemo(() => [...infos.values()].filter((info) => info.terminal).length, [infos]);
   const allDone = jobs.length > 0 && doneCount === jobs.length;
@@ -254,8 +287,9 @@ export default function ApplyProgressModal({
     for (const info of infos.values()) {
       if (!info.draftId || changesByDraft.has(info.draftId)) continue;
       const draftId = info.draftId;
-      setChangesByDraft((current) => new Map(current).set(draftId, null));
       void (async () => {
+        await Promise.resolve();
+        setChangesByDraft((current) => new Map(current).set(draftId, null));
         const { data, error } = await supabase.functions.invoke("career-ops-tailor-report", {
           body: { draft_application_id: draftId },
         });
@@ -279,8 +313,8 @@ export default function ApplyProgressModal({
   // Auto-close a few seconds after every row reaches a result.
   useEffect(() => {
     if (!open || !allDone) {
-      setClosingIn(null);
-      return undefined;
+      const resetTimer = window.setTimeout(() => setClosingIn(null), 0);
+      return () => window.clearTimeout(resetTimer);
     }
     const startedAt = Date.now();
     const tick = window.setInterval(() => {
@@ -311,7 +345,7 @@ export default function ApplyProgressModal({
             {jobs.map((job, index) => {
               const draft = draftsByEvaluation.get(job.evaluationId);
               const task = draft?.applypass_task_id ? tasksById.get(draft.applypass_task_id) : undefined;
-              const info = infos.get(job.evaluationId) ?? deriveApplyStep(null, null, null);
+              const info = infos.get(job.evaluationId) ?? deriveApplyStep(null, null, null, null);
               const taskRunning = info.step === "applying" && task?.status === "running";
               const logLine = info.step === "applying" ? lastLogMessage(task) : null;
               const changes = info.draftId ? changesByDraft.get(info.draftId) : undefined;
@@ -323,9 +357,9 @@ export default function ApplyProgressModal({
               return (
                 <motion.li
                   key={job.evaluationId}
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={reduceMotion ? false : { opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.08, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                  transition={reduceMotion ? { duration: 0 } : { delay: index * 0.08, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   className="px-5 py-4"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -366,7 +400,7 @@ export default function ApplyProgressModal({
                   {info.step === "applying" && (
                     <div className="mt-3 flex items-center gap-2 border border-rp-rule/70 bg-background/70 px-3 py-2.5">
                       <span className="relative flex h-2 w-2">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75 motion-reduce:animate-none" />
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
                       </span>
                       <p className="text-[12px] text-rp-ink-2">

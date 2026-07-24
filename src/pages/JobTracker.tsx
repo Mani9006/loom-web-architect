@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { careerFitFromEvaluation } from "@/lib/score-truth";
 import { useToast } from "@/hooks/use-toast";
 import { trackProductEvent } from "@/lib/product-analytics";
 import { JobApplyButton } from "@/components/JobApplyButton";
@@ -344,22 +345,36 @@ export default function JobTracker() {
   };
 
   const deleteSavedJobDetail = async (savedJob: SavedJobDetail) => {
-    // Remove from saved_jobs — bail out with an error toast instead of a
-    // false "removed" success when the delete fails.
-    const { error } = await supabase.from("saved_jobs").delete().eq("id", savedJob.id);
-    if (error) {
-      toast({ title: "Error", description: "Failed to remove saved job", variant: "destructive" });
-      return;
-    }
-    // Also remove matching tracked_job if status is "Saved"
+    // Remove the tracker copy first. If this fails, leave both visible and do
+    // not claim that the saved job was fully removed.
     if (userId) {
-      await supabase
+      const { error: trackedDeleteError } = await supabase
         .from("tracked_jobs")
         .delete()
         .eq("user_id", userId)
         .eq("title", savedJob.job_title)
         .eq("company", savedJob.company)
         .eq("status", "Saved");
+      if (trackedDeleteError) {
+        toast({
+          title: "Couldn't remove saved job",
+          description: "The application tracker could not be updated. Nothing was hidden from this page.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    const { error: savedDeleteError } = await supabase.from("saved_jobs").delete().eq("id", savedJob.id);
+    if (savedDeleteError) {
+      // The tracker deletion succeeded, so reflect only that confirmed change.
+      setJobs((prev) => prev.filter((j) => !(j.title === savedJob.job_title && j.company === savedJob.company && j.status === "Saved")));
+      toast({
+        title: "Saved job still in your list",
+        description: "Its tracker card was removed, but the saved listing could not be deleted. Try again.",
+        variant: "destructive",
+      });
+      return;
     }
     setSavedJobDetails((prev) => prev.filter((j) => j.id !== savedJob.id));
     setJobs((prev) => prev.filter((j) => !(j.title === savedJob.job_title && j.company === savedJob.company && j.status === "Saved")));
@@ -613,14 +628,16 @@ export default function JobTracker() {
             {filteredApplicationPackets.map((packet) => {
               const job = packet.evaluation.scanned_job;
               const status = PACKET_STATUS[packet.status];
-              const fit = Math.round(packet.evaluation.fit_score ?? packet.evaluation.score * 20);
+              const fit = careerFitFromEvaluation(packet.evaluation.fit_score, packet.evaluation.score);
               return (
                 <article key={packet.id} className="border border-rp-rule bg-rp-paper p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className="rounded-none text-[10px]">{status.label}</Badge>
-                        <span className="text-[11px] font-semibold tabular-nums text-rp-accent">{fit}% career fit</span>
+                        <span className="text-[11px] font-semibold tabular-nums text-rp-accent">
+                          {fit === null ? "Career fit not scored" : `${fit}% career fit`}
+                        </span>
                       </div>
                       <h3 className="mt-2 truncate text-sm font-semibold text-rp-ink">{job.title}</h3>
                       <p className="mt-0.5 text-xs text-rp-ink-2">{job.company.name}</p>

@@ -30,6 +30,13 @@ import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error
 import { JobDescription } from "@/components/JobDescription";
 import { cleanJobDescription, jobDescriptionPreview, safeMatchText } from "@/lib/job-description";
 import { filterJobsForSearchIntent } from "@/lib/job-search-relevance";
+import { jobIdentityKey } from "@/lib/job-identity";
+import {
+  careerFitFromEvaluation,
+  jobRequirementCoverageFromStoredScore,
+  JOB_REQUIREMENT_SCORE_MODEL_PATTERN,
+  normalizeScore,
+} from "@/lib/score-truth";
 
 interface SearchJob {
   id: string;
@@ -95,6 +102,7 @@ interface MatchedJob extends SearchJob {
   matched_keywords: string[];
   gaps: string[];
   fit_confidence: number | null;
+  ats_coverage_score: number | null;
 }
 
 const QUICK_ROLES = [
@@ -183,42 +191,41 @@ export default function JobSearchPage() {
   const [savedJobKeys, setSavedJobKeys] = useState<Set<string>>(new Set());
   const [savingJobs, setSavingJobs] = useState<Set<string>>(new Set());
 
-  // Helper to make a unique key for a job
-  const jobKey = (job: SearchJob) =>
-    `${job.title}:::${job.company}:::${job.location}`.toLowerCase();
-
   // Load user's saved jobs on mount (from tracked_jobs which powers the Applications page)
   useEffect(() => {
-    if (!user) return;
-    supabase
-      .from("tracked_jobs")
-      .select("title, company")
-      .eq("user_id", user.id)
-      .then(({ data }) => {
-        if (data) {
-          const keys = new Set(
-            data.map((j: any) => `${j.title}:::${j.company}:::`.toLowerCase())
-          );
-          setSavedJobKeys(keys);
-        }
+    if (!user) {
+      setSavedJobKeys(new Set());
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all([
+      supabase
+        .from("tracked_jobs")
+        .select("title, company")
+        .eq("user_id", user.id),
+      supabase
+        .from("saved_jobs")
+        .select("job_title, company")
+        .eq("user_id", user.id),
+    ]).then(([trackedResult, savedResult]) => {
+      if (cancelled) return;
+      const keys = new Set<string>();
+      (trackedResult.data ?? []).forEach((job) => {
+        keys.add(jobIdentityKey({ title: job.title, company: job.company }));
       });
-    // Also load from saved_jobs for full-detail match
-    supabase
-      .from("saved_jobs")
-      .select("job_title, company, location")
-      .eq("user_id", user.id)
-      .then(({ data }) => {
-        if (data) {
-          setSavedJobKeys((prev) => {
-            const next = new Set(prev);
-            data.forEach((j: any) => next.add(`${j.job_title}:::${j.company}:::${j.location || ""}`.toLowerCase()));
-            return next;
-          });
-        }
+      (savedResult.data ?? []).forEach((job) => {
+        keys.add(jobIdentityKey({ title: job.job_title, company: job.company }));
       });
+      setSavedJobKeys(keys);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
-  const isJobSaved = (job: SearchJob) => savedJobKeys.has(jobKey(job));
+  const isJobSaved = (job: SearchJob) => savedJobKeys.has(jobIdentityKey(job));
 
   const toggleSaveJob = async (job: SearchJob, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -227,7 +234,7 @@ export default function JobSearchPage() {
       return;
     }
 
-    const key = jobKey(job);
+    const key = jobIdentityKey(job);
     setSavingJobs((prev) => new Set(prev).add(job.id));
 
     try {
@@ -652,8 +659,62 @@ export default function JobSearchPage() {
       const { data, error } = await fetchEvaluations();
       if (error) throw error;
       if (data) {
+        const evaluationIds = data.map((row: any) => String(row.id)).filter(Boolean);
+        const { data: draftRows, error: draftError } = evaluationIds.length > 0
+          ? await supabase
+            .from("draft_applications")
+            .select("evaluation_id,tailored_resume_id,updated_at")
+            .eq("user_id", user.id)
+            .in("evaluation_id", evaluationIds)
+            .order("updated_at", { ascending: false })
+          : { data: [], error: null };
+        if (draftError) {
+          void captureIncident(
+            draftError,
+            { source: "manual", operation: "matched_job_coverage_load" },
+            "warning",
+          );
+        }
+        const newestDraftByEvaluation = new Map<string, string>();
+        for (const draft of draftRows || []) {
+          if (
+            draft.tailored_resume_id &&
+            !newestDraftByEvaluation.has(draft.evaluation_id)
+          ) {
+            newestDraftByEvaluation.set(
+              draft.evaluation_id,
+              draft.tailored_resume_id,
+            );
+          }
+        }
+        const resumeIds = [...new Set(newestDraftByEvaluation.values())];
+        const { data: scoreRows, error: scoreError } = resumeIds.length > 0
+          ? await supabase
+            .from("ats_scores")
+            .select("resume_id,scanned_job_id,overall,model,created_at")
+            .eq("user_id", user.id)
+            .in("resume_id", resumeIds)
+            .like("model", JOB_REQUIREMENT_SCORE_MODEL_PATTERN)
+            .order("created_at", { ascending: false })
+          : { data: [], error: null };
+        if (scoreError) {
+          void captureIncident(
+            scoreError,
+            { source: "manual", operation: "matched_job_coverage_load" },
+            "warning",
+          );
+        }
+        const scoreByPair = new Map<string, number>();
+        for (const score of scoreRows || []) {
+          const key = `${score.resume_id}:${score.scanned_job_id}`;
+          const value = jobRequirementCoverageFromStoredScore(score);
+          if (!scoreByPair.has(key) && value !== null) {
+            scoreByPair.set(key, value);
+          }
+        }
+
         const mapped: MatchedJob[] = data
-          .filter((m: any) => Math.round(m.fit_score ?? Number(m.score || 0) * 20) >= 50)
+          .filter((m: any) => (careerFitFromEvaluation(m.fit_score, m.score) ?? 0) >= 50)
           .map((m: any) => ({
           id: m.scanned_job.id,
           title: m.scanned_job.title,
@@ -667,7 +728,7 @@ export default function JobSearchPage() {
           date_posted: displayJobDate(m.scanned_job.posted_at || m.scanned_job.last_seen_at || m.evaluated_at),
           source: "career pages",
           industry: m.scanned_job.company?.category,
-          match_score: Math.round(m.fit_score ?? Number(m.score || 0) * 20),
+          match_score: careerFitFromEvaluation(m.fit_score, m.score) ?? 0,
           match_reasons: Object.fromEntries(
             (Array.isArray(m.dimension_scores) ? m.dimension_scores : [])
               .filter((dimension: any) => ["role", "skills", "experience"].includes(String(dimension?.key)) && Number.isFinite(Number(dimension?.score)))
@@ -679,6 +740,11 @@ export default function JobSearchPage() {
           matched_keywords: Array.isArray(m.keyword_matches) ? m.keyword_matches : [],
           gaps: Array.isArray(m.gaps) ? m.gaps : [],
           fit_confidence: typeof m.fit_confidence === "number" ? m.fit_confidence : null,
+          ats_coverage_score: newestDraftByEvaluation.has(m.id)
+            ? scoreByPair.get(
+              `${newestDraftByEvaluation.get(m.id)}:${m.scanned_job.id}`,
+            ) ?? null
+            : null,
         }));
         setMatchedJobs(mapped);
         setSelectedJob(mapped[0] ?? null);
@@ -737,11 +803,14 @@ export default function JobSearchPage() {
           body: { resume_id: draft.tailored_resume_id, scanned_job_id: job.id },
         });
         if (atsError) throw atsError;
-        atsScore = Number(atsData?.ats?.overall ?? 0);
+        const rawMatch = atsData?.ats?.job_match_score;
+        atsScore = normalizeScore(rawMatch);
       }
 
       toast({
-        title: atsScore ? `Tailored resume ready · ${Math.round(atsScore)} ATS` : "Tailored resume ready",
+        title: atsScore !== null
+          ? `Tailored resume ready · ${Math.round(atsScore)}% job requirements covered`
+          : "Tailored resume ready",
         description: "Review every claim, answer, and attachment before submission.",
       });
       navigate(`/applications/${draft.id}`);
@@ -1409,7 +1478,7 @@ export default function JobSearchPage() {
                 )}>
                   <div className="px-4 py-2.5 border-b flex items-center justify-between bg-muted/30">
                     <p className="text-xs text-muted-foreground">
-                      {matchedJobs.length} matched jobs · Sorted by match score
+                      {matchedJobs.length} matched jobs · Sorted by career fit
                     </p>
                   </div>
                   <ScrollArea className="flex-1">
@@ -1438,7 +1507,10 @@ export default function JobSearchPage() {
                                   <span className="w-10 text-right text-xs font-semibold tabular-nums">{job.match_score}%</span>
                                 </div>
                                 <p className="mt-1 text-[10px] font-medium text-muted-foreground">
-                                  {job.match_score >= 80 ? "Strong fit" : job.match_score >= 65 ? "Good fit" : "Potential fit"}
+                                  Career fit · {job.match_score >= 80 ? "Strong" : job.match_score >= 65 ? "Good" : "Potential"}
+                                  {job.ats_coverage_score !== null
+                                    ? ` · Job-requirement coverage ${job.ats_coverage_score}%`
+                                    : " · Job-requirement coverage after tailoring"}
                                 </p>
                                 <div className="flex flex-wrap gap-1 mt-1.5">
                                   <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
@@ -1488,28 +1560,41 @@ export default function JobSearchPage() {
                       <div className="max-w-3xl p-6 space-y-5">
                         {/* Match score banner — single accent palette */}
                         {"match_score" in selectedJob && (
-                          <div className={cn(
-                            "rounded-lg p-3 flex items-center gap-3 border",
-                            (selectedJob as MatchedJob).match_score >= 80 ? "bg-rp-accent/10 border-rp-accent/30" :
-                            (selectedJob as MatchedJob).match_score >= 60 ? "bg-rp-paper border-rp-rule-2" :
-                            "bg-rp-paper border-rp-rule"
-                          )}>
+                          <div className="grid gap-3 sm:grid-cols-2">
                             <div className={cn(
-                              "w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg tabular-nums",
-                              (selectedJob as MatchedJob).match_score >= 80 ? "bg-rp-accent/20 text-rp-accent" :
-                              (selectedJob as MatchedJob).match_score >= 60 ? "bg-rp-paper-2 text-rp-ink" :
-                              "bg-rp-paper-2 text-rp-ink-2"
+                              "rounded-lg p-3 flex items-center gap-3 border",
+                              (selectedJob as MatchedJob).match_score >= 80 ? "bg-rp-accent/10 border-rp-accent/30" :
+                              (selectedJob as MatchedJob).match_score >= 60 ? "bg-rp-paper border-rp-rule-2" :
+                              "bg-rp-paper border-rp-rule"
                             )}>
-                              {(selectedJob as MatchedJob).match_score}%
+                              <div className={cn(
+                                "w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg tabular-nums",
+                                (selectedJob as MatchedJob).match_score >= 80 ? "bg-rp-accent/20 text-rp-accent" :
+                                (selectedJob as MatchedJob).match_score >= 60 ? "bg-rp-paper-2 text-rp-ink" :
+                                "bg-rp-paper-2 text-rp-ink-2"
+                              )}>
+                                {(selectedJob as MatchedJob).match_score}%
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-rp-ink">Career fit</p>
+                                <p className="text-xs text-rp-ink-2">
+                                  Resume evidence + hard preferences
+                                  {(selectedJob as MatchedJob).fit_confidence != null
+                                    ? ` · ${Math.round(((selectedJob as MatchedJob).fit_confidence ?? 0) * 100)}% confidence`
+                                    : ""}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm font-medium text-rp-ink">Career fit</p>
-                              <p className="text-xs text-rp-ink-2">
-                                Resume evidence + hard preferences
-                                {(selectedJob as MatchedJob).fit_confidence != null
-                                  ? ` · ${Math.round(((selectedJob as MatchedJob).fit_confidence ?? 0) * 100)}% confidence`
-                                  : ""}
-                              </p>
+                            <div className="rounded-lg border border-rp-rule bg-rp-paper p-3">
+                              <p className="text-sm font-medium text-rp-ink">Job-requirement coverage</p>
+                              {(selectedJob as MatchedJob).ats_coverage_score !== null ? (
+                                <>
+                                  <p className="mt-1 text-2xl font-bold tabular-nums text-rp-ink">{(selectedJob as MatchedJob).ats_coverage_score}%</p>
+                                  <p className="text-xs text-rp-ink-2">Exact extracted job requirements covered by the current tailored résumé.</p>
+                                </>
+                              ) : (
+                                <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">Calculated after Tailor + ATS. This is a different measure from career fit.</p>
+                              )}
                             </div>
                           </div>
                         )}

@@ -71,6 +71,7 @@ describe("ATS_PDF_SPEC", () => {
     expect(ATS_PDF_SPEC.marginPt).toBeGreaterThanOrEqual(36); // ≥ 0.5in
     expect(Math.min(...ATS_PDF_SPEC.densitySteps)).toBeGreaterThanOrEqual(0.8); // sane tighten bounds
     expect(ATS_PDF_SPEC.maxAutoFitOverflow).toBe(0.08);
+    expect(ATS_PDF_SPEC.maxSparseTailOverflow).toBeLessThanOrEqual(0.2);
   });
 });
 
@@ -175,6 +176,30 @@ describe("paginateWithAutoFit", () => {
     // Page 2 holds exactly the whole last entry — not a fragment.
     expect(layout.pages[1]).toHaveLength(1);
     expect(layout.pages[1][0].lines).toHaveLength(8);
+  });
+
+  it("removes a sparse third page without shrinking the font", () => {
+    // Two near-full pages plus a small final skills/education tail. At base
+    // density the keep-together rules create page 3; normal line-height
+    // tightening must bring the tail back to page 2.
+    const blocks: LayoutBlock[] = [];
+    // Five entries fit per page at the base density. The eleventh entry is
+    // therefore stranded on page 3 (~17% full), while the first safe density
+    // step fits six entries on page 1 and the remaining five on page 2.
+    for (let i = 0; i < 11; i++) blocks.push(entry(8, i === 0 ? 0 : 5));
+
+    const base = paginate(blocks, baseMetrics);
+    expect(base.pages).toHaveLength(3);
+    expect(base.overflowFraction).toBeLessThanOrEqual(ATS_PDF_SPEC.maxSparseTailOverflow);
+
+    const layout = paginateWithAutoFit(blocks, baseMetrics);
+    expect(layout.pages).toHaveLength(2);
+    expect(layout.tightened).toBe(true);
+    expect(layout.density).toBeLessThan(1);
+    expect(layout.pages.flatMap((page) => page)
+      .flatMap((block) => block.lines)).toHaveLength(
+        blocks.flatMap((block) => block.lines).length,
+      );
   });
 });
 

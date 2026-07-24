@@ -30,6 +30,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { TerminalText } from "@/components/Terminal";
+import {
+  firstAutomationTaskOutcome,
+  resolveAutomationDraftState,
+  type AutomationDraftState,
+} from "@/lib/application-funnel";
+import { careerFitFromEvaluation, normalizeScore } from "@/lib/score-truth";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -56,7 +62,9 @@ interface RecentApplication {
   id: string;
   title: string;
   company: string;
-  status: string;
+  status: AutomationDraftState;
+  statusLabel: string;
+  statusDetail: string;
   tailoredResumeId: string | null;
   updated_at: string;
 }
@@ -70,11 +78,11 @@ interface AgentSummary {
 // ─── Static content ────────────────────────────────────────────────────
 
 const quickActions: Array<{ label: string; desc: string; icon: React.ElementType; path: string }> = [
-  { label: "Job Search",   desc: "Direct company openings",     icon: Search,      path: "/job-search" },
+  { label: "Jobs",         desc: "Direct company openings",     icon: Search,      path: "/job-search" },
   { label: "Matches",      desc: "Resume-scored opportunities", icon: Sparkles,    path: "/matches" },
-  { label: "Agent",        desc: "Match, tailor, check, queue",  icon: Bot,         path: "/agent" },
+  { label: "Auto Apply",   desc: "Match, tailor, check, queue",  icon: Bot,         path: "/agent" },
   { label: "Resume",       desc: "Edit, tailor, export",         icon: FileText,    path: "/resume-builder" },
-  { label: "ATS Preview",  desc: "Score against a job",         icon: Target,      path: "/ats-checker" },
+  { label: "Résumé check", desc: "Quality + job coverage",      icon: Target,      path: "/ats-checker" },
   { label: "Applications", desc: "Status and receipts",         icon: Columns3,    path: "/job-tracker" },
 ];
 
@@ -95,16 +103,49 @@ function relativeDays(iso: string): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-function applicationStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    draft: "Preparing",
-    ready: "Ready for review",
+function applicationStatusLabel(
+  status: AutomationDraftState,
+  draftStatus: string,
+  taskStatus: string | null,
+  workerRecentlyActive: boolean,
+): string {
+  const labels: Record<AutomationDraftState, string> = {
+    prepared: draftStatus === "draft" ? "Preparing" : "Ready for review",
     queued: "Queued",
-    submitted: "Submitted",
+    submitted: "Applied",
     failed: "Needs attention",
     skipped: "Skipped",
   };
-  return labels[status.toLowerCase()] ?? "In progress";
+  if (status === "queued" && taskStatus === "running" && workerRecentlyActive) return "Applying now";
+  return labels[status];
+}
+
+function applicationStatusDetail(
+  status: AutomationDraftState,
+  draftStatus: string,
+  taskStatus: string | null,
+  workerRecentlyActive: boolean,
+): string {
+  if (status === "submitted") return "Submission receipt confirmed.";
+  if (status === "queued") {
+    if (taskStatus === "running" && workerRecentlyActive) {
+      return "The employer form is in progress.";
+    }
+    return taskStatus === "running"
+      ? "The submission worker has not checked in recently. This is not counted as applied."
+      : "Waiting in the active submission queue.";
+  }
+  if (status === "failed" && draftStatus === "queued") {
+    return "This packet is no longer in the active submission queue.";
+  }
+  if (status === "failed" && draftStatus === "submitted") {
+    return "No confirmed submission receipt was recorded.";
+  }
+  if (status === "failed") return "Open the application to review the issue.";
+  if (status === "skipped") return "This application was held back.";
+  return draftStatus === "draft"
+    ? "Your application packet is being prepared."
+    : "Review the packet before submission.";
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────
@@ -124,109 +165,209 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!user) return;
-    (async () => {
-      const [profileRes, jobsRes, resumesRes, applicationsRes, matchesRes] = await Promise.all([
-        supabase.from("profiles").select("full_name, onboarding_completed").eq("user_id", user.id).maybeSingle(),
-        supabase.from("tracked_jobs").select("status").eq("user_id", user.id),
-        supabase.from("resumes").select("id").eq("user_id", user.id).limit(1),
-        supabase
-          .from("draft_applications")
-          .select("id,status,tailored_resume_id,updated_at,submitted_at,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
-          .eq("user_id", user.id)
-          .order("updated_at", { ascending: false })
-          .limit(5),
-        supabase
-          .from("job_evaluations")
-          .select("id,score,fit_score,tier,summary,dimension_scores,scanned_job_id,scanned_jobs(title,location,apply_url,company:scan_companies(name))")
-          .eq("user_id", user.id)
-          .eq("eligible", true)
-          .order("fit_score", { ascending: false })
-          .limit(3),
-      ]);
+    let disposed = false;
+    let loadInFlight = false;
+    let reloadQueued = false;
 
-      const profile = profileRes.data as { full_name?: string; onboarding_completed?: boolean } | null;
-      setDisplayName(profile?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "there");
-      if (profile && !profile.onboarding_completed) setShowOnboarding(true);
+    const loadHome = async (notifyOnError = false) => {
+      if (loadInFlight) {
+        reloadQueued = true;
+        return;
+      }
+      loadInFlight = true;
 
-      const jobs = (jobsRes.data || []) as Array<{ status: string }>;
-      const counts: Record<string, number> = { saved: 0, applied: 0, interviewing: 0, offer: 0, rejected: 0 };
-      jobs.forEach((j) => {
-        const key = (j.status || "").toLowerCase();
-        if (key in counts) counts[key]++;
-      });
-      setStats(counts as unknown as Stats);
-
-      setHasResume((resumesRes.data || []).length > 0);
-      const applications = ((applicationsRes.data || []) as unknown as Array<Record<string, unknown>>).flatMap((row) => {
-        const evaluation = row.evaluation as { scanned_job?: { title?: string; company?: { name?: string } } } | null;
-        const job = evaluation?.scanned_job;
-        if (!job?.title) return [];
-        return [{
-          id: String(row.id),
-          title: job.title,
-          company: job.company?.name ?? "Company not listed",
-          status: String(row.status ?? "ready"),
-          tailoredResumeId: typeof row.tailored_resume_id === "string" ? row.tailored_resume_id : null,
-          updated_at: String(row.submitted_at ?? row.updated_at),
-        }];
-      });
-      setRecentApplications(applications);
-
-      const matches: TopMatch[] = ((matchesRes.data || []) as Array<Record<string, unknown>>)
-        .filter((m) => m.scanned_jobs)
-        .map((m) => {
-          const sj = m.scanned_jobs as { title: string; location?: string; apply_url: string; company?: { name?: string } };
-          return {
-            evaluation_id: String(m.id),
-            score: Math.round(Number(m.fit_score ?? Number(m.score) * 20)),
-            tier: String(m.tier ?? ""),
-            summary: (m.summary as string | null) ?? null,
-            title: sj.title,
-            company: sj.company?.name ?? "—",
-            location: sj.location ?? "Location not listed",
-            dimensions: Array.isArray(m.dimension_scores)
-              ? (m.dimension_scores as Array<{ key: string; label: string; score: number }>)
-              : [],
-          };
-        });
-      setTopMatches(matches);
-
-      const since = new Date(Date.now() - 24 * 3600_000).toISOString();
-      const sb = supabase as unknown as { from: (t: string) => { select: (s: string) => unknown } };
       try {
-        const chain = sb.from("agent_runs") as unknown as {
-          select: (s: string) => {
-            eq: (k: string, v: string) => {
+        const [profileRes, jobsRes, resumesRes, applicationsRes, matchesRes, workerRes] = await Promise.all([
+          supabase.from("profiles").select("full_name, onboarding_completed").eq("user_id", user.id).maybeSingle(),
+          supabase.from("tracked_jobs").select("status").eq("user_id", user.id),
+          supabase.from("resumes").select("id").eq("user_id", user.id).limit(1),
+          supabase
+            .from("draft_applications")
+            .select("id,status,tailored_resume_id,updated_at,submitted_at,applypass_task_id,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
+            .eq("user_id", user.id)
+            .order("updated_at", { ascending: false })
+            .limit(5),
+          supabase
+            .from("job_evaluations")
+            .select("id,score,fit_score,tier,summary,dimension_scores,scanned_job_id,scanned_jobs(title,location,apply_url,company:scan_companies(name))")
+            .eq("user_id", user.id)
+            .eq("eligible", true)
+            .order("fit_score", { ascending: false })
+            .limit(3),
+          supabase
+            .from("mc_worker_heartbeats")
+            .select("last_seen")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+        ]);
+        if (disposed) return;
+
+        const profile = profileRes.data as { full_name?: string; onboarding_completed?: boolean } | null;
+        setDisplayName(profile?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "there");
+        if (profile && !profile.onboarding_completed) setShowOnboarding(true);
+
+        const jobs = (jobsRes.data || []) as Array<{ status: string }>;
+        const counts: Record<string, number> = { saved: 0, applied: 0, interviewing: 0, offer: 0, rejected: 0 };
+        jobs.forEach((j) => {
+          const key = (j.status || "").toLowerCase();
+          if (key in counts) counts[key]++;
+        });
+        setStats(counts as unknown as Stats);
+
+        setHasResume((resumesRes.data || []).length > 0);
+        if (applicationsRes.error) throw applicationsRes.error;
+        const applicationRows = (applicationsRes.data || []) as unknown as Array<Record<string, unknown>>;
+        const taskIds = applicationRows
+          .map((row) => row.applypass_task_id)
+          .filter((id): id is string => typeof id === "string");
+        const draftIds = applicationRows.map((row) => String(row.id));
+        const [tasksRes, receiptsRes] = await Promise.all([
+          taskIds.length > 0
+            ? supabase.from("applypass_tasks").select("id,status,result").in("id", taskIds)
+            : Promise.resolve({ data: [], error: null }),
+          draftIds.length > 0
+            ? supabase
+              .from("application_submission_receipts")
+              .select("draft_application_id,submitted_at")
+              .in("draft_application_id", draftIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+        if (tasksRes.error) throw tasksRes.error;
+        if (receiptsRes.error) throw receiptsRes.error;
+        if (disposed) return;
+
+      const taskById = new Map(
+        ((tasksRes.data || []) as Array<{ id: string; status: string; result: unknown }>).map((task) => [task.id, task]),
+        );
+        const receiptByDraftId = new Map(
+          ((receiptsRes.data || []) as Array<{ draft_application_id: string; submitted_at: string }>).map(
+            (receipt) => [receipt.draft_application_id, receipt],
+          ),
+        );
+        const heartbeatAt = (workerRes.data as { last_seen?: string } | null)?.last_seen;
+        const workerRecentlyActive = Boolean(
+          heartbeatAt && Date.now() - new Date(heartbeatAt).getTime() < 90_000,
+        );
+
+        const applications = applicationRows.flatMap((row) => {
+          const evaluation = row.evaluation as { scanned_job?: { title?: string; company?: { name?: string } } } | null;
+          const job = evaluation?.scanned_job;
+          if (!job?.title) return [];
+          const draftStatus = String(row.status ?? "ready");
+          const taskId = typeof row.applypass_task_id === "string" ? row.applypass_task_id : null;
+          const taskStatus = taskId ? taskById.get(taskId)?.status ?? null : null;
+          const status = resolveAutomationDraftState({
+            draftStatus,
+            taskStatus,
+            taskOutcome: firstAutomationTaskOutcome(taskId ? taskById.get(taskId)?.result : null),
+            hasSubmissionReceipt: receiptByDraftId.has(String(row.id)),
+          });
+          return [{
+            id: String(row.id),
+            title: job.title,
+            company: job.company?.name ?? "Company not listed",
+            status,
+            statusLabel: applicationStatusLabel(status, draftStatus, taskStatus, workerRecentlyActive),
+            statusDetail: applicationStatusDetail(status, draftStatus, taskStatus, workerRecentlyActive),
+            tailoredResumeId: typeof row.tailored_resume_id === "string" ? row.tailored_resume_id : null,
+            updated_at: receiptByDraftId.get(String(row.id))?.submitted_at
+              ?? String(row.updated_at),
+          }];
+        });
+        setRecentApplications(applications);
+
+        const matches: TopMatch[] = ((matchesRes.data || []) as Array<Record<string, unknown>>)
+          .filter((m) => m.scanned_jobs)
+          .map((m) => {
+            const sj = m.scanned_jobs as { title: string; location?: string; apply_url: string; company?: { name?: string } };
+            return {
+              evaluation_id: String(m.id),
+              score: careerFitFromEvaluation(m.fit_score, m.score) ?? 0,
+              tier: String(m.tier ?? ""),
+              summary: (m.summary as string | null) ?? null,
+              title: sj.title,
+              company: sj.company?.name ?? "—",
+              location: sj.location ?? "Location not listed",
+              dimensions: Array.isArray(m.dimension_scores)
+                ? (m.dimension_scores as Array<{ key: string; label: string; score: number }>).flatMap((dimension) => {
+                  const score = normalizeScore(dimension.score);
+                  return score === null ? [] : [{ ...dimension, score }];
+                })
+                : [],
+            };
+          });
+        setTopMatches(matches);
+
+        const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+        const sb = supabase as unknown as { from: (t: string) => { select: (s: string) => unknown } };
+        try {
+          const chain = sb.from("agent_runs") as unknown as {
+            select: (s: string) => {
               eq: (k: string, v: string) => {
-                gte: (k: string, v: string) => {
-                  order: (k: string, o: object) => Promise<{ data: Array<{ id: string; summary: string | null; started_at: string }> | null }>;
+                eq: (k: string, v: string) => {
+                  gte: (k: string, v: string) => {
+                    order: (k: string, o: object) => Promise<{ data: Array<{ id: string; summary: string | null; started_at: string }> | null }>;
+                  };
                 };
               };
             };
           };
-        };
-        const { data: runs } = await chain.select("id, summary, started_at, status")
-          .eq("user_id", user.id)
-          .eq("status", "completed")
-          .gte("started_at", since)
-          .order("started_at", { ascending: false });
-        const list = runs ?? [];
-        if (list.length > 0) {
-          setAgentSummary({ runs24h: list.length, lastSummary: list[0].summary, lastAt: list[0].started_at });
-        }
-      } catch { /* agent_runs may 404 for users without the feature */ }
-    })()
-      .catch((err) => {
+          const { data: runs } = await chain.select("id, summary, started_at, status")
+            .eq("user_id", user.id)
+            .eq("status", "completed")
+            .gte("started_at", since)
+            .order("started_at", { ascending: false });
+          const list = runs ?? [];
+          if (list.length > 0) {
+            setAgentSummary({ runs24h: list.length, lastSummary: list[0].summary, lastAt: list[0].started_at });
+          } else {
+            setAgentSummary(null);
+          }
+        } catch { /* agent_runs may 404 for users without the feature */ }
+      } catch (err) {
         // Without this, any failed query left the skeleton up forever with
         // no feedback.
         console.error("Home load failed:", err);
-        toast({ title: "Couldn't load your home page", description: "Refresh to try again.", variant: "destructive" });
-      })
-      .finally(() => setLoading(false));
+        if (notifyOnError && !disposed) {
+          toast({ title: "Couldn't load your home page", description: "Refresh to try again.", variant: "destructive" });
+        }
+      } finally {
+        loadInFlight = false;
+        if (!disposed) setLoading(false);
+        if (reloadQueued && !disposed) {
+          reloadQueued = false;
+          void loadHome();
+        }
+      }
+    };
+
+    void loadHome(true);
+    const channel = supabase
+      .channel(`home-live-${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "draft_applications", filter: `user_id=eq.${user.id}` }, () => void loadHome())
+      .on("postgres_changes", { event: "*", schema: "public", table: "applypass_tasks", filter: `user_id=eq.${user.id}` }, () => void loadHome())
+      .on("postgres_changes", { event: "*", schema: "public", table: "application_submission_receipts", filter: `user_id=eq.${user.id}` }, () => void loadHome())
+      .subscribe();
+    const poll = window.setInterval(() => void loadHome(), 15_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadHome();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(poll);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      void supabase.removeChannel(channel);
+    };
   }, [user, toast]);
 
   const now = useMemo(() => new Date(), []);
   const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
+  const liveApplication = useMemo(
+    () => recentApplications.find((application) => application.status === "queued") ?? null,
+    [recentApplications],
+  );
 
   // ── Today's lede — the single thing worth doing right now ─────────────
   const lede = useMemo(() => {
@@ -242,8 +383,8 @@ export default function HomePage() {
     if (topMatches.length > 0) {
       return {
         eyebrow: "Today · Apply",
-        headline: `A ${topMatches[0].score}% match for you at ${topMatches[0].company}.`,
-        body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title} — ${topMatches[0].score}% career fit before the ATS check.`,
+        headline: `A ${topMatches[0].score}% career fit for you at ${topMatches[0].company}.`,
+        body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title} — ${topMatches[0].score}% career fit before the job-specific résumé check.`,
         cta: "Tailor and review",
         href: "/matches",
       };
@@ -258,10 +399,10 @@ export default function HomePage() {
       };
     }
     return {
-      eyebrow: "Today · Score it",
-      headline: "Run your résumé through ATS.",
-      body: "See exactly which keywords ATS systems miss when they parse your most recent draft. Two minutes; pasteable feedback.",
-      cta: "Run ATS check",
+      eyebrow: "Today · Check it",
+      headline: "Check résumé quality and job coverage.",
+      body: "Review generic résumé quality, then compare job-requirement coverage when you have a role in mind.",
+      cta: "Open résumé check",
       href: "/ats-checker",
     };
   }, [hasResume, topMatches, stats]);
@@ -270,9 +411,9 @@ export default function HomePage() {
     return (
       <div className="min-h-full bg-rp-canvas">
         <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-24">
-          <div className="h-3 w-72 bg-rp-paper rounded-sm animate-pulse mb-3" />
-          <div className="h-12 w-[28rem] bg-rp-paper rounded-sm animate-pulse mb-3" />
-          <div className="h-4 w-96 bg-rp-paper rounded-sm animate-pulse" />
+          <div className="h-3 w-72 bg-rp-paper rounded-sm animate-pulse motion-reduce:animate-none mb-3" />
+          <div className="h-12 w-[28rem] bg-rp-paper rounded-sm animate-pulse motion-reduce:animate-none mb-3" />
+          <div className="h-4 w-96 bg-rp-paper rounded-sm animate-pulse motion-reduce:animate-none" />
         </div>
       </div>
     );
@@ -349,6 +490,21 @@ export default function HomePage() {
             {/* Application work */}
             <section>
               <SectionHead n={1} title="Recent applications" />
+              <div
+                className="mt-3 flex items-center gap-2 text-[11px] text-rp-ink-2"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="relative flex h-2 w-2" aria-hidden="true">
+                  {liveApplication && (
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60 motion-reduce:animate-none" />
+                  )}
+                  <span className={liveApplication ? "relative inline-flex h-2 w-2 rounded-full bg-amber-500" : "relative inline-flex h-2 w-2 rounded-full bg-emerald-500"} />
+                </span>
+                {liveApplication
+                  ? `${liveApplication.statusLabel}: ${liveApplication.title} at ${liveApplication.company}`
+                  : "Live status is on · confirmed applications show a receipt"}
+              </div>
               {recentApplications.length === 0 ? (
                 <EmptyApplications onBrowse={() => navigate("/matches")} />
               ) : (
@@ -375,7 +531,12 @@ export default function HomePage() {
                           }}
                         >
                           <span className="block truncate">{application.title}</span>
-                          <span className="block truncate text-xs font-normal text-rp-ink-2 mt-0.5">{application.company} · {applicationStatusLabel(application.status)}</span>
+                          <span className="block truncate text-xs font-normal text-rp-ink-2 mt-0.5">
+                            {application.company} · {application.statusLabel}
+                          </span>
+                          <span className="block truncate text-[11px] font-normal text-rp-ink-3 mt-0.5">
+                            {application.statusDetail}
+                          </span>
                         </span>
                         <span
                           className="text-rp-ink-2/70 hidden sm:inline shrink-0"
@@ -482,6 +643,7 @@ export default function HomePage() {
                     key={m.evaluation_id}
                     onClick={() => navigate("/matches")}
                     className="bg-rp-canvas p-5 block text-left hover:bg-rp-paper transition-colors no-underline group"
+                    aria-label={`${m.title} at ${m.company}, ${m.score}% career fit`}
                   >
                     <div className="flex items-baseline justify-between">
                       <span
@@ -494,7 +656,7 @@ export default function HomePage() {
                         className="text-rp-accent tabular-nums"
                         style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "12px", fontWeight: 600 }}
                       >
-                        {m.score}%
+                        {m.score}% career fit
                       </span>
                     </div>
                     <h3
@@ -528,7 +690,7 @@ export default function HomePage() {
                       <div className="mt-4 flex flex-wrap gap-1.5">
                         {m.dimensions.slice(0, 3).map((dimension) => (
                           <span key={dimension.key} className="border border-rp-rule px-2 py-1 text-[10px] text-rp-ink-2">
-                            {dimension.label} {Math.round(dimension.score)}%
+                            {dimension.label} {dimension.score}%
                           </span>
                         ))}
                       </div>

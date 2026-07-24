@@ -118,7 +118,7 @@ serve(async (req) => {
       tailoring_mode: tailoringMode,
       daily_apply_cap: dailyCap,
       agent_max_actions_per_day: dailyActions,
-      auto_apply_portals: ["greenhouse", "ashby", "lever"],
+      auto_apply_portals: ["greenhouse", "ashby", "lever", "workable"],
       last_agent_run_at: null,
     }, { onConflict: "user_id" });
     if (prefsError) throw prefsError;

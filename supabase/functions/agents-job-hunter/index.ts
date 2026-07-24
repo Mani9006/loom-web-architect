@@ -87,16 +87,16 @@ async function listUnscoredMatches(
   const workModes = normalized(prefs.work_modes);
   const matches: Array<{ id: string; title: string; company: string }> = [];
 
-  for (const job of (jobs ?? []) as Array<{
+  for (const job of (jobs ?? []) as unknown as Array<{
     id: string;
     title: string;
     location: string | null;
     remote_policy: string | null;
-    company: { name: string } | null;
+    company: unknown;
   }>) {
     if (seen.has(job.id)) continue;
     const title = job.title.toLowerCase();
-    const company = job.company?.name ?? "Unknown company";
+    const company = asString(firstRelation(job.company).name) || "Unknown company";
     if (negative.some((keyword) => title.includes(keyword))) continue;
     if (excludedCompanies.some((excluded) => company.toLowerCase().includes(excluded))) continue;
 
@@ -131,23 +131,27 @@ async function listUnpreparedEvaluations(
   const { data: drafts } = await client.from("draft_applications").select("evaluation_id").eq("user_id", userId);
   const drafted = new Set((drafts ?? []).map((row: { evaluation_id: string }) => row.evaluation_id));
 
-  const pending = (evaluations ?? [])
+  const pending = ((evaluations ?? []) as unknown as Array<{
+    id: string;
+    scanned_job_id: string;
+    fit_score: number;
+    scanned_jobs: unknown;
+  }>)
     .filter((evaluation: { id: string }) => !drafted.has(evaluation.id));
   const alreadyPrepared = (evaluations ?? []).length - pending.length;
   const mapped = pending
     .slice(0, limit)
-    .map((evaluation: {
-      id: string;
-      scanned_job_id: string;
-      fit_score: number;
-      scanned_jobs: { title: string; company: { api_type: string | null } | null } | null;
-    }) => ({
-      id: evaluation.id,
-      scanned_job_id: evaluation.scanned_job_id,
-      fit_score: evaluation.fit_score,
-      title: evaluation.scanned_jobs?.title ?? "Unknown role",
-      portal: evaluation.scanned_jobs?.company?.api_type ?? null,
-    }));
+    .map((evaluation) => {
+      const scannedJob = firstRelation(evaluation.scanned_jobs);
+      const company = firstRelation(scannedJob.company);
+      return {
+        id: evaluation.id,
+        scanned_job_id: evaluation.scanned_job_id,
+        fit_score: evaluation.fit_score,
+        title: asString(scannedJob.title) || "Unknown role",
+        portal: asString(company.api_type) || null,
+      };
+    });
   return { evaluations: mapped, alreadyPrepared };
 }
 
@@ -532,6 +536,14 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function firstRelation(value: unknown): Record<string, unknown> {
+  return Array.isArray(value) ? asRecord(value[0]) : asRecord(value);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (!authorized(req)) return jsonResponse({ error: "unauthorized" }, 401);
@@ -548,6 +560,50 @@ serve(async (req) => {
       const message = entitlementError instanceof Error ? entitlementError.message : String(entitlementError);
       return jsonResponse({ error: message }, status);
     }
+
+    // A platform timeout can end an invocation before its catch/finalize path
+    // runs. Close those abandoned rows before deciding whether this account
+    // already has a live run; otherwise the dashboard can show "in flight"
+    // forever even though no worker exists.
+    const now = new Date();
+    const staleBefore = new Date(now.getTime() - 20 * 60 * 1000).toISOString();
+    const { error: reapError } = await client
+      .from("agent_runs")
+      .update({
+        status: "failed",
+        error_message: "The run ended before completion and is safe to retry.",
+        completed_at: now.toISOString(),
+      })
+      .eq("user_id", body.user_id)
+      .eq("agent", "job_hunter")
+      .eq("status", "running")
+      .lt("started_at", staleBefore);
+    if (reapError) {
+      return jsonResponse({ error: "The agent run state could not be verified." }, 503);
+    }
+
+    const { data: activeRun, error: activeRunError } = await client
+      .from("agent_runs")
+      .select("id,started_at")
+      .eq("user_id", body.user_id)
+      .eq("agent", "job_hunter")
+      .eq("status", "running")
+      .gte("started_at", staleBefore)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (activeRunError) {
+      return jsonResponse({ error: "The agent run state could not be verified." }, 503);
+    }
+    if (activeRun) {
+      return jsonResponse({
+        run_id: activeRun.id,
+        status: "running",
+        already_running: true,
+        started_at: activeRun.started_at,
+      }, 202);
+    }
+
     const { data: run, error } = await client.from("agent_runs").insert({
       user_id: body.user_id,
       agent: "job_hunter",

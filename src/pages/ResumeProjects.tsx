@@ -41,6 +41,10 @@ import { formatDistanceToNow, format } from "date-fns";
 import { TerminalLoader, TerminalText } from "@/components/Terminal";
 import { normalizeResumeSkills } from "@/lib/resume-skills";
 import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
+import {
+  getResumeReviewState,
+  RESUME_REVIEW_REQUIRED_MESSAGE,
+} from "../../supabase/functions/_shared/resume-review";
 
 type ResumeSource = "scratch" | "upload" | "existing";
 type ImportFormatMode = "ats_recommended" | "preserve_source";
@@ -66,6 +70,8 @@ interface ResumeRow {
   updated_at: string;
   created_at: string;
   source_document_id?: string | null;
+  source_hash?: string | null;
+  parse_quality?: unknown;
 }
 
 function mapRowToResumeJSON(r: ResumeRow): ResumeJSON {
@@ -282,7 +288,7 @@ export default function ResumeProjects() {
         // Low-confidence imports receive one targeted correction pass. The
         // deterministic gate, not the model's self-assessment, decides whether
         // the extraction is safe to present as complete.
-        if (quality.status === "review_required") {
+        if (quality.status === "review_required" && !quality.truncated) {
           const correctedContent = await streamAIText(
             session.session.access_token,
             [{ role: "user", content: buildResumeCorrectionPrompt(preparedText, parsedData, quality) }],
@@ -339,14 +345,14 @@ export default function ResumeProjects() {
 
         if (quality.status === "passed") {
           toast({
-            title: `Source coverage ${quality.score}%`,
+            title: `Parsing confidence ${quality.score}%`,
             description: importFormatMode === "preserve_source"
               ? "The original remains your application master; the structured copy is ready for matching and review."
               : "The import passed the lossless extraction gate and is ready in the recommended ATS layout.",
           });
         } else {
           toast({
-            title: `Review required · ${quality.score}% coverage`,
+            title: `Review required · ${quality.score}% parsing confidence`,
             description: quality.warnings[0] || "Some source evidence needs review before applying.",
             variant: "destructive",
           });
@@ -387,39 +393,44 @@ export default function ResumeProjects() {
     const createdResumeId = (newResume as unknown as { id: string }).id;
     if (resumeSource !== "scratch") {
       const importedId = createdResumeId;
-      const { error: primaryError } = await supabase
-        .from("profiles")
-        .update({ primary_resume_id: importedId } as never)
-        .eq("user_id", user.id);
-      if (!primaryError) setPrimaryResumeId(importedId);
+      const reviewState = getResumeReviewState(payload);
+      if (reviewState.allowed) {
+        const { error: primaryError } = await supabase
+          .from("profiles")
+          .update({ primary_resume_id: importedId } as never)
+          .eq("user_id", user.id);
+        if (!primaryError) setPrimaryResumeId(importedId);
 
-      // One upload should be enough. Fill reusable application defaults from
-      // verified resume fields and start the personalized feed in the
-      // background while the user reviews the editor.
-      void (async () => {
-        try {
-          await hydrateApplicationProfileFromResume({
-            userId: user.id,
-            resumeId: importedId,
-            resume: payload as Record<string, unknown>,
-            accountEmail: user.email,
-          });
-          await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
-          const parsePassed = payload.parse_quality?.status === "passed";
-          if (parsePassed) {
+        // Only verified imports may populate reusable answers or start the
+        // match feed. Quarantined imports stay isolated until confirmation.
+        void (async () => {
+          try {
+            await hydrateApplicationProfileFromResume({
+              userId: user.id,
+              resumeId: importedId,
+              resume: payload as Record<string, unknown>,
+              accountEmail: user.email,
+            });
+            await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
             const { error: reviewError } = await supabase.functions.invoke("career-profile-review", {
               body: { resume_id: importedId },
             });
             if (!reviewError) await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+          } catch (backgroundError) {
+            void captureIncident(backgroundError, { source: "manual", operation: "resume_workspace_autofill" }, "warning");
           }
-        } catch (backgroundError) {
-          void captureIncident(backgroundError, { source: "manual", operation: "resume_workspace_autofill" }, "warning");
-        }
-      })();
-      toast({
-        title: "Your workspace is being prepared",
-        description: "We filled reusable profile details from the resume and started finding matching roles. You can review the resume while this finishes.",
-      });
+        })();
+        toast({
+          title: "Your workspace is being prepared",
+          description: "We filled reusable profile details from the resume and started finding matching roles.",
+        });
+      } else {
+        toast({
+          title: "Résumé saved for review",
+          description: "It will not affect your profile, matches, tailoring, or applications until you review and confirm it in the editor.",
+          variant: "destructive",
+        });
+      }
     }
 
     setCreateOpen(false);
@@ -430,6 +441,16 @@ export default function ResumeProjects() {
   const handleSetPrimaryResume = async (resumeId: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const selectedResume = resumes.find((resume) => resume.id === resumeId);
+    if (selectedResume && !getResumeReviewState(selectedResume).allowed) {
+      toast({
+        title: "Review required before using this résumé",
+        description: RESUME_REVIEW_REQUIRED_MESSAGE,
+        variant: "destructive",
+      });
+      navigate(`/resume-builder/${resumeId}`);
+      return;
+    }
     const { error } = await supabase
       .from("profiles")
       .update({ primary_resume_id: resumeId } as never)
@@ -779,7 +800,7 @@ export default function ResumeProjects() {
                 <div>
                   <p className="text-sm font-semibold text-rp-ink">Choose the format workflow</p>
                   <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">
-                    Source coverage is verified after import. Your wording is preserved in either path.
+                    Parsing confidence is verified after import. Your wording is preserved in either path.
                   </p>
                 </div>
                 <RadioGroup value={importFormatMode} onValueChange={(value) => setImportFormatMode(value as ImportFormatMode)} className="grid gap-2">
@@ -917,9 +938,13 @@ function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimar
           <ResumeTemplate data={resumeData} />
         </div>
 
-        {/* ATS Score Badge */}
-        <div className={`absolute top-3 right-3 ${scoreColor} text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md`}>
-          {atsScore.overall}%
+        {/* Generic résumé-quality badge; job coverage is scored per application. */}
+        <div
+          className={`absolute top-3 right-3 ${scoreColor} text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md`}
+          aria-label={`Résumé quality ${atsScore.overall} percent`}
+          title="Generic résumé quality"
+        >
+          Résumé quality {atsScore.overall}%
         </div>
         {isPrimary && (
           <div className="absolute left-3 top-3 rounded-full bg-rp-ink px-2.5 py-1 text-[10px] font-semibold text-rp-canvas shadow-md">

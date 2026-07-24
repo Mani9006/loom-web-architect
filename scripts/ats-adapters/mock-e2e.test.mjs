@@ -108,8 +108,12 @@ function mockJob(approved, urlPath = "/apply") {
   };
 }
 
-function mockPayload(answers = ANSWERS) {
-  return { candidateProfile: PROFILE, answerMemory: answers };
+function mockPayload(answers = ANSWERS, portal = "greenhouse") {
+  return { candidateProfile: PROFILE, answerMemory: answers, portal };
+}
+
+function mockTestPolicy(provider) {
+  return { trustedOrigin: baseUrl, provider };
 }
 
 before(async () => {
@@ -126,6 +130,8 @@ before(async () => {
   process.env.SUPABASE_URL = baseUrl;
   process.env.SUPABASE_ANON_KEY = "mock-anon-key";
   process.env.APPLYPASS_WORKER_TOKEN = WORKER_TOKEN;
+  process.env.APPLYPASS_RUNTIME_ENV = "development";
+  process.env.APPLYPASS_DEV_DIAGNOSTIC_SCREENSHOTS = "true";
   process.env.APPLYPASS_SCREENSHOT_DIR = screenshotDir;
 
   try {
@@ -151,7 +157,7 @@ test("mock e2e: fills, submits, and confirms receipt with all gates on", async (
   if (!requireBrowser(t)) return;
   const { processJob } = await loadWorker(true);
 
-  const result = await processJob(browser, "task-mock-submit", mockJob(true), mockPayload(), resumePath, "mock-worker:1");
+  const result = await processJob(browser, "task-mock-submit", mockJob(true), mockPayload(), resumePath, "mock-worker:1", mockTestPolicy("greenhouse"));
 
   assert.equal(result.adapter, "greenhouse");
   assert.equal(result.status, "submitted");
@@ -172,7 +178,7 @@ test("mock e2e: missing approval receipt blocks submit but still fills", async (
   if (!requireBrowser(t)) return;
   const { processJob } = await loadWorker(true);
 
-  const result = await processJob(browser, "task-mock-no-approval", mockJob(false), mockPayload(), resumePath, "mock-worker:1");
+  const result = await processJob(browser, "task-mock-no-approval", mockJob(false), mockPayload(), resumePath, "mock-worker:1", mockTestPolicy("greenhouse"));
 
   assert.equal(result.submitted, false);
   assert.equal(result.status, "ready_for_review");
@@ -184,7 +190,7 @@ test("mock e2e: APPLYPASS_AUTO_SUBMIT=false blocks submit (dry-run)", async (t) 
   if (!requireBrowser(t)) return;
   const { processJob } = await loadWorker(false);
 
-  const result = await processJob(browser, "task-mock-dry-run", mockJob(true), mockPayload(), resumePath, "mock-worker:1");
+  const result = await processJob(browser, "task-mock-dry-run", mockJob(true), mockPayload(), resumePath, "mock-worker:1", mockTestPolicy("greenhouse"));
 
   assert.equal(result.submitted, false);
   assert.equal(result.status, "ready_for_review");
@@ -198,7 +204,7 @@ test("mock e2e ashby: fills, submits, and confirms receipt with all gates on", a
   if (!requireBrowser(t)) return;
   const { processJob } = await loadWorker(true);
 
-  const result = await processJob(browser, "task-mock-ashby-submit", mockJob(true, "/ashby"), mockPayload(ASHBY_ANSWERS), resumePath, "mock-worker:1");
+  const result = await processJob(browser, "task-mock-ashby-submit", mockJob(true, "/ashby"), mockPayload(ASHBY_ANSWERS, "ashby"), resumePath, "mock-worker:1", mockTestPolicy("ashby"));
 
   assert.equal(result.adapter, "ashby");
   assert.equal(result.status, "submitted");
@@ -218,7 +224,7 @@ test("mock e2e ashby: missing approval receipt blocks submit but still fills", a
   if (!requireBrowser(t)) return;
   const { processJob } = await loadWorker(true);
 
-  const result = await processJob(browser, "task-mock-ashby-no-approval", mockJob(false, "/ashby"), mockPayload(ASHBY_ANSWERS), resumePath, "mock-worker:1");
+  const result = await processJob(browser, "task-mock-ashby-no-approval", mockJob(false, "/ashby"), mockPayload(ASHBY_ANSWERS, "ashby"), resumePath, "mock-worker:1", mockTestPolicy("ashby"));
 
   assert.equal(result.submitted, false);
   assert.equal(result.status, "ready_for_review");
@@ -230,7 +236,7 @@ test("mock e2e ashby: APPLYPASS_AUTO_SUBMIT=false blocks submit (dry-run)", asyn
   if (!requireBrowser(t)) return;
   const { processJob } = await loadWorker(false);
 
-  const result = await processJob(browser, "task-mock-ashby-dry-run", mockJob(true, "/ashby"), mockPayload(ASHBY_ANSWERS), resumePath, "mock-worker:1");
+  const result = await processJob(browser, "task-mock-ashby-dry-run", mockJob(true, "/ashby"), mockPayload(ASHBY_ANSWERS, "ashby"), resumePath, "mock-worker:1", mockTestPolicy("ashby"));
 
   assert.equal(result.submitted, false);
   assert.equal(result.status, "ready_for_review");
@@ -243,7 +249,7 @@ test("mock e2e workable: fills, submits, and confirms receipt with all gates on"
   if (!requireBrowser(t)) return;
   const { processJob } = await loadWorker(true);
 
-  const result = await processJob(browser, "task-mock-workable-submit", mockJob(true, "/workable"), mockPayload(WORKABLE_ANSWERS), resumePath, "mock-worker:1");
+  const result = await processJob(browser, "task-mock-workable-submit", mockJob(true, "/workable"), mockPayload(WORKABLE_ANSWERS, "workable"), resumePath, "mock-worker:1", mockTestPolicy("workable"));
 
   assert.equal(result.adapter, "workable");
   assert.equal(result.status, "submitted");
@@ -253,7 +259,7 @@ test("mock e2e workable: fills, submits, and confirms receipt with all gates on"
   assert.ok(result.filledCount >= 8, `expected >=8 filled fields, got ${result.filledCount}`);
   assert.equal(result.resumeUploaded, true);
   assert.equal(result.receipt?.applicationId, "WK-MOCK-123");
-  assert.match(result.receipt?.confirmationText || "", /thank you for applying/i);
+  assert.match(result.receipt?.containerText || "", /thank you for applying/i);
   assert.ok(result.screenshotPath && existsSync(result.screenshotPath), "receipt screenshot should exist");
   const authCheck = queueRequests.filter((req) => req.action === "authorization-status").pop();
   assert.ok(authCheck, "worker should re-check authorization before submitting");
@@ -264,7 +270,7 @@ test("mock e2e workable: missing approval receipt blocks submit but still fills"
   if (!requireBrowser(t)) return;
   const { processJob } = await loadWorker(true);
 
-  const result = await processJob(browser, "task-mock-workable-no-approval", mockJob(false, "/workable"), mockPayload(WORKABLE_ANSWERS), resumePath, "mock-worker:1");
+  const result = await processJob(browser, "task-mock-workable-no-approval", mockJob(false, "/workable"), mockPayload(WORKABLE_ANSWERS, "workable"), resumePath, "mock-worker:1", mockTestPolicy("workable"));
 
   assert.equal(result.submitted, false);
   assert.equal(result.status, "ready_for_review");
@@ -276,7 +282,7 @@ test("mock e2e workable: APPLYPASS_AUTO_SUBMIT=false blocks submit (dry-run)", a
   if (!requireBrowser(t)) return;
   const { processJob } = await loadWorker(false);
 
-  const result = await processJob(browser, "task-mock-workable-dry-run", mockJob(true, "/workable"), mockPayload(WORKABLE_ANSWERS), resumePath, "mock-worker:1");
+  const result = await processJob(browser, "task-mock-workable-dry-run", mockJob(true, "/workable"), mockPayload(WORKABLE_ANSWERS, "workable"), resumePath, "mock-worker:1", mockTestPolicy("workable"));
 
   assert.equal(result.submitted, false);
   assert.equal(result.status, "ready_for_review");

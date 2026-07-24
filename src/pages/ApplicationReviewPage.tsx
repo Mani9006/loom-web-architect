@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Activity, AlertTriangle, Check, Copy as CopyIcon, Download, ExternalLink, FileCheck2, FileText, Loader2, MessageSquareText, RefreshCw, Send } from "lucide-react";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -8,6 +9,12 @@ import TailoringReportCard from "@/components/TailoringReportCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { captureIncident } from "@/lib/incidents";
+import {
+  careerFitFromEvaluation,
+  isJobRequirementCoverageScoreModel,
+  JOB_REQUIREMENT_SCORE_MODEL_PATTERN,
+  normalizeScore,
+} from "@/lib/score-truth";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { TailoringReport } from "../../supabase/functions/_shared/tailoring-report-core.ts";
@@ -41,6 +48,7 @@ interface Draft {
 
 interface AtsScore {
   overall: number;
+  model: string;
   dim_format: number;
   dim_keywords: number;
   dim_experience: number;
@@ -63,8 +71,15 @@ interface TaskState {
   completed_at: string | null;
 }
 
+interface ResumeArtifact {
+  resumeId: string;
+  url: string;
+  storagePath: string;
+  contentSha256: string;
+}
+
 const dimensions: Array<{ key: keyof AtsScore; label: string }> = [
-  { key: "dim_format", label: "Format" }, { key: "dim_keywords", label: "Keywords" },
+  { key: "dim_format", label: "Format" },
   { key: "dim_experience", label: "Experience" }, { key: "dim_skills", label: "Skills" },
   { key: "dim_education", label: "Education" }, { key: "dim_impact", label: "Impact" },
 ];
@@ -100,8 +115,8 @@ export default function ApplicationReviewPage() {
   const [loading, setLoading] = useState(true);
   const [queueing, setQueueing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [marking, setMarking] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [resumeArtifact, setResumeArtifact] = useState<ResumeArtifact | null>(null);
   const [report, setReport] = useState<TailoringReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
 
@@ -133,14 +148,18 @@ export default function ApplicationReviewPage() {
     }
     const nextDraft = { ...(data as unknown as Draft), answers: normalizeAnswers(data.answers) };
     setDraft(nextDraft);
+    if (initial || !nextDraft.tailored_resume_id) setAts(null);
 
     const requests: PromiseLike<unknown>[] = [];
     if (nextDraft.tailored_resume_id) {
       requests.push((supabase as any).from("ats_scores")
-        .select("overall,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords")
+        .select("overall,model,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords")
         .eq("user_id", user.id).eq("resume_id", nextDraft.tailored_resume_id).eq("scanned_job_id", nextDraft.evaluation.scanned_job.id)
+        .like("model", JOB_REQUIREMENT_SCORE_MODEL_PATTERN)
         .order("created_at", { ascending: false }).limit(1).maybeSingle()
-        .then(({ data: score }: { data: AtsScore | null }) => setAts(score)));
+        .then(({ data: score }: { data: AtsScore | null }) => {
+          setAts(isJobRequirementCoverageScoreModel(score?.model) ? score : null);
+        }));
     }
     if (nextDraft.applypass_task_id) {
       requests.push(supabase.from("applypass_tasks")
@@ -168,6 +187,41 @@ export default function ApplicationReviewPage() {
     if (draft?.id && draft.tailored_resume_id) void loadReport(draft.id);
   }, [draft?.id, draft?.tailored_resume_id, draft?.updated_at, loadReport]);
 
+  // The PDF returned here is the canonical artifact used by both the preview
+  // and download action. career-ops-submit invokes the same renderer, whose
+  // content-addressed path resolves to this exact artifact for unchanged data.
+  useEffect(() => {
+    setResumeArtifact(null);
+    if (tab !== "resume" || !draft?.tailored_resume_id) {
+      setRendering(false);
+      return;
+    }
+    let active = true;
+    setRendering(true);
+    void supabase.functions.invoke("mc-render-resume", {
+      body: { resume_id: draft.tailored_resume_id, format: "pdf" },
+    }).then(({ data, error }) => {
+      if (!active) return;
+      if (error || !data?.url || !data?.storage_path || !data?.content_sha256) {
+        setResumeArtifact(null);
+        return;
+      }
+      setResumeArtifact({
+        resumeId: draft.tailored_resume_id!,
+        url: String(data.url),
+        storagePath: String(data.storage_path),
+        contentSha256: String(data.content_sha256),
+      });
+    }).catch(() => {
+      if (active) setResumeArtifact(null);
+    }).finally(() => {
+      if (active) setRendering(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [draft?.tailored_resume_id, draft?.updated_at, tab]);
+
   const coverNote = useMemo(() => draft?.answers.find((answer) => /cover (letter|note)/i.test(answer.question)) || null, [draft]);
   const formAnswers = useMemo(() => draft?.answers.filter((answer) => !/cover (letter|note)/i.test(answer.question)) || [], [draft]);
 
@@ -178,7 +232,14 @@ export default function ApplicationReviewPage() {
     setQueueing(false);
     if (error) {
       void captureIncident(error, { source: "manual", operation: "application_queue" });
-      toast.error("Automatic submission is unavailable for this job or policy. Your packet remains ready and the employer link is still available.");
+      let message = "Automatic submission is unavailable for this job or policy. Your packet remains ready and the employer link is still available.";
+      if (error instanceof FunctionsHttpError && error.context instanceof Response) {
+        const payload = await error.context.clone().json().catch(() => null) as { code?: unknown } | null;
+        if (payload?.code === "ATS_SCORE_GATE_UNMET") {
+          message = "Job-requirement coverage is missing or below your auto-apply minimum. Refresh the packet to recalculate it; nothing was queued.";
+        }
+      }
+      toast.error(message);
       return;
     }
     toast.success("Submission queued. This page will update as each check completes.");
@@ -194,7 +255,7 @@ export default function ApplicationReviewPage() {
       if (error || !data?.draft?.tailored_resume_id) throw error ?? new Error("resume_missing");
       const { error: atsError } = await supabase.functions.invoke("career-ops-ats", { body: { resume_id: data.draft.tailored_resume_id, scanned_job_id: draft.evaluation.scanned_job.id } });
       if (atsError) throw atsError;
-      toast.success("Résumé, cover note, answers, and ATS preview refreshed from your verified profile.");
+      toast.success("Résumé, cover note, answers, and job-requirement coverage refreshed from your verified profile.");
       await load();
     } catch (error) {
       void captureIncident(error, { source: "manual", operation: "application_packet_refresh" });
@@ -202,18 +263,12 @@ export default function ApplicationReviewPage() {
     } finally { setRefreshing(false); }
   }
 
-  async function markSubmitted() {
-    if (!draft) return;
-    setMarking(true);
-    const submittedAt = new Date().toISOString();
-    const { error } = await supabase.from("draft_applications").update({ status: "submitted", submitted_at: submittedAt }).eq("id", draft.id).eq("user_id", user!.id);
-    setMarking(false);
-    if (error) toast.error("The status could not be saved.");
-    else { toast.success("Application marked submitted"); await load(); }
-  }
-
   async function downloadPdf() {
     if (!draft?.tailored_resume_id) return;
+    if (resumeArtifact?.resumeId === draft.tailored_resume_id) {
+      window.open(resumeArtifact.url, "_blank", "noopener,noreferrer");
+      return;
+    }
     setRendering(true);
     const { data, error } = await supabase.functions.invoke("mc-render-resume", {
       body: { resume_id: draft.tailored_resume_id, format: "pdf" },
@@ -223,13 +278,21 @@ export default function ApplicationReviewPage() {
       toast.error("The tailored résumé PDF could not be generated. The text preview is unchanged.");
       return;
     }
-    window.open(String(data.url), "_blank", "noopener,noreferrer");
+    const artifact = {
+      resumeId: draft.tailored_resume_id,
+      url: String(data.url),
+      storagePath: String(data.storage_path || ""),
+      contentSha256: String(data.content_sha256 || ""),
+    };
+    setResumeArtifact(artifact);
+    window.open(artifact.url, "_blank", "noopener,noreferrer");
     setDraft((current) => current ? { ...current, tailored_cv_pdf_url: String(data.url) } : current);
   }
 
   if (loading || !draft) return <div className="flex min-h-80 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>;
   const job = draft.evaluation.scanned_job;
-  const fit = Math.round(draft.evaluation.fit_score ?? draft.evaluation.score * 20);
+  const fit = careerFitFromEvaluation(draft.evaluation.fit_score, draft.evaluation.score) ?? 0;
+  const jobCoverage = normalizeScore(ats?.overall);
   const handoffRequired = draft.status !== "submitted" && /employer verification|required.*verification|complete the final check/i.test(draft.error_message || "");
   const activePhase = handoffRequired ? 2 : lifecycleIndex(draft.status);
   const phases = ["Optimize", "Review", "Submit", "Done"];
@@ -244,16 +307,16 @@ export default function ApplicationReviewPage() {
       <button onClick={() => navigate("/applications")} className="text-xs text-muted-foreground hover:text-foreground">← Applications</button>
       <header className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-medium text-muted-foreground">{job.company.name}</span><span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", draft.status === "submitted" ? "bg-emerald-500/10 text-emerald-600" : draft.status === "failed" || handoffRequired ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" : "bg-primary/10 text-primary")}>{handoffRequired ? "Verification required" : statusLabel(draft.status)}</span></div><h1 className="mt-2 text-3xl font-bold tracking-tight">{job.title}</h1>{draft.evaluation.summary && <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{draft.evaluation.summary}</p>}</div>
-        <div className="flex flex-wrap items-center gap-2"><div className="mr-2 text-center"><p className="text-2xl font-bold tabular-nums">{fit}%</p><p className="text-[10px] uppercase tracking-wide text-muted-foreground">career fit</p></div><Button asChild><a href={job.apply_url} target="_blank" rel="noreferrer noopener"><ExternalLink className="mr-2 h-4 w-4" />{handoffRequired ? "Finish verification" : "Employer portal"}</a></Button>{!(["submitted", "queued"] as DraftStatus[]).includes(draft.status) && <><Button variant="outline" onClick={refreshPacket} disabled={refreshing}><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />{refreshing ? "Refreshing…" : "Refresh packet"}</Button>{!handoffRequired && <Button variant="outline" onClick={queueApplication} disabled={queueing}><Send className="mr-2 h-4 w-4" />{queueing ? "Queueing…" : "Queue application"}</Button>}<Button variant="ghost" onClick={markSubmitted} disabled={marking}>{marking ? "Saving…" : handoffRequired ? "I finished — mark submitted" : "Mark submitted"}</Button></>}</div>
+        <div className="flex flex-wrap items-center gap-2"><div className="mr-2 text-center"><p className="text-2xl font-bold tabular-nums">{fit}%</p><p className="text-[10px] uppercase tracking-wide text-muted-foreground">career fit</p></div><Button asChild><a href={job.apply_url} target="_blank" rel="noreferrer noopener"><ExternalLink className="mr-2 h-4 w-4" />{handoffRequired ? "Finish verification" : "Employer portal"}</a></Button>{!(["submitted", "queued"] as DraftStatus[]).includes(draft.status) && <><Button variant="outline" onClick={refreshPacket} disabled={refreshing}><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />{refreshing ? "Refreshing…" : "Refresh packet"}</Button>{!handoffRequired && <Button variant="outline" onClick={queueApplication} disabled={queueing}><Send className="mr-2 h-4 w-4" />{queueing ? "Queueing…" : "Queue application"}</Button>}</>}</div>
       </header>
 
-      <p className="mt-2 text-xs text-muted-foreground">Career fit is a deterministic match across role, demonstrated skills, experience/level, location, compensation, and authorization. It is separate from the ATS résumé-readiness score below.</p>
+      <p className="mt-2 text-xs text-muted-foreground">Career fit combines role, demonstrated skills, experience level, location, compensation, and authorization. Job-requirement coverage below measures only the tailored résumé against this posting; generic résumé quality is shown separately.</p>
 
       <section className="mt-7 border border-rp-rule bg-rp-paper p-5" aria-label="Application progress"><div className="grid grid-cols-4">{phases.map((phase, index) => <div key={phase} className="relative flex flex-col items-center text-center"><div className={cn("absolute left-0 right-0 top-3 h-px", index === 0 ? "left-1/2" : index === 3 ? "right-1/2" : "", index <= activePhase ? "bg-primary" : "bg-border")} /><span className={cn("relative z-10 flex h-6 w-6 items-center justify-center rounded-full border text-[10px]", index < activePhase || draft.status === "submitted" ? "border-primary bg-primary text-primary-foreground" : index === activePhase ? "border-primary bg-background text-primary" : "border-border bg-background text-muted-foreground")}>{index < activePhase || draft.status === "submitted" ? <Check className="h-3.5 w-3.5" /> : index + 1}</span><span className="mt-2 text-[11px] font-medium">{phase}</span></div>)}</div>{draft.status !== "submitted" && draft.error_message && <div className={cn("mt-4 flex gap-2 border p-3 text-xs", handoffRequired ? "border-amber-500/25 bg-amber-500/5 text-amber-800 dark:text-amber-200" : "border-rose-500/20 bg-rose-500/5 text-rose-700 dark:text-rose-300")}><AlertTriangle className="h-4 w-4 shrink-0" /><div><p className="font-semibold">{handoffRequired ? "One employer check remains" : "Submission needs attention"}</p><p className="mt-1">{draft.error_message || task?.error_message || "Your packet and employer link remain available."}</p></div></div>}</section>
 
       {fitDimensions.length > 0 && <section className="mt-5 border border-rp-rule bg-rp-paper p-5" aria-label="Career fit calculation"><div className="flex items-start justify-between gap-3"><div><h2 className="text-sm font-semibold">Career fit calculation</h2><p className="mt-1 text-xs text-muted-foreground">The headline percentage is the weighted total of these evidence-backed dimensions. It is not keyword coverage.</p></div><span className="text-lg font-bold tabular-nums">{fit}%</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{fitDimensions.map((dimension) => { const rawWeight = Number(dimension.weight) || 0; const weight = rawWeight > 1 ? rawWeight : rawWeight * 100; return <div key={dimension.label}><div className="mb-1 flex justify-between text-xs"><span>{dimension.label}</span><span className="tabular-nums">{Math.round(Number(dimension.score) || 0)}% · {Math.round(weight)}% weight</span></div><Progress value={Math.max(0, Math.min(100, Number(dimension.score) || 0))} className="h-1.5" /></div>; })}</div></section>}
 
-      {ats && <section className="mt-5 border border-rp-rule bg-rp-canvas p-5"><div className="grid gap-5 lg:grid-cols-[190px_1fr]"><div className="flex items-center gap-4"><div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-[7px] border-primary/20"><span className="text-xl font-bold">{Math.round(ats.overall)}%</span><span className="text-[9px] uppercase">ATS</span></div><div><p className="text-sm font-semibold">ATS résumé readiness</p><p className="mt-1 text-xs text-muted-foreground">A weighted check of this tailored résumé against this job. Different from career fit.</p>{keywordTotal > 0 && <p className="mt-2 text-[11px] text-muted-foreground">Keyword coverage: {keywordMatches}/{keywordTotal} terms matched ({Math.round(ats.dim_keywords)}%).</p>}</div></div><div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{dimensions.map((dimension) => { const value = Number(ats[dimension.key] || 0); const label = dimension.key === "dim_keywords" ? "Keyword coverage" : dimension.label; return <div key={dimension.key}><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{label}</span><span>{Math.round(value)}%</span></div><Progress value={value} className="h-1.5" /></div>; })}</div></div></section>}
+      {ats && jobCoverage !== null && <section className="mt-5 border border-rp-rule bg-rp-canvas p-5"><div className="grid gap-5 lg:grid-cols-[210px_1fr]"><div className="flex items-center gap-4"><div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-[7px] border-primary/20"><span className="text-xl font-bold">{jobCoverage}%</span><span className="text-center text-[8px] uppercase leading-tight">requirement<br />coverage</span></div><div><p className="text-sm font-semibold">Job-requirement coverage</p><p className="mt-1 text-xs text-muted-foreground">Coverage of the requirements extracted from this posting. It is not career fit or generic résumé quality.</p>{keywordTotal > 0 && <p className="mt-2 text-[11px] text-muted-foreground">{keywordMatches}/{keywordTotal} requirements matched.</p>}</div></div><div><p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Generic résumé quality signals</p><div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{dimensions.map((dimension) => { const value = normalizeScore(ats[dimension.key]) ?? 0; return <div key={dimension.key}><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{dimension.label}</span><span>{value}%</span></div><Progress value={value} className="h-1.5" /></div>; })}</div></div></div></section>}
 
       <div className="mt-6 flex flex-wrap gap-1 border-b border-rp-rule">{[
         { id: "form" as const, label: "Submitted form", icon: FileCheck2 }, { id: "resume" as const, label: "Résumé", icon: FileText },
@@ -262,11 +325,11 @@ export default function ApplicationReviewPage() {
 
       <section className="min-h-80 border border-t-0 border-rp-rule bg-rp-paper p-5 sm:p-6">
         {tab === "form" && <div><div className="flex items-center justify-between"><div><h2 className="text-base font-semibold">Application answers</h2><p className="mt-1 text-xs text-muted-foreground">The exact reusable answers prepared for this employer.</p></div></div>{formAnswers.length ? <ol className="mt-6 divide-y divide-rp-rule">{formAnswers.map((answer, index) => <li key={`${answer.question}-${index}`} className="grid gap-2 py-4 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)_auto]"><p className="text-xs font-semibold">{answer.question}</p><p className="text-sm leading-relaxed text-muted-foreground">{answer.answer}</p><CopyButton value={answer.answer} /></li>)}</ol> : <Empty text="No additional employer questions were saved for this application." />}</div>}
-        {tab === "resume" && <div><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Tailored résumé</h2><p className="mt-1 text-xs text-muted-foreground">The text below is an audit preview. The application uses the generated, ATS-friendly PDF artifact.</p></div><div className="flex gap-2">{draft.tailored_resume_id && <Button variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}>Open editor</Button>}{draft.tailored_resume_id && <Button size="sm" onClick={() => void downloadPdf()} disabled={rendering}><Download className="mr-2 h-4 w-4" />{rendering ? "Rendering…" : "Download PDF"}</Button>}</div></div><div className="mt-6"><TailoringReportCard report={report} loading={reportLoading} /></div>{draft.tailored_cv_md ? <pre className="mt-6 max-h-[700px] overflow-y-auto whitespace-pre-wrap border border-rp-rule bg-background p-6 font-sans text-sm leading-relaxed">{draft.tailored_cv_md}</pre> : <Empty text="No tailored résumé was generated." />}</div>}
+        {tab === "resume" && <div><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Tailored résumé</h2><p className="mt-1 text-xs text-muted-foreground">This is the exact ATS-friendly PDF attached to the application.</p></div><div className="flex gap-2">{draft.tailored_resume_id && <Button variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}>Open editor</Button>}{draft.tailored_resume_id && <Button size="sm" onClick={() => void downloadPdf()} disabled={rendering}><Download className="mr-2 h-4 w-4" />{rendering ? "Rendering…" : "Download PDF"}</Button>}</div></div><div className="mt-6"><TailoringReportCard report={report} loading={reportLoading} /></div>{rendering ? <div className="mt-6 flex min-h-[640px] items-center justify-center border border-rp-rule bg-background"><Loader2 className="h-7 w-7 animate-spin text-primary" /><span className="ml-3 text-sm text-muted-foreground">Preparing application PDF…</span></div> : resumeArtifact ? <iframe className="mt-6 h-[760px] w-full border border-rp-rule bg-background" src={resumeArtifact.url} title="Tailored résumé application PDF" /> : draft.tailored_cv_md ? <div className="mt-6"><p className="text-xs text-amber-700 dark:text-amber-300">The PDF preview is temporarily unavailable. The saved text remains below for review.</p><pre className="mt-3 max-h-[700px] overflow-y-auto whitespace-pre-wrap border border-rp-rule bg-background p-6 font-sans text-sm leading-relaxed">{draft.tailored_cv_md}</pre></div> : <Empty text="No tailored résumé was generated." />}</div>}
         {tab === "cover" && <div><h2 className="text-base font-semibold">Cover note</h2><p className="mt-1 text-xs text-muted-foreground">Generated only when useful or requested by the employer.</p>{coverNote ? <div className="mt-6 border border-rp-rule bg-background p-6"><div className="flex justify-end"><CopyButton value={coverNote.answer} /></div><p className="whitespace-pre-wrap text-sm leading-relaxed">{coverNote.answer}</p></div> : <Empty text="No cover note is attached to this application." />}</div>}
         {tab === "activity" && <div><h2 className="text-base font-semibold">Application activity</h2><p className="mt-1 text-xs text-muted-foreground">Preparation, queue attempts, worker checks, and outcome for this job.</p><div className="mt-6 space-y-3"><ActivityRow title="Packet prepared" date={draft.created_at} detail="Tailored résumé and application answers created." />{task && <ActivityRow title={`Submission ${task.status}`} date={task.completed_at || task.started_at || task.created_at} detail={`Attempt ${task.attempt_count} of ${task.max_attempts}${task.error_message ? ` · ${task.error_message}` : ""}`} />}{logs.map((entry, index) => <ActivityRow key={index} title={String(entry.step || entry.status || entry.event || `Worker event ${index + 1}`)} date={typeof entry.at === "string" ? entry.at : typeof entry.timestamp === "string" ? entry.timestamp : null} detail={String(entry.message || entry.detail || "Application check recorded.")} />)}{draft.submitted_at && <ActivityRow title="Submitted" date={draft.submitted_at} detail="Submission recorded successfully." />}{!task && !draft.submitted_at && <ActivityRow title="Awaiting your decision" date={draft.updated_at} detail="Review the packet, queue supported automation, or open the employer portal." />}</div></div>}
       </section>
-      <p className="mt-4 text-xs text-muted-foreground">Only a Submitted outcome counts as applied. Queued means the worker is still checking and completing the application.</p>
+      <p className="mt-4 text-xs text-muted-foreground">Only a receipt-backed Submitted outcome counts as applied. Queued means the worker is still checking and completing the application. If you finish an employer verification manually, the connected inbox will reconcile the confirmed outcome.</p>
     </div>
   );
 }
