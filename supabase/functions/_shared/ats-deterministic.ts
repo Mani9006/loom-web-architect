@@ -12,6 +12,7 @@
 import {
   collectImpactBullets, computeImpactScore, extractEntryBullets, IMPACT_FULL_CREDIT_RATIO,
 } from "./ats-impact.ts";
+import { ATS_PDF_SPEC } from "./resume-pdf-layout.ts";
 
 export const ATS_WEIGHTS = { format: 0.15, keywords: 0.25, experience: 0.25, skills: 0.15, education: 0.05, impact: 0.15 } as const;
 
@@ -95,6 +96,13 @@ export function deterministicAnalysis(resume: any): DetReport {
     issues.push({ scope: "impact", where: "experience", message: `only ${impact.quantified}/${impact.total} bullets are quantified` });
   }
 
+  // Pagination/format risk signal — surfaced as a format issue only, with no
+  // additional score penalty beyond the existing deductions.
+  const pagination = estimatePaginationRisk(resume);
+  for (const message of pagination.issues) {
+    issues.push({ scope: "format", where: "pagination", message });
+  }
+
   return {
     format: Math.max(0, Math.min(100, Math.round(formatScore))),
     experience: Math.max(0, Math.min(100, Math.round(bulletAvg))),
@@ -150,6 +158,101 @@ export function computeKeywordScore(resumeText: string, keywords: string[]): {
 
 export function normalizeForMatch(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// ─── Pagination / format risk estimation ────────────────────────────────────
+//
+// The scorer cannot see the rendered PDF, so it estimates rendered height from
+// content length vs the shared ATS_PDF_SPEC template metrics. Used to surface
+// page-overflow / entry-split risks as FORMAT ISSUES (no extra score penalty).
+
+export interface PaginationRisk {
+  /** Estimated number of rendered pages at base density. */
+  estimatedPages: number;
+  /** Fraction of a page spilling onto the last page (0 when it fits one page). */
+  overflowFraction: number;
+  /**
+   * one-page       — fits comfortably;
+   * spill          — slightly over one page (auto-tightenable at render time);
+   * multi-page     — genuinely longer than one page (paginates at entry bounds);
+   * oversize-entry — a single entry is taller than a page and must split.
+   */
+  risk: "one-page" | "spill" | "multi-page" | "oversize-entry";
+  issues: string[];
+}
+
+// deno-lint-ignore no-explicit-any
+export function estimatePaginationRisk(resume: any): PaginationRisk {
+  const spec = ATS_PDF_SPEC;
+  const usable = spec.pageHeightPt - spec.marginPt * 2;
+  const contentWidth = spec.pageWidthPt - spec.marginPt * 2;
+  const lh = (size: number) => size * spec.lineHeightScale;
+  // Average Helvetica glyph width ≈ 0.5em → chars per wrapped line.
+  const charsPerLine = (size: number, indentPt = 0) =>
+    Math.max(20, Math.floor((contentWidth - indentPt) / (size * 0.5)));
+  const wrapLines = (value: string, size: number, indentPt = 0) =>
+    Math.max(1, Math.ceil(value.length / charsPerLine(size, indentPt)));
+
+  let height = 0;
+  height += lh(spec.nameSize) + lh(spec.smallSize) + 8; // name + contact + header gap
+  const sectionOverhead = lh(spec.headingSize) + spec.sectionGapPt + 4;
+
+  const summary = String(resume?.summary ?? resume?.personal_info?.summary ?? "").trim();
+  if (summary) height += sectionOverhead + wrapLines(summary, spec.bodySize) * lh(spec.bodySize);
+
+  let tallestEntry = 0;
+  const experience = Array.isArray(resume?.experience) ? resume.experience : [];
+  if (experience.length > 0) height += sectionOverhead;
+  for (const entry of experience) {
+    let h = lh(spec.bodySize) + spec.entryGapPt; // entry head line
+    const bullets = extractEntryBullets(entry);
+    for (const bullet of bullets) h += wrapLines(bullet, spec.bodySize, 12) * lh(spec.bodySize);
+    height += h;
+    if (h > tallestEntry) tallestEntry = h;
+  }
+
+  const education = Array.isArray(resume?.education) ? resume.education : [];
+  if (education.length > 0) height += sectionOverhead + education.length * (lh(spec.bodySize) + 3);
+
+  const skills = flattenSkills(resume?.skills);
+  if (skills.length > 0) {
+    height += sectionOverhead + wrapLines(skills.join(", "), spec.bodySize) * lh(spec.bodySize);
+  }
+
+  const projects = Array.isArray(resume?.projects) ? resume.projects : [];
+  if (projects.length > 0) height += sectionOverhead;
+  for (const project of projects) {
+    let h = lh(spec.bodySize) + spec.entryGapPt;
+    const bullets = Array.isArray(project?.bullets) ? project.bullets : [];
+    for (const bullet of bullets) h += wrapLines(String(bullet), spec.bodySize, 12) * lh(spec.bodySize);
+    height += h;
+    if (h > tallestEntry) tallestEntry = h;
+  }
+
+  const estimatedPages = Math.max(1, Math.ceil(height / usable - 1e-9));
+  const spillHeight = height - (estimatedPages - 1) * usable;
+  const overflowFraction = estimatedPages > 1 ? spillHeight / usable : 0;
+
+  const issues: string[] = [];
+  let risk: PaginationRisk["risk"] = "one-page";
+  if (tallestEntry > usable) {
+    risk = "oversize-entry";
+    issues.push(
+      "one experience/project entry is taller than a full page — it will split across pages at a bullet boundary; split it into two entries or trim bullets",
+    );
+  } else if (estimatedPages === 2 && overflowFraction <= 0.12) {
+    risk = "spill";
+    issues.push(
+      `content slightly exceeds one page (~${Math.round(overflowFraction * 100)}% spill) — the PDF export auto-tightens spacing to fit; trim a line or two to be safe`,
+    );
+  } else if (estimatedPages > 1) {
+    risk = "multi-page";
+    issues.push(
+      `content runs to ~${estimatedPages} pages — pagination breaks at entry boundaries; keep it to one page unless you have 10+ years of experience`,
+    );
+  }
+
+  return { estimatedPages, overflowFraction, risk, issues };
 }
 
 // deno-lint-ignore no-explicit-any

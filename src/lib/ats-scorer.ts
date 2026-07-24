@@ -15,6 +15,7 @@
  */
 
 import { ResumeJSON } from "@/types/resume";
+import { estimatePaginationRisk } from "../../supabase/functions/_shared/ats-deterministic";
 
 export type IssueSeverity = "critical" | "warning" | "suggestion";
 
@@ -535,6 +536,18 @@ function scoreFormatting(data: ResumeJSON): ATSSectionScore {
     }
   } else {
     score += 1;
+  }
+
+  // Pagination/format risk — same estimator the server scorer (ats-score-v2)
+  // uses, so client preview and server score never contradict each other.
+  // Surfaced as a format issue only; no score penalty beyond the above.
+  const pagination = estimatePaginationRisk(data);
+  if (pagination.risk === "spill") {
+    issues.push({ id: "f-page-spill", section: "Formatting", severity: "warning", title: "Content slightly overflows one page", description: "The rendered PDF would spill a few lines onto a nearly-empty page 2. The export auto-tightens spacing to fit; trim a line or two to be safe." });
+  } else if (pagination.risk === "oversize-entry") {
+    issues.push({ id: "f-oversize-entry", section: "Formatting", severity: "warning", title: "One entry is taller than a page", description: "A single experience/project entry exceeds a full page and will split across pages. Split it into two entries or trim bullets." });
+  } else if (pagination.risk === "multi-page") {
+    issues.push({ id: "f-multi-page", section: "Formatting", severity: "suggestion", title: `Resume runs ~${pagination.estimatedPages} pages`, description: "Pagination breaks at entry boundaries so no entry splits. Keep it to one page unless you have 10+ years of experience." });
   }
 
   return { section: "Formatting", score: Math.min(score, maxScore), maxScore, issues };

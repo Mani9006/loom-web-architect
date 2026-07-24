@@ -34,6 +34,7 @@ import {
 } from "../_shared/guards.ts";
 import { chatFree } from "../_shared/llm.ts";
 import { jdHash, readJdKeywordCache, writeJdKeywordCache } from "../_shared/jd-cache.ts";
+import { estimatePaginationRisk } from "../_shared/ats-deterministic.ts";
 
 interface RequestBody {
   resume?: unknown;
@@ -251,6 +252,18 @@ function scoreFormatting(r: Record<string, unknown>): SectionScore {
   const allValid = xs.every((x) => validDate(x.start_date) && validDate(x.end_date));
   if (allValid) score = 10;
   else issues.push({ id: "f1", severity: "warning", title: "Inconsistent date format", description: "Use 'Jan 2024' or 'MM/YYYY' consistently.", section: "Formatting" });
+
+  // Pagination/format risk: estimated from content length vs the shared
+  // ATS_PDF_SPEC template metrics (the scorer cannot see the rendered PDF).
+  // Surfaced as format issues only — no score penalty beyond the above.
+  const pagination = estimatePaginationRisk(r);
+  if (pagination.risk === "spill") {
+    issues.push({ id: "f2", severity: "warning", title: "Content slightly overflows one page", description: "The rendered PDF would spill a few lines onto a nearly-empty page 2. The export auto-tightens spacing to fit; trim a line or two to be safe.", section: "Formatting" });
+  } else if (pagination.risk === "oversize-entry") {
+    issues.push({ id: "f3", severity: "warning", title: "One entry is taller than a page", description: "A single experience/project entry exceeds a full page and will split across pages. Split it into two entries or trim bullets.", section: "Formatting" });
+  } else if (pagination.risk === "multi-page") {
+    issues.push({ id: "f4", severity: "suggestion", title: `Resume runs ~${pagination.estimatedPages} pages`, description: "Pagination breaks at entry boundaries so no entry splits. Keep it to one page unless you have 10+ years of experience.", section: "Formatting" });
+  }
   return { name: "Formatting", score, max: 10, issues };
 }
 

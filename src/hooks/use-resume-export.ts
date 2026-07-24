@@ -13,9 +13,17 @@ import { toast } from "sonner";
 // - Letter size (8.5 × 11 in)
 // - 0.5in top/bottom, 0.6in left/right margins
 // - Helvetica font (standard PDF font, universally ATS-compatible)
-// - Consistent spacing: 10pt body, 11pt headings, 18pt name
+// - ATS-guideline sizes: 10.5pt body, 11pt headings, 14pt name
 // - Line height 1.35× for readability
 // - Justified text for professional appearance
+//
+// Pagination rules (mirrors supabase/functions/_shared/resume-pdf-layout.ts):
+// - An experience/education ENTRY never splits across pages when it fits on
+//   a single page; taller entries split only at bullet boundaries.
+// - A section heading always stays with at least its first item.
+// - A bullet never splits mid-line (its wrapped lines stay together).
+// - Content spilling ≤8% onto page 2 auto-tightens line-height/spacing
+//   (density) within sane bounds to fit one page instead of stranding a line.
 // ═══════════════════════════════════════════════════════════════════════
 
 const PAGE = {
@@ -29,13 +37,14 @@ const PAGE = {
 
 const CONTENT_WIDTH = PAGE.width - PAGE.marginLeft - PAGE.marginRight; // 7.3 in
 
-// Font sizes in points — matches ResumeTemplate.tsx for WYSIWYG parity
+// Font sizes in points — ATS guideline: 10.5–11.5pt body, 12–14pt name.
+// Matches the professional template in src/config/resume-templates.ts.
 const FS = {
-  name: 18,
-  title: 11,
+  name: 14,
+  title: 11.5,
   contact: 9.5,
   sectionHeading: 11,
-  body: 10,
+  body: 10.5,
   small: 9.5,
 } as const;
 
@@ -53,6 +62,11 @@ const SP = {
 const LINE_HEIGHT = 1.35;
 const ptToIn = (pt: number) => pt / 72;
 
+// Auto-tighten bounds: when content spills ≤8% of a page onto page 2, retry
+// with scaled line-height/spacing (never font sizes) until it fits one page.
+const MAX_AUTO_FIT_OVERFLOW = 0.08;
+const DENSITY_STEPS = [0.94, 0.88, 0.84] as const;
+
 type FontStyle = "normal" | "bold" | "italic" | "bolditalic";
 type JsPDFInstance = import("jspdf").jsPDF;
 
@@ -60,6 +74,8 @@ export class PDFResumeRenderer {
   private doc!: JsPDFInstance;
   private y = 0;
   private widthCache = new Map<string, number>();
+  /** Vertical density scale (1 = base). Tightened to fit slight overflows. */
+  private density = 1;
 
   private ensureSpace(needed: number) {
     if (this.y + needed > PAGE.height - PAGE.marginBottom) {
@@ -69,7 +85,17 @@ export class PDFResumeRenderer {
   }
 
   private lh(fontSize: number) {
-    return ptToIn(fontSize * LINE_HEIGHT);
+    return ptToIn(fontSize * LINE_HEIGHT * this.density);
+  }
+
+  /** Vertical spacing in points, scaled by the current density. */
+  private sp(pt: number) {
+    return ptToIn(pt * this.density);
+  }
+
+  /** Usable content height of one page in inches. */
+  private usableHeight() {
+    return PAGE.height - PAGE.marginTop - PAGE.marginBottom;
   }
 
   private setFont(size: number, style: FontStyle = "normal") {
@@ -195,6 +221,18 @@ export class PDFResumeRenderer {
     }
     if (currentLine.length > 0) lines.push(currentLine);
 
+    // Widow/orphan control: when the paragraph must split, keep at least two
+    // lines on both sides; otherwise move the whole paragraph to the next
+    // page (never a single stranded line).
+    const totalHeight = lines.length * lineH;
+    const remaining = PAGE.height - PAGE.marginBottom - this.y;
+    if (totalHeight > remaining && totalHeight <= this.usableHeight() && lines.length >= 2) {
+      const linesFitting = Math.floor(remaining / lineH);
+      if (linesFitting < 2 || lines.length - linesFitting < 2) {
+        this.ensureSpace(totalHeight);
+      }
+    }
+
     for (let i = 0; i < lines.length; i++) {
       this.ensureSpace(lineH);
       const drawY = this.y + lineH;
@@ -256,15 +294,15 @@ export class PDFResumeRenderer {
   }
 
   private sectionHeading(title: string) {
-    const headingH = ptToIn(SP.sectionMarginTop) + this.lh(FS.sectionHeading) + ptToIn(2) + ptToIn(1.5);
+    const headingH = this.sp(SP.sectionMarginTop) + this.lh(FS.sectionHeading) + this.sp(2) + this.sp(1.5);
     const minBlock = headingH + this.lh(FS.body) * 2;
     this.ensureSpace(minBlock);
 
-    this.y += ptToIn(SP.sectionMarginTop);
+    this.y += this.sp(SP.sectionMarginTop);
     this.text(title.toUpperCase(), PAGE.marginLeft, this.y + this.lh(FS.sectionHeading), FS.sectionHeading, "bold");
-    this.y += this.lh(FS.sectionHeading) + ptToIn(2);
+    this.y += this.lh(FS.sectionHeading) + this.sp(2);
     this.hline(1.5);
-    this.y += ptToIn(SP.sectionGapAfterRule);
+    this.y += this.sp(SP.sectionGapAfterRule);
   }
 
   private bulletPoint(text: string, indent = 0.19) {
@@ -303,7 +341,7 @@ export class PDFResumeRenderer {
     // Keep a bullet together whenever it fits on a page. Checking line by line
     // produced orphaned continuations at the very top of the next PDF page,
     // which looked broken and removed the bullet marker from its continuation.
-    const bulletHeight = wordLines.length * lineH + ptToIn(SP.bulletAfter);
+    const bulletHeight = wordLines.length * lineH + this.sp(SP.bulletAfter);
     this.ensureSpace(bulletHeight);
 
     for (let i = 0; i < wordLines.length; i++) {
@@ -318,7 +356,7 @@ export class PDFResumeRenderer {
       this.justifiedLine(wordLines[i], textX, drawY, maxW, FS.body, "normal", isLastLine);
       this.y = drawY;
     }
-    this.y += ptToIn(SP.bulletAfter);
+    this.y += this.sp(SP.bulletAfter);
   }
 
   private bulletPointHeight(text: string, indent = 0.19) {
@@ -344,12 +382,27 @@ export class PDFResumeRenderer {
       }
     }
 
-    return lineCount * lineH + ptToIn(SP.bulletAfter);
+    return lineCount * lineH + this.sp(SP.bulletAfter);
   }
 
   private ensureEntryStart(headingHeight: number, firstBullet?: string, minVisibleRows = 1) {
     const minimum = headingHeight + Math.max(this.bulletPointHeight(firstBullet || ""), this.lh(FS.body) * minVisibleRows);
     this.ensureSpace(minimum);
+  }
+
+  /**
+   * Keep-together for a whole entry (title + company + dates + bullets):
+   * when the entry fits on a single page it is moved there whole, so an
+   * entry never splits across pages. Entries taller than one page fall back
+   * to heading+first-bullet anchoring and split only at bullet boundaries
+   * (bulletPoint itself never splits mid-bullet).
+   */
+  private ensureEntryFit(entryHeight: number, headingHeight: number, firstBullet?: string, minVisibleRows = 1) {
+    if (entryHeight <= this.usableHeight()) {
+      this.ensureSpace(entryHeight);
+    } else {
+      this.ensureEntryStart(headingHeight, firstBullet, minVisibleRows);
+    }
   }
 
   // ── Section renderers ──────────────────────────────────────────────
@@ -362,7 +415,7 @@ export class PDFResumeRenderer {
 
     if (h.title) {
       const titleH = this.lh(FS.title);
-      this.y += ptToIn(2);
+      this.y += this.sp(2);
       this.text(h.title, cx, this.y + titleH, FS.title, "bold", "center");
       this.y += titleH;
     }
@@ -379,7 +432,7 @@ export class PDFResumeRenderer {
 
     if (parts.length > 0) {
       const contactH = this.lh(FS.contact);
-      this.y += ptToIn(3);
+      this.y += this.sp(3);
       const contactText = parts.join("  |  ");
       // Check if contact line needs wrapping
       const contactW = this.textWidth(contactText, FS.contact);
@@ -405,9 +458,9 @@ export class PDFResumeRenderer {
       void url; // URL is already in the text above for ATS parsing
     }
 
-    this.y += ptToIn(5);
+    this.y += this.sp(5);
     this.hline(2);
-    this.y += ptToIn(SP.headerBottomRule);
+    this.y += this.sp(SP.headerBottomRule);
   }
 
   private renderSummary(summary: string) {
@@ -424,7 +477,11 @@ export class PDFResumeRenderer {
       const headingHeight =
         this.flexRowHeight(exp.role || "Role", dateText, FS.body, "bold", FS.small) +
         this.flexRowHeight(exp.company_or_client, exp.location || "", FS.body, "italic", FS.small);
-      this.ensureEntryStart(headingHeight, exp.bullets[0], 2);
+      const entryHeight =
+        headingHeight +
+        exp.bullets.reduce((sum, b) => sum + this.bulletPointHeight(b), 0) +
+        (idx < valid.length - 1 ? this.sp(SP.entryGap) : 0);
+      this.ensureEntryFit(entryHeight, headingHeight, exp.bullets[0], 2);
       this.flexRow(
         exp.role || "Role",
         dateText,
@@ -434,7 +491,7 @@ export class PDFResumeRenderer {
       );
       this.flexRow(exp.company_or_client, exp.location || "", FS.body, "italic", FS.small);
       exp.bullets.forEach((b) => this.bulletPoint(b));
-      if (idx < valid.length - 1) this.y += ptToIn(SP.entryGap);
+      if (idx < valid.length - 1) this.y += this.sp(SP.entryGap);
     });
   }
 
@@ -448,6 +505,10 @@ export class PDFResumeRenderer {
       let left = deg;
       if (edu.institution) left += ` - ${edu.institution}`;
       if (edu.gpa) left += ` (GPA: ${edu.gpa})`;
+      const headingHeight = this.flexRowHeight(left, edu.graduation_date || "", FS.body, "bold", FS.small);
+      const entryHeight =
+        headingHeight + (edu.location ? this.lh(FS.small) : 0) + this.sp(SP.compactEntryGap);
+      this.ensureEntryFit(entryHeight, headingHeight, undefined, 1);
       this.flexRow(left, edu.graduation_date || "", FS.body, "bold", FS.small);
       if (edu.location) {
         const locH = this.lh(FS.small);
@@ -455,7 +516,7 @@ export class PDFResumeRenderer {
         this.text(edu.location, PAGE.marginLeft, this.y + locH, FS.small, "italic");
         this.y += locH;
       }
-      this.y += ptToIn(SP.compactEntryGap);
+      this.y += this.sp(SP.compactEntryGap);
     });
   }
 
@@ -474,6 +535,9 @@ export class PDFResumeRenderer {
       const skillText = cat.skills.join(", ");
       const lines = this.wrapText(skillText, CONTENT_WIDTH - prefixW, FS.body);
       const lineH = this.lh(FS.body);
+      // Keep a skill category together whenever it fits on one page.
+      const catHeight = lines.length * lineH + this.sp(SP.skillLineGap);
+      if (catHeight <= this.usableHeight()) this.ensureSpace(catHeight);
       for (let i = 0; i < lines.length; i++) {
         this.ensureSpace(lineH);
         const drawY = this.y + lineH;
@@ -485,7 +549,7 @@ export class PDFResumeRenderer {
         }
         this.y = drawY;
       }
-      this.y += ptToIn(SP.skillLineGap);
+      this.y += this.sp(SP.skillLineGap);
     });
   }
 
@@ -518,7 +582,7 @@ export class PDFResumeRenderer {
         this.text(rightText, PAGE.width - PAGE.marginRight, drawY, FS.small, "normal", "right");
       }
 
-      this.y = drawY + ptToIn(SP.compactEntryGap);
+      this.y = drawY + this.sp(SP.compactEntryGap);
     });
   }
 
@@ -532,7 +596,11 @@ export class PDFResumeRenderer {
       if (proj.date) rightParts.push(proj.date);
       const rightText = rightParts.join(" - ");
       const headingHeight = this.flexRowHeight(proj.title, rightText, FS.body, "bold", FS.small, "italic");
-      this.ensureEntryStart(headingHeight, proj.bullets[0], 1);
+      const entryHeight =
+        headingHeight +
+        proj.bullets.reduce((sum, b) => sum + this.bulletPointHeight(b), 0) +
+        (idx < valid.length - 1 ? this.sp(SP.entryGap) : 0);
+      this.ensureEntryFit(entryHeight, headingHeight, proj.bullets[0], 1);
 
       // If project has a URL, render the title as a hyperlink; otherwise use flexRow
       if (proj.url) {
@@ -554,7 +622,7 @@ export class PDFResumeRenderer {
       }
 
       proj.bullets.forEach((b) => this.bulletPoint(b));
-      if (idx < valid.length - 1) this.y += ptToIn(SP.entryGap);
+      if (idx < valid.length - 1) this.y += this.sp(SP.entryGap);
     });
   }
 
@@ -564,8 +632,10 @@ export class PDFResumeRenderer {
     this.sectionHeading("Languages");
     const text = valid.map((l) => `${l.language}${l.proficiency ? ` (${l.proficiency})` : ""}`).join("  |  ");
     const lines = this.wrapText(text, CONTENT_WIDTH, FS.body);
+    const lineH = this.lh(FS.body);
+    // Keep the whole languages block together whenever it fits on one page.
+    if (lines.length * lineH <= this.usableHeight()) this.ensureSpace(lines.length * lineH);
     for (const line of lines) {
-      const lineH = this.lh(FS.body);
       this.ensureSpace(lineH);
       this.text(line, PAGE.marginLeft, this.y + lineH, FS.body);
       this.y += lineH;
@@ -580,14 +650,18 @@ export class PDFResumeRenderer {
       const headingHeight =
         this.flexRowHeight(vol.role || "Volunteer", vol.date || "", FS.body, "bold", FS.small) +
         this.lh(FS.body);
-      this.ensureEntryStart(headingHeight, vol.bullets[0], 1);
+      const entryHeight =
+        headingHeight +
+        vol.bullets.reduce((sum, b) => sum + this.bulletPointHeight(b), 0) +
+        (idx < valid.length - 1 ? this.sp(SP.entryGap) : 0);
+      this.ensureEntryFit(entryHeight, headingHeight, vol.bullets[0], 1);
       this.flexRow(vol.role || "Volunteer", vol.date || "", FS.body, "bold", FS.small);
       const orgH = this.lh(FS.body);
       this.ensureSpace(orgH);
       this.text(vol.organization, PAGE.marginLeft, this.y + orgH, FS.body, "italic");
       this.y += orgH;
       vol.bullets.forEach((b) => this.bulletPoint(b));
-      if (idx < valid.length - 1) this.y += ptToIn(SP.entryGap);
+      if (idx < valid.length - 1) this.y += this.sp(SP.entryGap);
     });
   }
 
@@ -616,7 +690,7 @@ export class PDFResumeRenderer {
         this.text(award.date, PAGE.width - PAGE.marginRight, drawY, FS.small, "normal", "right");
       }
 
-      this.y = drawY + ptToIn(SP.compactEntryGap);
+      this.y = drawY + this.sp(SP.compactEntryGap);
     });
   }
 
@@ -628,7 +702,11 @@ export class PDFResumeRenderer {
       const entries = cs.entries.filter((e) => e.title);
       entries.forEach((entry, idx) => {
         const headingHeight = this.flexRowHeight(entry.title, entry.date || "", FS.body, "bold", FS.small) + (entry.subtitle ? this.lh(FS.body) : 0);
-        this.ensureEntryStart(headingHeight, entry.bullets[0], 1);
+        const entryHeight =
+          headingHeight +
+          entry.bullets.reduce((sum, b) => sum + this.bulletPointHeight(b), 0) +
+          (idx < entries.length - 1 ? this.sp(SP.entryGap) : 0);
+        this.ensureEntryFit(entryHeight, headingHeight, entry.bullets[0], 1);
         // If entry has a URL, render title as hyperlink; otherwise use flexRow
         if (entry.url) {
           const lineH = this.lh(FS.body);
@@ -649,7 +727,7 @@ export class PDFResumeRenderer {
           this.y += subH;
         }
         entry.bullets.forEach((b) => this.bulletPoint(b));
-        if (idx < entries.length - 1) this.y += ptToIn(SP.entryGap);
+        if (idx < entries.length - 1) this.y += this.sp(SP.entryGap);
       });
     });
   }
@@ -692,8 +770,43 @@ export class PDFResumeRenderer {
       throw new Error(`Invalid resume data: ${issues.join("; ")}`);
     }
 
+    // Pass 1 at base density.
+    let pass = await this.renderPass(data, 1);
+
+    // Auto-tighten: when the content spills only slightly (≤8% of a page)
+    // onto a second page, retry with tightened line-height/spacing (font
+    // sizes stay within ATS bounds) so it fits one page instead of stranding
+    // a line or two on a nearly-empty page 2.
+    if (pass.pageCount === 2) {
+      const spill = pass.lastPageContentHeight - PAGE.marginTop;
+      if (spill > 0 && spill <= MAX_AUTO_FIT_OVERFLOW * this.usableHeight()) {
+        for (const density of DENSITY_STEPS) {
+          const attempt = await this.renderPass(data, density);
+          if (attempt.pageCount === 1) {
+            pass = attempt;
+            break;
+          }
+        }
+      }
+    }
+
+    this.doc = pass.doc;
+    this.addPageFooters(data.header.name || "Resume");
+
+    // Attach metadata about failed sections for caller to handle
+    (this.doc as any).__failedSections = pass.failedSections;
+
+    return this.doc;
+  }
+
+  /** Single render pass at a given vertical density. */
+  private async renderPass(
+    data: ResumeJSON,
+    density: number,
+  ): Promise<{ doc: JsPDFInstance; failedSections: string[]; pageCount: number; lastPageContentHeight: number }> {
     const { jsPDF } = await import("jspdf");
     this.doc = new jsPDF({ unit: "in", format: "letter", orientation: "portrait" });
+    this.density = density;
     this.y = PAGE.marginTop;
     this.widthCache.clear();
     this.doc.setTextColor(0, 0, 0);
@@ -751,27 +864,30 @@ export class PDFResumeRenderer {
       if (failed) failedSections.push(failed);
     }
 
-    // Add page numbers for multi-page resumes
+    return {
+      doc: this.doc,
+      failedSections,
+      pageCount: this.doc.getNumberOfPages(),
+      lastPageContentHeight: this.y,
+    };
+  }
+
+  /** Adds "Name — Page i of N" footers when the resume spans multiple pages. */
+  private addPageFooters(name: string) {
     const totalPages = this.doc.getNumberOfPages();
-    if (totalPages > 1) {
-      for (let i = 1; i <= totalPages; i++) {
-        this.doc.setPage(i);
-        this.setFont(8, "normal");
-        this.doc.setTextColor(128, 128, 128);
-        this.doc.text(
-          `${data.header.name || "Resume"} — Page ${i} of ${totalPages}`,
-          PAGE.width / 2,
-          PAGE.height - 0.25,
-          { align: "center" },
-        );
-        this.doc.setTextColor(0, 0, 0);
-      }
+    if (totalPages <= 1) return;
+    for (let i = 1; i <= totalPages; i++) {
+      this.doc.setPage(i);
+      this.setFont(8, "normal");
+      this.doc.setTextColor(128, 128, 128);
+      this.doc.text(
+        `${name} — Page ${i} of ${totalPages}`,
+        PAGE.width / 2,
+        PAGE.height - 0.25,
+        { align: "center" },
+      );
+      this.doc.setTextColor(0, 0, 0);
     }
-
-    // Attach metadata about failed sections for caller to handle
-    (this.doc as any).__failedSections = failedSections;
-
-    return this.doc;
   }
 }
 
@@ -1100,7 +1216,7 @@ export function useResumeExport() {
         valid.forEach((exp) => {
           paragraphs.push(new Paragraph({ spacing: { before: 120 }, keepNext: exp.bullets.length > 0, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: exp.role || "Role", bold: true, size: 20, font: "Calibri" }), new TextRun({ text: `\t${exp.start_date || "Start"} - ${exp.end_date || "Present"}`, size: 19, font: "Calibri" })] }));
           paragraphs.push(new Paragraph({ keepNext: exp.bullets.length > 0, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: exp.company_or_client, italics: true, size: 20, font: "Calibri" }), exp.location ? new TextRun({ text: `\t${exp.location}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
-          exp.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
+          exp.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, keepLines: true, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
         });
         return paragraphs;
       };
@@ -1152,7 +1268,7 @@ export function useResumeExport() {
         valid.forEach((project) => {
           const projTitleChild = project.url ? new ExternalHyperlink({ link: project.url.startsWith("http") ? project.url : `https://${project.url}`, children: [new TextRun({ text: project.title, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: project.title, bold: true, size: 20, font: "Calibri" });
           paragraphs.push(new Paragraph({ spacing: { before: 100 }, keepNext: project.bullets.length > 0, tabStops: [{ type: "right" as any, position: 9360 }], children: [projTitleChild, (project.date || project.organization) ? new TextRun({ text: `\t${project.organization ? `${project.organization} - ` : ""}${project.date || ""}`, italics: true, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
-          project.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
+          project.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, keepLines: true, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
         });
         return paragraphs;
       };
@@ -1171,7 +1287,7 @@ export function useResumeExport() {
         valid.forEach((vol) => {
           paragraphs.push(new Paragraph({ spacing: { before: 100 }, keepNext: true, tabStops: [{ type: "right" as any, position: 9360 }], children: [new TextRun({ text: vol.role || "Volunteer", bold: true, size: 20, font: "Calibri" }), vol.date ? new TextRun({ text: `\t${vol.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
           paragraphs.push(new Paragraph({ keepNext: vol.bullets.length > 0, children: [new TextRun({ text: vol.organization, italics: true, size: 20, font: "Calibri" })] }));
-          vol.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
+          vol.bullets.forEach((bullet) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, keepLines: true, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
         });
         return paragraphs;
       };
@@ -1194,7 +1310,7 @@ export function useResumeExport() {
           const entryTitleChild = entry.url ? new ExternalHyperlink({ link: entry.url.startsWith("http") ? entry.url : `https://${entry.url}`, children: [new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri", color: "000000" })] }) : new TextRun({ text: entry.title, bold: true, size: 20, font: "Calibri" });
           paragraphs.push(new Paragraph({ spacing: { before: 100 }, keepNext: entry.bullets.length > 0 || Boolean(entry.subtitle), tabStops: [{ type: "right" as any, position: 9360 }], children: [entryTitleChild, entry.date ? new TextRun({ text: `\t${entry.date}`, size: 19, font: "Calibri" }) : new TextRun({ text: "" })] }));
           if (entry.subtitle) { paragraphs.push(new Paragraph({ keepNext: entry.bullets.length > 0, children: [new TextRun({ text: entry.subtitle, italics: true, size: 20, font: "Calibri" })] })); }
-          entry.bullets.forEach((bullet: string) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
+          entry.bullets.forEach((bullet: string) => { paragraphs.push(new Paragraph({ bullet: { level: 0 }, keepLines: true, spacing: { before: 30 }, children: [new TextRun({ text: bullet, size: 20, font: "Calibri" })] })); });
         });
         return paragraphs;
       };
