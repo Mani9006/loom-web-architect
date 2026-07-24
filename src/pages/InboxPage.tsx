@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,6 +46,19 @@ const labels: Record<string, string> = {
   irrelevant: "Other",
 };
 
+// Application-related classifications, mirroring the classifier in
+// supabase/functions/mc-gmail-poll/index.ts. Anything outside this set
+// ("irrelevant", null, or an unrecognized value) is hidden by default.
+const APPLICATION_CLASSIFICATIONS = [
+  "confirmation",
+  "interview_invite",
+  "take_home",
+  "reject",
+  "offer",
+  "other_recruiter",
+  "verification",
+] as const;
+
 export default function InboxPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -58,6 +72,9 @@ export default function InboxPage() {
   const [supportsReadState, setSupportsReadState] = useState(true);
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
   const [query, setQuery] = useState("");
+  const [applicationOnly, setApplicationOnly] = useState(true);
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const [jobLabels, setJobLabels] = useState<Record<string, { job_title: string | null; company: string | null }>>({});
   const [loadedAt, setLoadedAt] = useState(0);
   const [gmailConnected, setGmailConnected] = useState(false);
   const pollingRef = useRef(false);
@@ -102,20 +119,35 @@ export default function InboxPage() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const [enhancedMessagesResult, sessionResult] = await Promise.all([
-      (supabase as any).from("mc_inbound_emails")
-        .select("id,session_id,tracked_job_id,from_email,subject,body_preview,classification,classification_summary,next_action,verification_code,verification_code_expires_at,is_read,received_at")
-        .eq("user_id", user.id).order("received_at", { ascending: false }).limit(250),
+    const selectFields = "id,session_id,tracked_job_id,from_email,subject,body_preview,classification,classification_summary,next_action,verification_code,verification_code_expires_at,is_read,received_at";
+    let primaryQuery = (supabase as any).from("mc_inbound_emails")
+      .select(selectFields)
+      .eq("user_id", user.id);
+    // Display-layer filter only: polling/storage still ingest every email
+    // (the OTP flow depends on it); the inbox simply stops rendering
+    // non-application mail unless the user turns the toggle off.
+    if (applicationOnly) primaryQuery = primaryQuery.in("classification", [...APPLICATION_CLASSIFICATIONS]);
+    primaryQuery = primaryQuery.order("received_at", { ascending: false }).limit(250);
+    const [enhancedMessagesResult, sessionResult, hiddenResult] = await Promise.all([
+      primaryQuery,
       supabase.from("mc_sessions").select("id").eq("user_id", user.id).eq("status", "active")
         .order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+      applicationOnly
+        ? (supabase as any).from("mc_inbound_emails").select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .or(`classification.is.null,classification.not.in.(${APPLICATION_CLASSIFICATIONS.join(",")})`)
+        : Promise.resolve(null),
     ]);
+    setHiddenCount(applicationOnly ? (hiddenResult?.count ?? 0) : 0);
     let messageRows = enhancedMessagesResult.data as InboxMessage[] | null;
     if (enhancedMessagesResult.error) {
       // During a staged rollout, older environments may not have code/read
       // metadata yet. Keep the inbox useful with the stable message fields.
-      const fallback = await (supabase as any).from("mc_inbound_emails")
+      let fallbackQuery = (supabase as any).from("mc_inbound_emails")
         .select("id,session_id,tracked_job_id,from_email,subject,body_preview,classification,classification_summary,next_action,received_at")
-        .eq("user_id", user.id).order("received_at", { ascending: false }).limit(250);
+        .eq("user_id", user.id);
+      if (applicationOnly) fallbackQuery = fallbackQuery.in("classification", [...APPLICATION_CLASSIFICATIONS]);
+      const fallback = await fallbackQuery.order("received_at", { ascending: false }).limit(250);
       if (fallback.error) throw fallback.error;
       setSupportsReadState(false);
       messageRows = (fallback.data || []).map((row: Record<string, unknown>) => ({
@@ -124,6 +156,15 @@ export default function InboxPage() {
     } else setSupportsReadState(true);
     setMessages(messageRows || []);
     setLoadedAt(Date.now());
+    // Resolve tracked-job labels so linked mail can be prioritized with the
+    // job title/company shown instead of a bare "Open application" button.
+    const trackedIds = Array.from(new Set((messageRows || [])
+      .map((row) => row.tracked_job_id)
+      .filter((id): id is string => Boolean(id))));
+    if (trackedIds.length > 0) {
+      const { data: jobRows } = await supabase.from("mc_tracked_jobs").select("id,job_title,company").in("id", trackedIds);
+      setJobLabels(Object.fromEntries((jobRows || []).map((job) => [job.id, { job_title: job.job_title, company: job.company }])));
+    } else setJobLabels({});
     let activeSessionId = sessionResult.data?.id || null;
     if (!activeSessionId && !sessionResult.error && !automaticWorkspaceAttempt.current) {
       automaticWorkspaceAttempt.current = true;
@@ -136,7 +177,7 @@ export default function InboxPage() {
       setCreating(false);
     }
     setSessionId(activeSessionId);
-  }, [user]);
+  }, [user, applicationOnly]);
 
   useEffect(() => {
     void load().catch((error) => {
@@ -166,12 +207,20 @@ export default function InboxPage() {
   const unread = useMemo(() => messages.filter((message) => !message.is_read).length, [messages]);
   const visible = useMemo(() => {
     const term = query.trim().toLowerCase();
-    return messages.filter((message) => {
+    const filtered = messages.filter((message) => {
       const matchesFilter = filter === "all"
         || (filter === "verification" && Boolean(message.verification_code))
         || message.classification === filter;
       const haystack = `${message.subject || ""} ${message.from_email} ${message.classification_summary || ""} ${message.body_preview || ""}`.toLowerCase();
       return matchesFilter && (!term || haystack.includes(term));
+    });
+    // Mail linked to a tracked job surfaces first; the rest follows, newest
+    // first inside each group.
+    return filtered.sort((a, b) => {
+      const linkedA = a.tracked_job_id ? 0 : 1;
+      const linkedB = b.tracked_job_id ? 0 : 1;
+      if (linkedA !== linkedB) return linkedA - linkedB;
+      return new Date(b.received_at).getTime() - new Date(a.received_at).getTime();
     });
   }, [filter, messages, query]);
 
@@ -242,8 +291,15 @@ export default function InboxPage() {
 
       <section className="mt-6 border border-rp-rule bg-rp-canvas">
         <div className="flex flex-col gap-4 border-b border-rp-rule p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-1.5">
-            {filters.map((value) => <button key={value} onClick={() => setFilter(value)} className={`rounded-full px-3 py-1.5 text-xs transition-colors ${filter === value ? "bg-rp-ink text-rp-canvas" : "bg-rp-paper text-rp-ink-2 hover:text-rp-ink"}`}>{labels[value]}</button>)}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-1.5">
+              {filters.map((value) => <button key={value} onClick={() => setFilter(value)} className={`rounded-full px-3 py-1.5 text-xs transition-colors ${filter === value ? "bg-rp-ink text-rp-canvas" : "bg-rp-paper text-rp-ink-2 hover:text-rp-ink"}`}>{labels[value]}</button>)}
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch id="application-only" checked={applicationOnly} onCheckedChange={setApplicationOnly} />
+              <label htmlFor="application-only" className="cursor-pointer text-xs text-rp-ink-2">Application mail only</label>
+              {applicationOnly && hiddenCount > 0 && <span className="text-xs text-muted-foreground">({hiddenCount} unrelated hidden)</span>}
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <div className="relative"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search messages" className="h-9 w-56 pl-9" /></div>
@@ -253,12 +309,12 @@ export default function InboxPage() {
         </div>
 
         {loading ? <div className="space-y-3 p-4">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-28" />)}</div> : visible.length === 0 ? (
-          <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><Inbox className="h-9 w-9 text-rp-ink-3" /><p className="mt-3 text-sm font-semibold">No matching application messages</p><p className="mt-1 max-w-md text-xs text-rp-ink-2">Connect Gmail and check your inbox. Only messages related to applications are shown here.</p></div>
+          <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><Inbox className="h-9 w-9 text-rp-ink-3" /><p className="mt-3 text-sm font-semibold">{applicationOnly ? "No application messages yet" : "No matching messages"}</p><p className="mt-1 max-w-md text-xs text-rp-ink-2">{applicationOnly ? "Only emails about your applications appear here — OTPs, confirmations, interview invites, assessments, decisions." : "Nothing matches the current filters. Try a different search or filter."}</p></div>
         ) : <div className="divide-y divide-rp-rule">{visible.map((message) => {
           const codeActive = Boolean(message.verification_code && (!message.verification_code_expires_at || new Date(message.verification_code_expires_at).getTime() > loadedAt));
           return <article key={message.id} className={`grid gap-3 p-4 sm:grid-cols-[28px_minmax(0,1fr)_auto] ${message.is_read ? "" : "bg-primary/[0.035]"}`}>
             <button disabled={!supportsReadState} className="mt-0.5 h-7 w-7 rounded-full text-muted-foreground hover:bg-muted disabled:opacity-40" onClick={() => markRead(message.id, !message.is_read)} aria-label={message.is_read ? "Mark unread" : "Mark read"}>{message.is_read ? <MailOpen className="mx-auto h-4 w-4" /> : <Check className="mx-auto h-4 w-4" />}</button>
-            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{message.subject || "Application update"}</p>{message.classification && <Badge variant="secondary">{labels[message.classification] || "Update"}</Badge>}</div><p className="mt-0.5 truncate text-xs text-muted-foreground">{message.from_email}</p>{message.classification_summary && <p className="mt-2 text-sm">{message.classification_summary}</p>}{message.body_preview && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}{message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}{codeActive && <div className="mt-3 inline-flex items-center gap-3 border border-primary/20 bg-primary/5 px-3 py-2"><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Verification code</p><p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p></div><Button variant="outline" size="sm" onClick={async () => { try { await navigator.clipboard.writeText(message.verification_code!); toast({ title: "Verification code copied" }); } catch { toast({ title: "Couldn't copy the code", description: "Select and copy it manually.", variant: "destructive" }); } }}><Clipboard className="mr-1.5 h-3.5 w-3.5" />Copy</Button></div>}</div>
+            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{message.subject || "Application update"}</p>{message.classification && <Badge variant="secondary">{labels[message.classification] || "Update"}</Badge>}{message.tracked_job_id && <Badge variant="outline">{(() => { const job = jobLabels[message.tracked_job_id]; const label = job ? [job.job_title, job.company].filter(Boolean).join(" · ") : ""; return label || "Tracked application"; })()}</Badge>}</div><p className="mt-0.5 truncate text-xs text-muted-foreground">{message.from_email}</p>{message.classification_summary && <p className="mt-2 text-sm">{message.classification_summary}</p>}{message.body_preview && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}{message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}{codeActive && <div className="mt-3 inline-flex items-center gap-3 border border-primary/20 bg-primary/5 px-3 py-2"><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Verification code</p><p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p></div><Button variant="outline" size="sm" onClick={async () => { try { await navigator.clipboard.writeText(message.verification_code!); toast({ title: "Verification code copied" }); } catch { toast({ title: "Couldn't copy the code", description: "Select and copy it manually.", variant: "destructive" }); } }}><Clipboard className="mr-1.5 h-3.5 w-3.5" />Copy</Button></div>}</div>
             <div className="flex flex-col items-end gap-2"><time className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(message.received_at), { addSuffix: true })}</time>{message.tracked_job_id && <Button variant="ghost" size="sm" onClick={() => navigate("/job-tracker")}>Open application</Button>}</div>
           </article>;
         })}</div>}
