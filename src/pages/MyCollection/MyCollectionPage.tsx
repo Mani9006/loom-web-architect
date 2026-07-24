@@ -46,6 +46,7 @@ export default function MyCollectionPage() {
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
+      .neq("status", "deleted")
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
@@ -125,8 +126,8 @@ export default function MyCollectionPage() {
   }
 
   async function deleteSession(id: string) {
-    if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
-    const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
+    if (!confirm("Delete this session? It disappears from your list along with its board, resumes, and history.")) return;
+    const { error } = await (supabase as any).from("mc_sessions").update({ status: "deleted" }).eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {

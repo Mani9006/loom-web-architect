@@ -145,8 +145,11 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
     setSaving(false);
     if (error || !data) {
       toast({
-        title: "Couldn't save",
-        description: error?.message ?? "Unknown error",
+        title: error?.code === "23505" ? "Already on your board" : "Couldn't save",
+        description:
+          error?.code === "23505"
+            ? "A job with this apply link is already tracked in this session."
+            : error?.message ?? "Unknown error",
         variant: "destructive",
       });
       return;

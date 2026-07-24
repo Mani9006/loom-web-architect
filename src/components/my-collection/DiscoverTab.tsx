@@ -500,6 +500,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       status: "saved",
     });
     if (error) {
+      if (error.code === "23505") {
+        setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+        toast({ title: "Already on your board", description: `${job.company} · ${job.title}` });
+        return;
+      }
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
