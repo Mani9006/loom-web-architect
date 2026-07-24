@@ -62,13 +62,17 @@ jobs:
             SUPABASE_DB_PASSWORD="$DB_PASSWORD_STAGING"
           fi
           export SUPABASE_DB_PASSWORD
-          if [ -z "$REF" ] || [ -z "$SUPABASE_DB_PASSWORD" ]; then
-            echo "::error::Missing Supabase project ref or database password for $ENV_NAME."
+          if [ -z "$REF" ]; then
+            echo "::error::Missing Supabase project ref for $ENV_NAME."
             exit 1
           fi
-          echo "Applying migrations to $ENV_NAME"
           supabase link --project-ref "$REF"
-          supabase db push --linked
+          if [ -n "$SUPABASE_DB_PASSWORD" ]; then
+            echo "Applying migrations to $ENV_NAME"
+            supabase db push --linked
+          else
+            echo "::notice::No DB password for $ENV_NAME — skipping db push (migrations are managed separately); deploying functions only."
+          fi
           echo "Deploying functions to $ENV_NAME"
           for fn in supabase/functions/*/; do
             name=$(basename "$fn")
