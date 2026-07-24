@@ -2,6 +2,12 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAuthedUserOrService, HttpError, jsonResponse, serviceClient } from "../_shared/guards.ts";
+import {
+  ATS_PDF_SPEC,
+  blocksFromResumeLines,
+  type LayoutBlock,
+  paginateWithAutoFit,
+} from "../_shared/resume-pdf-layout.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -76,44 +82,79 @@ function wrap(value: string, font: any, size: number, width: number): string[] {
   return lines.length ? lines : [""];
 }
 
+const BODY_COLOR = rgb(0.12, 0.12, 0.12);
+const HEADING_COLOR = rgb(0.12, 0.18, 0.25);
+const RULE_COLOR = rgb(0.72, 0.75, 0.78);
+const FOOTER_COLOR = rgb(0.5, 0.5, 0.5);
+
+/**
+ * Renders the resume with the shared pagination engine:
+ * entries never split across pages, section headings stay with their first
+ * item, bullets never split mid-line, and small (≤8%) one-page overflows
+ * auto-tighten line-height/spacing instead of stranding a line on page 2.
+ *
+ * ATS-guideline format: single column, Helvetica (standard sans), 10.5pt
+ * body / 14pt name, 0.75in margins, real selectable text, no tables,
+ * text-boxes, or graphics.
+ */
 async function renderPdf(lines: string[]): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const pageSize: [number, number] = [612, 792];
-  const margin = 54;
-  const width = pageSize[0] - margin * 2;
-  const bodySize = 9.5;
-  const lineHeight = 13;
-  let page = pdf.addPage(pageSize);
-  let y = pageSize[1] - margin;
-  let index = 0;
-  let first = true;
+  const spec = ATS_PDF_SPEC;
+  const pageSize: [number, number] = [spec.pageWidthPt, spec.pageHeightPt];
+  const margin = spec.marginPt;
+  const width = spec.pageWidthPt - margin * 2;
+  const lineHeight = (size: number) => size * spec.lineHeightScale;
 
-  const newPage = () => { page = pdf.addPage(pageSize); y = pageSize[1] - margin; first = false; };
-  const ensure = (height: number) => { if (y - height < margin) newPage(); };
+  const blocks = blocksFromResumeLines(lines, {
+    wrap: (value, size, style, indent = 0) => wrap(value, style === "bold" ? bold : regular, size, width - indent),
+  });
+  const layout = paginateWithAutoFit(blocks, {
+    usableHeight: spec.pageHeightPt - margin * 2,
+    lineHeight,
+  });
+  const density = layout.density;
 
-  for (const raw of lines) {
-    const line = raw.replace(/^#{1,6}\s*/, "").replace(/\*\*/g, "").replace(/__/g, "").replace(/\s+$/, "");
-    if (!line) { y -= 6; continue; }
-    const isHeading = /^(SUMMARY|EXPERIENCE|EDUCATION|SKILLS|PROJECTS|CERTIFICATIONS|LANGUAGES|PROFILE)$/i.test(line);
-    const isName = first && index === 0;
-    const font = isName || isHeading ? bold : regular;
-    const size = isName ? 16 : isHeading ? 10.5 : bodySize;
-    const color = isHeading ? rgb(0.12, 0.18, 0.25) : rgb(0.12, 0.12, 0.12);
-    const gap = isHeading ? 5 : 0;
-    const rows = wrap(line, font, size, width);
-    ensure(rows.length * lineHeight + gap + 2);
-    if (isHeading && y < pageSize[1] - margin - 20) {
-      page.drawLine({ start: { x: margin, y: y + 3 }, end: { x: pageSize[0] - margin, y: y + 3 }, thickness: 0.6, color: rgb(0.72, 0.75, 0.78) });
+  const drawBlock = (page: any, block: LayoutBlock, yStart: number): number => {
+    let y = yStart - block.gapBefore * density;
+    if (block.kind === "heading" && y < pageSize[1] - margin - 20) {
+      page.drawLine({
+        start: { x: margin, y: y + 3 },
+        end: { x: pageSize[0] - margin, y: y + 3 },
+        thickness: 0.6,
+        color: RULE_COLOR,
+      });
     }
-    for (const row of rows) {
-      page.drawText(row, { x: margin, y, size, font, color });
-      y -= lineHeight;
+    for (const line of block.lines) {
+      y -= lineHeight(line.size) * density;
+      page.drawText(line.text, {
+        x: margin + (line.indent ?? 0),
+        y,
+        size: line.size,
+        font: line.style === "bold" ? bold : regular,
+        color: block.kind === "heading" ? HEADING_COLOR : BODY_COLOR,
+      });
     }
-    y -= gap;
-    index += 1;
-  }
+    return y;
+  };
+
+  const name = lines.map((line) => line.replace(/^#{1,6}\s*/, "").trim()).find(Boolean) || "Resume";
+  layout.pages.forEach((pageBlocks, pageIndex) => {
+    const page = pdf.addPage(pageSize);
+    let y = pageSize[1] - margin;
+    for (const block of pageBlocks) y = drawBlock(page, block, y);
+    if (layout.pages.length > 1) {
+      page.drawText(`${name} — Page ${pageIndex + 1} of ${layout.pages.length}`, {
+        x: pageSize[0] / 2 - regular.widthOfTextAtSize(`${name} — Page ${pageIndex + 1} of ${layout.pages.length}`, 8) / 2,
+        y: 18,
+        size: 8,
+        font: regular,
+        color: FOOTER_COLOR,
+      });
+    }
+  });
+
   return pdf.save();
 }
 

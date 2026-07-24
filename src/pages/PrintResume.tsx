@@ -61,6 +61,10 @@ export default function PrintResume() {
             page-break-after: avoid;
             break-after: avoid;
           }
+          p, li, span, div {
+            orphans: 2;
+            widows: 2;
+          }
         }
         @media screen {
           .print-container {
