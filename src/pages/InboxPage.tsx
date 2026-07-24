@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { emailClassificationLabels as labels, formatLinkedJobLabel, type TrackedJobLinkRow } from "@/lib/email-links";
 import { toUserFacingError } from "@/lib/user-facing-error";
 
 interface InboxMessage {
@@ -33,17 +34,6 @@ interface InboxMessage {
 }
 
 const filters = ["all", "verification", "confirmation", "interview_invite", "take_home", "offer", "reject"] as const;
-const labels: Record<string, string> = {
-  all: "All",
-  verification: "Codes",
-  confirmation: "Applied",
-  interview_invite: "Interview",
-  take_home: "Assessment",
-  offer: "Offer",
-  reject: "Not selected",
-  other_recruiter: "Recruiter update",
-  irrelevant: "Other",
-};
 
 export default function InboxPage() {
   const { user } = useAuth();
@@ -51,6 +41,7 @@ export default function InboxPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<InboxMessage[]>([]);
+  const [trackedJobs, setTrackedJobs] = useState<Record<string, TrackedJobLinkRow>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -124,6 +115,14 @@ export default function InboxPage() {
     } else setSupportsReadState(true);
     setMessages(messageRows || []);
     setLoadedAt(Date.now());
+    // Resolve "linked to" labels for rows that reference a tracked job.
+    const trackedJobIds = [...new Set((messageRows || []).map((row) => row.tracked_job_id).filter((id): id is string => Boolean(id)))];
+    if (trackedJobIds.length) {
+      const { data: jobRows } = await supabase.from("mc_tracked_jobs")
+        .select("id,session_id,scanned_job_id,apply_url,job_title,company")
+        .eq("user_id", user.id).in("id", trackedJobIds);
+      setTrackedJobs(Object.fromEntries(((jobRows || []) as TrackedJobLinkRow[]).map((job) => [job.id, job])));
+    } else setTrackedJobs({});
     let activeSessionId = sessionResult.data?.id || null;
     if (!activeSessionId && !sessionResult.error && !automaticWorkspaceAttempt.current) {
       automaticWorkspaceAttempt.current = true;
@@ -256,10 +255,12 @@ export default function InboxPage() {
           <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><Inbox className="h-9 w-9 text-rp-ink-3" /><p className="mt-3 text-sm font-semibold">No matching application messages</p><p className="mt-1 max-w-md text-xs text-rp-ink-2">Connect Gmail and check your inbox. Only messages related to applications are shown here.</p></div>
         ) : <div className="divide-y divide-rp-rule">{visible.map((message) => {
           const codeActive = Boolean(message.verification_code && (!message.verification_code_expires_at || new Date(message.verification_code_expires_at).getTime() > loadedAt));
-          return <article key={message.id} className={`grid gap-3 p-4 sm:grid-cols-[28px_minmax(0,1fr)_auto] ${message.is_read ? "" : "bg-primary/[0.035]"}`}>
-            <button disabled={!supportsReadState} className="mt-0.5 h-7 w-7 rounded-full text-muted-foreground hover:bg-muted disabled:opacity-40" onClick={() => markRead(message.id, !message.is_read)} aria-label={message.is_read ? "Mark unread" : "Mark read"}>{message.is_read ? <MailOpen className="mx-auto h-4 w-4" /> : <Check className="mx-auto h-4 w-4" />}</button>
-            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{message.subject || "Application update"}</p>{message.classification && <Badge variant="secondary">{labels[message.classification] || "Update"}</Badge>}</div><p className="mt-0.5 truncate text-xs text-muted-foreground">{message.from_email}</p>{message.classification_summary && <p className="mt-2 text-sm">{message.classification_summary}</p>}{message.body_preview && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}{message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}{codeActive && <div className="mt-3 inline-flex items-center gap-3 border border-primary/20 bg-primary/5 px-3 py-2"><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Verification code</p><p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p></div><Button variant="outline" size="sm" onClick={async () => { try { await navigator.clipboard.writeText(message.verification_code!); toast({ title: "Verification code copied" }); } catch { toast({ title: "Couldn't copy the code", description: "Select and copy it manually.", variant: "destructive" }); } }}><Clipboard className="mr-1.5 h-3.5 w-3.5" />Copy</Button></div>}</div>
-            <div className="flex flex-col items-end gap-2"><time className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(message.received_at), { addSuffix: true })}</time>{message.tracked_job_id && <Button variant="ghost" size="sm" onClick={() => navigate("/job-tracker")}>Open application</Button>}</div>
+          const linkedLabel = message.tracked_job_id ? formatLinkedJobLabel(trackedJobs[message.tracked_job_id]) : null;
+          const openMessage = () => navigate(`/inbox/${message.id}`);
+          return <article key={message.id} role="link" tabIndex={0} aria-label={`Open message: ${message.subject || "Application update"}`} onClick={openMessage} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openMessage(); } }} className={`grid cursor-pointer gap-3 p-4 transition-colors hover:bg-muted/40 sm:grid-cols-[28px_minmax(0,1fr)_auto] ${message.is_read ? "" : "bg-primary/[0.035]"}`}>
+            <button disabled={!supportsReadState} className="mt-0.5 h-7 w-7 rounded-full text-muted-foreground hover:bg-muted disabled:opacity-40" onClick={(event) => { event.stopPropagation(); markRead(message.id, !message.is_read); }} aria-label={message.is_read ? "Mark unread" : "Mark read"}>{message.is_read ? <MailOpen className="mx-auto h-4 w-4" /> : <Check className="mx-auto h-4 w-4" />}</button>
+            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{message.subject || "Application update"}</p>{message.classification && <Badge variant="secondary">{labels[message.classification] || "Update"}</Badge>}</div><p className="mt-0.5 truncate text-xs text-muted-foreground">{message.from_email}</p>{linkedLabel && <p className="mt-0.5 truncate text-xs font-medium text-rp-ink-2">Linked to: {linkedLabel}</p>}{message.classification_summary && <p className="mt-2 text-sm">{message.classification_summary}</p>}{message.body_preview && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}{message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}{codeActive && <div className="mt-3 inline-flex items-center gap-3 border border-primary/20 bg-primary/5 px-3 py-2" onClick={(event) => event.stopPropagation()}><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Verification code</p><p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p></div><Button variant="outline" size="sm" onClick={async () => { try { await navigator.clipboard.writeText(message.verification_code!); toast({ title: "Verification code copied" }); } catch { toast({ title: "Couldn't copy the code", description: "Select and copy it manually.", variant: "destructive" }); } }}><Clipboard className="mr-1.5 h-3.5 w-3.5" />Copy</Button></div>}</div>
+            <div className="flex flex-col items-end gap-2"><time className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(message.received_at), { addSuffix: true })}</time></div>
           </article>;
         })}</div>}
       </section>
