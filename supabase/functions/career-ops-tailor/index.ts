@@ -8,7 +8,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { truncate } from "../_shared/ai.ts";
-import { callLlmWithFallback } from "../_shared/llm.ts";
+import { chatFree } from "../_shared/llm.ts";
 import { resumeToPlainText, scoreResumeDeterministic } from "../_shared/ats-deterministic.ts";
 import { criticFeedbackToPrompt, runTailorCritic } from "../_shared/tailor-critic.ts";
 import {
@@ -461,15 +461,17 @@ serve(async (req) => {
     // deterministic sanitizer pipeline again (identity re-pin, skill
     // intersection, answer guards) so hard honesty rules always hold.
     for (let iteration = 0; ; iteration++) {
-      const result = await callLlmWithFallback<TailorPayload>({
-        tier: "standard",
-        system: SYSTEM_PROMPT,
-        cachedContext: `Candidate base résumé:\n\n${baseResumeText}`,
-        user: userPrompt,
-        maxTokens: 3500,
-        temperature: 0.3,
-        parseJson: true,
-      });
+      const result = await chatFree<TailorPayload>(
+        "standard",
+        [
+          {
+            role: "system",
+            content: `${SYSTEM_PROMPT}\n\n---\n\nCandidate base résumé:\n\n${baseResumeText}`,
+          },
+          { role: "user", content: userPrompt },
+        ],
+        { maxTokens: 3500, temperature: 0.3, parseJson: true },
+      );
       tokensIn += result.tokens_in;
       tokensOut += result.tokens_out;
       payload = result.text;

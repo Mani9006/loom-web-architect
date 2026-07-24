@@ -14,7 +14,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { truncate } from "../_shared/ai.ts";
-import { callLlmWithFallback } from "../_shared/llm.ts";
+import { chatFree } from "../_shared/llm.ts";
 import {
   collectImpactBullets, computeImpactScore, extractEntryBullets, IMPACT_FULL_CREDIT_RATIO,
 } from "../_shared/ats-impact.ts";
@@ -251,14 +251,14 @@ serve(async (req) => {
         kp = cached.keywords;
         model = `cache:${cached.model || "unknown"}`;
       } else {
-        const result = await callLlmWithFallback<KeywordPayload>({
-          tier: "cheap",
-          system: KW_SYSTEM,
-          user: `Job description:\n${truncate(jdText, 10_000)}`,
-          maxTokens: 600,
-          parseJson: true,
-          temperature: 0.1,
-        });
+        const result = await chatFree<KeywordPayload>(
+          "lite",
+          [
+            { role: "system", content: KW_SYSTEM },
+            { role: "user", content: `Job description:\n${truncate(jdText, 10_000)}` },
+          ],
+          { maxTokens: 600, parseJson: true, temperature: 0.1 },
+        );
         kp = result.text;
         model = result.model;
         tokens_in = result.tokens_in;

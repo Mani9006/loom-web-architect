@@ -10,7 +10,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { truncate } from "../_shared/ai.ts";
-import { callLlmWithFallback } from "../_shared/llm.ts";
+import { chatFree } from "../_shared/llm.ts";
 import {
   buildCandidateCareerProfile,
   evaluateCareerFit,
@@ -166,21 +166,27 @@ serve(async (req) => {
       ...fit.dimensions.flatMap((dimension) => dimension.gaps),
     ]).slice(0, 12);
 
-    const result = await callLlmWithFallback<EvaluationNarrative>({
-      tier: "cheap",
-      system: SYSTEM_PROMPT,
-      cachedContext: `Candidate resume:\n\n${resumeText}`,
-      user:
-        `Authoritative decision: ${fit.eligible ? "AUTOPILOT_READY" : "REVIEW_REQUIRED"}\n` +
-        `Score: ${fit.score}/100\nTier: ${tier}\nConfidence: ${Math.round(fit.confidence * 100)}%\n` +
-        `Hard filters: ${fit.hardFilters.length ? fit.hardFilters.join(" | ") : "none"}\n\n` +
-        `Dimension evidence:\n${dimensionDigest(fit.dimensions)}\n\n` +
-        `Company: ${companyName}\nTitle: ${job.title}\nLocation: ${job.location ?? "n/a"}\n` +
-        `Compensation: ${job.compensation_text ?? "not disclosed"}\n\n` +
-        `Job description:\n${truncate(job.description_md ?? "", MAX_DESC)}`,
-      maxTokens: 1400,
-      parseJson: true,
-    });
+    const result = await chatFree<EvaluationNarrative>(
+      "lite",
+      [
+        {
+          role: "system",
+          content: `${SYSTEM_PROMPT}\n\n---\n\nCandidate resume:\n\n${resumeText}`,
+        },
+        {
+          role: "user",
+          content:
+            `Authoritative decision: ${fit.eligible ? "AUTOPILOT_READY" : "REVIEW_REQUIRED"}\n` +
+            `Score: ${fit.score}/100\nTier: ${tier}\nConfidence: ${Math.round(fit.confidence * 100)}%\n` +
+            `Hard filters: ${fit.hardFilters.length ? fit.hardFilters.join(" | ") : "none"}\n\n` +
+            `Dimension evidence:\n${dimensionDigest(fit.dimensions)}\n\n` +
+            `Company: ${companyName}\nTitle: ${job.title}\nLocation: ${job.location ?? "n/a"}\n` +
+            `Compensation: ${job.compensation_text ?? "not disclosed"}\n\n` +
+            `Job description:\n${truncate(job.description_md ?? "", MAX_DESC)}`,
+        },
+      ],
+      { maxTokens: 1400, parseJson: true },
+    );
 
     const payload = result.text;
     const row = {

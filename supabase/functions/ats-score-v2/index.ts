@@ -32,7 +32,7 @@ import {
   enforceAccountActive,
   enforceDailyCap,
 } from "../_shared/guards.ts";
-import { callLlm } from "../_shared/llm.ts";
+import { chatFree } from "../_shared/llm.ts";
 import { jdHash, readJdKeywordCache, writeJdKeywordCache } from "../_shared/jd-cache.ts";
 
 interface RequestBody {
@@ -310,15 +310,19 @@ Return ONLY a JSON object: { "required": ["Python", "PyTorch", "5+ years ML expe
     required = cached.keywords.required.filter((x): x is string => typeof x === "string");
     model = `cache:${cached.model || "unknown"}`;
   } else {
-    const r = await callLlm<{ required: string[] }>({
-      tier: "cheap",
-      system,
-      user: jd,
-      maxTokens: 600,
-      temperature: 0,
-      parseJson: true,
-      usage: { svc, userId, kind: "ats" },
-    });
+    const r = await chatFree<{ required: string[] }>(
+      "lite",
+      [
+        { role: "system", content: system },
+        { role: "user", content: jd },
+      ],
+      {
+        maxTokens: 600,
+        temperature: 0,
+        parseJson: true,
+        usage: { svc, userId, kind: "ats" },
+      },
+    );
     required = Array.isArray(r.text?.required) ? r.text.required.filter((x) => typeof x === "string") : [];
     tokens_in = r.tokens_in;
     tokens_out = r.tokens_out;
