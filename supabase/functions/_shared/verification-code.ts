@@ -27,6 +27,7 @@ export const APPLICATION_SENDER_DOMAINS = [
   "myworkdayjobs.com",
   "smartrecruiters.com",
   "workable.com",
+  "workablemail.com",
 ] as const;
 
 const CODE_CONTEXT = /verification code|security code|confirm your email|one[- ]?time (?:code|passcode|password)|authentication code|code\s*(?:is|:|-)/i;

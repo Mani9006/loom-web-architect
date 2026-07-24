@@ -479,7 +479,13 @@ export const ashbyAdapter = defineAdapter({
         const rect = element.getBoundingClientRect();
         const disabled = element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true";
         if (accepted.test(label) && rect.width > 0 && rect.height > 0 && !disabled) {
-          return { index, label: label || "submit application" };
+          const form = element.form || element.closest("form");
+          return {
+            index,
+            label: label || "submit application",
+            formAction: element.formAction || form?.action || null,
+            formMethod: (element.formMethod || form?.method || "post").toUpperCase(),
+          };
         }
       }
       return null;
@@ -507,8 +513,14 @@ export const ashbyAdapter = defineAdapter({
       const bodyText = document.body?.innerText || "";
       const text = bodyText.slice(0, 8000);
       const idMatch = text.match(/application (?:id|#)\s*[:#]?\s*([A-Za-z0-9-]{4,})/i);
+      const confirmationRect = confirmationNode?.getBoundingClientRect();
       return {
-        hasConfirmationContainer: Boolean(confirmationNode),
+        hasConfirmationContainer: Boolean(
+          confirmationNode
+          && confirmationRect
+          && confirmationRect.width > 0
+          && confirmationRect.height > 0
+        ),
         containerText: confirmationNode ? (confirmationNode.textContent || "").replace(/\s+/g, " ").trim().slice(0, 300) : null,
         text: text.toLowerCase(),
         applicationId: idMatch ? idMatch[1] : null,
@@ -525,8 +537,7 @@ export const ashbyAdapter = defineAdapter({
           .slice(0, 5),
       };
     });
-    const textConfirmed = /(application (?:has been )?submitted|application (?:has been )?received|thank you for applying|thanks for applying)/i.test(state.text);
-    const confirmed = onSubmittedPage || state.hasConfirmationContainer || textConfirmed;
+    const confirmed = onSubmittedPage || state.hasConfirmationContainer || Boolean(state.applicationId);
     return {
       confirmed,
       evidence: {
@@ -536,9 +547,7 @@ export const ashbyAdapter = defineAdapter({
           ? "ashby-submitted-url"
           : state.hasConfirmationContainer
             ? "ashby-confirmation-container"
-            : textConfirmed
-              ? "confirmation-text"
-              : null,
+            : null,
         containerText: state.containerText,
         applicationId: state.applicationId,
         invalidFields: state.invalidFields,

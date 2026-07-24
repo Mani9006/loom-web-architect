@@ -11,10 +11,14 @@ on:
   workflow_dispatch:
     inputs:
       auto_submit:
-        description: "Submit prepared applications (false = dry-run: fill, review, receipts only)"
-        required: false
-        default: true
+        description: "Submit approved production applications (scheduled runs always remain dry-run)"
+        required: true
+        default: false
         type: boolean
+      confirm_production:
+        description: "Type RUN_PRODUCTION_WORKER_FROM_MAIN"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -33,13 +37,31 @@ jobs:
       SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
       APPLYPASS_WORKER_TOKEN: ${{ secrets.PROD_APPLYPASS_WORKER_TOKEN }}
-      APPLYPASS_WORKER_ID: github-prod-worker-${{ github.run_id }}
+      APPLYPASS_WORKER_ID: github-prod-worker-${{ github.run_id }}-${{ github.run_attempt }}
       APPLYPASS_WORKER_CONCURRENCY: "1"
-      # Scheduled runs submit; manual dispatch can force a dry-run.
-      APPLYPASS_AUTO_SUBMIT: ${{ github.event.inputs.auto_submit == false && 'false' || 'true' }}
-      APPLYPASS_SCREENSHOT_DIR: /tmp/applypass-screenshots
-      WORKER_LOG: /tmp/applypass-worker.log
+      # A schedule must never opt itself into employer submission. A human can
+      # request submit only by dispatching main with the exact confirmation.
+      APPLYPASS_AUTO_SUBMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.auto_submit == true && 'true' || 'false' }}
+      APPLYPASS_RUNTIME_ENV: production
+      WORKER_ARTIFACT_DIR: /tmp/applypass-prod-worker-artifacts
+      WORKER_LOG: /tmp/applypass-prod-worker-artifacts/worker.log
+      PRODUCTION_CONFIRMATION: ${{ inputs.confirm_production }}
     steps:
+      - name: Validate production boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [ "$GITHUB_REF" = "refs/heads/main" ] || {
+            echo "::error::Production worker is restricted to refs/heads/main."
+            exit 1
+          }
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            [ "$PRODUCTION_CONFIRMATION" = "RUN_PRODUCTION_WORKER_FROM_MAIN" ] || {
+              echo "::error::Production worker confirmation phrase did not match."
+              exit 1
+            }
+          fi
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -48,27 +70,52 @@ jobs:
           cache: npm
 
       - name: Install worker dependencies
-        run: npm ci --include=dev
+        run: npm ci --omit=dev --ignore-scripts
 
-      - name: Install Chromium
+      - name: Install matching Patchright Chromium
         # The worker drives patchright (stealth Playwright build); its CLI
         # installs the matching patched Chromium revision.
-        run: npx patchright install --with-deps chromium
+        run: npx --no-install patchright install --with-deps chromium
 
       - name: Run continuous apply worker
+        shell: bash
         run: |
-          test -n "$SUPABASE_URL"
-          test -n "$SUPABASE_ANON_KEY"
-          test -n "$APPLYPASS_WORKER_TOKEN"
-          npm run applypass:worker -- --max-tasks=10 2>&1 | tee "$WORKER_LOG"
+          set -Eeuo pipefail
 
-      - name: Upload run logs and screenshots
-        if: failure()
+          mkdir -p "$WORKER_ARTIFACT_DIR"
+          : > "$WORKER_LOG"
+          printf 'worker_exit_status=not_started\n' > "$WORKER_ARTIFACT_DIR/run-status.txt"
+
+          test -n "${SUPABASE_URL:-}"
+          test -n "${SUPABASE_ANON_KEY:-}"
+          test -n "${APPLYPASS_WORKER_TOKEN:-}"
+          [[ "$APPLYPASS_AUTO_SUBMIT" =~ ^(true|false)$ ]]
+
+          worker_status=0
+          npm run applypass:worker -- --max-tasks=10 \
+            2>&1 | tee "$WORKER_LOG" || worker_status=$?
+
+          {
+            printf 'worker_exit_status=%s\n' "$worker_status"
+            printf 'auto_submit=%s\n' "$APPLYPASS_AUTO_SUBMIT"
+            printf 'max_tasks=10\n'
+            printf 'event_name=%s\n' "$GITHUB_EVENT_NAME"
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'run_attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+          } > "$WORKER_ARTIFACT_DIR/run-status.txt"
+
+          exit "$worker_status"
+
+      # Production artifacts are intentionally allowlisted. Browser captures
+      # can contain applicant PII or one-time verification codes and must
+      # never be persisted from this workflow.
+      - name: Upload safe run diagnostics
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: applypass-worker-run-${{ github.run_id }}
+          name: applypass-prod-worker-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/applypass-worker.log
-            ${{ runner.temp }}/applypass-screenshots
-          if-no-files-found: ignore
-          retention-days: 14
+            /tmp/applypass-prod-worker-artifacts/worker.log
+            /tmp/applypass-prod-worker-artifacts/run-status.txt
+          if-no-files-found: error
+          retention-days: 7

@@ -2,9 +2,9 @@
  * career-ops-tailor-report — "What changed for this application" report.
  *
  * Pairs the master resume with the tailored resume of one draft application:
- *   - ATS before -> after on the SAME weighted scale career-ops-ats writes to
- *     public.ats_scores (shared logic: _shared/ats-deterministic.ts), so the
- *     two numbers are directly comparable.
+ *   - Job-requirement coverage before -> after on the SAME deterministic scale
+ *     career-ops-ats writes to public.ats_scores. Generic résumé quality is a
+ *     separate measurement and is never blended into this delta.
  *   - keyword_delta: JD keywords newly covered vs already covered vs missing.
  *   - changes[]: structured master->tailored diff (summary, per-entry bullets
  *     matched by the tailor's pinned entry ids, skills) tagged with the JD
@@ -106,7 +106,7 @@ serve(async (req) => {
 
     // Latest stored ATS outcome for the tailored resume + this job.
     const { data: afterRow } = await svc.from("ats_scores")
-      .select("overall,matched_keywords,missing_keywords,created_at")
+      .select("overall,matched_keywords,missing_keywords,model,created_at")
       .eq("user_id", user.id)
       .eq("resume_id", tailoredResume.id)
       .eq("scanned_job_id", evaluation.scanned_job_id)
@@ -118,12 +118,18 @@ serve(async (req) => {
       .eq("draft_application_id", draft.id)
       .maybeSingle();
 
-    const afterMatched = Array.isArray(afterRow?.matched_keywords) ? afterRow.matched_keywords : [];
-    const afterMissing = Array.isArray(afterRow?.missing_keywords) ? afterRow.missing_keywords : [];
+    // Rows written before ats-truth-v2 used a blended percentage. Never
+    // compare those legacy values with the requirement-coverage score.
+    const trustedAfterRow = typeof afterRow?.model === "string"
+      && afterRow.model.startsWith("ats-truth-v2:job_match:");
+    const afterMatched = trustedAfterRow && Array.isArray(afterRow?.matched_keywords) ? afterRow.matched_keywords : [];
+    const afterMissing = trustedAfterRow && Array.isArray(afterRow?.missing_keywords) ? afterRow.missing_keywords : [];
     const masterText = resumeToPlainText(masterResume);
     const keyword_delta = computeKeywordDelta(afterMatched, afterMissing, masterText);
 
-    if (cachedRun && !input.refresh) {
+    const trustedCachedRun = typeof cachedRun?.model === "string"
+      && cachedRun.model.startsWith("ats-truth-v2:job-match:");
+    if (cachedRun && trustedCachedRun && !input.refresh) {
       const report: TailoringReport = {
         draft_application_id: draft.id,
         master_resume_id: cachedRun.master_resume_id,
@@ -131,7 +137,7 @@ serve(async (req) => {
         // Prefer the freshest stored "after" score; the cached row may predate
         // a re-score of the tailored resume.
         ats_before: cachedRun.ats_before === null ? null : Number(cachedRun.ats_before),
-        ats_after: afterRow ? Number(afterRow.overall) : (cachedRun.ats_after === null ? null : Number(cachedRun.ats_after)),
+        ats_after: trustedAfterRow ? Number(afterRow.overall) : (cachedRun.ats_after === null ? null : Number(cachedRun.ats_after)),
         keyword_delta,
         changes: Array.isArray(cachedRun.changes) ? cachedRun.changes : [],
         model: cachedRun.model ?? "cached",
@@ -142,14 +148,16 @@ serve(async (req) => {
 
     const { keywords: jdKeywords, model } = await loadAtsJdKeywords(svc, jdText);
     const before = scoreResumeDeterministic(masterResume, jdKeywords);
-    // The "after" score normally comes from the ats_scores row written when the
-    // tailored resume was scored; recompute on the same scale if that row is
-    // missing so the report still renders.
-    const after = afterRow
+    // Recompute if the stored row is missing or predates the separated model.
+    const after = trustedAfterRow
       ? { overall: Number(afterRow.overall), matched: afterMatched, missing: afterMissing }
       : (() => {
         const scored = scoreResumeDeterministic(tailoredResume, jdKeywords);
-        return { overall: scored.overall, matched: scored.matched_keywords, missing: scored.missing_keywords };
+        return {
+          overall: scored.job_match_score ?? 0,
+          matched: scored.matched_keywords,
+          missing: scored.missing_keywords,
+        };
       })();
 
     const changes = buildTailoringChanges(masterResume, tailoredResume, jdKeywords);
@@ -160,10 +168,10 @@ serve(async (req) => {
       draft_application_id: draft.id,
       master_resume_id: masterResume.id,
       tailored_resume_id: tailoredResume.id,
-      ats_before: before.overall,
+      ats_before: before.job_match_score,
       ats_after: after.overall,
       changes,
-      model: afterRow ? model : `${model}+recomputed-after`,
+      model: `ats-truth-v2:job-match:${trustedAfterRow ? model : `${model}+recomputed-after`}`,
     };
     const { data: saved, error: saveErr } = await svc.from("resume_tailoring_runs")
       .upsert(runRow, { onConflict: "draft_application_id" })
@@ -174,7 +182,7 @@ serve(async (req) => {
       draft_application_id: draft.id,
       master_resume_id: masterResume.id,
       tailored_resume_id: tailoredResume.id,
-      ats_before: before.overall,
+      ats_before: before.job_match_score,
       ats_after: after.overall,
       keyword_delta: recomputedDelta,
       changes,

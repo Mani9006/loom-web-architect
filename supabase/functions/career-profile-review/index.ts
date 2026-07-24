@@ -19,6 +19,10 @@ import {
   serviceClient,
   withErrorHandler,
 } from "../_shared/guards.ts";
+import {
+  getResumeReviewState,
+  RESUME_REVIEW_REQUIRED_MESSAGE,
+} from "../_shared/resume-review.ts";
 
 const REVIEW_VERSION = "career-evidence-v1";
 
@@ -44,7 +48,7 @@ serve(async (req) => {
       .maybeSingle();
 
     let resumeQuery = svc.from("resumes")
-      .select("id,title,source_document_id,source_hash,updated_at,personal_info,summary,experience,skills,projects,certifications")
+      .select("id,title,source_document_id,source_hash,parser_version,parse_quality,parsed_at,updated_at,personal_info,summary,experience,skills,projects,certifications")
       .eq("user_id", user.id);
     resumeQuery = body.resume_id
       ? resumeQuery.eq("id", body.resume_id)
@@ -55,6 +59,9 @@ serve(async (req) => {
       ? resumeRows?.[0] as Record<string, unknown> | undefined
       : selectSourceResume((resumeRows ?? []) as Array<Record<string, unknown>>, profile?.primary_resume_id);
     if (!resume) throw new HttpError(412, "Add a source resume before reviewing career evidence");
+    if (!getResumeReviewState(resume).allowed) {
+      throw new HttpError(409, RESUME_REVIEW_REQUIRED_MESSAGE);
+    }
 
     const sourceFingerprint = stringValue(resume.source_hash) || stringValue(resume.updated_at);
     const { data: cached } = await svc.from("resume_career_profiles")

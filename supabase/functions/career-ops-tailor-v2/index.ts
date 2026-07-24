@@ -4,7 +4,7 @@
  * Single round-trip resume tailor. Replaces career-ops-tailor (which required
  * a pre-staged evaluation_id and returned a denormalized blob).
  *
- * Input:  { resume: ResumeJSON, job_description: string }
+ * Input:  { resume_id: string, job_description: string }
  * Output: { tailored: ResumeJSON, model: string, tokens_in, tokens_out }
  *
  * Uses the provider-swappable standard routing tier from _shared/llm.ts.
@@ -32,9 +32,13 @@ import {
   rebuildSkillsForJob,
   splitKeywordsByEvidence,
 } from "../_shared/keyword-aliases.ts";
+import {
+  getResumeReviewState,
+  RESUME_REVIEW_REQUIRED_MESSAGE,
+} from "../_shared/resume-review.ts";
 
 interface RequestBody {
-  resume?: unknown;
+  resume_id?: unknown;
   job_description?: unknown;
 }
 
@@ -46,15 +50,30 @@ Deno.serve((req) =>
     const user = await getAuthedUser(req);
     const svc = serviceClient();
     const { isPro } = await enforceAccountActive(svc, user.id);
-    await enforceDailyCap(svc, user.id, "tailor", isPro);
 
     const body = (await req.json().catch(() => ({}))) as RequestBody;
-    const resume = body.resume as Record<string, unknown> | undefined;
+    const resumeId = typeof body.resume_id === "string" ? body.resume_id.trim() : "";
     const jd = typeof body.job_description === "string" ? body.job_description.trim() : "";
 
-    if (!resume || typeof resume !== "object") throw new HttpError(400, "resume is required");
+    if (!resumeId) throw new HttpError(400, "Save the résumé before tailoring it.");
     if (jd.length < 50) throw new HttpError(400, "job_description must be at least 50 chars");
     if (jd.length > 12_000) throw new HttpError(400, "job_description too long (max 12k chars)");
+
+    const { data: storedResume } = await svc.from("resumes")
+      .select("*")
+      .eq("id", resumeId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!storedResume) throw new HttpError(404, "resume not found");
+    if (!getResumeReviewState(storedResume).allowed) {
+      throw new HttpError(409, RESUME_REVIEW_REQUIRED_MESSAGE);
+    }
+    // Never trust a client-provided résumé body paired with a different,
+    // automation-safe ID. Tailoring is grounded in the owned stored row that
+    // passed the review gate.
+    const resume = storedResumeToResumeJson(storedResume as Record<string, unknown>);
+
+    await enforceDailyCap(svc, user.id, "tailor", isPro);
 
     // The SAME 15 ATS keywords the deterministic scorer uses (shared cache),
     // split by what the base résumé honestly evidences.
@@ -194,6 +213,36 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function storedResumeToResumeJson(row: Record<string, unknown>): Record<string, unknown> {
+  const personal = asRecord(row.personal_info);
+  const extras = asRecord(personal._v2_extras);
+  const stringValue = (value: unknown) => typeof value === "string" ? value : "";
+  const arrayValue = (value: unknown) => Array.isArray(value) ? value : [];
+  return {
+    header: {
+      name: stringValue(personal.fullName) || stringValue(personal.name),
+      title: stringValue(personal.title),
+      location: stringValue(personal.location),
+      email: stringValue(personal.email),
+      phone: stringValue(personal.phone),
+      linkedin: stringValue(personal.linkedin),
+    },
+    summary: stringValue(row.summary),
+    experience: arrayValue(row.experience),
+    education: arrayValue(row.education),
+    certifications: arrayValue(row.certifications),
+    skills: normalizeSkills(row.skills),
+    projects: arrayValue(row.projects),
+    languages: arrayValue(row.languages),
+    volunteer: Array.isArray(row.volunteer) ? row.volunteer : arrayValue(extras.volunteer),
+    awards: Array.isArray(row.awards) ? row.awards : arrayValue(extras.awards),
+    customSections: Array.isArray(row.custom_sections)
+      ? row.custom_sections
+      : arrayValue(extras.customSections),
+    section_order: arrayValue(row.section_order),
+  };
 }
 
 function cleanBullets(value: unknown, fallback: unknown): string[] {

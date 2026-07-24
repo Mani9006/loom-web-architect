@@ -5,9 +5,11 @@ import {
   tabCounts,
   taskJobResult,
   toBoardRow,
+  withAutomationEvidence,
   type BoardDraft,
   type BoardTask,
 } from "@/lib/application-board";
+import { resolveAutomationDraftState } from "@/lib/application-funnel";
 
 function draft(overrides: Partial<BoardDraft> = {}): BoardDraft {
   return {
@@ -57,15 +59,53 @@ describe("deriveBoardStatus", () => {
     expect(status.label).toBe("Applying");
   });
 
-  it("maps queued with no task to Queued", () => {
-    const status = deriveBoardStatus(draft({ status: "queued" }), null);
+  it("does not call a running task Applying after the worker heartbeat expires", () => {
+    const status = deriveBoardStatus(
+      draft({ status: "queued", applypass_task_id: "task-1" }),
+      task({ status: "running", workerRecentlyActive: false }),
+    );
     expect(status.key).toBe("queued");
+    expect(status.detail).toMatch(/has not checked in recently/i);
   });
 
-  it("maps submitted to Submitted inside the in-flight pipeline", () => {
-    const status = deriveBoardStatus(draft({ status: "submitted", submitted_at: "2026-02-20T12:30:00Z" }), null);
+  it("maps queued with no active task to Failed after evidence reconciliation", () => {
+    const queuedDraft = draft({ status: "queued" });
+    const state = resolveAutomationDraftState({
+      draftStatus: queuedDraft.status,
+      taskStatus: null,
+      hasSubmissionReceipt: false,
+    });
+    const status = deriveBoardStatus(withAutomationEvidence(queuedDraft, { state }), null);
+    expect(status.key).toBe("failed");
+    expect(status.tab).toBe("failed");
+    expect(status.detail).toMatch(/no longer in the active submission queue/i);
+  });
+
+  it("maps submitted to Submitted only with receipt evidence", () => {
+    const submittedDraft = draft({ status: "submitted", submitted_at: "2026-02-20T12:30:00Z" });
+    const state = resolveAutomationDraftState({
+      draftStatus: submittedDraft.status,
+      taskStatus: "completed",
+      hasSubmissionReceipt: true,
+    });
+    const status = deriveBoardStatus(
+      withAutomationEvidence(submittedDraft, { state, receiptSubmittedAt: "2026-02-20T12:31:00Z" }),
+      null,
+    );
     expect(status.key).toBe("submitted");
     expect(status.tab).toBe("in_flight");
+  });
+
+  it("maps submitted without a receipt to Failed with an honest reason", () => {
+    const submittedDraft = draft({ status: "submitted", submitted_at: "2026-02-20T12:30:00Z" });
+    const state = resolveAutomationDraftState({
+      draftStatus: submittedDraft.status,
+      taskStatus: "completed",
+      hasSubmissionReceipt: false,
+    });
+    const status = deriveBoardStatus(withAutomationEvidence(submittedDraft, { state }), null);
+    expect(status.key).toBe("failed");
+    expect(status.detail).toMatch(/no confirmed submission receipt/i);
   });
 
   it("maps a fresh ready packet to Needs you (review)", () => {
@@ -199,6 +239,26 @@ describe("toBoardRow", () => {
     expect(row.activityAt).toBe("2026-02-20T11:00:00Z");
   });
 
+  it("keeps the worker's reason when terminal task evidence reconciles a stale queue", () => {
+    const failedTask = task({ status: "failed", error_message: "Employer form timed out." });
+    const row = toBoardRow(
+      draft({ status: "queued", applypass_task_id: failedTask.id }),
+      new Map([[failedTask.id, failedTask]]),
+      { state: "failed" },
+    );
+    expect(row.status.key).toBe("failed");
+    expect(row.status.detail).toBe("Employer form timed out");
+  });
+
+  it("preserves an existing draft failure reason during evidence reconciliation", () => {
+    const row = toBoardRow(
+      draft({ status: "failed", error_message: "Required portfolio URL was missing." }),
+      new Map(),
+      { state: "failed" },
+    );
+    expect(row.status.detail).toBe("Required portfolio URL was missing");
+  });
+
   it("marks the resume as tailoring while the packet is a draft", () => {
     const row = toBoardRow(draft({ status: "draft", tailored_resume_id: null, tailored_cv_md: null }), new Map());
     expect(row.resumeState).toBe("tailoring");
@@ -213,14 +273,25 @@ describe("toBoardRow", () => {
 
 describe("tabCounts", () => {
   it("counts every row once per its primary tab plus all", () => {
+    const activeTask = task({ status: "pending" });
     const rows = [
       toBoardRow(draft({ id: "a", status: "draft" }), new Map()),
-      toBoardRow(draft({ id: "b", status: "queued" }), new Map()),
-      toBoardRow(draft({ id: "c", status: "submitted" }), new Map()),
+      toBoardRow(
+        draft({ id: "b", status: "queued", applypass_task_id: activeTask.id }),
+        new Map([[activeTask.id, activeTask]]),
+        { state: "queued" },
+      ),
+      toBoardRow(
+        draft({ id: "c", status: "submitted" }),
+        new Map(),
+        { state: "submitted", receiptSubmittedAt: "2026-02-20T13:00:00Z" },
+      ),
       toBoardRow(draft({ id: "d", status: "ready" }), new Map()),
       toBoardRow(draft({ id: "e", status: "failed", error_message: "timeout" }), new Map()),
       toBoardRow(draft({ id: "f", status: "skipped" }), new Map()),
+      toBoardRow(draft({ id: "g", status: "queued" }), new Map(), { state: "failed" }),
+      toBoardRow(draft({ id: "h", status: "submitted" }), new Map(), { state: "failed" }),
     ];
-    expect(tabCounts(rows)).toEqual({ all: 6, in_flight: 3, needs_you: 1, failed: 1, skipped: 1 });
+    expect(tabCounts(rows)).toEqual({ all: 8, in_flight: 3, needs_you: 1, failed: 3, skipped: 1 });
   });
 });

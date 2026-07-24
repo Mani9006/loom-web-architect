@@ -29,12 +29,12 @@ get portal-level reliability):
   `job-boards.greenhouse.io`, `*.greenhouse.io` embedded/iframe). Standard
   fields, resume upload, label-driven custom questions, the emailed
   security-code step (reusing the worker verification loop), and
-  "Thank you for applying" / confirmation-container receipt detection.
+  visible confirmation-container/application-ID receipt detection.
 - `lever.mjs` — `jobs.lever.co` postings (`/apply` form, `name`/`email`/
   `phone`/`org`/`urls[...]` fields, custom cards, `/thanks` or
   `.confirmation` receipt detection).
-- `generic.mjs` — the original generic autofill/submit-detection behavior,
-  unchanged, used for every unknown ATS.
+- `generic.mjs` — conservative fallback autofill/submit detection for
+  unsupported ATS pages.
 - `index.mjs` — `pickAdapter(url, page)` tries Greenhouse, then Lever, then
   falls back to generic. Next per the capability matrix: Ashby.
 
@@ -51,9 +51,9 @@ Adapter policies (enforced in code, see `scripts/ats-adapters/adapters.test.mjs`
 - `submit()` refuses unless `APPLYPASS_AUTO_SUBMIT=true` AND a per-job
   approval receipt exists, and the worker re-checks the account's Continuous
   Apply authorization immediately before the final click.
-- `verifyReceipt()` uses ATS-specific confirmation signals (confirmation
-  container/URL, application id, confirmation text) so `submitted` is only
-  reported with evidence.
+- `verifyReceipt()` uses ATS-specific confirmation signals (a visible
+  confirmation container/URL or application ID). Generic "thank you" text is
+  never enough to report `submitted`.
 
 Run the adapter unit tests (no browser needed):
 
@@ -71,7 +71,9 @@ node --test scripts/ats-adapters/adapters.test.mjs
 - `APPLYPASS_WORKER_CONCURRENCY` (default: `4`, maximum: `12`)
 - `APPLYPASS_WORKER_POLL_MS` (default: `5000`)
 - `APPLYPASS_AUTO_SUBMIT` (`true` or `false`, default `false`)
-- `APPLYPASS_SCREENSHOT_DIR` (save screenshots for each processed job)
+- `APPLYPASS_SCREENSHOT_DIR` (DEV diagnostics only; also requires
+  `APPLYPASS_RUNTIME_ENV=development` and
+  `APPLYPASS_DEV_DIAGNOSTIC_SCREENSHOTS=true`)
 - `APPLYPASS_MAX_TASKS` (process N tasks then exit)
 
 ## Local run
@@ -107,13 +109,26 @@ Stop applying command cancels pending and in-flight work safely.
 
 ## Free dev runner
 
-`.github/workflows/continuous-apply-worker-dev.yml` runs a four-slot safe
-worker on GitHub-hosted runners. It is scheduled for a long run every four
-hours and can also be started manually from Actions. The staging secrets must
-exist before the workflow can start. It intentionally keeps
-`APPLYPASS_AUTO_SUBMIT=false`; this validates queue throughput without sending
-QA data to employers.
+`.github/workflows/continuous-apply-worker-dev.yml` is a manual, bounded DEV
+worker on GitHub-hosted runners. It uses only `DEV_*` secrets, processes one
+task by default, and hard-codes `APPLYPASS_AUTO_SUBMIT=false`; this validates
+queue throughput without sending QA data to employers. Logs and run status
+are retained as a short-lived workflow artifact. Screenshots are retained only
+when the operator explicitly enables the DEV diagnostic input.
+Its queue credential is the dedicated `DEV_APPLYPASS_WORKER_TOKEN`, not the
+general orchestrator token or the Gmail polling token. The workflow also
+refuses to run unless `DEV_SUPABASE_URL` resolves to the expected DEV project,
+so a misconfigured secret cannot point this QA worker at production.
+
+The production workflow also defaults to dry-run. Scheduled production runs
+cannot enable submission; a submit-enabled run must be started manually and
+must be dispatched from `main` with the exact production confirmation phrase.
+Configure protected-environment reviewers as an additional control when the
+repository plan supports them.
+Production artifacts use an explicit allowlist containing only the worker log
+and run-status file; browser screenshots are disabled and excluded.
 
 ## Safety mode recommendation
 - Keep `APPLYPASS_AUTO_SUBMIT=false` initially.
-- Review logs/screenshots and then enable auto-submit per trusted domains.
+- Review safe logs (and, when explicitly enabled in DEV, diagnostic
+  screenshots) before enabling auto-submit for trusted domains.

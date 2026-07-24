@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
-import { Check, CheckCheck, Clipboard, Inbox, MailOpen, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { Check, CheckCheck, Inbox, MailOpen, RefreshCw, Search, ShieldCheck } from "lucide-react";
 
 import GmailConnectCard from "@/components/my-collection/GmailConnectCard";
 import { PageHeader } from "@/components/PageHeader";
@@ -28,7 +28,7 @@ interface InboxMessage {
   classification: string | null;
   classification_summary: string | null;
   next_action: string | null;
-  verification_code: string | null;
+  verification_code_available: boolean;
   verification_code_expires_at: string | null;
   is_read: boolean;
   received_at: string;
@@ -109,7 +109,7 @@ export default function InboxPage() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const selectFields = "id,session_id,tracked_job_id,from_email,subject,body_preview,classification,classification_summary,next_action,verification_code,verification_code_expires_at,is_read,received_at";
+    const selectFields = "id,session_id,tracked_job_id,from_email,subject,body_preview,classification,classification_summary,next_action,verification_code_available,verification_code_expires_at,is_read,received_at";
     let primaryQuery = (supabase as any).from("mc_inbound_emails")
       .select(selectFields)
       .eq("user_id", user.id);
@@ -141,7 +141,7 @@ export default function InboxPage() {
       if (fallback.error) throw fallback.error;
       setSupportsReadState(false);
       messageRows = (fallback.data || []).map((row: Record<string, unknown>) => ({
-        ...row, verification_code: null, verification_code_expires_at: null, is_read: true,
+        ...row, verification_code_available: false, verification_code_expires_at: null, is_read: true,
       })) as InboxMessage[];
     } else setSupportsReadState(true);
     setMessages(messageRows || []);
@@ -184,7 +184,9 @@ export default function InboxPage() {
       if (pollingRef.current) return;
       pollingRef.current = true;
       try {
-        const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+        const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {
+          body: { session_id: sessionId },
+        });
         if (!error) await load();
       } finally {
         pollingRef.current = false;
@@ -198,7 +200,7 @@ export default function InboxPage() {
     const term = query.trim().toLowerCase();
     const filtered = messages.filter((message) => {
       const matchesFilter = filter === "all"
-        || (filter === "verification" && Boolean(message.verification_code))
+        || (filter === "verification" && message.verification_code_available)
         || message.classification === filter;
       const haystack = `${message.subject || ""} ${message.from_email} ${message.classification_summary || ""} ${message.body_preview || ""}`.toLowerCase();
       return matchesFilter && (!term || haystack.includes(term));
@@ -226,8 +228,11 @@ export default function InboxPage() {
   }
 
   async function refresh() {
+    if (!sessionId) return;
     setRefreshing(true);
-    const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+    const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {
+      body: { session_id: sessionId },
+    });
     if (!error) await load();
     setRefreshing(false);
     toast(error
@@ -300,12 +305,13 @@ export default function InboxPage() {
         {loading ? <div className="space-y-3 p-4">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-28" />)}</div> : visible.length === 0 ? (
           <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><Inbox className="h-9 w-9 text-rp-ink-3" /><p className="mt-3 text-sm font-semibold">{applicationOnly ? "No application messages yet" : "No matching messages"}</p><p className="mt-1 max-w-md text-xs text-rp-ink-2">{applicationOnly ? "Only emails about your applications appear here — OTPs, confirmations, interview invites, assessments, decisions." : "Nothing matches the current filters. Try a different search or filter."}</p></div>
         ) : <div className="divide-y divide-rp-rule">{visible.map((message) => {
-          const codeActive = Boolean(message.verification_code && (!message.verification_code_expires_at || new Date(message.verification_code_expires_at).getTime() > loadedAt));
+          const codeActive = Boolean(message.verification_code_available && message.verification_code_expires_at &&
+            new Date(message.verification_code_expires_at).getTime() > loadedAt);
           const linkedLabel = message.tracked_job_id ? formatLinkedJobLabel(trackedJobs[message.tracked_job_id]) : null;
           const openMessage = () => navigate(`/inbox/${message.id}`);
           return <article key={message.id} role="link" tabIndex={0} aria-label={`Open message: ${message.subject || "Application update"}`} onClick={openMessage} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openMessage(); } }} className={`grid cursor-pointer gap-3 p-4 transition-colors hover:bg-muted/40 sm:grid-cols-[28px_minmax(0,1fr)_auto] ${message.is_read ? "" : "bg-primary/[0.035]"}`}>
             <button disabled={!supportsReadState} className="mt-0.5 h-7 w-7 rounded-full text-muted-foreground hover:bg-muted disabled:opacity-40" onClick={(event) => { event.stopPropagation(); markRead(message.id, !message.is_read); }} aria-label={message.is_read ? "Mark unread" : "Mark read"}>{message.is_read ? <MailOpen className="mx-auto h-4 w-4" /> : <Check className="mx-auto h-4 w-4" />}</button>
-            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{message.subject || "Application update"}</p>{message.classification && <Badge variant="secondary">{labels[message.classification] || "Update"}</Badge>}</div><p className="mt-0.5 truncate text-xs text-muted-foreground">{message.from_email}</p>{linkedLabel && <p className="mt-0.5 truncate text-xs font-medium text-rp-ink-2">Linked to: {linkedLabel}</p>}{message.classification_summary && <p className="mt-2 text-sm">{message.classification_summary}</p>}{message.body_preview && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}{message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}{codeActive && <div className="mt-3 inline-flex items-center gap-3 border border-primary/20 bg-primary/5 px-3 py-2" onClick={(event) => event.stopPropagation()}><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Verification code</p><p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p></div><Button variant="outline" size="sm" onClick={async () => { try { await navigator.clipboard.writeText(message.verification_code!); toast({ title: "Verification code copied" }); } catch { toast({ title: "Couldn't copy the code", description: "Select and copy it manually.", variant: "destructive" }); } }}><Clipboard className="mr-1.5 h-3.5 w-3.5" />Copy</Button></div>}</div>
+            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold">{message.subject || "Application update"}</p>{message.classification && <Badge variant="secondary">{labels[message.classification] || "Update"}</Badge>}</div><p className="mt-0.5 truncate text-xs text-muted-foreground">{message.from_email}</p>{linkedLabel && <p className="mt-0.5 truncate text-xs font-medium text-rp-ink-2">Linked to: {linkedLabel}</p>}{message.classification_summary && <p className="mt-2 text-sm">{message.classification_summary}</p>}{message.body_preview && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{message.body_preview}</p>}{message.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {message.next_action}</p>}{codeActive && <div className="mt-3 inline-flex items-center gap-2 border border-primary/20 bg-primary/5 px-3 py-2" onClick={(event) => event.stopPropagation()}><ShieldCheck className="h-4 w-4 text-primary" /><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Secure employer code ready</p><p className="text-xs font-medium">The application agent will use it automatically.</p></div></div>}</div>
             <div className="flex flex-col items-end gap-2"><time className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(message.received_at), { addSuffix: true })}</time></div>
           </article>;
         })}</div>}

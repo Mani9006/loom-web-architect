@@ -3,6 +3,7 @@ import { animate, motion, useMotionValue } from "framer-motion";
 import { ArrowRight, ChevronDown, FileDiff, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { normalizeScore } from "@/lib/score-truth";
 import {
   TailoringChange,
   TailoringReport,
@@ -38,25 +39,41 @@ function AnimatedNumber({ value }: { value: number }) {
   return <span className="tabular-nums">{display}</span>;
 }
 
-function Gauge({ value, tone, delay = 0 }: { value: number; tone: "muted" | "primary"; delay?: number }) {
+function Gauge({
+  value,
+  tone,
+  label,
+  delay = 0,
+}: {
+  value: number | null;
+  tone: "muted" | "primary";
+  label: string;
+  delay?: number;
+}) {
   const radius = 30;
   const circumference = 2 * Math.PI * radius;
-  const clamped = Math.max(0, Math.min(100, value));
+  const clamped = normalizeScore(value);
   return (
-    <div className="relative h-20 w-20">
+    <div
+      className="relative h-20 w-20"
+      role="img"
+      aria-label={clamped === null ? `${label} not measured` : `${label} ${clamped} percent`}
+    >
       <svg viewBox="0 0 72 72" className="h-20 w-20 -rotate-90">
         <circle cx="36" cy="36" r={radius} fill="none" strokeWidth="7" className={tone === "primary" ? "stroke-primary/15" : "stroke-muted-foreground/15"} />
-        <motion.circle
-          cx="36" cy="36" r={radius} fill="none" strokeWidth="7" strokeLinecap="round"
-          className={tone === "primary" ? "stroke-primary" : "stroke-muted-foreground/50"}
-          strokeDasharray={circumference}
-          initial={{ strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset: circumference * (1 - clamped / 100) }}
-          transition={{ duration: 1.1, delay, ease: [0.16, 1, 0.3, 1] }}
-        />
+        {clamped !== null && (
+          <motion.circle
+            cx="36" cy="36" r={radius} fill="none" strokeWidth="7" strokeLinecap="round"
+            className={tone === "primary" ? "stroke-primary" : "stroke-muted-foreground/50"}
+            strokeDasharray={circumference}
+            initial={{ strokeDashoffset: circumference }}
+            animate={{ strokeDashoffset: circumference * (1 - clamped / 100) }}
+            transition={{ duration: 1.1, delay, ease: [0.16, 1, 0.3, 1] }}
+          />
+        )}
       </svg>
       <div className="absolute inset-0 flex items-center justify-center text-lg font-bold">
-        <AnimatedNumber value={clamped} />
+        {clamped === null ? "—" : <><AnimatedNumber value={clamped} /><span className="text-[10px]">%</span></>}
       </div>
     </div>
   );
@@ -187,9 +204,9 @@ export default function TailoringReportCard({ report, loading }: { report: Tailo
     );
   }
 
-  const before = report.ats_before ?? 0;
-  const after = report.ats_after ?? 0;
-  const delta = Math.round(after - before);
+  const before = normalizeScore(report.ats_before);
+  const after = normalizeScore(report.ats_after);
+  const delta = before === null || after === null ? null : after - before;
   const { added, covered_now, still_missing } = report.keyword_delta;
 
   return (
@@ -205,25 +222,25 @@ export default function TailoringReportCard({ report, loading }: { report: Tailo
         <FileDiff className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold">What changed for this application</h3>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">How the tailor rewrote your master résumé for this job — score, keywords, and bullet-level edits.</p>
+      <p className="mt-1 text-xs text-muted-foreground">How the tailor changed honest job-requirement coverage, keywords, and bullet-level wording. This is separate from generic résumé quality and career fit.</p>
 
       <div className="mt-4 flex flex-wrap items-center gap-5">
         <div className="flex items-center gap-3">
           <div className="text-center">
-            <Gauge value={before} tone="muted" />
-            <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">Master ATS</p>
+            <Gauge value={before} tone="muted" label="Master job-requirement coverage" />
+            <p className="mt-1 max-w-24 text-[10px] uppercase tracking-wide text-muted-foreground">Master job coverage</p>
           </div>
           <div className="flex flex-col items-center">
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            {delta !== 0 && (
+            {delta !== null && delta !== 0 && (
               <span className={cn("mt-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums", delta > 0 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-rose-500/10 text-rose-600")}>
                 {delta > 0 ? `+${delta}` : delta}
               </span>
             )}
           </div>
           <div className="text-center">
-            <Gauge value={after} tone="primary" delay={0.15} />
-            <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">Tailored ATS</p>
+            <Gauge value={after} tone="primary" label="Tailored job-requirement coverage" delay={0.15} />
+            <p className="mt-1 max-w-24 text-[10px] uppercase tracking-wide text-muted-foreground">Tailored job coverage</p>
           </div>
         </div>
 

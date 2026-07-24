@@ -1,138 +1,33 @@
 /**
- * career-ops-ats — Real ATS scoring for a résumé, optionally paired with a JD.
+ * career-ops-ats — authoritative job-description match scorer.
  *
  * Strategy:
- *   1. Deterministic checks (no LLM): format (bullet length, action verbs at
- *      start, quantified bullets), sections present, length ratios,
- *      keyword density.
- *   2. Cost-routed small-model pass to extract JD keywords + produce sharp,
- *      actionable suggestions.
- *   3. Final row written to `ats_scores` with six dimensions 0-100.
+ * A generic résumé-quality score and a job-description match are different
+ * measurements. This endpoint returns both explicitly and never blends them
+ * into an unexplained percentage. For backwards compatibility,
+ * ats_scores.overall stores the job match for JD-scoped checks and the generic
+ * quality score for a no-JD check.
  *
- * Body: { resume_id: uuid, scanned_job_id?: uuid, job_description?: string, user_id?: uuid }
+ * Body: { resume_id?: uuid, resume_text?: string, scanned_job_id?: uuid,
+ *         job_description?: string, user_id?: uuid }
+ * `resume_text` supports the manual checker and publishes job match only; it
+ * is never persisted as a scored résumé because structure cannot be verified.
  * Returns: { ats: row }
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { truncate } from "../_shared/ai.ts";
 import { chatFree } from "../_shared/llm.ts";
 import {
-  collectImpactBullets, computeImpactScore, extractEntryBullets, IMPACT_FULL_CREDIT_RATIO,
-} from "../_shared/ats-impact.ts";
+  computeKeywordScore,
+  computeResumeQualityScore,
+  deterministicAnalysis,
+  resumeToPlainText,
+} from "../_shared/ats-deterministic.ts";
 import {
   corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
 } from "../_shared/guards.ts";
 import { jdHash, readJdKeywordCache, writeJdKeywordCache } from "../_shared/jd-cache.ts";
-
-// ── Deterministic analyzers ────────────────────────────────────
-
-const STRONG_VERBS = new Set([
-  "led", "built", "shipped", "designed", "architected", "scaled",
-  "launched", "drove", "owned", "delivered", "migrated", "automated",
-  "reduced", "improved", "grew", "optimized", "refactored", "rolled",
-  "negotiated", "mentored", "hired", "coached", "authored", "published",
-  "prototyped", "analyzed", "implemented", "integrated", "deployed",
-  "reviewed", "resolved", "debugged", "instrumented", "partnered",
-]);
-
-const WEAK_PREFIXES = [
-  "responsible for", "worked on", "helped", "assisted", "participated",
-  "involved in", "duties included", "tasked with",
-];
-
-function analyseBullet(b: string): { issues: string[]; score: number } {
-  const issues: string[] = [];
-  const bt = b.trim();
-  if (!bt) return { issues: ["empty bullet"], score: 0 };
-  if (bt.length > 220) issues.push("too long (>220 chars)");
-  if (bt.length < 40) issues.push("too short (<40 chars) — add impact");
-  const first = (bt.split(/\s+/, 1)[0] || "").toLowerCase().replace(/[^a-z]/g, "");
-  if (!STRONG_VERBS.has(first)) issues.push(`starts with "${first}" — prefer an action verb`);
-  for (const p of WEAK_PREFIXES) if (bt.toLowerCase().startsWith(p)) issues.push(`weak opener "${p}"`);
-  if (!/\d/.test(bt)) issues.push("no numbers — quantify when possible");
-  const score = Math.max(0, 100 - issues.length * 18);
-  return { issues, score };
-}
-
-interface DetReport {
-  format: number;
-  experience: number;
-  education: number;
-  skills: number;
-  impact: number;
-  issues: Array<{ scope: string; where: string; message: string }>;
-  bullets: string[];
-}
-
-function deterministicAnalysis(resume: any): DetReport {
-  const issues: DetReport["issues"] = [];
-  let formatScore = 100;
-
-  // Sections present
-  const hasSummary = Boolean(resume.summary || resume.personal_info?.summary);
-  const hasExperience = Array.isArray(resume.experience) && resume.experience.length > 0;
-  const hasEducation = Array.isArray(resume.education) && resume.education.length > 0;
-  const skillList = flattenSkills(resume.skills);
-  const hasSkills = skillList.length > 0;
-
-  if (!hasSummary) { issues.push({ scope: "format", where: "summary", message: "no summary/about section" }); formatScore -= 10; }
-  if (!hasExperience) { issues.push({ scope: "format", where: "experience", message: "no experience section" }); formatScore -= 30; }
-  if (!hasEducation) { issues.push({ scope: "format", where: "education", message: "no education section" }); formatScore -= 10; }
-  if (!hasSkills) { issues.push({ scope: "format", where: "skills", message: "no skills section" }); formatScore -= 15; }
-
-  // Bullet analysis
-  const bulletScores: number[] = [];
-  const allBullets: string[] = [];
-  if (hasExperience) {
-    for (const x of resume.experience) {
-      // Defensive extraction: handles string arrays, editor objects, and
-      // multi-line description/responsibilities blocks (see _shared/ats-impact.ts).
-      const bullets = extractEntryBullets(x);
-      for (const b of bullets) {
-        allBullets.push(b);
-        const a = analyseBullet(b);
-        bulletScores.push(a.score);
-        for (const i of a.issues) issues.push({
-          scope: "experience",
-          where: `${x.company_or_client ?? x.company ?? ""} — ${x.role ?? x.title ?? ""}`,
-          message: i,
-        });
-      }
-    }
-  }
-  const bulletAvg = bulletScores.length ? bulletScores.reduce((s, n) => s + n, 0) / bulletScores.length : 0;
-
-  // Impact = quantified achievement coverage across experience AND projects.
-  // Full credit once 40% of bullets carry a metric (IMPACT_FULL_CREDIT_RATIO)
-  // — the same bar the issue below asks users to reach — instead of mapping
-  // the raw ratio onto 0-100, which dragged strong resumes to single digits.
-  const impact = computeImpactScore(collectImpactBullets(resume));
-  if (impact.total > 0 && impact.quantified / impact.total < IMPACT_FULL_CREDIT_RATIO) {
-    issues.push({ scope: "impact", where: "experience", message: `only ${impact.quantified}/${impact.total} bullets are quantified` });
-  }
-
-  return {
-    format: Math.max(0, Math.min(100, Math.round(formatScore))),
-    experience: Math.max(0, Math.min(100, Math.round(bulletAvg))),
-    education: hasEducation ? 90 : 40,
-    skills: hasSkills ? Math.min(100, skillList.length * 8) : 0,
-    impact: impact.score,
-    issues,
-    bullets: allBullets,
-  };
-}
-
-function flattenSkills(skills: unknown): string[] {
-  if (Array.isArray(skills)) {
-    return skills.map((skill) => typeof skill === "string" ? skill : String(skill?.name || "")).filter(Boolean);
-  }
-  if (skills && typeof skills === "object") {
-    return Object.values(skills as Record<string, unknown>)
-      .flatMap((value) => Array.isArray(value) ? value.map(String) : [])
-      .filter(Boolean);
-  }
-  return [];
-}
 
 // ── AI keyword matcher (Haiku 4.5) ────────────────────────────
 
@@ -148,90 +43,59 @@ Then propose 5 crisp suggestions to close the gap, prioritised high/medium/low.
 Return ONLY JSON:
 {"jd_keywords": string[15], "suggestions": [{"priority":"high"|"medium"|"low","action":string}, ...]}`;
 
-function computeKeywordScore(resumeText: string, keywords: string[]): {
-  score: number; matched: string[]; missing: string[];
-} {
-  const normalizedResume = normalizeForMatch(resumeText);
-  const paddedResume = ` ${normalizedResume} `;
-  const resumeTokens = new Set(normalizedResume.split(" ").filter(Boolean));
-  const matched: string[] = [];
-  const missing: string[] = [];
-  let earned = 0;
-  for (const k of keywords) {
-    const needle = normalizeForMatch(k);
-    if (!needle) continue;
-    if (paddedResume.includes(` ${needle} `)) {
-      matched.push(k);
-      earned += 1;
-      continue;
-    }
-    const tokens = needle.split(" ").filter((token) => token.length > 1 && !ATS_STOP_WORDS.has(token));
-    const coverage = tokens.length > 0
-      ? tokens.filter((token) => resumeTokens.has(token)).length / tokens.length
-      : 0;
-    earned += coverage;
-    if (coverage >= 0.7) matched.push(k);
-    else missing.push(k);
-  }
-  const score = keywords.length ? Math.round((earned / keywords.length) * 100) : 0;
-  return { score, matched, missing };
-}
-
-const ATS_STOP_WORDS = new Set(["and", "the", "for", "with", "from", "into", "using", "such", "including", "end", "full", "large", "scale"]);
-
-function normalizeForMatch(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function resumeToPlainText(r: any): string {
-  const parts: string[] = [];
-  const personal = r.personal_info && typeof r.personal_info === "object" ? r.personal_info : {};
-  parts.push(`${personal.fullName ?? personal.name ?? ""} ${personal.title ?? ""} ${personal.location ?? ""}`);
-  if (r.summary || r.personal_info?.summary) parts.push(r.summary || r.personal_info.summary);
-  if (Array.isArray(r.experience)) for (const x of r.experience) {
-    parts.push(`${x.role ?? x.title ?? ""} ${x.company_or_client ?? x.company ?? ""}`);
-    if (Array.isArray(x.bullets)) parts.push(x.bullets.join(" "));
-    else if (x.description) parts.push(x.description);
-  }
-  const skills = flattenSkills(r.skills);
-  if (skills.length > 0) parts.push(skills.join(" "));
-  if (Array.isArray(r.projects)) parts.push(r.projects.map((p: any) =>
-    `${p.title ?? p.name ?? ""} ${p.organization ?? ""} ${p.description ?? ""} ${Array.isArray(p.bullets) ? p.bullets.join(" ") : ""}`,
-  ).join(" "));
-  return parts.join("\n");
-}
-
 // ── Handler ───────────────────────────────────────────────────
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   return withErrorHandler(async () => {
+    if (req.method !== "POST") throw new HttpError(405, "method not allowed");
     const body = await req.json().catch(() => ({})) as {
-      resume_id?: string; scanned_job_id?: string; job_description?: string; user_id?: string;
+      resume_id?: string;
+      resume_text?: string;
+      scanned_job_id?: string;
+      job_description?: string;
+      user_id?: string;
     };
     const user = await getAuthedUserOrService(req, body.user_id);
-    if (!body.resume_id) throw new HttpError(400, "resume_id required");
+    const suppliedText = typeof body.resume_text === "string" ? body.resume_text.trim() : "";
+    if (!body.resume_id && suppliedText.length < 50) {
+      throw new HttpError(400, "resume_id or at least 50 characters of resume_text required");
+    }
 
     const svc = serviceClient();
     const { isPro } = await enforceAccountActive(svc, user.id);
     await enforceDailyCap(svc, user.id, "ats", isPro);
 
-    const { data: resume } = await svc.from("resumes").select("*")
-      .eq("id", body.resume_id).maybeSingle();
-    if (!resume) throw new HttpError(404, "resume not found");
-    if (resume.user_id !== user.id) throw new HttpError(403, "forbidden");
+    let resume: Record<string, unknown> | null = null;
+    if (body.resume_id) {
+      const { data } = await svc.from("resumes").select("*")
+        .eq("id", body.resume_id).maybeSingle();
+      if (!data) throw new HttpError(404, "resume not found");
+      if (data.user_id !== user.id) throw new HttpError(403, "forbidden");
+      resume = data;
+    }
 
-    let jdText: string | null = body.job_description ?? null;
+    let jdText = typeof body.job_description === "string" ? body.job_description.trim() : "";
     let jobId: string | null = null;
     if (body.scanned_job_id) {
       const { data: job } = await svc.from("scanned_jobs")
         .select("id, description_md").eq("id", body.scanned_job_id).maybeSingle();
-      if (job) { jdText = jdText ?? job.description_md; jobId = job.id; }
+      if (!job) throw new HttpError(404, "job not found");
+      if (!jdText) jdText = typeof job.description_md === "string" ? job.description_md.trim() : "";
+      jobId = job.id;
+    }
+    const hasJobDescription = jdText.length > 100;
+    if ((body.scanned_job_id || body.job_description) && !hasJobDescription) {
+      throw new HttpError(422, "A complete job description is required for an honest job-match score");
+    }
+    if (!resume && !hasJobDescription) {
+      throw new HttpError(422, "resume_text can only be used with a complete job description");
     }
 
-    const det = deterministicAnalysis(resume);
-    const resumeText = resumeToPlainText(resume);
+    const det = resume ? deterministicAnalysis(resume) : null;
+    const resumeText = resume ? resumeToPlainText(resume) : suppliedText.slice(0, 40_000);
+    const resumeQualityScore = det ? computeResumeQualityScore(det) : null;
 
     // Keywords + suggestions use the cheap routing tier if a JD is present.
     let keywordScore = 0;
@@ -241,7 +105,7 @@ serve(async (req) => {
     let model = "deterministic";
     let tokens_in = 0, tokens_out = 0;
 
-    if (jdText && jdText.trim().length > 100) {
+    if (hasJobDescription) {
       // Read-through cache: keyword extraction is deterministic per normalized
       // JD, so repeat scores of the same posting skip the LLM entirely.
       const hash = jdHash(jdText, "ats-kw");
@@ -265,14 +129,20 @@ serve(async (req) => {
         tokens_out = result.tokens_out;
         await writeJdKeywordCache(svc, hash, kp, model);
       }
-      const m = computeKeywordScore(resumeText, kp.jd_keywords ?? []);
+      const jdKeywords = Array.isArray(kp.jd_keywords)
+        ? kp.jd_keywords.filter((keyword): keyword is string => typeof keyword === "string" && keyword.trim().length > 0)
+        : [];
+      if (jdKeywords.length === 0) {
+        throw new HttpError(502, "Job requirements could not be extracted reliably");
+      }
+      const m = computeKeywordScore(resumeText, jdKeywords);
       keywordScore = m.score;
       matched = m.matched;
       missing = m.missing;
       suggestions = kp.suggestions ?? [];
     } else {
-      // No JD — skip keyword scoring, use generic guidance.
-      keywordScore = 0;
+      // A no-JD request is a generic quality check only. Keyword coverage is
+      // unavailable, not zero.
       suggestions = [
         { priority: "high", action: "Provide a target job description for keyword-level analysis." },
         { priority: "medium", action: "Add quantified outcomes to weakly-scored bullets." },
@@ -280,41 +150,52 @@ serve(async (req) => {
       ];
     }
 
-    // Overall score = weighted mean.
-    const weights = { format: 0.15, keywords: 0.25, experience: 0.25, skills: 0.15, education: 0.05, impact: 0.15 };
-    const overall =
-      det.format * weights.format +
-      keywordScore * weights.keywords +
-      det.experience * weights.experience +
-      det.skills * weights.skills +
-      det.education * weights.education +
-      det.impact * weights.impact;
+    const jobMatchScore = hasJobDescription ? keywordScore : null;
+    const scoreKind = hasJobDescription ? "job_match" : "resume_quality";
+    const effectiveScore = jobMatchScore ?? resumeQualityScore;
+    if (effectiveScore === null) throw new HttpError(422, "No score is available for this input");
 
     const row = {
       user_id: user.id,
-      resume_id: body.resume_id,
+      resume_id: body.resume_id ?? null,
       scanned_job_id: jobId,
-      overall: Math.round(overall * 10) / 10,
-      dim_format: det.format,
+      overall: effectiveScore,
+      dim_format: det?.format ?? 0,
       dim_keywords: keywordScore,
-      dim_experience: det.experience,
-      dim_skills: det.skills,
-      dim_education: det.education,
-      dim_impact: det.impact,
+      dim_experience: det?.experience ?? 0,
+      dim_skills: det?.skills ?? 0,
+      dim_education: det?.education ?? 0,
+      dim_impact: det?.impact ?? 0,
       matched_keywords: matched,
       missing_keywords: missing,
-      issues: det.issues,
+      issues: det?.issues ?? [],
       suggestions,
-      model,
+      model: `ats-truth-v2:${scoreKind}:${model}`,
       tokens_in,
       tokens_out,
     };
 
-    const { data: saved, error: saveErr } = await svc.from("ats_scores")
-      .insert(row).select().single();
-    if (saveErr) throw new HttpError(500, `save: ${saveErr.message}`);
+    let saved: Record<string, unknown> = row;
+    // Plain-text checks do not pretend that extracted text proves the
+    // original document's structure and are therefore not persisted.
+    if (resume) {
+      const { data, error: saveErr } = await svc.from("ats_scores")
+        .insert(row).select().single();
+      if (saveErr || !data) throw new HttpError(500, `save: ${saveErr?.message ?? "no row returned"}`);
+      saved = data;
+    }
 
     if (tokens_in > 0) await logAiUsage(svc, user.id, "ats", tokens_in, tokens_out);
-    return jsonResponse({ ats: saved });
+    return jsonResponse({
+      ats: {
+        ...saved,
+        score_kind: scoreKind,
+        resume_quality_score: resumeQualityScore,
+        job_match_score: jobMatchScore,
+        job_match_basis: hasJobDescription ? "jd_requirement_coverage" : null,
+        persisted: Boolean(resume),
+        methodology_version: "ats-truth-v2",
+      },
+    });
   });
 });

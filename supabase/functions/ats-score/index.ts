@@ -31,7 +31,14 @@ interface ATSScoreResult {
   topImprovements: string[];
 }
 
-const SCORING_PROMPT = `You are an advanced ATS (Applicant Tracking System) analyzer. Perform a deep, structured analysis of the resume against the job description (if provided).
+interface ResumeQualityResponse extends ATSScoreResult {
+  scoreType: "resume_quality";
+  resumeQualityScore: number;
+  jobMatchScore: null;
+  methodologyVersion: "resume-quality-text-v2";
+}
+
+const SCORING_PROMPT = `You are a résumé-quality analyzer. Assess only evidence visible in the extracted résumé text. Do not predict whether an employer will accept or reject it, and do not claim to inspect visual formatting that plain text cannot prove.
 
 ## Scoring Criteria
 
@@ -44,13 +51,10 @@ const SCORING_PROMPT = `You are an advanced ATS (Applicant Tracking System) anal
 - No headers/footers (ATS often ignores these)
 - File parsability (plain text extraction quality)
 
-### 2. Keywords (25% weight)
-- Match hard skills from job description
-- Match soft skills mentioned
-- Industry-specific terminology
-- Tools, technologies, certifications mentioned in JD
-- Action verbs alignment
-- Score based on % of JD keywords found in resume
+### 2. Keywords
+- No job description is supplied to this generic quality check.
+- Return score 0, no matched/missing terms, and explain that job requirement
+  coverage is measured separately by the authoritative job-match scorer.
 
 ### 3. Experience Relevance (25% weight)
 - Years of experience match
@@ -120,10 +124,11 @@ You MUST respond with ONLY a valid JSON object matching this exact schema. No ma
   "topImprovements": ["top improvement 1", "top improvement 2", "top improvement 3"]
 }
 
-The overallScore should be a weighted average:
-formatting * 0.15 + keywords * 0.25 + experience * 0.25 + skills * 0.15 + education * 0.05 + impact * 0.15
+The server calculates the final résumé-quality score from the non-job-specific
+dimensions. Do not use the keywords dimension in the final score.
 
-Be honest and critical. Real ATS systems are strict. A perfect resume for a matching job might score 85-95. An average resume scores 50-70. A poor match scores below 50.`;
+Be honest and critical. This is a checklist-based quality estimate, not a
+promise about a particular ATS or hiring outcome.`;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -143,7 +148,7 @@ function clamp(value: unknown): number {
   return Number.isFinite(numeric) ? Math.max(0, Math.min(100, Math.round(numeric))) : 0;
 }
 
-function normalizeResult(value: unknown): ATSScoreResult {
+function normalizeResult(value: unknown): ResumeQualityResponse {
   const root = asRecord(value);
   const sections = asRecord(root.sections);
   const genericSection = (key: string) => {
@@ -162,16 +167,19 @@ function normalizeResult(value: unknown): ATSScoreResult {
     education: genericSection("education"),
     impact: genericSection("impact"),
   };
-  const overallScore = Math.round(
+  const weightedQuality =
     normalized.formatting.score * 0.15 +
-    normalized.keywords.score * 0.25 +
     normalized.experience.score * 0.25 +
     normalized.skills.score * 0.15 +
     normalized.education.score * 0.05 +
-    normalized.impact.score * 0.15
-  );
+    normalized.impact.score * 0.15;
+  const overallScore = Math.round(weightedQuality / 0.75);
   return {
     overallScore,
+    scoreType: "resume_quality",
+    resumeQualityScore: overallScore,
+    jobMatchScore: null,
+    methodologyVersion: "resume-quality-text-v2",
     sections: normalized,
     summary: typeof root.summary === "string" ? root.summary.trim().slice(0, 800) : "ATS analysis completed.",
     topImprovements: strings(root.topImprovements, 5),
@@ -198,12 +206,13 @@ serve(async (req: Request) => {
       );
     }
 
-    let scoringContext = `## Resume\n${resumeText.substring(0, 12_000)}`;
     if (jobDescription?.trim()) {
-      scoringContext += `\n\n## Job Description\n${jobDescription.substring(0, 8_000)}`;
-    } else {
-      scoringContext += `\n\n## Note\nNo job description was provided. Score general ATS structure and evidence quality. Do not invent missing requirements.`;
+      throw new HttpError(400, "Job-specific matching is available only through career-ops-ats");
     }
+    const scoringContext = `## Extracted resume text\n${resumeText.substring(0, 12_000)}
+
+## Scope
+Score only general résumé evidence quality. Do not infer visual layout and do not produce a job-match percentage.`;
 
     const result = await chatFree<ATSScoreResult>(
       "lite",

@@ -19,6 +19,10 @@ import {
   serviceClient,
   withErrorHandler,
 } from "../_shared/guards.ts";
+import {
+  getResumeReviewState,
+  RESUME_REVIEW_REQUIRED_MESSAGE,
+} from "../_shared/resume-review.ts";
 
 interface JobMetadata {
   id: string;
@@ -66,6 +70,9 @@ serve(async (req) => {
 
     const resume = selectSourceResume((resumes ?? []) as unknown as Array<Record<string, unknown>>, profile?.primary_resume_id);
     if (!resume) throw new HttpError(412, "Add a source resume before building matches");
+    if (!getResumeReviewState(resume).allowed) {
+      throw new HttpError(409, RESUME_REVIEW_REQUIRED_MESSAGE);
+    }
 
     const rawPrefs = (prefRow ?? {}) as unknown as CandidatePreferences;
     const inferredCountry = inferResumeCountry(resume, profile?.location, profile?.desired_locations);
@@ -81,9 +88,13 @@ serve(async (req) => {
         ? rawPrefs.target_countries
         : inferredCountry ? [inferredCountry] : [],
     };
-    const reviewedGraph = careerReviews?.[0]?.resume_id === resume.id && careerReviews[0].graph && typeof careerReviews[0].graph === "object"
-      ? careerReviews[0].graph as Record<string, unknown>
-      : null;
+    const latestCareerReview = Array.isArray(careerReviews) ? careerReviews[0] : null;
+    const reviewedGraph = latestCareerReview
+      && latestCareerReview.resume_id === resume.id
+      && latestCareerReview.graph
+      && typeof latestCareerReview.graph === "object"
+        ? latestCareerReview.graph as Record<string, unknown>
+        : null;
     const reviewedRoleFamilies = reviewRoleTerms(reviewedGraph?.primary_role_families);
     const reviewedAdjacentRoles = reviewRoleTerms(reviewedGraph?.adjacent_roles, "title");
     const candidate = buildCandidateCareerProfile(resume, {

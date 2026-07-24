@@ -40,6 +40,23 @@ export function parseAIResponse(content: string): Record<string, any> | null {
   return null;
 }
 
+/**
+ * Resume-fix prompts return an object with an `experience` array. Accept a
+ * direct array as well for compatibility with older providers and tests.
+ */
+export function extractExperienceFixEntries(value: unknown): Record<string, any>[] | null {
+  const entries: unknown[] | null = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && Array.isArray((value as Record<string, unknown>).experience)
+      ? ((value as Record<string, unknown>).experience as unknown[])
+      : null;
+
+  if (!entries) return null;
+  return entries.filter(
+    (entry): entry is Record<string, any> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+  );
+}
+
 function extractJsonByBraceMatching(cleaned: string): Record<string, any> | null {
   let braceCount = 0,
     startIdx = -1,
@@ -579,7 +596,8 @@ export function calculateResumeParseQuality(
   if (/email\s+needed|\(x{3}\)|city\s*,\s*st|\/(?:handle|username)\b/i.test(sourceText)) {
     warnings.push("Placeholder contact values were left blank for the user to complete.");
   }
-  if (sourceText.includes("[Content truncated for processing]")) {
+  const truncated = sourceText.includes("[Content truncated for processing]");
+  if (truncated) {
     warnings.push("The source exceeded the parser limit and requires manual review.");
   }
 
@@ -587,7 +605,10 @@ export function calculateResumeParseQuality(
     version: PARSER_VERSION,
     score,
     threshold,
-    status: score >= threshold ? "passed" : "review_required",
+    // A high recall score against a truncated prefix cannot certify the
+    // omitted tail. It remains quarantined until the owner reviews it.
+    status: !truncated && score >= threshold ? "passed" : "review_required",
+    truncated,
     sourceCharacters: sourceText.length,
     metrics: {
       lexicalCoverage: percent(lexicalCoverage),

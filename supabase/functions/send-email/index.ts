@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isAuthorizedDirectEmailRequest } from "../_shared/email-auth.ts";
+import { verifyAuthHookPayload } from "../_shared/email-auth-webhook.ts";
 
 // Cache vault secret in memory so we only query once per cold start
 let _cachedResendKey: string | null = null;
@@ -44,7 +46,8 @@ async function getResendApiKey(): Promise<string | null> {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-token",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-internal-token, webhook-id, webhook-timestamp, webhook-signature",
 };
 
 // ── Security Helpers ────────────────────────────────────────────────────
@@ -59,16 +62,6 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-// Constant-time string comparison so token checks don't leak via timing.
-function timingSafeEqual(a: string, b: string): boolean {
-  const bufA = new TextEncoder().encode(a);
-  const bufB = new TextEncoder().encode(b);
-  if (bufA.length !== bufB.length) return false;
-  let diff = 0;
-  for (let i = 0; i < bufA.length; i++) diff |= bufA[i] ^ bufB[i];
-  return diff === 0;
-}
-
 // The direct-send endpoint (handleDirectEmail) can send arbitrary email to
 // arbitrary recipients through our Resend account, so it must not be open to
 // the public internet. Callers must present either:
@@ -76,41 +69,23 @@ function timingSafeEqual(a: string, b: string): boolean {
 //      (Deno env: INTERNAL_EMAIL_TOKEN), or
 //   2. the project service-role key as a Bearer token (backend-to-backend).
 function isAuthorizedDirectRequest(req: Request): boolean {
-  const internalToken = Deno.env.get("INTERNAL_EMAIL_TOKEN");
-  const providedToken = req.headers.get("x-internal-token");
-  if (internalToken && providedToken && timingSafeEqual(providedToken, internalToken)) {
-    return true;
-  }
-
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const authHeader = req.headers.get("Authorization") ?? "";
-  if (serviceKey && authHeader.startsWith("Bearer ")) {
-    const bearer = authHeader.slice("Bearer ".length).trim();
-    if (bearer && timingSafeEqual(bearer, serviceKey)) return true;
-  }
-
-  return false;
+  return isAuthorizedDirectEmailRequest(req, (name) => Deno.env.get(name));
 }
 
-// The Supabase Auth "Send Email" hook is the OTHER way this function gets
-// called (payload shaped like {user, email_data} instead of {type, to,
-// data}), and this function's verify_jwt is off (supabase/config.toml), so
-// that branch was reachable by anyone on the public internet with zero
-// authentication — a POST of a fabricated {user:{email:"victim@..."},
-// email_data:{...}} body would make our own Resend account send a branded,
-// attacker-chosen-redirect email (signup/magic-link/reset/email-change) to
-// any address. Close it the same way handleDirectEmail is closed: require a
-// shared secret, configured as the AUTH_EMAIL_HOOK_SECRET function secret and
-// sent back as the `x-auth-hook-token` custom header on the Supabase Auth
-// Hook (Dashboard → Authentication → Hooks → Send Email → HTTP → Custom
-// Headers). Fails OPEN (unchanged behavior) until that secret is set, so
-// wiring this up doesn't require synchronized deploys — but it means the
-// hole stays open until an operator actually configures both sides.
-function isAuthorizedAuthHookRequest(req: Request): boolean {
-  const hookSecret = Deno.env.get("AUTH_EMAIL_HOOK_SECRET");
-  if (!hookSecret) return true;
-  const providedToken = req.headers.get("x-auth-hook-token") ?? "";
-  return Boolean(providedToken) && timingSafeEqual(providedToken, hookSecret);
+// Supabase HTTP Auth Hooks use the Standard Webhooks signature carried in
+// webhook-id/webhook-timestamp/webhook-signature. Verification MUST happen
+// against the exact raw body before JSON parsing. Missing configuration or an
+// invalid/stale signature fails closed, preventing this verify_jwt=false
+// endpoint from becoming a branded public mail relay.
+function verifiedAuthHookBody(
+  rawBody: string,
+  headers: Headers,
+): unknown | null {
+  return verifyAuthHookPayload(
+    rawBody,
+    headers,
+    (name) => Deno.env.get(name),
+  );
 }
 
 // ── Email Templates ─────────────────────────────────────────────────────
@@ -782,18 +757,24 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
+    const rawBody = await req.text();
+    const body = JSON.parse(rawBody);
 
     // If this is a Supabase Auth hook call (has user + email_data)
     if (body.user && body.email_data) {
-      if (!isAuthorizedAuthHookRequest(req)) {
+      const verifiedBody = verifiedAuthHookBody(rawBody, req.headers);
+      if (
+        !verifiedBody ||
+        typeof verifiedBody !== "object" ||
+        Array.isArray(verifiedBody)
+      ) {
         console.warn("send-email: unauthorized auth-hook send attempt rejected");
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      return await handleAuthHook(body);
+      return await handleAuthHook(verifiedBody);
     }
 
     // Otherwise, it's a direct API call — this path is an open mail relay

@@ -42,6 +42,11 @@ verify_jwt = false
 [functions.ats-score]
 verify_jwt = false
 
+# Authenticated customer endpoint. Gateway verification is intentionally on;
+# the handler also resolves the caller and enforces account/rate limits.
+[functions.ats-score-v2]
+verify_jwt = true
+
 [functions.perplexity-job-search]
 verify_jwt = false
 
@@ -79,8 +84,14 @@ verify_jwt = false
 [functions.career-ops-evaluate]
 verify_jwt = false
 
+[functions.career-ops-ats]
+verify_jwt = false
+
 [functions.career-ops-tailor]
 verify_jwt = false
+
+[functions.career-ops-tailor-v2]
+verify_jwt = true
 
 [functions.career-ops-tailor-report]
 verify_jwt = false
@@ -91,11 +102,15 @@ verify_jwt = false
 [functions.career-ops-one-click]
 verify_jwt = false
 
+[functions.career-ops-submit]
+verify_jwt = false
+
 [functions.career-profile-review]
 verify_jwt = false
 
 # OAuth callback requests do not carry a Supabase JWT. These handlers perform
-# their own signed-state and caller verification inside the function.
+# their own authenticated-user check plus one-time server-side OAuth state
+# validation inside the functions.
 [functions.mc-gmail-connect]
 verify_jwt = false
 

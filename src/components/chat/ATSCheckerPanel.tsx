@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { AIMessageContent } from "@/components/chat/AIMessageContent";
+import { normalizeScore } from "@/lib/score-truth";
 
 export interface ATSMessage {
   id: string;
@@ -15,6 +16,7 @@ export interface ATSMessage {
   timestamp: Date;
   isThinking?: boolean;
   atsScore?: number;
+  scoreLabel?: "Résumé quality" | "Job-requirement coverage";
 }
 
 interface ATSCheckerPanelProps {
@@ -63,10 +65,11 @@ export function ATSCheckerPanel({
     }
   };
 
-  // Extract ATS score from the latest assistant message
-  const latestScore = messages
+  // Extract the latest explicitly typed score from the assistant message.
+  const latestScoredMessage = messages
     .filter((m) => m.role === "assistant" && m.atsScore !== undefined)
-    .pop()?.atsScore;
+    .pop();
+  const latestScore = normalizeScore(latestScoredMessage?.atsScore);
 
   return (
     <div className="flex flex-col h-full">
@@ -78,9 +81,9 @@ export function ATSCheckerPanel({
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
                 <Target className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-2xl font-semibold mb-2">ATS Score Checker</h2>
+              <h2 className="text-2xl font-semibold mb-2">Résumé and job-match checker</h2>
               <p className="text-muted-foreground">
-                Upload your resume (PDF or Word) or paste text to get an ATS compatibility score
+                Measure generic résumé quality and, with a full job description, separate requirement coverage
               </p>
             </div>
 
@@ -149,7 +152,7 @@ export function ATSCheckerPanel({
               ) : (
                 <>
                   <CheckCircle className="w-4 h-4" />
-                  Check ATS Score
+                  {jobDescription.trim() ? "Measure quality + job coverage" : "Measure résumé quality"}
                 </>
               )}
             </Button>
@@ -159,7 +162,7 @@ export function ATSCheckerPanel({
         // Results and chat view
         <>
           {/* Score Header */}
-          {latestScore !== undefined && (
+          {latestScore !== null && (
             <div className="p-4 border-b border-border bg-card">
               <div className="flex items-center gap-4">
                 <div className="relative w-20 h-20">
@@ -195,13 +198,15 @@ export function ATSCheckerPanel({
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg">ATS Score</h3>
+                  <h3 className="font-semibold text-lg">{latestScoredMessage?.scoreLabel ?? "Résumé quality"}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {latestScore >= 80
-                      ? "Excellent! Your resume is well-optimized"
+                    {latestScoredMessage?.scoreLabel === "Job-requirement coverage"
+                      ? "Evidence coverage for this posting, separate from career fit and résumé quality"
+                      : latestScore >= 80
+                      ? "Strong signals under the generic résumé-quality checklist"
                       : latestScore >= 60
-                      ? "Good, but there's room for improvement"
-                      : "Needs improvement for better ATS compatibility"}
+                      ? "Review the quality recommendations below"
+                      : "The generic quality checklist found important gaps"}
                   </p>
                 </div>
               </div>

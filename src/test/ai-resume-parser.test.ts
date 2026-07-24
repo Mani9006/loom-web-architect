@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   calculateResumeParseQuality,
+  extractExperienceFixEntries,
   formatBullets,
   mapParsedToResumePayload,
   mergeAndDeduplicateSkills,
@@ -42,6 +43,20 @@ describe("ai-resume-parser utilities", () => {
     it("returns null for empty or malformed content", () => {
       expect(parseAIResponse("")).toBeNull();
       expect(parseAIResponse("no structured data here")).toBeNull();
+    });
+  });
+
+  describe("extractExperienceFixEntries", () => {
+    it("accepts the object shape requested by the experience-fix prompt", () => {
+      const parsed = parseAIResponse('{"experience":[{"role":"Engineer","bullets":["Improved latency"]}]}');
+
+      expect(extractExperienceFixEntries(parsed)).toEqual([
+        { role: "Engineer", bullets: ["Improved latency"] },
+      ]);
+    });
+
+    it("rejects responses without an experience array", () => {
+      expect(extractExperienceFixEntries({ summary: "No experience payload" })).toBeNull();
     });
   });
 
@@ -90,6 +105,19 @@ describe("ai-resume-parser utilities", () => {
 
       expect(prepared.length).toBeLessThan(longText.length);
       expect(prepared).toContain("[Content truncated for processing]");
+
+      const quality = calculateResumeParseQuality(prepared, {
+        header: {},
+        summary: prepared,
+        experience: [],
+        education: [],
+        certifications: [],
+        skills: {},
+        projects: [],
+      });
+      expect(quality.truncated).toBe(true);
+      expect(quality.status).toBe("review_required");
+      expect(quality.warnings.join(" ")).toMatch(/parser limit|manual review/i);
     });
   });
 

@@ -7,8 +7,10 @@ import { ConversationFolder } from "@/components/chat/ChatSidebar";
 import { ChatWelcome } from "@/components/chat/ChatWelcome";
 import { GeneralChatPanel, GeneralChatMessage } from "@/components/chat/GeneralChatPanel";
 import { ATSCheckerPanel, ATSMessage } from "@/components/chat/ATSCheckerPanel";
+import { normalizeScore } from "@/lib/score-truth";
 import { JobSearchPanel } from "@/components/chat/JobSearchPanel";
 import { CoverLetterPanel, CoverLetterMessage } from "@/components/chat/CoverLetterPanel";
+import { getTemplatePrompt } from "@/components/chat/CoverLetterTemplateSelector";
 import { InterviewPrepPanel, InterviewMessage } from "@/components/chat/InterviewPrepPanel";
 import { EnhancedResumeForm } from "@/components/resume/EnhancedResumeForm";
 import {
@@ -560,7 +562,7 @@ export default function Chat() {
     }
   };
 
-  // ATS Score Check Handler
+  // Résumé-quality and job-requirement-coverage check handler.
   const handleATSAnalyze = async (resumeText: string, jobDescription?: string) => {
     if (!session) return;
     if (!(await ensureUsageWithinBudget())) return;
@@ -586,84 +588,61 @@ export default function Chat() {
     ]);
 
     try {
-      let assistantContent = "";
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-orchestrator`, {
+      if (resumeText.trim().length < 50) throw new Error("Add at least 50 characters of résumé text.");
+      if (jobDescription?.trim() && jobDescription.trim().length <= 100) {
+        throw new Error("Paste the complete job description (more than 100 characters).");
+      }
+
+      const qualityResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ats-score`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content: `You are an expert ATS (Applicant Tracking System) resume analyzer. Analyze the resume and provide:
-
-1. **ATS Score**: A number from 0-100 representing ATS compatibility. Format: "**ATS Score: XX/100**"
-2. **Strengths**: What the resume does well for ATS
-3. **Issues Found**: Specific problems that could hurt ATS parsing
-4. **Missing Keywords**: Important keywords that should be added
-5. **Formatting Issues**: Any formatting that ATS systems might struggle with
-6. **Recommendations**: Specific actionable improvements
-
-Be detailed and specific. If a job description is provided, also analyze keyword matching.`,
-            },
-            { role: "user", content: userContent },
-          ],
-          agentHint: "ats",
-        }),
+        body: JSON.stringify({ resumeText }),
       });
+      if (!qualityResponse.ok) {
+        const errorBody = await qualityResponse.json().catch(() => ({}));
+        throw new Error(typeof errorBody?.error === "string" ? errorBody.error : "Résumé quality analysis failed.");
+      }
+      const quality = await qualityResponse.json();
 
-      if (!response.ok) {
-        if (response.status === 429) throw new Error("Rate limit exceeded.");
-        if (response.status === 402) throw new Error("AI usage limit reached.");
-        throw new Error("Failed to analyze resume");
+      let jobMatch: Record<string, unknown> | null = null;
+      if (jobDescription?.trim()) {
+        const { data, error } = await supabase.functions.invoke("career-ops-ats", {
+          body: { resume_text: resumeText, job_description: jobDescription },
+        });
+        if (error) throw error;
+        jobMatch = (data?.ats ?? null) as Record<string, unknown> | null;
       }
 
-      setAtsMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, isThinking: false } : m)));
+      const qualityScore = normalizeScore(quality.resumeQualityScore ?? quality.overallScore);
+      if (qualityScore === null) throw new Error("Résumé quality was not measured.");
+      const matchScore = jobMatch?.job_match_score === null || jobMatch?.job_match_score === undefined
+        ? null
+        : normalizeScore(jobMatch.job_match_score);
+      const matched = Array.isArray(jobMatch?.matched_keywords) ? jobMatch.matched_keywords.map(String) : [];
+      const missing = Array.isArray(jobMatch?.missing_keywords) ? jobMatch.missing_keywords.map(String) : [];
+      const improvements = Array.isArray(quality.topImprovements) ? quality.topImprovements.map(String) : [];
+      const assistantContent = [
+        `**Résumé quality: ${qualityScore}%**`,
+        "A generic checklist estimate based on the extracted text. It is not a prediction of an employer screening result.",
+        matchScore === null ? "" : `\n**Job-requirement coverage: ${matchScore}%**`,
+        matchScore === null ? "" : "The authoritative percentage of extracted posting requirements evidenced in this résumé. It is separate from career fit and résumé quality.",
+        matched.length ? `\n**Evidenced requirements**\n${matched.map((item) => `- ${item}`).join("\n")}` : "",
+        missing.length ? `\n**Not evidenced**\n${missing.map((item) => `- ${item}`).join("\n")}` : "",
+        improvements.length ? `\n**Quality improvements**\n${improvements.map((item) => `- ${item}`).join("\n")}` : "",
+      ].filter(Boolean).join("\n\n");
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          let newlineIndex: number;
-
-          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-            const line = buffer.slice(0, newlineIndex);
-            buffer = buffer.slice(newlineIndex + 1);
-
-            if (line.startsWith(":") || line.trim() === "") continue;
-            if (!line.startsWith("data: ")) continue;
-
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === "[DONE]") continue;
-
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                assistantContent += content;
-                // Extract ATS score from content
-                const scoreMatch = assistantContent.match(/ATS Score:\s*(\d+)/i);
-                const atsScore = scoreMatch ? parseInt(scoreMatch[1]) : undefined;
-
-                setAtsMessages((prev) =>
-                  prev.map((m) => (m.id === tempId ? { ...m, content: assistantContent, atsScore } : m)),
-                );
-              }
-            } catch {
-              buffer = line + "\n" + buffer;
-              break;
-            }
-          }
-        }
-      }
+      setAtsMessages((prev) =>
+        prev.map((message) => message.id === tempId ? {
+          ...message,
+          isThinking: false,
+          content: assistantContent,
+          atsScore: matchScore ?? qualityScore,
+          scoreLabel: matchScore === null ? "Résumé quality" : "Job-requirement coverage",
+        } : message),
+      );
     } catch (error) {
       toast({
         title: "Error",
@@ -773,8 +752,6 @@ Be detailed and specific. If a job description is provided, also analyze keyword
     if (!session) return;
     if (!(await ensureUsageWithinBudget())) return;
 
-    // Import template prompt helper
-    const { getTemplatePrompt } = await import("@/components/chat/CoverLetterTemplateSelector");
     const templatePrompt = getTemplatePrompt(template as "formal" | "creative" | "modern");
 
     setIsLoading(true);

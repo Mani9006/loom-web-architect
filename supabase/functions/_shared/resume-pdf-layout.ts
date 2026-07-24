@@ -83,6 +83,10 @@ export const ATS_PDF_SPEC = {
   entryGapPt: 5,
   sectionGapPt: 10,
   maxAutoFitOverflow: 0.08,
+  // A longer résumé may be correctly two pages yet strand a small skills or
+  // education tail on page 3 because entries stay together. A slightly wider
+  // threshold is safe here: we only tighten line-height/gaps, never font size.
+  maxSparseTailOverflow: 0.18,
   densitySteps: [0.94, 0.88, 0.84],
 } as const;
 
@@ -254,8 +258,9 @@ export interface AutoFitOptions {
 
 /**
  * Paginates at the base density, then — when content spills only slightly
- * onto one extra page — retries with tightened line-height/spacing so the
- * resume fits one page instead of stranding a line or two on page 2.
+ * onto one extra page — retries with tightened line-height/spacing. This
+ * handles both the one-line second-page case and a sparse third page after an
+ * otherwise valid two-page résumé. Font sizes never change.
  */
 export function paginateWithAutoFit(
   blocks: LayoutBlock[],
@@ -266,7 +271,10 @@ export function paginateWithAutoFit(
   const steps = options.densitySteps ?? [...ATS_PDF_SPEC.densitySteps];
 
   const base = paginate(blocks, metrics);
-  if (base.pages.length === 2 && base.overflowFraction <= maxOverflow) {
+  const eligibleOverflow = base.pages.length === 2
+    ? maxOverflow
+    : ATS_PDF_SPEC.maxSparseTailOverflow;
+  if (base.pages.length > 1 && base.overflowFraction <= eligibleOverflow) {
     for (const density of steps) {
       const scaled: LayoutMetrics = {
         usableHeight: metrics.usableHeight,
@@ -274,7 +282,7 @@ export function paginateWithAutoFit(
         gapScale: density,
       };
       const attempt = paginate(blocks, scaled);
-      if (attempt.pages.length === 1) {
+      if (attempt.pages.length < base.pages.length) {
         return { ...attempt, density, tightened: true };
       }
     }
@@ -289,6 +297,7 @@ const HEADING_RX = /^(PROFESSIONAL |TECHNICAL |WORK )?(SUMMARY|EXPERIENCE|EDUCAT
 const ENTRY_SECTION_RX = /(EXPERIENCE|EDUCATION|PROJECT|CERTIFICATION|VOLUNTEER|AWARDS|PUBLICATION|EMPLOYMENT|WORK HISTORY)/i;
 
 const BULLET_RX = /^\s*(?:[•\u2022\u25CF\u25AA\-*]|\d+[.)])\s+/;
+const NON_ENTRY_SECTION_RX = /(SUMMARY|SKILLS|LANGUAGES|PROFILE|REFERENCES)/i;
 
 export interface BlockBuilderOptions {
   /** Wraps text into lines fitting the content width minus the given indent. */
@@ -347,10 +356,15 @@ export function blocksFromResumeLines(lines: string[], options: BlockBuilderOpti
       continue;
     }
 
-    if (HEADING_RX.test(line.trim())) {
+    // Canonical artifact lines use Markdown headings so arbitrary user-named
+    // custom sections are recognized as real headings instead of body text.
+    const markdownHeading = /^#{2,6}\s+\S/.test(raw.trim());
+    if (markdownHeading || HEADING_RX.test(line.trim())) {
       closeEntry();
       seenHeading = true;
-      inEntrySection = ENTRY_SECTION_RX.test(line);
+      inEntrySection = markdownHeading
+        ? !NON_ENTRY_SECTION_RX.test(line)
+        : ENTRY_SECTION_RX.test(line);
       blocks.push({
         kind: "heading",
         lines: [{ text: line.trim().toUpperCase(), size: headingSize, style: "bold" }],

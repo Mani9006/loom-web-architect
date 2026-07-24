@@ -1,3 +1,5 @@
+import { firstAutomationTaskOutcome, resolveAutomationDraftState } from "@/lib/application-funnel";
+
 /**
  * apply-progress-core — pure, component-free status derivation for
  * ApplyProgressModal (mirrors how tailoring-report-core.ts is shared).
@@ -40,7 +42,13 @@ export interface ApplyTaskRow {
   id: string;
   status: string;
   error_message: string | null;
+  result?: unknown;
   run_log: unknown;
+}
+
+export interface ApplyReceiptRow {
+  draft_application_id: string;
+  submitted_at: string;
 }
 
 /** One short, plain-English reason a user can act on. */
@@ -66,33 +74,55 @@ export function lastLogMessage(task: Pick<ApplyTaskRow, "run_log"> | null | unde
  */
 export function deriveApplyStep(
   draft: Pick<ApplyDraftRow, "id" | "status" | "error_message" | "submitted_at" | "applypass_task_id"> | null | undefined,
-  task: Pick<ApplyTaskRow, "status" | "error_message"> | null | undefined,
+  task: Pick<ApplyTaskRow, "status" | "error_message" | "result"> | null | undefined,
+  receipt: Pick<ApplyReceiptRow, "submitted_at"> | null | undefined,
   error: string | null | undefined,
 ): ApplyStepInfo {
+  if (draft && receipt) {
+    return { step: "applied", terminal: true, reason: null, draftId: draft.id, submittedAt: receipt.submitted_at };
+  }
   if (error) {
     return { step: "couldnt_apply", terminal: true, reason: shortReason(error, "The résumé could not be tailored."), draftId: draft?.id ?? null, submittedAt: null };
   }
   if (!draft) {
     return { step: "tailoring", terminal: false, reason: null, draftId: null, submittedAt: null };
   }
-  if (draft.status === "queued") {
+
+  const state = resolveAutomationDraftState({
+    draftStatus: draft.status,
+    taskStatus: task?.status,
+    taskOutcome: firstAutomationTaskOutcome(task?.result),
+    hasSubmissionReceipt: Boolean(receipt),
+  });
+
+  if (state === "submitted") {
+    return { step: "applied", terminal: true, reason: null, draftId: draft.id, submittedAt: receipt?.submitted_at ?? null };
+  }
+  if (state === "queued") {
     return { step: "applying", terminal: false, reason: null, draftId: draft.id, submittedAt: null };
   }
-  if (draft.status === "submitted") {
-    return { step: "applied", terminal: true, reason: null, draftId: draft.id, submittedAt: draft.submitted_at ?? null };
-  }
-  if (draft.status === "failed") {
+  if (state === "failed") {
+    const fallback = draft.status === "submitted"
+      ? "No confirmed submission receipt was recorded."
+      : draft.status === "queued"
+        ? "The submission task ended without a confirmed receipt."
+        : "One answer is missing — open it to finish.";
     return {
       step: "needs_you",
       terminal: true,
-      reason: shortReason(draft.error_message ?? task?.error_message, "One answer is missing — open it to finish."),
+      reason: shortReason(draft.error_message ?? task?.error_message, fallback),
       draftId: draft.id,
       submittedAt: null,
     };
   }
-  if (draft.status === "skipped") {
+  if (state === "skipped") {
     return { step: "couldnt_apply", terminal: true, reason: shortReason(draft.error_message, "We held this one back — open it to see why."), draftId: draft.id, submittedAt: null };
   }
-  // draft / ready — prepared but not queued (review mode): terminal for this run.
+
+  if (draft.status === "draft") {
+    return { step: "tailoring", terminal: false, reason: null, draftId: draft.id, submittedAt: null };
+  }
+
+  // Ready but not queued (review mode): terminal for this run.
   return { step: "ready", terminal: true, reason: null, draftId: draft.id, submittedAt: null };
 }

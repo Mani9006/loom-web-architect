@@ -119,8 +119,9 @@ flowchart LR
 4. Add centralized search quality metrics: freshness, canonical-URL rate,
    duplicate rate, eligibility rate, preparation success, submission receipt
    rate, and interview conversion.
-5. Promote the exact tested commit through the production branch and protected
-   environment. No incident agent bypasses this release path.
+5. Promote the exact tested commit from `develop` to `main` through the
+   protected production environment. No incident agent bypasses this release
+   path.
 
 ## Primary references
 

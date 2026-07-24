@@ -213,6 +213,8 @@ export interface ResumeParseQuality {
   score: number;
   threshold: number;
   status: "passed" | "review_required";
+  /** True when the parser only received a truncated prefix of the source. */
+  truncated?: boolean;
   sourceCharacters: number;
   metrics: {
     lexicalCoverage: number;
@@ -227,6 +229,13 @@ export interface ResumeParseQuality {
     capturedSections: string[];
   };
   warnings: string[];
+  /** Explicit owner acknowledgment after comparing the import with its source. */
+  review_confirmation?: {
+    confirmed_at: string;
+    source_hash: string | null;
+    method: "user_review";
+    version: 1;
+  };
 }
 
 // Template configuration

@@ -17,8 +17,8 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  Home, FileText, Search, Bot, Columns3, Sparkles, Map, Inbox,
-  ShieldCheck, Crown, LogOut, Settings, Gauge, FolderOpen,
+  Home, FileText, Search, Bot, Columns3, Map, Inbox,
+  ShieldCheck, Crown, LogOut, Settings,
   User as UserIcon, Menu, X, PanelLeftClose, PanelLeft,
   HelpCircle, Sun, Moon, BookOpen, MessageSquare, CreditCard,
   ArrowUpRight } from "lucide-react";
@@ -46,16 +46,21 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
-  { label: "Job Search", icon: Search, path: "/job-search" },
-  { label: "Matches", icon: Sparkles, path: "/matches" },
+  { label: "Jobs", icon: Search, path: "/job-search" },
+  { label: "Auto Apply", icon: Bot, path: "/agent" },
   { label: "Applications", icon: Columns3, path: "/applications" },
-  { label: "My Collection", icon: FolderOpen, path: "/my-collection" },
   { label: "Inbox", icon: Inbox, path: "/inbox" },
   { label: "Resume", icon: FileText, path: "/resume-builder" },
-  { label: "ATS Checker", icon: Gauge, path: "/ats-checker" },
-  { label: "Agent", icon: Bot, path: "/agent" },
   { label: "Profile", icon: UserIcon, path: "/profile" },
 ];
+
+// These routes remain fully supported for contextual deep links, but they do
+// not compete with the seven-step primary workflow in the sidebar.
+const secondaryRouteLabels: Record<string, string> = {
+  "/matches": "Matches",
+  "/my-collection": "Application workspace",
+  "/ats-checker": "ATS checker",
+};
 
 const ownerOnlyTools: NavItem[] = [
   { label: "Market Map", icon: Map, path: "/market-domination-map" },
@@ -119,12 +124,14 @@ export default function AppLayout() {
   const visibleOwnerTools = hasAdminAccess ? ownerOnlyTools : [];
   const planLabel = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
   const primaryAction = hasAutoApply
-    ? { label: "Open Agent", path: "/agent" }
+    ? { label: "Open Auto Apply", path: "/agent" }
     : { label: "Find jobs", path: "/job-search" };
 
   const allNav = [...mainNav, ...visibleOwnerTools];
   const current = allNav.find((n) => isActive(n.path));
-  const crumb = current?.label ?? "";
+  const secondaryCrumb = Object.entries(secondaryRouteLabels)
+    .find(([path]) => location.pathname === path || location.pathname.startsWith(`${path}/`))?.[1];
+  const crumb = current?.label ?? secondaryCrumb ?? "";
 
   // ── Nav item ───────────────────────────────────────────────────────────
   const NavButton = ({ item }: { item: NavItem }) => {
@@ -350,7 +357,7 @@ export default function AppLayout() {
               className="hidden md:inline-flex items-center gap-1.5 h-8 px-3 mr-1 rounded-md bg-rp-ink text-rp-canvas hover:opacity-85 transition-opacity no-underline text-[11.5px] font-medium"
               style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
             >
-              {hasAutoApply ? <Sparkles className="w-3.5 h-3.5" /> : <Search className="w-3.5 h-3.5" />}
+              {hasAutoApply ? <Bot className="w-3.5 h-3.5" /> : <Search className="w-3.5 h-3.5" />}
               {primaryAction.label}
             </a>
             <button

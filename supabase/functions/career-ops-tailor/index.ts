@@ -23,6 +23,10 @@ import {
   corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
 } from "../_shared/guards.ts";
+import {
+  getResumeReviewState,
+  RESUME_REVIEW_REQUIRED_MESSAGE,
+} from "../_shared/resume-review.ts";
 
 const MAX_DESC = 10_000;
 
@@ -51,6 +55,9 @@ interface TailorPayload {
   cover_note: string;
   answers: Array<{ question: string; answer: string }>;
 }
+
+type TailoredExperience = TailorPayload["tailored_resume"]["experience"];
+type TailoredProjects = NonNullable<TailorPayload["tailored_resume"]["projects"]>;
 
 const SYSTEM_PROMPT = `You are a senior résumé editor and application coach. Given a candidate's base resume and a specific job posting, produce:
 
@@ -271,34 +278,34 @@ function findTailoredEntry(output: unknown, source: Record<string, unknown>, ind
   return asRecord(output[index]);
 }
 
-function mergeExperience(output: unknown, source: unknown): Array<Record<string, unknown>> {
+function mergeExperience(output: unknown, source: unknown): TailoredExperience {
   const sourceEntries = Array.isArray(source) ? source.map(asRecord) : [];
   return sourceEntries.map((entry, index) => {
     const tailored = findTailoredEntry(output, entry, index);
     return {
       ...entry,
-      id: entry.id,
-      role: entry.role ?? entry.title ?? "",
-      company_or_client: entry.company_or_client ?? entry.company ?? "",
-      start_date: entry.start_date ?? "",
-      end_date: entry.end_date ?? "",
-      location: entry.location ?? "",
+      id: asString(entry.id) || undefined,
+      role: asString(entry.role) || asString(entry.title),
+      company_or_client: asString(entry.company_or_client) || asString(entry.company),
+      start_date: asString(entry.start_date),
+      end_date: asString(entry.end_date),
+      location: asString(entry.location),
       bullets: cleanBullets(tailored.bullets, entry.bullets ?? entry.description),
     };
   });
 }
 
-function mergeProjects(output: unknown, source: unknown): Array<Record<string, unknown>> {
+function mergeProjects(output: unknown, source: unknown): TailoredProjects {
   const sourceEntries = Array.isArray(source) ? source.map(asRecord) : [];
   return sourceEntries.map((entry, index) => {
     const tailored = findTailoredEntry(output, entry, index);
     return {
       ...entry,
-      id: entry.id,
-      title: entry.title ?? entry.name ?? "",
-      organization: entry.organization ?? "",
-      date: entry.date ?? "",
-      url: entry.url,
+      id: asString(entry.id) || undefined,
+      title: asString(entry.title) || asString(entry.name),
+      organization: asString(entry.organization),
+      date: asString(entry.date),
+      url: asString(entry.url) || undefined,
       bullets: cleanBullets(tailored.bullets, entry.bullets ?? entry.description),
     };
   });
@@ -410,6 +417,15 @@ serve(async (req) => {
       throw new HttpError(412, "job is outside the saved autopilot preferences");
     }
 
+    // Resolve and quarantine-check the true source before reusing an existing
+    // draft. Otherwise an old ready packet could bypass a newly discovered
+    // low-confidence or truncated import.
+    const baseResume = await loadBaseResume(svc, user.id, ev.resume_id);
+    if (!baseResume) throw new HttpError(412, "no resume found for user");
+    if (!getResumeReviewState(baseResume).allowed) {
+      throw new HttpError(409, RESUME_REVIEW_REQUIRED_MESSAGE);
+    }
+
     const { data: job } = await svc.from("scanned_jobs")
       .select("id,title,location,compensation_text,description_md,apply_url,company:scan_companies(name)")
       .eq("id", ev.scanned_job_id).maybeSingle();
@@ -441,9 +457,6 @@ serve(async (req) => {
     // The entire critic loop below counts as ONE tailor for quota purposes:
     // a single enforceDailyCap here, one logAiUsage with summed tokens at end.
     await enforceDailyCap(svc, user.id, "tailor", isPro);
-
-    const baseResume = await loadBaseResume(svc, user.id, ev.resume_id);
-    if (!baseResume) throw new HttpError(412, "no resume found for user");
 
     const { data: preferenceRow } = await svc.from("user_job_prefs")
       .select("tailoring_mode")
@@ -494,8 +507,8 @@ serve(async (req) => {
     const sourceProjects = Array.isArray(baseResume.projects) ? baseResume.projects : [];
 
     let payload: TailorPayload | null = null;
-    let tailoredExperience: Array<Record<string, unknown>> = [];
-    let tailoredProjects: Array<Record<string, unknown>> = [];
+    let tailoredExperience: TailoredExperience = [];
+    let tailoredProjects: TailoredProjects = [];
     let tailoredSkills: Record<string, string[]> = {};
     let tokensIn = 0;
     let tokensOut = 0;

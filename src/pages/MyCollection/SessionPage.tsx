@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox, AlertCircle, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,8 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
@@ -73,34 +75,41 @@ export default function SessionPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      setLoadError("This application workspace link is incomplete.");
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("mc_sessions")
-        .select("*")
-        .eq("id", sessionId)
-        .maybeSingle();
-      if (cancelled) return;
-
-      if (error) {
-        console.error("[SessionPage] load failed:", error.message);
+      setLoadError(null);
+      setSession(null);
+      try {
+        const { data, error } = await supabase
+          .from("mc_sessions")
+          .select("*")
+          .eq("id", sessionId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) throw error;
+        if (!data) {
+          toast({ title: "Session not found" });
+          navigate("/my-collection");
+          return;
+        }
+        setSession(data as unknown as MCSession);
+      } catch (error) {
+        if (cancelled) return;
+        console.error("[SessionPage] load failed:", error);
         const safeError = toUserFacingError(error, {
           operation: "load_application_workspace",
           defaultMessage: "This application workspace could not be loaded.",
         });
-        toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
-        setLoading(false);
-        return;
+        setLoadError(safeError.message);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      if (!data) {
-        toast({ title: "Session not found" });
-        navigate("/my-collection");
-        return;
-      }
-      setSession(data as unknown as MCSession);
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -110,14 +119,37 @@ export default function SessionPage() {
     // re-fire on every render — which on tab focus produces a flash and
     // can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, loadAttempt]);
 
-  if (loading || !session) {
+  if (loading) {
     return (
       <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8 space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-10 w-full max-w-md" />
         <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
+  if (loadError || !session) {
+    return (
+      <div className="container max-w-3xl mx-auto py-16 px-4 md:px-8">
+        <div className="rounded-xl border bg-card p-8 text-center" role="alert">
+          <AlertCircle className="mx-auto mb-3 h-9 w-9 text-destructive" aria-hidden="true" />
+          <h1 className="text-xl font-semibold">Workspace unavailable</h1>
+          <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
+            {loadError ?? "This application workspace could not be loaded."}
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <Button onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+              Try again
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/my-collection">Back to My Collection</Link>
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }

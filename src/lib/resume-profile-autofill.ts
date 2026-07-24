@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { requireResumeAllowedForAutomation } from "../../supabase/functions/_shared/resume-review";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -111,6 +112,10 @@ export async function hydrateApplicationProfileFromResume(args: {
   resume: UnknownRecord;
   accountEmail?: string;
 }): Promise<InferredApplicationProfile> {
+  // Defense in depth for every client caller. Server entry points enforce the
+  // same rule independently; this prevents an accidental profile write before
+  // the request ever leaves the browser.
+  requireResumeAllowedForAutomation(args.resume);
   const inferred = inferApplicationProfileFromResume(args.resume, args.accountEmail);
   const { data: existing } = await supabase.from("profiles")
     .select("full_name,email,phone,location,target_role,years_of_experience,linkedin_url,job_preferences")

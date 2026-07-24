@@ -5,7 +5,8 @@
  *   - Draft belongs to caller (RLS-bound + service-role re-check)
  *   - User has user_job_prefs.auto_apply_enabled = true
  *   - The job portal is enabled in user_job_prefs.auto_apply_portals
- *   - Today's submissions < user_job_prefs.daily_apply_cap
+ *   - Today's receipt-backed submissions plus active reservations are below
+ *     user_job_prefs.daily_apply_cap
  *   - Draft status = 'ready' (not already submitted / failed)
  *   - scanned_jobs.company.api_type is a guarded simple-form adapter
  *
@@ -21,8 +22,8 @@
  *     career-ops-greenhouse payload type below.
  *   - Workday / Oracle / iCIMS multi-page flows remain review-only until a
  *     dedicated adapter has receipt-level integration tests.
- *   - `daily_apply_cap` is enforced at enqueue time (optimistic counting
- *     from `applications` + today's `applypass_tasks` with status=running).
+ *   - Completed skips, expired postings, CAPTCHA handoffs, and other
+ *     non-submissions do not consume a customer submission slot.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -32,6 +33,18 @@ import {
   enforceMonthlyAutoApplyExecutionCap,
   getAuthedUserOrService,
 } from "../_shared/guards.ts";
+import { classifyAtsApplyUrl } from "../_shared/ats-url-policy.ts";
+import {
+  getResumeReviewState,
+  RESUME_REVIEW_REQUIRED_MESSAGE,
+} from "../_shared/resume-review.ts";
+import {
+  ATS_GATE_ERROR_CODE,
+  AtsSubmissionGateError,
+  evaluateAtsSubmissionGate,
+  TRUSTED_ATS_MODEL_PREFIX,
+} from "./ats-gate.ts";
+import { evaluateSubmissionCap } from "./submission-cap.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -299,6 +312,29 @@ function serviceClient(): SupabaseClient {
   );
 }
 
+async function loadSourceResumeForSubmission(
+  svc: SupabaseClient,
+  userId: string,
+  resumeId: unknown,
+): Promise<Record<string, unknown> | null> {
+  let currentId = asString(resumeId);
+  for (let hops = 0; currentId && hops < 10; hops += 1) {
+    const { data } = await svc.from("resumes")
+      .select("id,personal_info,parse_quality,source_hash,source_document_id,parser_version,parsed_at")
+      .eq("id", currentId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!data) return null;
+    const row = data as Record<string, unknown>;
+    const personal = asRecord(row.personal_info);
+    const extras = asRecord(personal._v2_extras);
+    const sourceId = asString(extras.source_resume_id);
+    if (!sourceId || sourceId === currentId) return row;
+    currentId = sourceId;
+  }
+  return null;
+}
+
 async function enqueueSubmit(userId: string, draftId: string) {
   const svc = serviceClient();
 
@@ -307,6 +343,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
     .from("draft_applications")
     .select(`id, user_id, evaluation_id, tailored_resume_id, tailored_cv_md, tailored_cv_pdf_url, answers, status, error_message, applypass_task_id,
       evaluation:job_evaluations(
+        resume_id,
         scanned_job:scanned_jobs(
           id, title, apply_url, external_id,
           company:scan_companies(slug, name, api_type, api_identifier)
@@ -335,18 +372,62 @@ async function enqueueSubmit(userId: string, draftId: string) {
     const e = new Error("This employer portal still needs review before submission.");
     (e as any).status = 422; throw e;
   }
+  const trustedTarget = classifyAtsApplyUrl(job.apply_url);
+  if (!trustedTarget.supported || trustedTarget.type !== portal) {
+    const e = new Error("This employer link could not be verified for automatic submission.");
+    (e as any).status = 422; throw e;
+  }
+
+  const evaluationResumeId = asString((draft as any).evaluation?.resume_id);
+  const sourceResume = await loadSourceResumeForSubmission(
+    svc,
+    userId,
+    evaluationResumeId || draft.tailored_resume_id,
+  );
+  if (!sourceResume) {
+    const e = new Error("The source résumé for this application could not be verified.");
+    (e as any).status = 412; throw e;
+  }
+  if (!getResumeReviewState(sourceResume).allowed) {
+    const e = new Error(RESUME_REVIEW_REQUIRED_MESSAGE);
+    (e as any).status = 409; throw e;
+  }
 
   // Load prefs
-  const { data: prefs } = await svc
+  const { data: prefs, error: prefsError } = await svc
     .from("user_job_prefs")
-    .select("auto_apply_enabled, auto_apply_portals, daily_apply_cap, requires_sponsorship, work_authorization")
+    .select("auto_apply_enabled, auto_apply_portals, auto_apply_min_ats_score, daily_apply_cap, requires_sponsorship, work_authorization")
     .eq("user_id", userId)
     .maybeSingle();
+  if (prefsError) {
+    const e = new Error("Application rules could not be verified.");
+    (e as any).status = 503; throw e;
+  }
   if (!prefs?.auto_apply_enabled) {
     const e = new Error("auto-apply is not enabled in your preferences"); (e as any).status = 403; throw e;
   }
   if (!prefs.auto_apply_portals?.includes(portal)) {
     const e = new Error("This employer portal is not enabled in your application rules."); (e as any).status = 403; throw e;
+  }
+
+  const { data: atsScore, error: atsScoreError } = draft.tailored_resume_id
+    ? await svc
+      .from("ats_scores")
+      .select("overall,model,created_at")
+      .eq("user_id", userId)
+      .eq("resume_id", draft.tailored_resume_id)
+      .eq("scanned_job_id", job.id)
+      .like("model", `${TRUSTED_ATS_MODEL_PREFIX}%`)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    : { data: null, error: null };
+  const atsGate = evaluateAtsSubmissionGate({
+    minimumScore: prefs.auto_apply_min_ats_score,
+    scoreRow: atsScoreError ? null : atsScore,
+  });
+  if (!atsGate.allowed) {
+    throw new AtsSubmissionGateError();
   }
 
   // Treat queueing as an idempotent command. UI retries, double-clicks, and
@@ -369,16 +450,47 @@ async function enqueueSubmit(userId: string, draftId: string) {
     return { task: existingActive, draft_status: "queued", already_queued: true };
   }
 
-  // Daily cap: count today's applypass_tasks for this user with career_ops_submit task_type
+  // Resource ceilings apply only when a new execution will be created.
+  // Idempotent retries above return their existing task without double-counting.
+  await enforceMonthlyAutoApplyExecutionCap(svc, userId, 1);
+
+  // A customer submission slot is spent only by receipt-backed truth or
+  // reserved by work that is still capable of submitting. Completed skips,
+  // expired postings, CAPTCHA handoffs, and failed attempts remain visible in
+  // the activity history but do not block the remaining daily allowance.
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  const { count: todaysCount } = await svc
-    .from("applypass_tasks")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("task_type", "career_ops_submit")
-    .gte("created_at", todayStart.toISOString());
-  if ((todaysCount ?? 0) >= (prefs.daily_apply_cap ?? 5)) {
-    const e = new Error(`daily submit cap reached (${prefs.daily_apply_cap})`); (e as any).status = 429; throw e;
+  const [
+    { count: submittedToday, error: receiptCountError },
+    { count: activeReservedSlots, error: activeCountError },
+  ] = await Promise.all([
+    svc
+      .from("application_submission_receipts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("submitted_at", todayStart.toISOString()),
+    svc
+      .from("applypass_tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("task_type", "career_ops_submit")
+      .in("status", ["pending", "running"]),
+  ]);
+  if (receiptCountError || activeCountError) {
+    const e = new Error("The daily application allowance could not be verified.");
+    (e as any).status = 503;
+    throw e;
+  }
+  const cap = evaluateSubmissionCap({
+    submittedToday: submittedToday ?? 0,
+    activeReservedSlots: activeReservedSlots ?? 0,
+    dailyLimit: prefs.daily_apply_cap ?? 5,
+  });
+  if (!cap.allowed) {
+    const e = new Error(
+      `Your ${cap.dailyLimit} daily application slots are already submitted or actively processing.`,
+    );
+    (e as any).status = 429;
+    throw e;
   }
 
   const [{ data: profile }, { data: tailoredResume }] = await Promise.all([
@@ -455,6 +567,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
 
   const queuedAt = new Date().toISOString();
   let resumeFileUrl = asString((draft as any).tailored_cv_pdf_url);
+  let resumeStoragePath = "";
   if (draft.tailored_resume_id) {
     const renderResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/mc-render-resume`, {
       method: "POST",
@@ -469,27 +582,59 @@ async function enqueueSubmit(userId: string, draftId: string) {
       throw new Error("The job-specific résumé PDF could not be generated; the application was not queued.");
     }
     resumeFileUrl = String(renderBody.url);
+    resumeStoragePath = asString(renderBody.storage_path);
+    if (!resumeStoragePath.startsWith(`${userId}/generated/`)) {
+      throw new Error("The job-specific résumé artifact could not be verified.");
+    }
     await svc.from("draft_applications").update({ tailored_cv_pdf_url: resumeFileUrl }).eq("id", draft.id).eq("user_id", userId);
+  }
+  if (!resumeStoragePath) {
+    throw new Error("A private job-specific résumé artifact is required before this application can be queued.");
   }
   let trackedJobId: string | null = null;
 
   // Keep Agent submissions in the same application workspace that powers
   // Gmail matching. This lets verification mail and later status updates map
   // to the exact job without scanning unrelated personal messages.
-  const { data: gmailConnection } = await svc
-    .from("mc_gmail_connections")
-    .select("session_id,gmail_email")
-    .eq("user_id", userId)
-    .eq("enabled", true)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const [
+    { data: existingTrackedRows, error: trackedLookupError },
+    { data: gmailConnections, error: gmailLookupError },
+  ] = await Promise.all([
+    svc
+      .from("mc_tracked_jobs")
+      .select("id,status,session_id")
+      .eq("user_id", userId)
+      .eq("scanned_job_id", job.id)
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false })
+      .limit(20),
+    svc
+      .from("mc_gmail_connections")
+      .select("session_id,gmail_email")
+      .eq("user_id", userId)
+      .eq("enabled", true)
+      .order("updated_at", { ascending: false })
+      .limit(20),
+  ]);
+  if (trackedLookupError || gmailLookupError) {
+    throw new Error("The application inbox could not be linked to this job.");
+  }
+  const existingTracked = (existingTrackedRows ?? []).find((row: any) =>
+    (gmailConnections ?? []).some((connection: any) => connection.session_id === row.session_id)
+  ) || existingTrackedRows?.[0] || null;
+  const gmailConnection = existingTracked?.session_id
+    ? (gmailConnections ?? []).find((connection: any) =>
+      connection.session_id === existingTracked.session_id
+    ) || null
+    : gmailConnections?.[0] || null;
   if (asString(gmailConnection?.gmail_email)) {
     candidateProfile.email = asString(gmailConnection?.gmail_email);
   }
-  let applicationSession: { id: string } | null = gmailConnection?.session_id
-    ? { id: gmailConnection.session_id }
-    : null;
+  let applicationSession: { id: string } | null = existingTracked?.session_id
+    ? { id: existingTracked.session_id }
+    : gmailConnection?.session_id
+      ? { id: gmailConnection.session_id }
+      : null;
   if (!applicationSession) {
     const { data: latestSession } = await svc
       .from("mc_sessions")
@@ -515,15 +660,6 @@ async function enqueueSubmit(userId: string, draftId: string) {
   }
 
   if (applicationSession?.id) {
-    const { data: existingTracked, error: trackedLookupError } = await svc
-      .from("mc_tracked_jobs")
-      .select("id,status")
-      .eq("user_id", userId)
-      .eq("scanned_job_id", job.id)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (trackedLookupError) throw new Error("The application inbox could not be linked to this job.");
     if (existingTracked?.id) {
       trackedJobId = existingTracked.id;
       // Keep the card in whatever session the user already put it in —
@@ -532,7 +668,10 @@ async function enqueueSubmit(userId: string, draftId: string) {
       const { error: trackedUpdateError } = await svc.from("mc_tracked_jobs").update({
         status: ["discovered", "saved"].includes(existingTracked.status) ? "saved" : existingTracked.status,
         apply_url: job.apply_url,
-      }).eq("id", existingTracked.id);
+      })
+        .eq("id", existingTracked.id)
+        .eq("user_id", userId)
+        .eq("session_id", existingTracked.session_id);
       if (trackedUpdateError) throw new Error("The application inbox could not be linked to this job.");
     } else {
       const { data: createdTracked, error: trackedCreateError } = await svc.from("mc_tracked_jobs").insert({
@@ -555,7 +694,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
       id: job.id,
       title: job.title,
       company: company.name,
-      url: job.apply_url,
+      url: trustedTarget.normalizedUrl,
       trackedJobId,
       approvalReceipt: {
         approved: true,
@@ -564,7 +703,10 @@ async function enqueueSubmit(userId: string, draftId: string) {
       },
     }],
     resumeId: draft.tailored_resume_id,
-    resumeFileUrl,
+    // Store the immutable private object path. The queue signs it only when a
+    // worker claims the task, so a delayed/retried job never receives an
+    // expired URL. resumeFileUrl remains for older rows only.
+    resumeStoragePath,
     tailoredResumeMarkdown: draft.tailored_cv_md,
     candidateProfile,
     answerMemory,
@@ -576,7 +718,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
     api_identifier: company.api_identifier,
     job_external_id: job.external_id,
     job_title: job.title,
-    apply_url: job.apply_url,
+    apply_url: trustedTarget.normalizedUrl,
     draft_application_id: draft.id,
     tailored_resume_id: draft.tailored_resume_id,
     evaluation_id: draft.evaluation_id,
@@ -631,7 +773,6 @@ serve(async (req) => {
 
     const svc = serviceClient();
     await enforceAutoApplyEntitlement(svc, user.id);
-    await enforceMonthlyAutoApplyExecutionCap(svc, user.id, 1);
 
     if (!body.draft_application_id) return jsonResponse({ error: "draft_application_id required" }, 400);
 
@@ -640,6 +781,7 @@ serve(async (req) => {
   } catch (e) {
     const status = (e as any)?.status ?? 500;
     const msg = e instanceof Error ? e.message : String(e);
-    return jsonResponse({ error: msg }, status);
+    const code = (e as any)?.code === ATS_GATE_ERROR_CODE ? ATS_GATE_ERROR_CODE : undefined;
+    return jsonResponse({ error: msg, ...(code ? { code } : {}) }, status);
   }
 });

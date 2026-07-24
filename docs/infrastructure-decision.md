@@ -100,10 +100,11 @@ Set a provider-side monthly project budget and alert. The workflow token cap lim
 
 1. Pull request runs dependency audit, type check, changed-file lint, all tests, and production build.
 2. Add `ai-review` only for authentication, billing, migrations, application submission, security, or complicated cross-module changes.
-3. Merge to `main` deploys staging frontend through the hosting provider and staging database/functions through GitHub Actions.
+3. Merge to `develop` deploys a Vercel Preview frontend and the staging database/functions through GitHub Actions.
 4. Validate staging using `docs/release-runbook.md`.
-5. Promote the same commit from `main` to `production` through a reviewed pull request.
-6. The protected production GitHub environment approves production Supabase deployment.
+5. Promote the same commit from `develop` to `main` through a reviewed pull request.
+6. Manually dispatch the production deployment from `main` and type the exact
+   confirmation phrase; the workflow rejects every other ref.
 7. Roll back frontend/functions by reverting the release; use forward-only fixes for additive database migrations.
 
 This architecture is the easiest managed option available now. It avoids paying for idle infrastructure and keeps the future option to move the frontend or browser workers independently.

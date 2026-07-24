@@ -43,14 +43,18 @@ const KEYWORD_EVIDENCE: Record<string, string[][]> = {
   "prompt engineering": [["prompt engineering"], ["prompting"], ["prompt design"]],
   "a/b testing": [["a/b testing"], ["ab testing"], ["a/b"], ["multivariate testing"], ["experimentation"]],
   "experimentation": [["experimentation"], ["a/b testing"], ["ab testing"], ["multivariate testing"], ["experiments"]],
+  "experimentation design": [["experimentation design"], ["experimental design"], ["designed experiments"], ["a/b testing"], ["ab testing"], ["multivariate testing"], ["hypothesis testing"]],
+  "experimental design": [["experimental design"], ["experimentation design"], ["designed experiments"], ["a/b testing"], ["ab testing"], ["multivariate testing"], ["hypothesis testing"]],
   "causal inference": [["causal inference"], ["causal impact"], ["causal analysis"]],
   "statistical modeling": [["statistical modeling"], ["statistical modelling"], ["statistical analysis"], ["statistical methods"], ["classical statistics"], ["regression"]],
+  "quantitative analysis": [["quantitative analysis"], ["quantitative analytics"], ["statistical analysis"], ["statistical modeling"], ["statistical modelling"], ["statistical models"], ["regression analysis"], ["regression analyses"], ["predictive analytics"], ["forecasting analysis"], ["forecasting"]],
   "predictive modeling": [["predictive modeling"], ["predictive models"], ["predictive analytics"], ["forecasting models"]],
   "forecasting": [["forecasting"], ["forecast"], ["time series"], ["arima"], ["prophet"]],
   "time series": [["time series"], ["arima"], ["prophet"], ["temporal"]],
   "anomaly detection": [["anomaly detection"], ["anomalies"], ["outlier detection"], ["fraud detection"]],
   "segmentation": [["segmentation"], ["clustering"], ["k means"], ["k-means"], ["cohorts"]],
   "recommendation systems": [["recommendation systems"], ["recommendation"], ["recommender"], ["personalization"]],
+  "instrumentation": [["instrumentation"], ["telemetry"], ["event tracking"], ["analytics tracking"], ["metrics collection"], ["model monitoring"], ["observability"]],
   // ── analytics / BI vocabulary ────────────────────────────────
   "data visualization": [["data visualization"], ["visualization"], ["dashboard"], ["dashboards"], ["tableau"], ["power bi"], ["plotly"], ["matplotlib"], ["seaborn"], ["looker"]],
   "dashboards": [["dashboards"], ["dashboard"], ["tableau"], ["power bi"], ["looker"]],
@@ -139,7 +143,11 @@ const SUMMARY_PHRASES: Record<string, string> = {
   "data science": "data science",
   "distributed data systems": "distributed data systems",
   "experimentation": "experimentation",
+  "experimentation design": "experimentation design",
+  "experimental design": "experimental design",
   "a/b testing": "A/B testing",
+  "quantitative analysis": "quantitative analysis",
+  "instrumentation": "instrumentation",
 };
 
 // ── low-level matching ─────────────────────────────────────────

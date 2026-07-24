@@ -33,12 +33,12 @@ interface InboxEmailDetail {
   classification: string | null;
   classification_summary: string | null;
   next_action: string | null;
-  verification_code: string | null;
+  verification_code_available: boolean;
   is_read: boolean;
   received_at: string;
 }
 
-const DETAIL_FIELDS = "id,session_id,tracked_job_id,from_email,to_email,subject,body_preview,body_full,classification,classification_summary,next_action,verification_code,is_read,received_at";
+const DETAIL_FIELDS = "id,session_id,tracked_job_id,from_email,to_email,subject,body_preview,body_full,classification,classification_summary,next_action,verification_code_available,is_read,received_at";
 const DETAIL_FIELDS_FALLBACK = "id,session_id,tracked_job_id,from_email,to_email,subject,body_preview,body_full,classification,classification_summary,next_action,received_at";
 
 interface LinkState {
@@ -69,7 +69,7 @@ export default function InboxEmailDetailPage() {
         .select(DETAIL_FIELDS_FALLBACK).eq("id", emailId).eq("user_id", user.id).maybeSingle();
       if (fallback.error) throw fallback.error;
       readSupported = false;
-      result = { ...fallback, data: fallback.data ? { ...fallback.data, verification_code: null, is_read: true } : null };
+      result = { ...fallback, data: fallback.data ? { ...fallback.data, verification_code_available: false, is_read: true } : null };
     }
     return result.data ? { detail: result.data as InboxEmailDetail, readSupported } : null;
   }, [user, emailId]);
@@ -181,8 +181,8 @@ export default function InboxEmailDetailPage() {
 
           {email.classification_summary && <p className="mt-4 text-sm">{email.classification_summary}</p>}
           {email.next_action && <p className="mt-2 text-xs font-medium text-primary">Next: {email.next_action}</p>}
-          {email.verification_code && (
-            <p className="mt-3 text-xs text-muted-foreground">Verification code: <span className="font-mono tracking-[0.2em]">••••••</span> (hidden for your security)</p>
+          {email.verification_code_available && (
+            <p className="mt-3 text-xs text-muted-foreground">A secure employer code is ready for the application agent. Its plaintext is never stored in the public inbox.</p>
           )}
 
           {/* Plain-text rendering only: React escapes the string, so no HTML

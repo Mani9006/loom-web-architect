@@ -111,7 +111,7 @@ export default function TermsOfService() {
         <LegalList
           items={[
             "No employment guarantee. ResumePreps does not guarantee interviews, offers, or employment of any kind. Hiring decisions belong solely to employers.",
-            "ATS scores, match scores, and AI suggestions are informational aids, not professional career, legal, or financial advice.",
+            "Résumé-quality, job-requirement-coverage, career-fit, and parsing-confidence scores—and AI suggestions—are informational aids, not professional career, legal, or financial advice.",
             "We do not warrant that job listings are accurate, current, or still open, or that any application will be received, read, or answered.",
             "Automated features depend on third-party portals and integrations that may change or fail without notice.",
           ]}

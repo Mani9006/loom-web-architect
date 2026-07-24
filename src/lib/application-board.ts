@@ -15,6 +15,8 @@
  *   - Skipped    = deliberately held back (Skipped)
  */
 
+import type { AutomationDraftState } from "@/lib/application-funnel";
+
 export type BoardTab = "all" | "in_flight" | "needs_you" | "failed" | "skipped";
 
 export type BoardStatusKey =
@@ -53,6 +55,8 @@ export interface BoardTask {
   error_message: string | null;
   result: unknown;
   created_at: string;
+  /** Page-level heartbeat evidence; undefined preserves legacy pure callers. */
+  workerRecentlyActive?: boolean;
 }
 
 export interface BoardStatus {
@@ -72,6 +76,11 @@ export interface BoardRow {
   hasCoverLetter: boolean;
   /** Timestamp backing the "Applied" column (relative time in the UI). */
   activityAt: string;
+}
+
+export interface BoardAutomationEvidence {
+  state: AutomationDraftState;
+  receiptSubmittedAt?: string | null;
 }
 
 const STATUS_LABELS: Record<BoardStatusKey, string> = {
@@ -138,6 +147,45 @@ function makeStatus(key: BoardStatusKey, detail: string, tab: BoardStatus["tab"]
 }
 
 /**
+ * Reconcile mutable packet status with durable worker/receipt evidence before
+ * deriving any user-visible board label.
+ */
+export function withAutomationEvidence(
+  draft: BoardDraft,
+  evidence: BoardAutomationEvidence,
+): BoardDraft {
+  if (evidence.state === "submitted") {
+    return {
+      ...draft,
+      status: "submitted",
+      submitted_at: evidence.receiptSubmittedAt ?? draft.submitted_at ?? draft.updated_at,
+      error_message: null,
+    };
+  }
+
+  if (evidence.state === "skipped") {
+    return {
+      ...draft,
+      status: "skipped",
+      submitted_at: null,
+    };
+  }
+
+  if (evidence.state === "failed") {
+    return {
+      ...draft,
+      status: "failed",
+      submitted_at: null,
+      error_message: draft.error_message ?? (draft.status === "queued"
+        ? "This packet is no longer in the active submission queue. Open it to review and try again."
+        : "No confirmed submission receipt was recorded. Open it to verify the employer status or try again."),
+    };
+  }
+
+  return draft;
+}
+
+/**
  * Derive the board status for one application packet.
  * draft_applications.status drives the lifecycle; the linked applypass_task
  * (status + per-job result) refines in-flight progress and failure reasons.
@@ -151,8 +199,15 @@ export function deriveBoardStatus(draft: BoardDraft, task: BoardTask | null | un
       return makeStatus("tailoring", "We're customizing your resume for this job right now.", "in_flight");
 
     case "queued": {
-      if (task?.status === "running") {
+      if (task?.status === "running" && task.workerRecentlyActive !== false) {
         return makeStatus("applying", "We're on the employer's form right now.", "in_flight");
+      }
+      if (task?.status === "running") {
+        return makeStatus(
+          "queued",
+          "The submission worker has not checked in recently. This is not counted as applied.",
+          "in_flight",
+        );
       }
       return makeStatus("queued", "In line — submission starts shortly.", "in_flight");
     }
@@ -227,18 +282,27 @@ function activityTimestamp(draft: BoardDraft, task: BoardTask | null | undefined
   return draft.updated_at ?? draft.created_at;
 }
 
-export function toBoardRow(draft: BoardDraft, taskById: Map<string, BoardTask>): BoardRow {
+export function toBoardRow(
+  draft: BoardDraft,
+  taskById: Map<string, BoardTask>,
+  evidence?: BoardAutomationEvidence,
+): BoardRow {
   const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
-  const status = deriveBoardStatus(draft, task);
-  const job = draft.evaluation?.scanned_job ?? null;
+  let evidencedDraft = evidence ? withAutomationEvidence(draft, evidence) : draft;
+  if ((evidence?.state === "failed" || evidence?.state === "skipped") && !draft.error_message) {
+    const taskReason = taskJobResult(task)?.error ?? task?.error_message;
+    if (taskReason) evidencedDraft = { ...evidencedDraft, error_message: taskReason };
+  }
+  const status = deriveBoardStatus(evidencedDraft, task);
+  const job = evidencedDraft.evaluation?.scanned_job ?? null;
   return {
-    draft,
+    draft: evidencedDraft,
     status,
     title: job?.title ?? "Untitled role",
     company: job?.company?.name ?? "Unknown company",
-    resumeState: resumeStateFor(draft),
-    hasCoverLetter: hasCoverLetterAnswer(draft.answers),
-    activityAt: activityTimestamp(draft, task, status),
+    resumeState: resumeStateFor(evidencedDraft),
+    hasCoverLetter: hasCoverLetterAnswer(evidencedDraft.answers),
+    activityAt: activityTimestamp(evidencedDraft, task, status),
   };
 }
 

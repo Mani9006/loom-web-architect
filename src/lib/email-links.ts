@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- receipt tables deploy before generated client types */
 import { supabase } from "@/integrations/supabase/client";
 
 /**
@@ -7,11 +8,11 @@ import { supabase } from "@/integrations/supabase/client";
  * → mc_tracked_jobs. From there the best in-app destination is resolved in a
  * strict priority order (see pickEmailLinkTarget):
  *
- *   1. Draft application review  /applications/<draft_id>
- *      (mc_tracked_jobs.scanned_job_id → job_evaluations → draft_applications,
- *       latest draft for this user)
- *   2. External apply URL        mc_tracked_jobs.apply_url (new tab)
- *   3. My Collection job board   /my-collection/<session_id>?tab=board
+ *   1. Exact immutable submission receipt → its draft application
+ *   2. Exact active task payload → its draft application (OTP-in-progress)
+ *   3. Legacy latest draft for the same scanned job (pre-receipt fallback)
+ *   4. External apply URL        mc_tracked_jobs.apply_url (new tab)
+ *   5. My Collection job board   /my-collection/<session_id>?tab=board
  *
  * If the email has no tracked job, or none of the above resolve, there is no
  * target and the UI shows "No linked application yet".
@@ -106,6 +107,50 @@ export async function findLatestDraftIdForScannedJob(scannedJobId: string, userI
   return draft?.id ?? null;
 }
 
+export async function findReceiptDraftIdForTrackedJob(
+  trackedJobId: string,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await (supabase as any)
+    .from("application_submission_receipts")
+    .select("draft_application_id,submitted_at")
+    .eq("user_id", userId)
+    .eq("tracked_job_id", trackedJobId)
+    .not("draft_application_id", "is", null)
+    .order("submitted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return typeof data?.draft_application_id === "string" ? data.draft_application_id : null;
+}
+
+export async function findActiveTaskDraftIdForTrackedJob(
+  trackedJobId: string,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await (supabase as any)
+    .from("applypass_tasks")
+    .select("payload,created_at")
+    .eq("user_id", userId)
+    .in("status", ["pending", "running"])
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+
+  for (const row of data ?? []) {
+    const payload = row?.payload && typeof row.payload === "object" ? row.payload : {};
+    const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+    const linked = payload.tracked_job_id === trackedJobId
+      || jobs.some((job: any) =>
+        job?.trackedJobId === trackedJobId || job?.tracked_job_id === trackedJobId
+      );
+    if (linked && typeof payload.draft_application_id === "string") {
+      return payload.draft_application_id;
+    }
+  }
+  return null;
+}
+
 export interface ResolvedEmailLink {
   target: EmailLinkTarget | null;
   trackedJob: TrackedJobLinkRow | null;
@@ -116,8 +161,10 @@ export async function resolveEmailApplicationLink(trackedJobId: string | null, u
   if (!trackedJobId) return { target: null, trackedJob: null };
   const trackedJob = await fetchTrackedJobLink(trackedJobId, userId);
   if (!trackedJob) return { target: null, trackedJob: null };
-  const draftId = trackedJob.scanned_job_id
-    ? await findLatestDraftIdForScannedJob(trackedJob.scanned_job_id, userId)
-    : null;
+  const draftId = await findReceiptDraftIdForTrackedJob(trackedJobId, userId)
+    || await findActiveTaskDraftIdForTrackedJob(trackedJobId, userId)
+    || (trackedJob.scanned_job_id
+      ? await findLatestDraftIdForScannedJob(trackedJob.scanned_job_id, userId)
+      : null);
   return { target: pickEmailLinkTarget(trackedJob, draftId), trackedJob };
 }

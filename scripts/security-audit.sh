@@ -18,12 +18,21 @@ echo "" >> "$REPORT_FILE"
 
 SECRET_PATTERN='(NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ[A-Za-z0-9._-]{20,}|SUPABASE_SERVICE_ROLE_KEY=eyJ[A-Za-z0-9._-]{20,}|OPENAI_API_KEY=sk-[A-Za-z0-9_-]{20,}|PERPLEXITY_API_KEY=pplx-[A-Za-z0-9_-]{20,}|MEM0_API_KEY=mem0-[A-Za-z0-9_-]{12,}|JIRA_TOKEN="?ATAT[A-Za-z0-9._:-]{20,}"?)'
 
+TRACKED_FILES=()
+while IFS= read -r -d '' file; do
+  # Scan the current worktree, not deleted paths that still exist in the
+  # repository index. NUL delimiters preserve filenames containing spaces.
+  if [[ -f "$file" ]] && [[ ! "$file" =~ (^|/)\.env(\.|$)|\.env$ ]]; then
+    TRACKED_FILES+=("$file")
+  fi
+done < <(git ls-files -z)
+
 TRACKED_RESULTS="$(
-  git ls-files \
-  | rg -v '(^|/)\.env(\.|$)|\.env$' \
-  | xargs rg -n "$SECRET_PATTERN" -S \
-  | rg -v 'your_key_here|your_openai_key_here|your_perplexity_key_here|xxxxx|example|optional' \
-  || true
+  if (( ${#TRACKED_FILES[@]} > 0 )); then
+    rg -n "$SECRET_PATTERN" -S "${TRACKED_FILES[@]}" \
+      | rg -v 'your_key_here|your_openai_key_here|your_perplexity_key_here|xxxxx|example|optional' \
+      || true
+  fi
 )"
 if [[ -z "$TRACKED_RESULTS" ]]; then
   echo "- No hardcoded live-token patterns found in tracked repo files." >> "$REPORT_FILE"
@@ -39,11 +48,11 @@ echo "" >> "$REPORT_FILE"
 echo "## Local Sensitive File Presence (outside git tracking)" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 
-for file in \
-  "$ROOT_DIR/.env.local" \
-  "${CAREERHQ_ENV:-/dev/null}" \
-  "${JIRA_HELPER:-}"
-do
+SENSITIVE_FILES=("$ROOT_DIR/.env.local")
+[[ -n "${CAREERHQ_ENV:-}" ]] && SENSITIVE_FILES+=("$CAREERHQ_ENV")
+[[ -n "${JIRA_HELPER:-}" ]] && SENSITIVE_FILES+=("$JIRA_HELPER")
+
+for file in "${SENSITIVE_FILES[@]}"; do
   if [[ -f "$file" ]]; then
     echo "- Present: $file" >> "$REPORT_FILE"
   else

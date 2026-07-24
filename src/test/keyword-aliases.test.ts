@@ -59,6 +59,9 @@ describe("isKeywordEvidenced (honesty gate)", () => {
     expect(isKeywordEvidenced("Advanced SQL", ML_RESUME_TEXT)).toBe(true); // advanced + SQL
     expect(isKeywordEvidenced("Complex queries", ML_RESUME_TEXT)).toBe(true); // SQL on large datasets
     expect(isKeywordEvidenced("SQL", "Skills: PostgreSQL, MySQL")).toBe(true); // exact tech shown
+    expect(isKeywordEvidenced("Quantitative analysis", "Built statistical models and regression analyses for forecasting.")).toBe(true);
+    expect(isKeywordEvidenced("Instrumentation", "Implemented model monitoring, telemetry, and metrics collection.")).toBe(true);
+    expect(isKeywordEvidenced("Experimentation design", "Designed A/B tests and performed hypothesis testing.")).toBe(true);
   });
   it("NEVER admits unsupported keywords (no fabrication)", () => {
     expect(isKeywordEvidenced("Kubernetes", "Built dashboards in Excel for sales tracking.")).toBe(false);
@@ -67,6 +70,9 @@ describe("isKeywordEvidenced (honesty gate)", () => {
     expect(isKeywordEvidenced("Terraform", ML_RESUME_TEXT)).toBe(false);
     expect(isKeywordEvidenced("Kafka", ML_RESUME_TEXT)).toBe(false);
     expect(isKeywordEvidenced("SQL", "Built dashboards and wrote reports.")).toBe(false);
+    expect(isKeywordEvidenced("Experimentation design", "Built machine-learning models in Python.")).toBe(false);
+    expect(isKeywordEvidenced("Econometrics", "Built statistical models and regression analyses.")).toBe(false);
+    expect(isKeywordEvidenced("Instrumentation", "Reported business metrics in a dashboard.")).toBe(false);
   });
   it("splitKeywordsByEvidence partitions without loss", () => {
     const { evidenced, unevidenced } = splitKeywordsByEvidence(
@@ -170,6 +176,21 @@ describe("augmentSummaryCoverage", () => {
     });
     expect(added).toEqual([]);
     expect(summary).toBe(text);
+  });
+
+  it("closes transferable analytics gaps only when the source story proves them", () => {
+    const base = "Developed statistical models and regression analyses. Built model monitoring and telemetry for production systems.";
+    const jdKeywords = ["Quantitative analysis", "Instrumentation", "Experimentation design", "Econometrics"];
+    const { summary, added } = augmentSummaryCoverage("Data Scientist delivering production analytics.", {
+      jdKeywords,
+      baseResumeText: base,
+      tailoredText: "Data Scientist delivering production analytics.",
+    });
+
+    expect(added).toEqual(["Quantitative analysis", "Instrumentation"]);
+    expect(summary).toMatch(/quantitative analysis/i);
+    expect(summary).toMatch(/instrumentation/i);
+    expect(summary).not.toMatch(/experimentation design|econometrics/i);
   });
 });
 

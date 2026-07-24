@@ -481,7 +481,13 @@ export const workableAdapter = defineAdapter({
         const rect = element.getBoundingClientRect();
         const disabled = element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true";
         if (accepted.test(label) && rect.width > 0 && rect.height > 0 && !disabled) {
-          return { index, label: label || "submit application" };
+          const form = element.form || element.closest("form");
+          return {
+            index,
+            label: label || "submit application",
+            formAction: element.formAction || form?.action || null,
+            formMethod: (element.formMethod || form?.method || "post").toUpperCase(),
+          };
         }
       }
       return null;
@@ -505,9 +511,22 @@ export const workableAdapter = defineAdapter({
       const bodyText = document.body?.innerText || "";
       const text = bodyText.slice(0, 8000);
       const idMatch = text.match(/application (?:id|#|reference)\s*[:#]?\s*([A-Za-z0-9-]{4,})/i);
+      const confirmationNode = document.querySelector(
+        '#workable-confirmation, [data-ui="application-confirmation"], [data-testid*="application-confirmation"]'
+      );
+      const confirmationRect = confirmationNode?.getBoundingClientRect();
       const formGone = !document.querySelector('input[name="firstname"], form button[type="submit"]');
       return {
         formGone,
+        hasConfirmationContainer: Boolean(
+          confirmationNode
+          && confirmationRect
+          && confirmationRect.width > 0
+          && confirmationRect.height > 0
+        ),
+        containerText: confirmationNode
+          ? (confirmationNode.textContent || "").replace(/\s+/g, " ").trim().slice(0, 300)
+          : null,
         text: text.toLowerCase(),
         applicationId: idMatch ? idMatch[1] : null,
         invalidFields: document.querySelectorAll(':invalid, [aria-invalid="true"]').length,
@@ -525,15 +544,15 @@ export const workableAdapter = defineAdapter({
           .slice(0, 5),
       };
     });
-    const textConfirmed = /(thank you for applying|thanks for applying|your application (?:has been|was) (?:submitted|received|sent)|application (?:has been )?(?:submitted|received)|we(?:'|’)ve received your application|application sent)/i.test(state.text);
-    const confirmed = textConfirmed || (state.formGone && state.invalidFields === 0 && !state.verificationRequired && state.visibleAlerts.length === 0 && url !== (ctx.previousUrl || ""));
+    const confirmed = state.hasConfirmationContainer || Boolean(state.applicationId);
     return {
       confirmed,
       evidence: {
         url,
         urlChanged: url !== (ctx.previousUrl || ""),
-        signal: textConfirmed ? "confirmation-text" : confirmed ? "form-replaced" : null,
+        signal: state.hasConfirmationContainer ? "workable-confirmation-container" : null,
         formGone: state.formGone,
+        containerText: state.containerText,
         applicationId: state.applicationId,
         invalidFields: state.invalidFields,
         verificationRequired: state.verificationRequired,

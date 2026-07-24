@@ -29,7 +29,6 @@ interface TailoredResume {
   rendered_html: string | null;
   pdf_url: string | null;
   docx_url: string | null;
-  ats_score: number | null;
   source_job_id: string | null;
   source_evaluation_id: string | null;
   created_at: string;
@@ -154,9 +153,6 @@ export default function ResumesTab({
               <div className="text-sm font-medium truncate">{r.name}</div>
               <div className="text-[11px] text-muted-foreground">
                 Updated {new Date(r.updated_at).toLocaleDateString()}
-                {r.ats_score !== null && (
-                  <span className="ml-2">· ATS {Math.round(r.ats_score)}/100</span>
-                )}
               </div>
             </div>
             <Button size="sm" variant="outline" onClick={() => setEditing(r)}>

@@ -6,11 +6,17 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
 import { toUserFacingError } from "@/lib/user-facing-error";
+import { presentGmailConnectionHealth } from "@/lib/gmail-connection-health";
 
 interface Connection {
   id: string;
   gmail_email: string;
   enabled: boolean;
+  status: string;
+  status_reason: string | null;
+  last_error_code: string | null;
+  last_error_at: string | null;
+  consecutive_failures: number;
   last_polled_at: string | null;
   token_expires_at: string | null;
 }
@@ -30,16 +36,10 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
 
   const load = useCallback(async () => {
     setLoadError(false);
-    // Select only columns present in every deployed shape of
-    // mc_gmail_connections (PROD has no status/last_error_* columns — DEV's
-    // health shape does). Selecting a missing column makes PostgREST return
-    // 400; combined with the error handling below, that used to render a
-    // healthy connection as "Not connected".
     const { data, error } = await supabase
       .from("mc_gmail_connections")
-      .select("id,gmail_email,enabled,last_polled_at,token_expires_at")
+      .select("id,gmail_email,enabled,status,status_reason,last_error_code,last_error_at,consecutive_failures,last_polled_at,token_expires_at")
       .eq("session_id", sessionId)
-      .eq("enabled", true)
       .maybeSingle();
     if (error) {
       // A read failure (network blip, auth-token refresh race, transient
@@ -51,8 +51,11 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
       setLoading(false);
       return;
     }
-    setConn(data as Connection | null);
-    onConnectionChange?.(Boolean(data?.enabled));
+    const connection = data as Connection | null;
+    setConn(connection);
+    onConnectionChange?.(
+      connection ? presentGmailConnectionHealth(connection).connected : false,
+    );
     setLoading(false);
   }, [onConnectionChange, sessionId]);
 
@@ -94,9 +97,12 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
   }
 
   async function pollNow() {
+    if (!conn || !presentGmailConnectionHealth(conn).canPoll) return;
     setBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("mc-gmail-poll", {});
+      const { data, error } = await supabase.functions.invoke("mc-gmail-poll", {
+        body: { session_id: sessionId },
+      });
       if (error) throw error;
       const processed = Number(data?.processed || 0);
       const updates = Number(data?.status_updates || 0);
@@ -133,6 +139,7 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
   }
 
   if (loading) return null;
+  const health = conn ? presentGmailConnectionHealth(conn) : null;
 
   if (loadError && !conn) {
     return (
@@ -154,10 +161,18 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
         <Mail className="w-5 h-5 text-primary shrink-0 mt-0.5" />
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <h4 className="font-medium text-sm">Connected application inbox</h4>
-            {conn ? (
-              <Badge className="bg-green-100 text-green-800 border-green-300 text-[10px]">
-                <CheckCircle2 className="w-3 h-3 mr-1" /> Connected
+            <h4 className="font-medium text-sm">Application inbox</h4>
+            {health?.kind === "connected" ? (
+              <Badge className="border-green-300 bg-green-100 text-[10px] text-green-800">
+                <CheckCircle2 className="mr-1 h-3 w-3" /> {health.badge}
+              </Badge>
+            ) : health?.kind === "degraded" ? (
+              <Badge className="border-amber-300 bg-amber-100 text-[10px] text-amber-900">
+                <AlertCircle className="mr-1 h-3 w-3" /> {health.badge}
+              </Badge>
+            ) : health?.kind === "disconnected" ? (
+              <Badge variant="destructive" className="text-[10px]">
+                <AlertCircle className="mr-1 h-3 w-3" /> {health.badge}
               </Badge>
             ) : (
               <Badge variant="outline" className="text-[10px]">
@@ -172,15 +187,31 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
                 match jobs in this workspace, extracts short-lived verification codes, and keeps application
                 statuses current. Access is read-only; ResumePreps cannot send or delete email.
               </p>
+              {health?.detail && (
+                <p
+                  className={`mt-2 text-xs ${
+                    health.kind === "disconnected" ? "text-destructive" : "text-amber-800"
+                  }`}
+                  role="status"
+                >
+                  {health.detail}
+                </p>
+              )}
               {conn.last_polled_at && (
                 <p className="text-[10px] text-muted-foreground mt-1">
                   Last checked {new Date(conn.last_polled_at).toLocaleString()}
                 </p>
               )}
               <div className="flex gap-2 mt-3">
-                <Button size="sm" variant="outline" onClick={pollNow} disabled={busy}>
-                  <RefreshCw className={`w-3.5 h-3.5 mr-1 ${busy ? "animate-spin" : ""}`} /> Check now
-                </Button>
+                {health?.canPoll ? (
+                  <Button size="sm" variant="outline" onClick={pollNow} disabled={busy}>
+                    <RefreshCw className={`w-3.5 h-3.5 mr-1 ${busy ? "animate-spin" : ""}`} /> Check now
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={connect} disabled={busy}>
+                    Reconnect Gmail
+                  </Button>
+                )}
                 <Button size="sm" variant="ghost" onClick={disconnect} disabled={busy} className="text-destructive">
                   Disconnect
                 </Button>

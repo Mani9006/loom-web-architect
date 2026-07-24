@@ -23,6 +23,7 @@ import {
 import {
   mergeAndDeduplicateSkills, normalizeAndDeduplicateSkills,
   parseAIResponse, formatBullets, streamAIText, prepareResumeTextForParsing,
+  extractExperienceFixEntries,
 } from "@/lib/ai-resume-parser";
 import { calculateATSScore, buildSectionFixPrompt, ATSScore, ATSIssue } from "@/lib/ats-scorer";
 import {
@@ -226,7 +227,7 @@ export default function ResumeBuilder() {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // ── ATS Score (live, memoized) ──────────────────────────────────────────
+  // ── Generic résumé quality (live, memoized) ─────────────────────────────
   const atsScore = useMemo(() => calculateATSScore(data), [data]);
   const atsColor = atsScore.overall >= 80 ? "text-green-500" : atsScore.overall >= 60 ? "text-yellow-500" : "text-red-500";
   const atsBgColor = atsScore.overall >= 80 ? "bg-green-500" : atsScore.overall >= 60 ? "bg-yellow-500" : "bg-red-500";
@@ -768,10 +769,11 @@ export default function ResumeBuilder() {
         if (cleaned) setData((prev) => ({ ...prev, summary: cleaned }));
       } else if (sectionName === "Experience") {
         const parsed = parseAIResponse(result);
-        if (parsed && Array.isArray(parsed)) {
+        const experienceEntries = extractExperienceFixEntries(parsed);
+        if (experienceEntries) {
           setData((prev) => ({
             ...prev,
-            experience: parsed.map((e: any, idx: number) => ({
+            experience: experienceEntries.map((e: any, idx: number) => ({
               id: prev.experience[idx]?.id || crypto.randomUUID(),
               role: e.role || prev.experience[idx]?.role || "",
               company_or_client: e.company_or_client || prev.experience[idx]?.company_or_client || "",
@@ -781,6 +783,8 @@ export default function ResumeBuilder() {
               bullets: Array.isArray(e.bullets) ? e.bullets : prev.experience[idx]?.bullets || [],
             })),
           }));
+        } else {
+          throw new Error("AI returned an invalid experience update");
         }
       } else if (sectionName === "Skills") {
         const parsed = parseAIResponse(result);
@@ -949,15 +953,15 @@ export default function ResumeBuilder() {
                     <div className="flex items-center gap-2">
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-muted-foreground">Keyword Match</span>
-                          <span className={cn("text-xs font-bold",
-                            keywordMatches.matched.length / (keywordMatches.matched.length + keywordMatches.missing.length) >= 0.7 ? "text-green-500" :
-                            keywordMatches.matched.length / (keywordMatches.matched.length + keywordMatches.missing.length) >= 0.4 ? "text-yellow-500" : "text-red-400"
-                          )}>
-                            {Math.round((keywordMatches.matched.length / (keywordMatches.matched.length + keywordMatches.missing.length)) * 100)}%
+                          <span className="text-xs text-muted-foreground">Draft keyword presence</span>
+                          <span className="text-xs font-bold text-muted-foreground">
+                            {keywordMatches.matched.length} of {keywordMatches.matched.length + keywordMatches.missing.length}
                           </span>
                         </div>
                         <Progress value={Math.round((keywordMatches.matched.length / (keywordMatches.matched.length + keywordMatches.missing.length)) * 100)} className="h-1.5" />
+                        <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                          Rough token presence only. Use the job checker for extracted job-requirement coverage.
+                        </p>
                       </div>
                     </div>
                     {keywordMatches.missing.length > 0 && (
@@ -1593,7 +1597,7 @@ export default function ResumeBuilder() {
             {!isMobile && <Button variant="outline" size="sm" onClick={() => setMobileView("editor")} className="h-7 text-xs lg:hidden">&larr; Editor</Button>}
             <h2 className="text-sm font-bold">Preview</h2>
             {hiddenSections.size > 0 && <Badge variant="outline" className="text-[10px] h-5">{hiddenSections.size} hidden</Badge>}
-            {/* ATS Score Badge */}
+            {/* Generic résumé-quality badge. */}
             <button
               type="button"
               onClick={() => setShowATSDetails(!showATSDetails)}
@@ -1605,7 +1609,7 @@ export default function ResumeBuilder() {
               )}
             >
               <Shield className="h-3.5 w-3.5" />
-              ATS: {atsScore.overall}%
+              Résumé quality: {atsScore.overall}%
               {atsScore.issues.length > 0 && <span className="text-[10px] font-normal opacity-70">({atsScore.issues.filter(i => i.severity === "critical").length} critical)</span>}
             </button>
           </div>
@@ -1639,14 +1643,16 @@ export default function ResumeBuilder() {
           </div>
         </div>
 
-        {/* ATS Score Expandable Details */}
+        {/* Generic résumé-quality details */}
         {showATSDetails && (
           <div className="border-b border-border bg-card px-4 py-3 space-y-3 max-h-[50vh] overflow-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className={cn("text-3xl font-black", atsColor)}>{atsScore.overall}</div>
                 <div>
-                  <div className="text-sm font-semibold">{atsScore.passesATS ? "ATS Compatible" : "Needs Improvement"}</div>
+                  <div className="text-sm font-semibold">
+                    Résumé quality · {atsScore.passesATS ? "Strong baseline" : "Needs improvement"}
+                  </div>
                   <div className="text-[10px] text-muted-foreground">{atsScore.issues.length} issues found ({atsScore.issues.filter(i => i.severity === "critical").length} critical, {atsScore.issues.filter(i => i.severity === "warning").length} warnings)</div>
                 </div>
               </div>

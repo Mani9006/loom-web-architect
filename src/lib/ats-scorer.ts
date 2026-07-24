@@ -6,7 +6,7 @@
  * - Font, spacing, formatting compliance
  * - Content quality (action verbs, metrics, length)
  * - Section completeness and structure
- * - Keyword density and relevance (with optional job description matching)
+ * - Generic skill/keyword hygiene (not job-description matching)
  * - Date format consistency
  * - Bullet point quality checks
  *
@@ -37,6 +37,9 @@ export interface ATSSectionScore {
 
 export interface ATSScore {
   overall: number; // 0-100
+  scoreKind: "resume_quality";
+  jobMatchScore: null;
+  methodologyVersion: "resume-quality-v2";
   sections: ATSSectionScore[];
   issues: ATSIssue[];
   passesATS: boolean; // >= 70 is considered passing
@@ -789,6 +792,9 @@ function sanitizeResume(d: ResumeJSON): ResumeJSON {
 }
 
 export function calculateATSScore(input: ResumeJSON, jobDescription?: string): ATSScore {
+  if (jobDescription?.trim()) {
+    throw new Error("Job-description match scores must come from career-ops-ats.");
+  }
   const data = sanitizeResume(input);
   const sections = [
     scoreHeader(data),          // 10
@@ -816,19 +822,22 @@ export function calculateATSScore(input: ResumeJSON, jobDescription?: string): A
   let summary: string;
 
   if (overall >= 90) {
-    summary = "Excellent! Your resume is highly optimized for ATS systems. It should pass most automated screening filters.";
+    summary = "Strong résumé-quality signals under this transparent checklist. This is not a prediction of any employer's screening result.";
   } else if (overall >= 80) {
-    summary = "Very good. Your resume is ATS-compatible with minor improvements possible. Focus on the suggestions below to reach 90+.";
+    summary = "Good résumé-quality signals with a few improvements available. A target job description is required for a separate match score.";
   } else if (overall >= 70) {
-    summary = `Decent, but needs work. You have ${warningCount} warnings that should be addressed to improve your match rate.`;
+    summary = `Solid baseline with ${warningCount} quality warning${warningCount === 1 ? "" : "s"} to review. This does not measure fit for a specific job.`;
   } else if (overall >= 50) {
-    summary = `Needs significant improvement. ${criticalCount} critical issues and ${warningCount} warnings are reducing your chances. Address critical issues first.`;
+    summary = `Needs improvement under the résumé-quality checklist: ${criticalCount} critical issue${criticalCount === 1 ? "" : "s"} and ${warningCount} warning${warningCount === 1 ? "" : "s"}.`;
   } else {
-    summary = `Your resume has major ATS compatibility issues. ${criticalCount} critical problems must be fixed immediately or your resume will likely be auto-rejected.`;
+    summary = `The checklist found ${criticalCount} critical quality issue${criticalCount === 1 ? "" : "s"}. Review the extracted content before using this résumé.`;
   }
 
   return {
     overall,
+    scoreKind: "resume_quality",
+    jobMatchScore: null,
+    methodologyVersion: "resume-quality-v2",
     sections,
     issues: allIssues,
     passesATS: overall >= 70,

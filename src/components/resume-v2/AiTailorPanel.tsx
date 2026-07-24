@@ -1,12 +1,13 @@
 /**
- * Side panel: job tailoring + live ATS score.
+ * Side panel: job tailoring + live generic résumé-quality score.
  *
  * - User pastes a job description and clicks "Tailor".
  * - Calls career-ops-tailor-v2 edge function.
  * - Hands the tailored result back to the builder so it can be saved as a
  *   separate version without overwriting the source resume.
- * - Below, shows live ATS score (computed client-side from current store state)
- *   plus JD-keyword match if a JD is present.
+ * - Below, shows generic résumé quality computed client-side from the current
+ *   store state. Job-requirement coverage is measured only after the
+ *   job-specific version is created and scored by the authoritative endpoint.
  */
 import { useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -23,10 +24,15 @@ import { TerminalLoader } from "@/components/Terminal";
 import type { ResumeJSON } from "@/types/resume";
 import { captureIncident } from "@/lib/incidents";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
+import { RESUME_REVIEW_REQUIRED_MESSAGE } from "../../../supabase/functions/_shared/resume-review";
 
 export function AiTailorPanel({
+  resumeId,
+  automationAllowed,
   onCreateTailoredVersion,
 }: {
+  resumeId?: string;
+  automationAllowed: boolean;
   onCreateTailoredVersion: (tailored: ResumeJSON) => Promise<void>;
 }) {
   const { resume, jobDescription, setJobDescription } = useResumeStore(
@@ -40,13 +46,21 @@ export function AiTailorPanel({
 
   const score = useMemo(() => {
     try {
-      return calculateATSScore(resume, jobDescription || undefined);
+      return calculateATSScore(resume);
     } catch {
       return null;
     }
-  }, [resume, jobDescription]);
+  }, [resume]);
 
   const onTailor = async () => {
+    if (!automationAllowed) {
+      toast.error(RESUME_REVIEW_REQUIRED_MESSAGE);
+      return;
+    }
+    if (!resumeId) {
+      toast.error("Save this résumé before creating a tailored version.");
+      return;
+    }
     if (!jobDescription.trim() || jobDescription.trim().length < 50) {
       toast.error("Paste the full job description (at least 50 chars).");
       return;
@@ -55,7 +69,7 @@ export function AiTailorPanel({
     try {
       const { data, error } = await supabase.functions.invoke<{ tailored: ResumeJSON }>(
         "career-ops-tailor-v2",
-        { body: { resume, job_description: jobDescription } },
+        { body: { resume_id: resumeId, job_description: jobDescription } },
       );
       if (error) throw error;
       if (!data?.tailored) throw new Error("Empty response from tailor");
@@ -93,7 +107,12 @@ export function AiTailorPanel({
           onChange={(e) => setJobDescription(e.target.value)}
           className="font-mono text-xs resize-none"
         />
-        <Button onClick={onTailor} disabled={busy} className="w-full">
+        {!automationAllowed && (
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs leading-relaxed text-muted-foreground">
+            {RESUME_REVIEW_REQUIRED_MESSAGE}
+          </p>
+        )}
+        <Button onClick={onTailor} disabled={busy || !automationAllowed || !resumeId} className="w-full">
           {busy ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Sparkles className="size-4 mr-1.5" />}
           {busy ? "Creating tailored version..." : "Create tailored version"}
         </Button>
@@ -113,8 +132,11 @@ export function AiTailorPanel({
 
       <div className="border-t flex-1 overflow-auto">
         <div className="p-4">
-          <h3 className="text-sm font-semibold mb-2">ATS Score</h3>
-          {score ? <ScoreView score={score} /> : <p className="text-xs text-muted-foreground">No score yet.</p>}
+          <h3 className="text-sm font-semibold mb-1">Generic résumé quality</h3>
+          <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">
+            Independent of this job. Job-requirement coverage is measured on the saved tailored version.
+          </p>
+          {score ? <ScoreView score={score} /> : <p className="text-xs text-muted-foreground">Quality is not available yet.</p>}
         </div>
       </div>
     </div>

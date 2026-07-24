@@ -13,6 +13,7 @@ import ReactMarkdown from "react-markdown";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ApplyPassWorkspace from "@/components/chat/ApplyPassWorkspace";
 import { useLocation, useNavigate } from "react-router-dom";
+import { normalizeScore } from "@/lib/score-truth";
 
 const FILTERS_STORAGE_KEY = "job-search-filters";
 export const APPLYPASS_LATEST_SEARCH_KEY = "applypass-latest-search-v1";
@@ -155,7 +156,7 @@ function parseJobsFromMarkdown(markdown: string, filters: JobFilters): JobResult
     seen.add(jobKey);
 
     const matchScoreRaw = section.match(/(?:match score|fit score|score):\s*(\d{1,3})%?/i)?.[1];
-    const matchScore = matchScoreRaw ? Number(matchScoreRaw) : undefined;
+    const matchScore = matchScoreRaw ? normalizeScore(matchScoreRaw) : null;
 
     parsed.push({
       id: `${idx + 1}-${title}-${company}-${resolvedUrl}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
@@ -167,7 +168,7 @@ function parseJobsFromMarkdown(markdown: string, filters: JobFilters): JobResult
       url: resolvedUrl,
       fallbackUrl: fallback,
       sourceUrl: cleanedPrimary || undefined,
-      matchScore: Number.isFinite(matchScore) ? matchScore : undefined,
+      matchScore: matchScore ?? undefined,
     });
   });
 
@@ -677,7 +678,7 @@ export function JobSearchPanel({ selectedModel, onModelChange }: JobSearchPanelP
                 <li>• Matches your skills to related roles (not just exact titles)</li>
                 <li>• Searches across multiple job boards and company pages</li>
                 <li>• Returns real jobs with direct apply links</li>
-                <li>• Match scoring grounded in your experience and preferences</li>
+                <li>• Career-fit estimates grounded in your experience and preferences</li>
               </ul>
             </Card>
           )}

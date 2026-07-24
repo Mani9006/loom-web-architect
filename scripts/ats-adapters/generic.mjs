@@ -163,11 +163,13 @@ function normalizeVerificationResponse(response) {
     return {
       code: typeof response.code === "string" && response.code ? response.code : null,
       inboxStatus: typeof response.inboxStatus === "string" ? response.inboxStatus : "INBOX_CHECK_FAILED",
+      reservationId: typeof response.reservationId === "string" ? response.reservationId : null,
     };
   }
   return {
     code: typeof response === "string" && response ? response : null,
     inboxStatus: "INBOX_CHECK_FAILED",
+    reservationId: null,
   };
 }
 
@@ -184,10 +186,10 @@ export async function runVerificationLoop(target, ctx) {
   if (!field) return { requested: false, completed: false };
 
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const { code, inboxStatus } = normalizeVerificationResponse(await ctx.requestVerificationCode());
+    const { code, inboxStatus, reservationId } = normalizeVerificationResponse(await ctx.requestVerificationCode());
     if (code) {
       await fillVerificationCode(target, field.index, code);
-      return { requested: true, completed: true };
+      return { requested: true, completed: true, reservationId };
     }
     if (["INBOX_RECONNECT_REQUIRED", "INBOX_UNAVAILABLE", "JOB_INBOX_NOT_LINKED"].includes(inboxStatus)) {
       return { requested: true, completed: false, reason: inboxStatus };
@@ -792,7 +794,15 @@ export async function detectSubmitButton(target) {
       const label = (element.textContent || element.getAttribute("value") || "").toLowerCase().replace(/\s+/g, " ").trim();
       const rect = element.getBoundingClientRect();
       const disabled = element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true";
-      if (accepted.has(label) && rect.width > 0 && rect.height > 0 && !disabled) return { index, label };
+      if (accepted.has(label) && rect.width > 0 && rect.height > 0 && !disabled) {
+        const form = element.form || element.closest("form");
+        return {
+          index,
+          label,
+          formAction: element.formAction || form?.action || null,
+          formMethod: (element.formMethod || form?.method || "post").toUpperCase(),
+        };
+      }
     }
     return null;
   });
@@ -817,8 +827,13 @@ export async function confirmSubmission(page, previousUrl) {
         .filter(Boolean)
         .slice(0, 5),
     }));
-    confirmed = /(application (?:has been )?(?:received|submitted)|thank you(?:!| for applying)|thanks for applying|submission confirmed|we(?:'|’)ve received your application|application complete)/i.test(pageState.text)
-      || /(?:thank.?you|confirmation|submitted)/i.test(page.url());
+    // Generic page text is untrusted: marketing copy and unrelated widgets
+    // frequently contain "thank you". Only a post-click confirmation URL
+    // combined with replacement of the application form is meaningful here.
+    confirmed = page.url() !== previousUrl
+      && /(?:thank.?you|confirmation|submitted)/i.test(page.url())
+      && !pageState.formPresent
+      && pageState.invalidFields === 0;
     if (confirmed) break;
     if (pageState.verificationRequired) break;
     await page.waitForTimeout(500);

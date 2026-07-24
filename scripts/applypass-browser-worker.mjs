@@ -9,6 +9,19 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { chromium } from "patchright";
 import { pickAdapter } from "./ats-adapters/index.mjs";
 import { detectPostingExpired } from "./ats-adapters/generic.mjs";
+import {
+  hostnameMatchesDomain,
+  isTrustedResumeDownloadUrl,
+  validateWorkerAtsUrl,
+  validateWorkerProviderUrl,
+} from "./ats-url-policy.mjs";
+import { validateGeneratedResumePdf } from "./ats-adapters/resume-file-policy.mjs";
+import {
+  developmentScreenshotsEnabled,
+  hasStrongReceiptEvidence,
+  inspectSubmissionResponse,
+  isSubmissionRequestCandidate,
+} from "./ats-submission-proof.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY
@@ -21,12 +34,17 @@ const POLL_MS = Number(process.env.APPLYPASS_WORKER_POLL_MS || 5000);
 const IDLE_EXIT_MS = Number(process.env.APPLYPASS_IDLE_EXIT_MS || 120000);
 const CONFIGURED_CONCURRENCY = Math.min(12, Math.max(1, Number(process.env.APPLYPASS_WORKER_CONCURRENCY || 4)));
 const AUTO_SUBMIT = String(process.env.APPLYPASS_AUTO_SUBMIT || "false").toLowerCase() === "true";
-const SCREENSHOT_DIR = process.env.APPLYPASS_SCREENSHOT_DIR || "";
+// Browser captures can contain names, contact details, answers, and OTPs.
+// Merely setting a path never enables them: both explicit DEV controls are
+// required, and production therefore cannot persist a screenshot.
+const SCREENSHOT_DIR = developmentScreenshotsEnabled()
+  ? String(process.env.APPLYPASS_SCREENSHOT_DIR || "").trim()
+  : "";
 
 // Anti-flag pacing (research-backed): at most one submission per ATS domain
 // per window, plus a randomized pause between jobs. In-memory buckets are
 // sufficient — the worker is a single process and all slot loops share them.
-const RATE_LIMITED_DOMAINS = ["greenhouse.io", "lever.co", "ashbyhq.com"];
+const RATE_LIMITED_DOMAINS = ["greenhouse.io", "lever.co", "ashbyhq.com", "workable.com"];
 const DOMAIN_MIN_INTERVAL_MS = Math.max(0, Number(process.env.APPLYPASS_DOMAIN_MIN_INTERVAL_MS || 45000));
 const JOB_JITTER_MIN_MS = Math.max(0, Number(process.env.APPLYPASS_JOB_JITTER_MIN_MS || 5000));
 const JOB_JITTER_MAX_MS = Math.max(JOB_JITTER_MIN_MS, Number(process.env.APPLYPASS_JOB_JITTER_MAX_MS || 15000));
@@ -56,8 +74,18 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function normalize(value) {
-  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+function validateNavigationTarget(value, expectedProvider, trustedTestOrigin = null) {
+  if (trustedTestOrigin) {
+    try {
+      const url = new URL(String(value || ""));
+      if (url.origin === trustedTestOrigin) {
+        return { ok: true, provider: expectedProvider, normalizedUrl: url.toString(), reason: null };
+      }
+    } catch {
+      // Fall through to the production policy.
+    }
+  }
+  return validateWorkerAtsUrl(value, expectedProvider);
 }
 
 // Per-domain token buckets: capacity 1, refilling one token every
@@ -69,7 +97,7 @@ const domainBuckets = new Map();
 function rateLimitedDomain(url) {
   try {
     const hostname = new URL(String(url || "")).hostname.toLowerCase();
-    return RATE_LIMITED_DOMAINS.find((domain) => hostname === domain || hostname.endsWith(`.${domain}`)) || null;
+    return RATE_LIMITED_DOMAINS.find((domain) => hostnameMatchesDomain(hostname, domain)) || null;
   } catch {
     return null;
   }
@@ -140,7 +168,19 @@ async function requestVerificationCode(taskId, jobId, workerId) {
   return {
     code: response?.available && typeof response?.code === "string" ? response.code : null,
     inboxStatus: typeof response?.inbox_status === "string" ? response.inbox_status : "INBOX_CHECK_FAILED",
+    reservationId: typeof response?.reservation_id === "string" ? response.reservation_id : null,
   };
+}
+
+async function acknowledgeVerificationCode(taskId, reservationId, accepted, workerId) {
+  if (!reservationId) return null;
+  return await queueCall({
+    action: "verification-code-result",
+    taskId,
+    reservationId,
+    accepted: accepted === true,
+    workerId,
+  }, workerId);
 }
 
 async function submissionAuthorized(taskId, jobId, workerId) {
@@ -160,66 +200,64 @@ async function maybeScreenshot(page, taskId, jobId) {
 
 async function downloadResumeFile(payload) {
   const url = String(payload?.resumeFileUrl || "").trim();
-  if (!url.startsWith("https://")) return { directory: null, filePath: null };
+  if (!url) return { directory: null, filePath: null };
+  if (!isTrustedResumeDownloadUrl(url, SUPABASE_URL)) {
+    throw new Error("Resume download URL is outside the configured private storage origin");
+  }
 
-  const response = await fetch(url, { redirect: "follow" });
+  const response = await fetch(url, { redirect: "manual" });
+  if (response.status >= 300 && response.status < 400) {
+    throw new Error("Resume download redirects are not allowed");
+  }
   if (!response.ok) throw new Error(`Resume download failed (${response.status})`);
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength === 0 || bytes.byteLength > 10 * 1024 * 1024) {
-    throw new Error("Resume file must be between 1 byte and 10 MB");
-  }
-
   const contentType = response.headers.get("content-type") || "";
-  const extension = contentType.includes("wordprocessingml") ? ".docx" : ".pdf";
+  const validation = validateGeneratedResumePdf(bytes, contentType);
+  if (!validation.ok) {
+    throw new Error(`Resume artifact failed PDF validation (${validation.reason})`);
+  }
   const directory = await mkdtemp(path.join(os.tmpdir(), "resumepreps-worker-"));
-  const filePath = path.join(directory, `tailored-resume${extension}`);
+  const filePath = path.join(directory, "tailored-resume.pdf");
   await writeFile(filePath, bytes);
   return { directory, filePath };
-}
-
-async function inspectSubmissionResponse(response) {
-  if (!response) return { status: null, path: null, confirmed: false };
-  const status = response.status();
-  let pathName = null;
-  try {
-    pathName = new URL(response.url()).pathname;
-  } catch {
-    pathName = null;
-  }
-  const body = await response.text().catch(() => "");
-  let explicitSuccess = false;
-  try {
-    const parsed = JSON.parse(body);
-    explicitSuccess = parsed?.success === true
-      || parsed?.submitted === true
-      || normalize(parsed?.status) === "success";
-  } catch {
-    explicitSuccess = false;
-  }
-  const receiptText = /(application (?:has been )?(?:received|submitted)|thank you for applying|submission confirmed|we(?:'|’)ve received your application)/i.test(body);
-  return { status, path: pathName, confirmed: response.ok() && (explicitSuccess || receiptText) };
 }
 
 // Perform one submit attempt through the active adapter and gather both the
 // adapter's DOM receipt and the transport-level ATS response. The adapter's
 // submit() enforces the env gate + approval refusal internally; the worker
 // still re-checks continuous-apply authorization immediately before calling.
-async function submitViaAdapter(page, adapter, ctx, submitButton) {
+async function submitViaAdapter(page, adapter, ctx, submitButton, expectedProvider, trustedTestOrigin) {
   const previousUrl = page.url();
-  // Watch for the ATS submission response while the adapter performs the click.
+  // Brief human-like dwell before the final click; instant fill-and-fire is
+  // the strongest automation tell for ATS spam filters. Start response
+  // correlation only after this delay so a background write during review
+  // cannot be mistaken for the click that follows.
+  await page.waitForTimeout(1500 + Math.floor(Math.random() * 2500));
+
+  let submissionRequestMatched = false;
+  // Watch only for the write tied to this submit control. An exact form action
+  // is preferred; JS forms use provider-specific application endpoint shapes.
+  // Provider analytics/autosave writes cannot win this race.
   const responsePromise = page.waitForResponse((response) => {
     const request = response.request();
-    if (!["POST", "PUT", "PATCH"].includes(request.method())) return false;
-    try {
-      return new URL(response.url()).hostname.endsWith("greenhouse.io");
-    } catch {
-      return false;
-    }
+    const providerUrlAllowed = trustedTestOrigin
+      ? true
+      : validateWorkerProviderUrl(response.url(), expectedProvider).ok;
+    if (!providerUrlAllowed) return false;
+    const matched = isSubmissionRequestCandidate({
+      url: response.url(),
+      method: request.method(),
+      resourceType: request.resourceType(),
+    }, {
+      provider: expectedProvider,
+      trustedOrigin: trustedTestOrigin,
+      formAction: submitButton?.formAction,
+      formMethod: submitButton?.formMethod,
+    });
+    if (matched) submissionRequestMatched = true;
+    return matched;
   }, { timeout: 15000 }).catch(() => null);
 
-  // Brief human-like dwell before the final click; instant fill-and-fire is
-  // the strongest automation tell for ATS spam filters.
-  await page.waitForTimeout(1500 + Math.floor(Math.random() * 2500));
   const submission = await adapter.submit(page, { ...ctx, submitButton });
   let receipt;
   let submissionResponse = null;
@@ -231,11 +269,33 @@ async function submitViaAdapter(page, adapter, ctx, submitButton) {
   } else {
     receipt = { confirmed: false, evidence: { reason: submission?.reason || "submit refused" } };
   }
-  const transport = await inspectSubmissionResponse(submissionResponse);
+  const transport = {
+    ...(await inspectSubmissionResponse(submissionResponse)),
+    requestMatched: submissionRequestMatched && Boolean(submissionResponse),
+  };
   return { receipt, transport };
 }
 
-async function processJob(browser, taskId, job, payload, resumeFilePath, workerId) {
+function applySubmissionProof(result, receipt, transport, expectedProvider) {
+  const receiptEvidence = receipt?.evidence && typeof receipt.evidence === "object"
+    ? { ...receipt.evidence }
+    : {};
+  if (!receiptEvidence.applicationId && transport.applicationId) {
+    receiptEvidence.applicationId = transport.applicationId;
+  }
+
+  result.submissionResponseStatus = transport.status;
+  result.submissionResponsePath = transport.path;
+  result.submissionRequestMatched = transport.requestMatched === true;
+  result.submissionTransportSignal = transport.signal || null;
+  result.submissionTransportApplicationId = transport.applicationId || null;
+  result.submissionTransportConfirmed = transport.requestMatched === true && transport.confirmed === true;
+  result.receipt = Object.keys(receiptEvidence).length > 0 ? receiptEvidence : null;
+  result.submitted = hasStrongReceiptEvidence(expectedProvider, receiptEvidence)
+    || result.submissionTransportConfirmed;
+}
+
+async function processJob(browser, taskId, job, payload, resumeFilePath, workerId, testPolicy = null) {
   const startedAt = Date.now();
   const result = {
     jobId: String(job?.id || ""),
@@ -255,6 +315,10 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     missingFields: [],
     submissionResponseStatus: null,
     submissionResponsePath: null,
+    submissionRequestMatched: false,
+    submissionTransportSignal: null,
+    submissionTransportApplicationId: null,
+    submissionTransportConfirmed: false,
     handoffReason: null,
     receipt: null,
     screenshotPath: null,
@@ -264,11 +328,18 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
   };
 
   const url = result.url;
-  if (!url.startsWith("http")) {
-    result.error = "Invalid job URL";
+  const declaredProvider = typeof payload?.portal === "string" ? payload.portal.toLowerCase() : null;
+  const trustedTestOrigin = testPolicy?.trustedOrigin || null;
+  const expectedProvider = testPolicy?.provider || declaredProvider;
+  const trustedTarget = validateNavigationTarget(url, expectedProvider, trustedTestOrigin);
+  if (!trustedTarget.ok) {
+    result.status = "needs_review";
+    result.handoffReason = `untrusted_job_url:${trustedTarget.reason}`;
+    result.error = "This employer link could not be verified for automatic submission.";
     result.durationMs = Date.now() - startedAt;
     return result;
   }
+  result.url = trustedTarget.normalizedUrl;
 
   let lastError = null;
   for (let attempt = 0; attempt <= JOB_MAX_RETRIES; attempt += 1) {
@@ -279,7 +350,18 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     try {
       const page = await context.newPage();
-      return await runJobAttempt(page, result, job, taskId, payload, resumeFilePath, workerId, startedAt);
+      return await runJobAttempt(
+        page,
+        result,
+        job,
+        taskId,
+        payload,
+        resumeFilePath,
+        workerId,
+        startedAt,
+        trustedTarget.provider,
+        trustedTestOrigin,
+      );
     } catch (error) {
       lastError = error;
     } finally {
@@ -296,10 +378,18 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
 // are retried by processJob with a fresh page; adapter-level business
 // outcomes (blocked / needs_attention / skipped / ready_for_review ...) are
 // returned normally and are never retried.
-async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath, workerId, startedAt) {
+async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath, workerId, startedAt, expectedProvider, trustedTestOrigin) {
   const url = result.url;
   const navResponse = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForTimeout(1200);
+  const finalTarget = validateNavigationTarget(page.url(), expectedProvider, trustedTestOrigin);
+  if (!finalTarget.ok) {
+    result.status = "needs_attention";
+    result.handoffReason = `untrusted_redirect:${finalTarget.reason}`;
+    result.error = "The employer redirected outside its verified application provider, so no information was entered.";
+    result.durationMs = Date.now() - startedAt;
+    return result;
+  }
 
   // Liveness pre-check: clearly dead postings (HTTP 404/410 or an unambiguous
   // "job no longer available" page) are skipped before any filling, so an
@@ -316,6 +406,13 @@ async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath,
 
   const adapter = await pickAdapter(url, page);
     result.adapter = adapter.metadata.name;
+    if (adapter.metadata.name !== expectedProvider) {
+      result.status = "needs_review";
+      result.handoffReason = "provider_adapter_mismatch";
+      result.error = "The verified employer provider did not match the available application adapter.";
+      result.durationMs = Date.now() - startedAt;
+      return result;
+    }
     const handleVerification = typeof adapter.handleVerification === "function"
       ? (p, c) => adapter.handleVerification(p, c)
       : null;
@@ -352,6 +449,14 @@ async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath,
       result.durationMs = Date.now() - startedAt;
       return result;
     }
+    const preparedTarget = validateNavigationTarget(page.url(), expectedProvider, trustedTestOrigin);
+    if (!preparedTarget.ok) {
+      result.status = "needs_attention";
+      result.handoffReason = `untrusted_prepare_redirect:${preparedTarget.reason}`;
+      result.error = "The application flow left its verified provider, so no information was entered.";
+      result.durationMs = Date.now() - startedAt;
+      return result;
+    }
 
     // Adapters upload documents and fill custom dropdowns before plain
     // inputs (framework forms can re-render after uploads).
@@ -363,6 +468,7 @@ async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath,
     result.resumeUploaded = upload.uploaded > 0;
 
     const verification = filled?.verification || { requested: false, completed: false };
+    let verificationReservationId = verification.reservationId || null;
     result.verificationHandled = verification.completed;
     result.verificationReason = verification.reason || null;
 
@@ -384,11 +490,24 @@ async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath,
       : false;
 
     if (submitButton && AUTO_SUBMIT && approved && !blocked && stillAuthorized) {
-      let { receipt, transport } = await submitViaAdapter(page, adapter, ctx, submitButton);
-      result.submissionResponseStatus = transport.status;
-      result.submissionResponsePath = transport.path;
-      result.submitted = receipt.confirmed === true || transport.confirmed === true;
-      result.receipt = receipt.evidence || null;
+      const submitTarget = validateNavigationTarget(page.url(), expectedProvider, trustedTestOrigin);
+      if (!submitTarget.ok) {
+        await acknowledgeVerificationCode(taskId, verificationReservationId, false, workerId).catch(() => null);
+        result.status = "needs_attention";
+        result.handoffReason = `untrusted_submit_target:${submitTarget.reason}`;
+        result.error = "The final application page could not be verified, so submission was stopped.";
+        result.durationMs = Date.now() - startedAt;
+        return result;
+      }
+      let { receipt, transport } = await submitViaAdapter(
+        page,
+        adapter,
+        ctx,
+        submitButton,
+        expectedProvider,
+        trustedTestOrigin,
+      );
+      applySubmissionProof(result, receipt, transport, expectedProvider);
 
       // Post-submit employer verification handoff: some ATS forms (Greenhouse
       // security-code step) only reveal the emailed verification field AFTER
@@ -397,6 +516,7 @@ async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath,
         && handleVerification
         && (transport.status === 428 || receipt?.evidence?.verificationRequired)) {
         const postSubmitVerification = await handleVerification(page, ctx);
+        verificationReservationId = postSubmitVerification.reservationId || verificationReservationId;
         result.verificationHandled = postSubmitVerification.completed;
         result.verificationReason = postSubmitVerification.reason || null;
         if (postSubmitVerification.completed) {
@@ -406,21 +526,17 @@ async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath,
             ? await submissionAuthorized(taskId, result.jobId, workerId)
             : false;
           if (verificationButton && remainsAuthorized) {
-            ({ receipt, transport } = await submitViaAdapter(page, adapter, ctx, verificationButton));
-            result.submissionResponseStatus = transport.status;
-            result.submissionResponsePath = transport.path;
-            result.submitted = receipt.confirmed === true || transport.confirmed === true;
-            result.receipt = receipt.evidence || null;
+            ({ receipt, transport } = await submitViaAdapter(
+              page,
+              adapter,
+              ctx,
+              verificationButton,
+              expectedProvider,
+              trustedTestOrigin,
+            ));
+            applySubmissionProof(result, receipt, transport, expectedProvider);
           }
         }
-      }
-
-      // Receipt upgrade: keep the employer's own confirmation text (first
-      // 2000 chars) alongside the DOM receipt so submissions stay verifiable
-      // later even if the ATS page changes or expires.
-      if (result.submitted) {
-        const confirmationText = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
-        result.receipt = { ...(result.receipt || {}), confirmationText: String(confirmationText || "").slice(0, 2000) };
       }
 
       result.status = result.submitted ? "submitted" : "needs_review";
@@ -458,6 +574,21 @@ async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath,
             ? "Email verification is required. Connect the application inbox or request a new code, then retry."
           : `${incompleteRequired} required field(s) still need review; submission was not attempted.`;
       }
+    }
+
+    if (verificationReservationId) {
+      await acknowledgeVerificationCode(
+        taskId,
+        verificationReservationId,
+        result.submitted === true,
+        workerId,
+      ).catch((error) => {
+        console.warn(
+          `[ApplyPass Worker] verification-code acknowledgement failed for ${result.jobId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
     }
 
     result.screenshotPath = await maybeScreenshot(page, taskId, result.jobId);

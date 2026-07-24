@@ -21,6 +21,10 @@ import {
   corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
 } from "../_shared/guards.ts";
+import {
+  getResumeReviewState,
+  RESUME_REVIEW_REQUIRED_MESSAGE,
+} from "../_shared/resume-review.ts";
 
 const MAX_DESC = 12_000;
 
@@ -110,16 +114,12 @@ serve(async (req) => {
 
     const svc = serviceClient();
 
+    let existing: Record<string, unknown> | null = null;
     if (!body.force) {
-      const { data: existing } = await svc.from("job_evaluations")
+      const { data: cachedEvaluation } = await svc.from("job_evaluations")
         .select("*").eq("user_id", user.id).eq("scanned_job_id", body.scanned_job_id).maybeSingle();
-      if (existing?.score_version === "career-fit-v2") {
-        return jsonResponse({ evaluation: existing, cached: true });
-      }
+      existing = cachedEvaluation as Record<string, unknown> | null;
     }
-
-    const { isPro } = await enforceAccountActive(svc, user.id);
-    await enforceDailyCap(svc, user.id, "evaluation", isPro);
 
     const [{ data: job }, { data: resumes }, { data: prefRow }, { data: profile }] = await Promise.all([
       svc.from("scanned_jobs")
@@ -136,6 +136,18 @@ serve(async (req) => {
 
     const resume = selectSourceResume((resumes ?? []) as unknown as Array<Record<string, unknown>>, profile?.primary_resume_id);
     if (!resume) throw new HttpError(412, "no resume found for user");
+    if (!getResumeReviewState(resume).allowed) {
+      throw new HttpError(409, RESUME_REVIEW_REQUIRED_MESSAGE);
+    }
+    if (
+      existing?.score_version === "career-fit-v2"
+      && (!existing.resume_id || existing.resume_id === resume.id)
+    ) {
+      return jsonResponse({ evaluation: existing, cached: true });
+    }
+
+    const { isPro } = await enforceAccountActive(svc, user.id);
+    await enforceDailyCap(svc, user.id, "evaluation", isPro);
     const resumeText = buildResumeText(resume);
     if (!resumeText || resumeText.length < 120) throw new HttpError(412, "resume too thin to evaluate");
 

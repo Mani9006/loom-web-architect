@@ -1,14 +1,14 @@
 name: Quality gate
 
-# Runs on every push and PR. Must pass before merge to main or production.
+# Runs on every push and PR. Must pass before promotion from develop to main.
 # Vercel handles its own preview deploy in parallel — this workflow only
 # verifies the entire repository lints, compiles, types, and tests.
 
 on:
   push:
-    branches: [main, production]
+    branches: [develop, main]
   pull_request:
-    branches: [main, production]
+    branches: [develop, main]
 
 permissions:
   contents: read
@@ -33,7 +33,10 @@ jobs:
         run: npm ci
 
       - name: Dependency security gate
-        run: npm audit --audit-level=high
+        run: npm run audit:ci
+
+      - name: Test dependency audit policy
+        run: npm run test:audit-policy
 
       - name: Type check
         run: npm run type-check
@@ -43,6 +46,18 @@ jobs:
 
       - name: Test
         run: npm run test
+
+      - name: Test ATS adapters
+        run: npm run test:adapters
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: "v2.8.1"
+          cache: true
+
+      - name: Check critical Edge functions
+        run: npm run check:edge-functions
 
       - name: Build
         run: npm run build

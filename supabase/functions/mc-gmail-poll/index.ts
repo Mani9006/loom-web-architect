@@ -1,13 +1,28 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { matchEmailToJob } from "../_shared/email-job-match.ts";
 import { decryptSecret, encryptSecret } from "../_shared/oauth-crypto.ts";
-import { classifyGmailPollFailure } from "../_shared/gmail-poll-failure.ts";
+import {
+  gmailPollFailureHealth,
+  gmailPollSuccessHealth,
+} from "../_shared/gmail-poll-failure.ts";
+import {
+  optionalGmailPollUserId,
+  requestedGmailPollLimit,
+  requireGmailPollWorkspace,
+} from "../_shared/gmail-poll-scope.ts";
+import {
+  selectTrustedOtpTarget,
+  singleFromDomain,
+  verifyOtpJobTarget,
+  type OtpVerifiedSource,
+  type VerifiedOtpJobTarget,
+} from "../_shared/gmail-otp-trust.ts";
 import { chatFree } from "../_shared/llm.ts";
 import {
-  applicationSenderDomain,
+  APPLICATION_SENDER_DOMAINS,
   extractApplicationCode,
   extractVerificationCode,
-  isApplicationSender,
 } from "../_shared/verification-code.ts";
 
 const corsHeaders = {
@@ -51,6 +66,15 @@ interface ClassifiedEmail {
   next_action?: string;
 }
 
+interface TrackedJob {
+  id: string;
+  company: string;
+  job_title: string;
+  status: string;
+  apply_url: string | null;
+  scanned_job_id: string | null;
+}
+
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -71,12 +95,27 @@ serve(async (req) => {
 
   const authorization = req.headers.get("authorization") || "";
   const token = authorization.replace(/^Bearer\s+/i, "");
-  const workerToken = Deno.env.get("WORKER_AUTH_TOKEN") || "";
-  const isWorker = Boolean(token) && (token === serviceKey || (workerToken !== "" && token === workerToken));
+  const body = await req.json().catch(() => ({}));
+  const cronToken = Deno.env.get("GMAIL_POLL_CRON_TOKEN") || "";
+  const isServiceCall = Boolean(token) && token === serviceKey;
+  const isCronCall = Boolean(token) && cronToken !== "" && token === cronToken;
   let userId: string | null = null;
-  if (isWorker) {
-    const body = await req.json().catch(() => ({}));
-    userId = typeof body?.user_id === "string" && body.user_id.trim() ? body.user_id.trim() : null;
+  let selectedSessionId: string | null = null;
+  if (isServiceCall) {
+    userId = optionalGmailPollUserId(body);
+    if (
+      body &&
+      typeof body === "object" &&
+      "user_id" in body &&
+      (body as Record<string, unknown>).user_id !== null &&
+      userId === null
+    ) {
+      return json({ error: "Invalid service poll scope", code: "INVALID_POLL_SCOPE" }, 400);
+    }
+  } else if (isCronCall) {
+    // The dedicated cron credential can poll every enabled connection, but
+    // cannot be repurposed to select an arbitrary account.
+    userId = null;
   } else {
     const authClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
@@ -85,11 +124,44 @@ serve(async (req) => {
     const { data: { user } } = await authClient.auth.getUser();
     if (!user) return json({ error: "Sign in to check your inbox", code: "AUTH_REQUIRED" }, 401);
     userId = user.id;
+    const workspaceScope = requireGmailPollWorkspace(body);
+    if (!workspaceScope.ok) {
+      const message = workspaceScope.code === "SESSION_REQUIRED"
+        ? "Choose an application workspace first"
+        : "The selected application workspace is invalid";
+      return json({ error: message, code: workspaceScope.code }, 400);
+    }
+    selectedSessionId = workspaceScope.sessionId;
   }
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  if (selectedSessionId && userId) {
+    const { data: ownedSession, error: sessionError } = await admin
+      .from("mc_sessions")
+      .select("id")
+      .eq("id", selectedSessionId)
+      .eq("user_id", userId)
+      .neq("status", "deleted")
+      .maybeSingle();
+    if (sessionError) {
+      console.error("mc-gmail-poll session", sessionError.code);
+      return json({ error: "Inbox could not be checked", code: "INBOX_CHECK_FAILED" }, 500);
+    }
+    if (!ownedSession) {
+      return json({ error: "Application workspace not found", code: "SESSION_NOT_FOUND" }, 404);
+    }
+  }
+
+  // Interactive calls are exactly one owned workspace. Scheduled/service
+  // calls are least-recently-polled batches with a hard cap, preventing one
+  // invocation from walking an unbounded tenant set.
+  const connectionLimit = selectedSessionId ? 1 : requestedGmailPollLimit(body);
   let query = admin.from("mc_gmail_connections").select("*").eq("enabled", true);
   if (userId) query = query.eq("user_id", userId);
+  if (selectedSessionId) query = query.eq("session_id", selectedSessionId);
+  query = query
+    .order("last_polled_at", { ascending: true, nullsFirst: true })
+    .limit(connectionLimit);
   const { data: connections, error } = await query;
   if (error) {
     console.error("mc-gmail-poll load", error);
@@ -116,31 +188,37 @@ serve(async (req) => {
       // 5xx, network errors — must keep the connection row enabled; flipping
       // enabled=false here made healthy connections "vanish" from the Inbox
       // after the first failed poll.
-      const code = classifyGmailPollFailure(message);
-      if (code === "INBOX_RECONNECT_REQUIRED") {
-        // Do not keep presenting an unusable OAuth grant as connected. The
-        // next Inbox visit will offer the normal Google reconnect flow.
-        await admin
-          .from("mc_gmail_connections")
-          .update({ enabled: false })
-          .eq("id", connection.id);
+      const failureHealth = gmailPollFailureHealth(
+        message,
+        connection.consecutive_failures,
+        new Date().toISOString(),
+      );
+      const { error: healthError } = await admin
+        .from("mc_gmail_connections")
+        .update(failureHealth.update)
+        .eq("id", connection.id)
+        .eq("user_id", connection.user_id)
+        .eq("session_id", connection.session_id);
+      if (healthError) {
+        console.error("mc-gmail-poll health", connection.id, healthError.code);
       }
-      if (!failureCodes.includes(code)) failureCodes.push(code);
+      if (!failureCodes.includes(failureHealth.code)) failureCodes.push(failureHealth.code);
     }
   }
 
-  let expiryQuery = admin
-    .from("mc_inbound_emails")
-    .update({ verification_code: null })
-    .not("verification_code", "is", null)
-    .lt("verification_code_expires_at", new Date().toISOString());
-  if (userId) expiryQuery = expiryQuery.eq("user_id", userId);
-  await expiryQuery;
+  // Codes are encrypted in app_private; the service-only RPC expires them
+  // and updates the public "available" marker atomically.
+  await admin.rpc("mc_expire_verification_codes");
 
   return json({ checked: connections?.length ?? 0, processed, status_updates: statusUpdates, failed, failure_codes: failureCodes });
 });
 
 async function pollOne(admin: any, connection: any, encryptionKey: string) {
+  // The checkpoint represents the beginning of a successful poll. Messages
+  // that arrive while Gmail pages are being read therefore remain visible to
+  // the next poll. A short overlap protects the seconds-resolution `after:`
+  // query; the user/message unique index makes the overlap idempotent.
+  const pollStartedAt = new Date();
   const { data: tokenRows, error: tokenError } = await admin.rpc("mc_get_gmail_tokens", {
     p_connection_id: connection.id,
   });
@@ -160,32 +238,140 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     await admin
       .from("mc_gmail_connections")
       .update({ token_expires_at: new Date(Date.now() + refreshed.expiresIn * 1000).toISOString() })
-      .eq("id", connection.id);
+      .eq("id", connection.id)
+      .eq("user_id", connection.user_id)
+      .eq("session_id", connection.session_id);
   }
 
-  const { data: trackedJobs } = await admin
+  const { data: trackedJobRows } = await admin
     .from("mc_tracked_jobs")
-    .select("id,company,job_title,status,apply_url")
-    .eq("session_id", connection.session_id);
+    .select("id,company,job_title,status,apply_url,scanned_job_id")
+    .eq("session_id", connection.session_id)
+    .eq("user_id", connection.user_id)
+    .is("deleted_at", null);
+
+  const trackedIds = (trackedJobRows ?? []).map((job: any) => job.id).filter(Boolean);
+  const trackedById = new Map<string, TrackedJob>(
+    ((trackedJobRows ?? []) as TrackedJob[]).map((job) => [job.id, job]),
+  );
+  const scannedJobIds = [...new Set(
+    ((trackedJobRows ?? []) as TrackedJob[])
+      .map((job) => job.scanned_job_id)
+      .filter((id): id is string => Boolean(id)),
+  )];
+  const verifiedSourceByScannedJob = new Map<string, OtpVerifiedSource>();
+  if (scannedJobIds.length > 0) {
+    const { data: sourceRows, error: sourceError } = await admin
+      .from("scanned_jobs")
+      .select("id,apply_url,company:scan_companies(name,api_type,api_identifier,careers_url)")
+      .in("id", scannedJobIds);
+    if (sourceError) {
+      // Status ingestion can continue, but secret routing fails closed when
+      // the server-verified job/company source cannot be loaded.
+      console.error("mc-gmail-poll verified targets", sourceError.code);
+    } else {
+      for (const row of sourceRows ?? []) {
+        const company = Array.isArray(row?.company) ? row.company[0] : row?.company;
+        const scannedJobId = String(row?.id || "");
+        if (!scannedJobId || !company) continue;
+        verifiedSourceByScannedJob.set(scannedJobId, {
+          scannedJobId,
+          company: String(company.name || ""),
+          provider: String(company.api_type || ""),
+          providerIdentifier: String(company.api_identifier || ""),
+          applyUrl: String(row.apply_url || ""),
+          companyUrl: company.careers_url ? String(company.careers_url) : null,
+        });
+      }
+    }
+  }
+  const eligibleTrackedIds = new Set<string>();
+  const eligibleSinceByJob = new Map<string, number>();
+  const activeOtpTargets: VerifiedOtpJobTarget[] = [];
+  const markEligible = (jobId: unknown, timestamp: unknown) => {
+    const id = typeof jobId === "string" ? jobId : "";
+    if (!id) return;
+    eligibleTrackedIds.add(id);
+    const at = typeof timestamp === "string" ? new Date(timestamp).getTime() : Number.NaN;
+    if (Number.isFinite(at)) {
+      const current = eligibleSinceByJob.get(id);
+      eligibleSinceByJob.set(id, current === undefined ? at : Math.min(current, at));
+    }
+  };
+  if (trackedIds.length > 0) {
+    const [{ data: receipts }, { data: legacyHistory }, { data: activeTasks }] = await Promise.all([
+      admin
+        .from("application_submission_receipts")
+        .select("tracked_job_id,submitted_at")
+        .eq("user_id", connection.user_id)
+        .in("tracked_job_id", trackedIds),
+      admin
+        .from("mc_status_history")
+        .select("tracked_job_id,created_at")
+        .eq("user_id", connection.user_id)
+        .eq("source", "auto_apply")
+        .in("tracked_job_id", trackedIds),
+      admin
+        .from("applypass_tasks")
+        .select("id,payload,created_at,status")
+        .eq("user_id", connection.user_id)
+        .in("status", ["pending", "running"]),
+    ]);
+    for (const row of receipts ?? []) {
+      markEligible(row.tracked_job_id, row.submitted_at);
+    }
+    // Preserve application mail for verified pre-receipt deployments.
+    for (const row of legacyHistory ?? []) {
+      markEligible(row.tracked_job_id, row.created_at);
+    }
+    for (const row of activeTasks ?? []) {
+      const payload = row?.payload && typeof row.payload === "object" ? row.payload : {};
+      const directId = String((payload as any).tracked_job_id || "");
+      if (directId) markEligible(directId, row.created_at);
+      const taskJobs = Array.isArray((payload as any).jobs) ? (payload as any).jobs : [];
+      for (const job of taskJobs) {
+        const id = String(job?.trackedJobId || job?.tracked_job_id || "");
+        if (id) markEligible(id, row.created_at);
+        if (row.status !== "running" || !id) continue;
+        const trackedJob = trackedById.get(id);
+        if (!trackedJob) continue;
+        const target = verifyOtpJobTarget(
+          trackedJob,
+          {
+            trackedJobId: id,
+            company: String(job?.company || (payload as any).company_name || ""),
+            jobTitle: String(job?.title || (payload as any).job_title || ""),
+            applyUrl: String(job?.url || (payload as any).apply_url || ""),
+            provider: String(job?.portal || (payload as any).portal || ""),
+            jobId: job?.id ? String(job.id) : null,
+            providerIdentifier: String(
+              job?.api_identifier || (payload as any).api_identifier || "",
+            ) || null,
+          },
+          trackedJob.scanned_job_id
+            ? verifiedSourceByScannedJob.get(trackedJob.scanned_job_id)
+            : null,
+        );
+        if (target) activeOtpTargets.push(target);
+      }
+    }
+  }
+  const trackedJobs = ((trackedJobRows ?? []) as TrackedJob[])
+    .filter((job) => eligibleTrackedIds.has(job.id));
 
   const sinceTs = connection.last_polled_at
-    ? Math.floor(new Date(connection.last_polled_at).getTime() / 1000)
+    ? Math.max(0, Math.floor(new Date(connection.last_polled_at).getTime() / 1000) - 60)
     : 0;
   const gmailQuery = sinceTs ? `after:${sinceTs}` : "newer_than:7d";
-  const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(gmailQuery)}&maxResults=25`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
-  );
-  if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
-  const list = await listResponse.json();
+  const messageRefs = await listGmailMessageRefs(accessToken, gmailQuery);
 
   let processed = 0;
   let statusUpdates = 0;
-  for (const messageRef of list.messages ?? []) {
+  for (const messageRef of messageRefs) {
     const { data: existing } = await admin
       .from("mc_inbound_emails")
       .select("id")
-      .eq("user_id", connection.user_id)
+      .eq("gmail_connection_id", connection.id)
       .eq("message_id", messageRef.id)
       .maybeSingle();
     if (existing) continue;
@@ -194,7 +380,7 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageRef.id}?format=full`,
       { headers: { authorization: `Bearer ${accessToken}` } },
     );
-    if (!messageResponse.ok) continue;
+    if (!messageResponse.ok) throw new Error(`gmail_message_${messageResponse.status}`);
     const message = await messageResponse.json();
     const headers: Record<string, string> = {};
     for (const header of message.payload?.headers ?? []) {
@@ -203,62 +389,129 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
 
     const subject = headers.subject || "";
     const fromEmail = headers.from || "";
-    const bodyText = normalizeBody(extractBody(message.payload) || message.snippet || "");
+    const authenticationResults = (message.payload?.headers ?? [])
+      .filter((header: any) =>
+        String(header?.name || "").toLowerCase() === "authentication-results"
+      )
+      .map((header: any) => String(header?.value || ""));
+    const broadAuthenticationResults = (message.payload?.headers ?? [])
+      .filter((header: any) =>
+        ["authentication-results", "arc-authentication-results"].includes(
+          String(header?.name || "").toLowerCase(),
+        )
+      )
+      .map((header: any) => String(header?.value || ""))
+      .join(" ");
+    const senderAuthenticated =
+      /\bmx\.google\.com\b[\s\S]*\b(?:spf|dkim|dmarc)=pass\b/i.test(broadAuthenticationResults);
+    if (!senderAuthenticated) continue;
+    const rawBody = extractBody(message.payload) || message.snippet || "";
+    const bodyText = normalizeBody(rawBody);
     const receivedAt = message.internalDate
       ? new Date(Number(message.internalDate)).toISOString()
       : new Date().toISOString();
+    const receivedAtMs = new Date(receivedAt).getTime();
+    const messageCandidateJobs = (trackedJobs ?? []).filter((job: any) => {
+      const eligibleSince = eligibleSinceByJob.get(job.id);
+      return eligibleSince === undefined || receivedAtMs >= eligibleSince - 15 * 60_000;
+    });
 
     // OTP screening runs on every inbound message: strict labelled extraction
-    // for all mail, plus a digit-only fallback restricted to job-application
-    // senders (ATS domains / noreply@). Codes live 10 minutes, are never
-    // logged, and are redacted from stored previews below.
+    // for all mail, plus a digit-only fallback restricted to known provider
+    // domains. Codes live 10 minutes, are never logged, and are redacted from
+    // stored previews below regardless of whether trust succeeds.
     const combinedText = `${subject}\n${bodyText}`;
-    const fromApplicationSender = isApplicationSender(fromEmail);
+    const fromDomain = singleFromDomain(fromEmail);
+    const fromKnownProvider = Boolean(
+      fromDomain &&
+      APPLICATION_SENDER_DOMAINS.some((domain) =>
+        fromDomain === domain || fromDomain.endsWith(`.${domain}`)
+      )
+    );
     const verificationCode = extractVerificationCode(combinedText)
-      || (fromApplicationSender ? extractApplicationCode(combinedText) : null);
+      || (fromKnownProvider ? extractApplicationCode(combinedText) : null);
     const codeExpiresAt = verificationCode
       ? new Date(new Date(receivedAt).getTime() + 10 * 60_000).toISOString()
       : null;
-    const activeCode = codeExpiresAt && new Date(codeExpiresAt).getTime() > Date.now()
+    const activeCandidateCode = codeExpiresAt && new Date(codeExpiresAt).getTime() > Date.now()
       ? verificationCode
       : null;
+    const otpTrust = activeCandidateCode
+      ? selectTrustedOtpTarget({
+        from: fromEmail,
+        authenticationResults,
+        targets: activeOtpTargets,
+        subject,
+        body: rawBody,
+      })
+      : null;
+    const activeCode = otpTrust?.target ? activeCandidateCode : null;
 
-    let matched = (trackedJobs ?? []).find((job: any) => emailMatchesJob(job, subject, fromEmail, bodyText));
-    // OTP mail often names no company ("Your verification code"); link through
-    // the ATS sender domain to the tracked job's apply_url host. Code mail
-    // only — other mail keeps the company/title match so existing kanban
-    // auto-move behavior is unchanged.
-    if (!matched && activeCode && fromApplicationSender) {
-      matched = linkCodeEmailToJob(trackedJobs ?? [], fromEmail, combinedText);
+    let matched = matchEmailToJob(messageCandidateJobs, {
+      subject,
+      from: fromEmail,
+      body: rawBody,
+    });
+    // A secret is routed only to the exact tracked job independently selected
+    // by aligned sender authentication and the running task's verified
+    // provider/company/apply URL. Other mail keeps normal status matching.
+    if (activeCode && otpTrust?.target) {
+      matched = messageCandidateJobs.find(
+        (job) => job.id === otpTrust.target?.trackedJobId,
+      ) ?? null;
     }
-    // Unmatched mail is skipped unless it carries a code from an application
-    // sender; those still land in the inbox (unlinked) for the OTP flow.
-    if (!matched && !(activeCode && fromApplicationSender)) continue;
+    // Never guess where a secret belongs. An ambiguous/unmatched code remains
+    // in Gmail and can be retried after a task is linked; it is not copied
+    // into the application inbox.
+    if (!matched) continue;
 
-    const classification = matched
-      ? await classifyEmail({ subject, from: fromEmail, body: bodyText })
-      : { classification: "verification" as Classification, confidence: 1, summary: "Employer verification code" };
+    // Redact any code-shaped secret we extracted, even if its sender or target
+    // was not trusted. This preserves legitimate status ingestion without
+    // copying attacker-controlled or ambiguous codes into public email fields.
+    const redactedSubject = redactVerificationCode(subject, verificationCode);
+    const redactedBody = redactVerificationCode(bodyText, verificationCode);
+    const classification = activeCode
+      ? { classification: "verification" as Classification, confidence: 1, summary: "Employer verification code" }
+      : await classifyEmail({ subject: redactedSubject, from: fromEmail, body: redactedBody });
+
+    // A company/title coincidence in personal mail is not sufficient. The
+    // application inbox only stores messages the deterministic rules or
+    // classifier identify as application-related with useful confidence.
+    if (
+      classification.classification === "irrelevant" ||
+      (!activeCode && classification.confidence < 0.55)
+    ) {
+      continue;
+    }
 
     const { data: emailRow, error: insertError } = await admin
       .from("mc_inbound_emails")
       .insert({
         user_id: connection.user_id,
         session_id: connection.session_id,
+        gmail_connection_id: connection.id,
         tracked_job_id: matched?.id ?? null,
         message_id: messageRef.id,
         from_email: fromEmail,
         to_email: connection.gmail_email,
-        subject,
-        // Keep the dedicated short-lived code field as the only place where a
-        // code is exposed. Gmail snippets frequently include the OTP itself.
-        body_preview: redactVerificationCode((message.snippet || bodyText).slice(0, 600), activeCode),
-        body_full: null,
+        subject: redactedSubject,
+        // Gmail snippets frequently include the OTP itself. Public email
+        // fields remain redacted; trusted ciphertext is stored separately.
+        body_preview: redactVerificationCode(
+          (message.snippet || bodyText).slice(0, 600),
+          verificationCode,
+        ),
+        // Only an already-classified application message is persisted. Keep a
+        // bounded, normalized body so the message can be opened inside the
+        // application inbox without granting the browser Gmail access.
+        body_full: redactedBody.slice(0, 12_000),
         classification: classification.classification,
         classification_confidence: classification.confidence,
         classification_summary: classification.summary,
         next_action: classification.next_action,
-        verification_code: activeCode,
-        verification_code_expires_at: activeCode ? codeExpiresAt : null,
+        verification_code: null,
+        verification_code_available: false,
+        verification_code_expires_at: null,
         parsed_at: new Date().toISOString(),
         received_at: receivedAt,
       })
@@ -274,6 +527,29 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     }
     processed += 1;
 
+    if (activeCode && codeExpiresAt && emailRow?.id) {
+      const codeCiphertext = await encryptSecret(activeCode, encryptionKey);
+      const { error: codeStoreError } = await admin.rpc("mc_store_verification_code", {
+        p_email_id: emailRow.id,
+        p_user_id: connection.user_id,
+        p_tracked_job_id: matched.id,
+        p_gmail_connection_id: connection.id,
+        p_code_ciphertext: codeCiphertext,
+        p_expires_at: codeExpiresAt,
+      });
+      if (codeStoreError) {
+        // Make the Gmail message retryable. Keeping a public email row without
+        // its secret would make the dedupe guard permanently skip the code.
+        await admin
+          .from("mc_inbound_emails")
+          .delete()
+          .eq("id", emailRow.id)
+          .eq("user_id", connection.user_id)
+          .eq("gmail_connection_id", connection.id);
+        throw new Error("verification_code_store_failed");
+      }
+    }
+
     const newStatus = STATUS_MAP[classification.classification];
     if (
       matched &&
@@ -282,25 +558,24 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
       newStatus !== matched.status &&
       isForwardStatusMove(matched.status, newStatus)
     ) {
-      const { error: statusUpdateError } = await admin
-        .from("mc_tracked_jobs")
-        .update({ status: newStatus })
-        .eq("id", matched.id);
+      const { data: updatedJob, error: statusUpdateError } = await admin.rpc(
+        "mc_advance_tracked_job_from_email",
+        {
+          p_job_id: matched.id,
+          p_user_id: connection.user_id,
+          p_session_id: connection.session_id,
+          p_expected_status: matched.status,
+          p_new_status: newStatus,
+          p_email_id: emailRow?.id,
+        },
+      );
       if (statusUpdateError) {
-        // The status never changed in the DB, so skip the history row and the
-        // status-change email — the user must not be alerted to a move that
-        // didn't happen.
+        // Status and history are one transaction, so the user is never shown
+        // or notified about a move without its audit row.
         console.error("mc-gmail-poll status update", connection.id, matched.id, statusUpdateError);
         continue;
       }
-      await admin.from("mc_status_history").insert({
-        tracked_job_id: matched.id,
-        user_id: connection.user_id,
-        status_from: matched.status,
-        status_to: newStatus,
-        source: "email",
-        email_id: emailRow?.id,
-      });
+      if (!updatedJob) continue;
       statusUpdates += 1;
       // Best-effort status-change alert. Fires only on an actual forward
       // transition, so the guards above already make it idempotent; a failed
@@ -316,41 +591,47 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     }
   }
 
-  await admin
+  const { error: healthError } = await admin
     .from("mc_gmail_connections")
-    .update({ last_polled_at: new Date().toISOString() })
-    .eq("id", connection.id);
+    .update({
+      last_polled_at: pollStartedAt.toISOString(),
+      ...gmailPollSuccessHealth(),
+    })
+    .eq("id", connection.id)
+    .eq("user_id", connection.user_id)
+    .eq("session_id", connection.session_id);
+  if (healthError) throw new Error("gmail_health_write_failed");
   return { processed, statusUpdates };
 }
 
-function emailMatchesJob(job: any, subject: string, from: string, body: string): boolean {
-  const haystack = `${subject}\n${from}\n${body}`.toLowerCase();
-  const company = String(job.company || "").trim().toLowerCase();
-  const title = String(job.job_title || "").trim().toLowerCase();
-  return Boolean((company.length >= 3 && haystack.includes(company)) ||
-    (title.length >= 5 && haystack.includes(title)));
-}
+async function listGmailMessageRefs(accessToken: string, query: string): Promise<Array<{ id: string }>> {
+  const refs: Array<{ id: string }> = [];
+  let pageToken = "";
 
-// Link an OTP email to a tracked job via the ATS sender domain vs apply_url
-// host. With several jobs on the same portal, the company name breaks the tie;
-// without one the email stays unlinked rather than guessing the wrong job.
-function linkCodeEmailToJob(trackedJobs: any[], fromEmail: string, text: string) {
-  const atsDomain = applicationSenderDomain(fromEmail);
-  if (!atsDomain) return null;
-  const candidates = trackedJobs.filter((job: any) => {
-    try {
-      const host = new URL(String(job?.apply_url || "")).hostname.toLowerCase();
-      return host === atsDomain || host.endsWith(`.${atsDomain}`);
-    } catch {
-      return false;
+  // Gmail supports up to 500 message references per page. Twenty pages is a
+  // deliberate circuit breaker for a corrupt checkpoint or unusually noisy
+  // mailbox; importantly, we throw before processing or advancing the
+  // checkpoint rather than silently losing the unvisited messages.
+  for (let page = 0; page < 20; page += 1) {
+    const params = new URLSearchParams({
+      q: query,
+      maxResults: "500",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const response = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`,
+      { headers: { authorization: `Bearer ${accessToken}` } },
+    );
+    if (!response.ok) throw new Error(`gmail_list_${response.status}`);
+    const payload = await response.json();
+    for (const message of payload.messages ?? []) {
+      if (typeof message?.id === "string" && message.id) refs.push({ id: message.id });
     }
-  });
-  if (candidates.length === 1) return candidates[0];
-  const haystack = text.toLowerCase();
-  return candidates.find((job: any) => {
-    const company = String(job?.company || "").trim().toLowerCase();
-    return company.length >= 3 && haystack.includes(company);
-  }) || null;
+    pageToken = typeof payload.nextPageToken === "string" ? payload.nextPageToken : "";
+    if (!pageToken) return refs;
+  }
+
+  throw new Error("gmail_list_page_limit");
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number }> {

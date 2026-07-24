@@ -33,11 +33,22 @@ import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import {
+  firstAutomationTaskOutcome,
+  isAgentRunLive,
+  resolveAutomationDraftState,
+} from "@/lib/application-funnel";
 import { captureIncident } from "@/lib/incidents";
 import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
+import {
+  careerFitFromEvaluation,
+  JOB_REQUIREMENT_SCORE_MODEL_PATTERN,
+  normalizeScore,
+} from "@/lib/score-truth";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { selectAppliableNow, selectTopNow } from "@/lib/top-now";
 import { toast } from "sonner";
+import { isResumeAllowedForAutomation } from "../../supabase/functions/_shared/resume-review";
 
 type ReviewMode = "always" | "low_confidence" | "eligible_only";
 
@@ -75,6 +86,7 @@ interface MatchRow {
 interface AtsScore {
   id: string;
   overall: number;
+  model: string;
   dim_format: number;
   dim_keywords: number;
   dim_experience: number;
@@ -92,6 +104,11 @@ interface ResumeSummary {
   updated_at: string;
   personal_info: unknown;
   experience: unknown;
+  parse_quality: unknown;
+  source_hash: string | null;
+  source_document_id: string | null;
+  parser_version: string | null;
+  parsed_at: string | null;
 }
 
 interface AgentRun {
@@ -122,8 +139,15 @@ interface SubmitTaskRow {
   id: string;
   status: string;
   error_message: string | null;
+  result: unknown;
   run_log: unknown;
   updated_at: string;
+}
+
+interface SubmissionReceiptRow {
+  id: string;
+  draft_application_id: string | null;
+  submitted_at: string;
 }
 
 interface WorkerHeartbeat {
@@ -146,6 +170,7 @@ interface LooseQueryResult {
 interface LooseQuery {
   select(columns: string): LooseQuery;
   eq(column: string, value: string): LooseQuery;
+  like(column: string, pattern: string): LooseQuery;
   order(column: string, options: { ascending: boolean }): LooseQuery;
   limit(count: number): LooseQuery;
   maybeSingle(): Promise<LooseQueryResult>;
@@ -170,7 +195,6 @@ const DEFAULT_CONTROLS: AgentControls = {
 
 const ATS_DIMENSIONS: Array<{ key: keyof AtsScore; label: string }> = [
   { key: "dim_format", label: "Format" },
-  { key: "dim_keywords", label: "Keywords" },
   { key: "dim_experience", label: "Experience" },
   { key: "dim_skills", label: "Skills" },
   { key: "dim_education", label: "Education" },
@@ -178,7 +202,7 @@ const ATS_DIMENSIONS: Array<{ key: keyof AtsScore; label: string }> = [
 ];
 
 function fitScore(match: MatchRow): number {
-  return Math.round(match.fit_score ?? match.score * 20);
+  return careerFitFromEvaluation(match.fit_score, match.score) ?? 0;
 }
 
 function scoreTone(score: number): string {
@@ -212,6 +236,7 @@ export default function AgentPage() {
   const [resume, setResume] = useState<ResumeSummary | null>(null);
   const [drafts, setDrafts] = useState<DraftStatusRow[]>([]);
   const [submitTasks, setSubmitTasks] = useState<SubmitTaskRow[]>([]);
+  const [submissionReceipts, setSubmissionReceipts] = useState<SubmissionReceiptRow[]>([]);
   const [lastRun, setLastRun] = useState<AgentRun | null>(null);
   const [gmailConnection, setGmailConnection] = useState<GmailConnection | null>(null);
   const [workerHeartbeat, setWorkerHeartbeat] = useState<WorkerHeartbeat | null>(null);
@@ -229,12 +254,14 @@ export default function AgentPage() {
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const automaticMatchAttempt = useRef(false);
   const automaticProfilePromise = useRef<Promise<unknown> | null>(null);
+  const workspaceRequestId = useRef(0);
 
   const loadWorkspace = useCallback(async (showSpinner = false) => {
     if (!user) return;
+    const requestId = ++workspaceRequestId.current;
     if (showSpinner) setRefreshing(true);
 
-    const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, tasksRes, runsRes, gmailRes, workerRes] = await Promise.all([
+    const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes, workerRes] = await Promise.all([
       supabase
         .from("user_job_prefs")
         .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,auto_apply_min_ats_score,tailoring_mode,daily_apply_cap,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
@@ -251,14 +278,15 @@ export default function AgentPage() {
         .limit(12),
       migratedTables
         .from("ats_scores")
-        .select("id,overall,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords,created_at")
+        .select("id,overall,model,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords,created_at")
         .eq("user_id", user.id)
+        .like("model", JOB_REQUIREMENT_SCORE_MODEL_PATTERN)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase
+      migratedTables
         .from("resumes")
-        .select("id,title,updated_at,personal_info,experience")
+        .select("id,title,updated_at,personal_info,experience,parse_quality,source_hash,source_document_id,parser_version,parsed_at")
         .eq("user_id", user.id)
         .order("updated_at", { ascending: false })
         .limit(1)
@@ -267,13 +295,6 @@ export default function AgentPage() {
         .from("draft_applications")
         .select("id,evaluation_id,status,error_message,updated_at,submitted_at,applypass_task_id,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
         .eq("user_id", user.id),
-      supabase
-        .from("applypass_tasks")
-        .select("id,status,error_message,run_log,updated_at")
-        .eq("user_id", user.id)
-        .eq("task_type", "career_ops_submit")
-        .order("updated_at", { ascending: false })
-        .limit(10),
       supabase
         .from("agent_runs")
         .select("id,status,summary,started_at,completed_at")
@@ -296,12 +317,52 @@ export default function AgentPage() {
         .maybeSingle(),
     ]);
 
-    const loadError = [prefsRes, matchRes, atsRes, resumeRes, draftsRes, tasksRes, runsRes, gmailRes, workerRes]
+    if (requestId !== workspaceRequestId.current) return;
+
+    const loadError = [prefsRes, matchRes, atsRes, resumeRes, draftsRes, runsRes, gmailRes, workerRes]
       .map((result) => result.error)
       .find(Boolean);
     if (loadError) {
       void captureIncident(new Error(loadError.message), { source: "manual", operation: "agent_workspace_load" });
       if (showSpinner) toast.error("Some Agent data could not be refreshed.");
+    }
+    if (draftsRes.error) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    const draftRows = (draftsRes.data || []) as unknown as DraftStatusRow[];
+    const taskIds = [...new Set(
+      draftRows
+        .map((draft) => draft.applypass_task_id)
+        .filter((id): id is string => Boolean(id)),
+    )];
+    const draftIds = draftRows.map((draft) => draft.id);
+    const [tasksRes, receiptsRes] = await Promise.all([
+      taskIds.length > 0
+        ? supabase
+          .from("applypass_tasks")
+          .select("id,status,error_message,result,run_log,updated_at")
+          .in("id", taskIds)
+        : Promise.resolve({ data: [], error: null }),
+      draftIds.length > 0
+        ? supabase
+          .from("application_submission_receipts")
+          .select("id,draft_application_id,submitted_at")
+          .in("draft_application_id", draftIds)
+          .order("submitted_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (requestId !== workspaceRequestId.current) return;
+    const evidenceError = tasksRes.error ?? receiptsRes.error;
+    if (evidenceError) {
+      void captureIncident(new Error(evidenceError.message), { source: "manual", operation: "agent_workspace_evidence_load" });
+      if (showSpinner) toast.error("Live application status could not be refreshed.");
+      setLoading(false);
+      setRefreshing(false);
+      return;
     }
 
     if (prefsRes.data && !('error' in prefsRes.data)) {
@@ -317,8 +378,9 @@ export default function AgentPage() {
     setMatches((matchRes.data || []) as unknown as MatchRow[]);
     setLatestAts((atsRes.data as unknown as AtsScore | null) ?? null);
     setResume((resumeRes.data as ResumeSummary | null) ?? null);
-    setDrafts((draftsRes.data || []) as unknown as DraftStatusRow[]);
+    setDrafts(draftRows);
     setSubmitTasks((tasksRes.data || []) as SubmitTaskRow[]);
+    setSubmissionReceipts((receiptsRes.data || []) as SubmissionReceiptRow[]);
     setLastRun((runsRes.data as AgentRun | null) ?? null);
     setGmailConnection((gmailRes.data as GmailConnection | null) ?? null);
     setWorkerHeartbeat((workerRes.data as WorkerHeartbeat | null) ?? null);
@@ -336,19 +398,27 @@ export default function AgentPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "ats_scores", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
       .on("postgres_changes", { event: "*", schema: "public", table: "draft_applications", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
       .on("postgres_changes", { event: "*", schema: "public", table: "applypass_tasks", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
+      .on("postgres_changes", { event: "*", schema: "public", table: "application_submission_receipts", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
       .subscribe();
 
     // Realtime may be unavailable in a preview project; this bounded fallback
     // keeps an open workspace current without a background browser process.
-    const poll = window.setInterval(() => void loadWorkspace(), 30_000);
+    const poll = window.setInterval(() => void loadWorkspace(), 15_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadWorkspace();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       window.clearInterval(poll);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      workspaceRequestId.current += 1;
       void supabase.removeChannel(channel);
     };
   }, [loadWorkspace, user]);
 
   useEffect(() => {
     if (!user || loading || !resume || automaticProfilePromise.current) return;
+    if (!isResumeAllowedForAutomation(resume)) return;
 
     automaticProfilePromise.current = hydrateApplicationProfileFromResume({
       userId: user.id,
@@ -357,6 +427,11 @@ export default function AgentPage() {
         title: resume.title,
         personal_info: resume.personal_info,
         experience: resume.experience,
+        parse_quality: resume.parse_quality,
+        source_hash: resume.source_hash,
+        source_document_id: resume.source_document_id,
+        parser_version: resume.parser_version,
+        parsed_at: resume.parsed_at,
       },
       accountEmail: user.email,
     }).catch((error) => {
@@ -366,6 +441,7 @@ export default function AgentPage() {
 
   useEffect(() => {
     if (!user || loading || !resume || matches.length > 0 || automaticMatchAttempt.current) return;
+    if (!isResumeAllowedForAutomation(resume)) return;
     automaticMatchAttempt.current = true;
     setMatchSetup("building");
 
@@ -402,23 +478,39 @@ export default function AgentPage() {
     })();
   }, [loading, matches.length, matchSetup, plan, resume, user]);
 
-  // Pipeline counters — single definition shared with the Applications page
-  // (JobTracker automationCounts): prepared = packets in status draft/ready,
-  // queued = status queued, etc. These reflect CURRENT draft_applications
-  // state; the "Last Agent run" summary instead counts only that run's new
-  // actions, so the two can legitimately differ (see agents-job-hunter).
+  const taskById = useMemo(() => new Map(submitTasks.map((task) => [task.id, task])), [submitTasks]);
+  const receiptByDraftId = useMemo(() => {
+    const map = new Map<string, SubmissionReceiptRow>();
+    for (const receipt of submissionReceipts) {
+      if (receipt.draft_application_id && !map.has(receipt.draft_application_id)) {
+        map.set(receipt.draft_application_id, receipt);
+      }
+    }
+    return map;
+  }, [submissionReceipts]);
+  // This heartbeat proves recent task activity, not permanent worker uptime:
+  // the browser worker records it only after it has leased a task.
+  const workerRecentlyActive = workerHeartbeat
+    ? Date.now() - new Date(workerHeartbeat.last_seen).getTime() < 90_000
+    : false;
+
+  // Pipeline counters are evidence-based. A queued draft counts only while its
+  // linked task is pending/running, and submitted counts only an immutable
+  // receipt. This prevents stale packets from overstating activity.
   const counts = useMemo(() => {
     const value = { prepared: 0, queued: 0, submitted: 0, failed: 0, skipped: 0 };
     for (const draft of drafts) {
-      const status = draft.status;
-      if (["draft", "ready"].includes(status)) value.prepared += 1;
-      else if (status === "queued") value.queued += 1;
-      else if (status === "submitted") value.submitted += 1;
-      else if (status === "failed") value.failed += 1;
-      else if (status === "skipped") value.skipped += 1;
+      const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
+      const status = resolveAutomationDraftState({
+        draftStatus: draft.status,
+        taskStatus: task?.status,
+        taskOutcome: firstAutomationTaskOutcome(task?.result),
+        hasSubmissionReceipt: receiptByDraftId.has(draft.id),
+      });
+      value[status] += 1;
     }
     return value;
-  }, [drafts]);
+  }, [drafts, receiptByDraftId, taskById]);
 
   const usage = useMemo(() => {
     const now = new Date();
@@ -427,12 +519,11 @@ export default function AgentPage() {
     weekStart.setUTCDate(weekStart.getUTCDate() - daysFromMonday);
     weekStart.setUTCHours(0, 0, 0, 0);
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const submitted = drafts.filter((draft) => draft.status === "submitted" && draft.submitted_at);
     return {
-      weekly: submitted.filter((draft) => new Date(draft.submitted_at as string) >= weekStart).length,
-      monthly: submitted.filter((draft) => new Date(draft.submitted_at as string) >= monthStart).length,
+      weekly: submissionReceipts.filter((receipt) => new Date(receipt.submitted_at) >= weekStart).length,
+      monthly: submissionReceipts.filter((receipt) => new Date(receipt.submitted_at) >= monthStart).length,
     };
-  }, [drafts]);
+  }, [submissionReceipts]);
 
   const draftsByEvaluation = useMemo(() => {
     const map = new Map<string, DraftStatusRow>();
@@ -441,8 +532,6 @@ export default function AgentPage() {
     }
     return map;
   }, [drafts]);
-
-  const taskById = useMemo(() => new Map(submitTasks.map((task) => [task.id, task])), [submitTasks]);
 
   // Top 5 right now: highest-fit eligible matches whose application isn't
   // submitted yet — submitted ones graduate to the activity receipts below.
@@ -473,9 +562,15 @@ export default function AgentPage() {
         draftId: null as string | null,
       };
     }
-    if (draft.status === "queued") {
-      const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
-      const running = task?.status === "running";
+    const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
+    const evidencedStatus = resolveAutomationDraftState({
+      draftStatus: draft.status,
+      taskStatus: task?.status,
+      taskOutcome: firstAutomationTaskOutcome(task?.result),
+      hasSubmissionReceipt: receiptByDraftId.has(draft.id),
+    });
+    if (evidencedStatus === "queued") {
+      const running = task?.status === "running" && workerRecentlyActive;
       return {
         key: "applying" as const,
         label: running ? "Applying now" : "Queued",
@@ -484,23 +579,47 @@ export default function AgentPage() {
         draftId: draft.id,
       };
     }
-    if (draft.status === "submitted") {
+    if (evidencedStatus === "submitted") {
+      const receipt = receiptByDraftId.get(draft.id);
       return {
         key: "applied" as const,
         label: "Applied ✅",
         tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-        detail: draft.submitted_at
-          ? `Receipt confirmed ${formatDistanceToNow(new Date(draft.submitted_at), { addSuffix: true })}.`
+        detail: receipt?.submitted_at
+          ? `Receipt confirmed ${formatDistanceToNow(new Date(receipt.submitted_at), { addSuffix: true })}.`
           : "Receipt confirmed.",
         draftId: draft.id,
       };
     }
-    if (draft.status === "failed" || draft.status === "skipped") {
+    if (evidencedStatus === "skipped") {
+      return {
+        key: "skipped" as const,
+        label: "Skipped",
+        tone: "bg-rp-paper-2 text-rp-ink-2",
+        detail: shortReason(draft.error_message, "This application was held back before submission."),
+        draftId: draft.id,
+      };
+    }
+    if (evidencedStatus === "failed") {
       return {
         key: "needs_you" as const,
         label: "Needs you 🟠",
         tone: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-        detail: shortReason(draft.error_message, "One answer is missing — open it to finish."),
+        detail: shortReason(
+          draft.error_message ?? task?.error_message,
+          draft.status === "queued"
+            ? "This packet is no longer in the submission queue. Review it to try again."
+            : "One answer is missing — open it to finish.",
+        ),
+        draftId: draft.id,
+      };
+    }
+    if (draft.error_message) {
+      return {
+        key: "needs_you" as const,
+        label: "Needs you 🟠",
+        tone: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+        detail: shortReason(draft.error_message, "One step needs your input before we can finish."),
         draftId: draft.id,
       };
     }
@@ -511,7 +630,7 @@ export default function AgentPage() {
       detail: "Resume tailored — review it and we'll apply.",
       draftId: draft.id,
     };
-  }, [draftsByEvaluation, preparingIds, taskById]);
+  }, [draftsByEvaluation, preparingIds, receiptByDraftId, taskById, workerRecentlyActive]);
 
   // Receipts: one plain line per action, newest first.
   const recentActivity = useMemo(() => {
@@ -523,14 +642,20 @@ export default function AgentPage() {
         const company = draft.evaluation?.scanned_job?.company?.name;
         const where = company ? `${title} at ${company}` : title;
         const when = formatDistanceToNow(new Date(draft.updated_at), { addSuffix: true });
-        if (draft.status === "submitted") {
+        const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
+        const evidencedStatus = resolveAutomationDraftState({
+          draftStatus: draft.status,
+          taskStatus: task?.status,
+          taskOutcome: firstAutomationTaskOutcome(task?.result),
+          hasSubmissionReceipt: receiptByDraftId.has(draft.id),
+        });
+        if (evidencedStatus === "submitted") {
           return { id: draft.id, kind: "applied" as const, sentence: `Applied to ${where}`, detail: "Receipt confirmed.", when, draftId: draft.id };
         }
-        if (draft.status === "queued") {
-          const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
+        if (evidencedStatus === "queued") {
           const logs = Array.isArray(task?.run_log) ? task.run_log as Array<Record<string, unknown>> : [];
           const lastMessage = [...logs].reverse().find((entry) => typeof entry?.message === "string")?.message;
-          const running = task?.status === "running";
+          const running = task?.status === "running" && workerRecentlyActive;
           return {
             id: draft.id,
             kind: "applying" as const,
@@ -540,33 +665,89 @@ export default function AgentPage() {
             draftId: draft.id,
           };
         }
-        if (draft.status === "failed") {
+        if (evidencedStatus === "failed") {
           return {
             id: draft.id,
             kind: "needs_you" as const,
             sentence: `${where} needs you`,
-            detail: shortReason(draft.error_message ?? taskById.get(draft.applypass_task_id ?? "")?.error_message, "Something needs your input before we can finish."),
+            detail: shortReason(
+              draft.error_message ?? task?.error_message,
+              draft.status === "queued"
+                ? "This packet is no longer in the submission queue. Review it to try again."
+                : "Something needs your input before we can finish.",
+            ),
             when,
             draftId: draft.id,
           };
         }
-        if (draft.status === "skipped") {
+        if (evidencedStatus === "skipped") {
           return {
             id: draft.id,
-            kind: "needs_you" as const,
+            kind: "skipped" as const,
             sentence: `Skipped ${where}`,
             detail: shortReason(draft.error_message, "We held this one back — open it to see why."),
             when,
             draftId: draft.id,
           };
         }
+        if (draft.error_message) {
+          return {
+            id: draft.id,
+            kind: "needs_you" as const,
+            sentence: `${where} needs you`,
+            detail: shortReason(draft.error_message, "One step needs your input before we can finish."),
+            when,
+            draftId: draft.id,
+          };
+        }
         return { id: draft.id, kind: "ready" as const, sentence: `Resume tailored for ${where}`, detail: "Ready for your review.", when, draftId: draft.id };
       });
-  }, [drafts, taskById]);
+  }, [drafts, receiptByDraftId, taskById, workerRecentlyActive]);
 
-  const workerOnline = workerHeartbeat
-    ? Date.now() - new Date(workerHeartbeat.last_seen).getTime() < 90_000
-    : false;
+  const activeSubmissions = useMemo(() => drafts
+    .flatMap((draft) => {
+      const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
+      const state = resolveAutomationDraftState({
+        draftStatus: draft.status,
+        taskStatus: task?.status,
+        taskOutcome: firstAutomationTaskOutcome(task?.result),
+        hasSubmissionReceipt: receiptByDraftId.has(draft.id),
+      });
+      if (state !== "queued" || !task) return [];
+      const logs = Array.isArray(task.run_log) ? task.run_log as Array<Record<string, unknown>> : [];
+      const lastMessage = [...logs].reverse().find((entry) => typeof entry?.message === "string")?.message;
+      return [{
+        draft,
+        task,
+        title: draft.evaluation?.scanned_job?.title ?? "Application",
+        company: draft.evaluation?.scanned_job?.company?.name ?? "Company not listed",
+        lastMessage: typeof lastMessage === "string" ? shortReason(lastMessage, "") : null,
+      }];
+    })
+    .sort((a, b) => {
+      const taskRank = (status: string) => {
+        if (status === "running" && workerRecentlyActive) return 0;
+        if (status === "pending") return 1;
+        return 2;
+      };
+      const rankDifference = taskRank(a.task.status) - taskRank(b.task.status);
+      if (rankDifference !== 0) return rankDifference;
+      return new Date(b.task.updated_at).getTime() - new Date(a.task.updated_at).getTime();
+    }), [drafts, receiptByDraftId, taskById, workerRecentlyActive]);
+  const currentSubmission = activeSubmissions[0] ?? null;
+  const hasRunningSubmission = workerRecentlyActive
+    && activeSubmissions.some(({ task }) => task.status === "running");
+  const lastRunIsLive = lastRun ? isAgentRunLive({
+    status: lastRun.status,
+    startedAt: lastRun.started_at,
+    workerHeartbeatAt: workerHeartbeat?.last_seen ?? null,
+  }) : false;
+  const lastRunLabel = lastRun?.status === "running" && !lastRunIsLive
+    ? "interrupted"
+    : lastRun?.status ?? null;
+  const submissionState = counts.queued > 0
+    ? hasRunningSubmission ? "submitting" : "waiting"
+    : "watching";
 
   const setContinuousApply = async (action: "start" | "stop") => {
     if (!hasAutoApply) {
@@ -651,7 +832,7 @@ export default function AgentPage() {
       tailoring_mode: normalized.tailoring_mode,
       daily_apply_cap: normalized.daily_apply_cap,
       agent_max_actions_per_day: normalized.agent_max_actions_per_day,
-      auto_apply_portals: ["greenhouse", "ashby", "lever"],
+      auto_apply_portals: ["greenhouse", "ashby", "lever", "workable"],
     }, { onConflict: "user_id" });
     setSaving(false);
 
@@ -675,7 +856,7 @@ export default function AgentPage() {
     }
     const selected = selectedMatches.filter((match) => fitScore(match) >= 50).slice(0, 5);
     if (!selected.length) {
-      toast.error("No matches above 50% are ready to prepare yet.");
+      toast.error("No jobs above 50% career fit are ready to prepare yet.");
       return;
     }
 
@@ -685,7 +866,7 @@ export default function AgentPage() {
     setApplyErrors({});
     setApplyJobs(selected.map((match) => ({
       evaluationId: match.id,
-      title: match.scanned_job?.title ?? "Job match",
+      title: match.scanned_job?.title ?? "Job opportunity",
       company: match.scanned_job?.company?.name ?? "Unknown company",
     })));
     setApplyModalOpen(true);
@@ -745,13 +926,15 @@ export default function AgentPage() {
 
   const planName = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
   const isRunning = controls.agent_enabled && hasAutoApply;
+  const canStop = isRunning || activeSubmissions.length > 0;
+  const latestCoverageScore = normalizeScore(latestAts?.overall);
 
   if (loading) {
     return (
       <div className="max-w-[1100px] mx-auto px-6 lg:px-10 py-10 space-y-5">
-        <div className="h-20 rounded-lg bg-rp-paper animate-pulse" />
-        <div className="h-40 rounded-lg bg-rp-paper animate-pulse" />
-        <div className="h-96 rounded-lg bg-rp-paper animate-pulse" />
+        <div className="h-20 rounded-lg bg-rp-paper animate-pulse motion-reduce:animate-none" />
+        <div className="h-40 rounded-lg bg-rp-paper animate-pulse motion-reduce:animate-none" />
+        <div className="h-96 rounded-lg bg-rp-paper animate-pulse motion-reduce:animate-none" />
       </div>
     );
   }
@@ -760,7 +943,7 @@ export default function AgentPage() {
     <div className="max-w-[1100px] mx-auto px-6 lg:px-10 pt-10 pb-16">
       <PageHeader
         title="Auto-apply."
-        status={`${planName.toLowerCase()} · ${isRunning ? "running" : "stopped"}`}
+        status={`${planName.toLowerCase()} · ${hasRunningSubmission ? "applying" : isRunning ? "watching" : "stopped"}`}
         description="We find jobs that fit your resume, tailor it, and apply for you. You can watch everything here."
       />
 
@@ -774,18 +957,30 @@ export default function AgentPage() {
             <div className="flex items-center gap-2">
               <span className={cn(
                 "h-2.5 w-2.5 rounded-full",
-                isRunning ? "bg-emerald-500 animate-pulse" : "bg-rp-ink-3",
+                !canStop
+                  ? "bg-rp-ink-3"
+                  : submissionState === "waiting"
+                    ? "bg-amber-500"
+                    : "bg-emerald-500 animate-pulse motion-reduce:animate-none",
               )} />
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rp-ink-3">
-                {isRunning ? "Running" : "Stopped"}
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rp-ink-3" role="status" aria-live="polite">
+                {hasRunningSubmission ? "Applying now" : isRunning ? "Enabled" : activeSubmissions.length > 0 ? "Stopping" : "Stopped"}
               </p>
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-rp-ink">
-              {isRunning ? "Applying to matched jobs for you" : "Start auto-applying"}
+              {canStop
+                ? submissionState === "submitting"
+                  ? "Submitting matched applications"
+                  : submissionState === "waiting"
+                    ? "Applications are waiting to submit"
+                    : "Watching for strong matches"
+                : "Start auto-applying"}
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
-              {isRunning
-                ? "We're finding jobs that fit your resume, tailoring it for each one, and submitting applications. You can close this page — every step shows up below."
+              {canStop
+                ? submissionState === "waiting"
+                  ? "Your tailored applications are queued, but the submission service has not checked in recently. Nothing is counted as applied until a confirmation receipt is recorded."
+                  : "We find jobs that fit your résumé, tailor each application, and record it as applied only after the employer form confirms submission."
                 : "We find jobs that fit your resume, tailor it, and apply for you. You can watch everything here."}
             </p>
             {!hasAutoApply && (
@@ -795,37 +990,92 @@ export default function AgentPage() {
           <Button
             size="lg"
             disabled={controlBusy}
-            onClick={() => void setContinuousApply(isRunning ? "stop" : "start")}
+            onClick={() => void setContinuousApply(canStop ? "stop" : "start")}
             className={cn(
               "min-w-[220px] shrink-0 text-base",
-              isRunning && "bg-red-600 text-white hover:bg-red-700",
+              canStop && "bg-red-600 text-white hover:bg-red-700",
             )}
           >
-            {isRunning ? <Square className="mr-2 h-4 w-4 fill-current" /> : <Play className="mr-2 h-4 w-4 fill-current" />}
-            {controlBusy ? "Updating…" : isRunning ? "Stop applying" : "Start auto-applying"}
+            {canStop ? <Square className="mr-2 h-4 w-4 fill-current" /> : <Play className="mr-2 h-4 w-4 fill-current" />}
+            {controlBusy ? "Updating…" : canStop ? "Stop applying" : "Start auto-applying"}
           </Button>
         </div>
+
+        {currentSubmission && (
+          <div
+            className="mt-6 border border-rp-rule bg-rp-canvas p-4"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rp-ink-3">
+                  Current application
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-rp-ink">{currentSubmission.title}</p>
+                <p className="truncate text-xs text-rp-ink-2">{currentSubmission.company}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/applications/${currentSubmission.draft.id}`)}
+              >
+                Watch details
+              </Button>
+            </div>
+            <ol className="mt-4 grid grid-cols-3 gap-2" aria-label="Submission progress">
+              {[
+                { label: "Queued", state: submissionState === "waiting" ? "current" : "complete" },
+                { label: "Employer form", state: submissionState === "submitting" ? "current" : "upcoming" },
+                { label: "Receipt", state: "upcoming" },
+              ].map((step) => (
+                <li
+                  key={step.label}
+                  aria-current={step.state === "current" ? "step" : undefined}
+                  className={cn(
+                    "border-t-2 pt-2 text-[11px] font-medium",
+                    step.state === "complete" && "border-emerald-500 text-emerald-600 dark:text-emerald-400",
+                    step.state === "current" && "border-amber-500 text-amber-600 dark:text-amber-400",
+                    step.state === "upcoming" && "border-rp-rule-2 text-rp-ink-3",
+                  )}
+                >
+                  {step.label}
+                </li>
+              ))}
+            </ol>
+            <p className="mt-3 text-xs text-rp-ink-2">
+              {submissionState === "submitting"
+                ? currentSubmission.lastMessage || "The submission worker is filling the employer form now."
+                : workerRecentlyActive
+                  ? "Queued and waiting for the submission worker."
+                  : "Queued, but the submission worker has not checked in recently."}
+            </p>
+          </div>
+        )}
 
         <div className="mt-6 grid gap-4 border-t border-rp-rule pt-5 md:grid-cols-2 xl:grid-cols-[1fr_1fr_auto] xl:items-center">
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-rp-ink">Applied this week</span>
+              <span className="font-medium text-rp-ink">Confirmed this week</span>
               <span className="tabular-nums text-rp-ink-2">{usage.weekly} / 400</span>
             </div>
             <Progress value={Math.min(100, (usage.weekly / 400) * 100)} className="mt-2 h-2" />
           </div>
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-rp-ink">Applied this month</span>
+              <span className="font-medium text-rp-ink">Confirmed this month</span>
               <span className="tabular-nums text-rp-ink-2">{usage.monthly} / 1,600</span>
             </div>
             <Progress value={Math.min(100, (usage.monthly / 1600) * 100)} className="mt-2 h-2" />
           </div>
           <div className="flex items-center gap-2 text-xs text-rp-ink-2 xl:justify-end">
-            <span className={cn("h-2 w-2 rounded-full", counts.queued === 0 || workerOnline ? "bg-emerald-500" : "bg-amber-500")} />
+            <span className={cn("h-2 w-2 rounded-full", submissionState === "waiting" ? "bg-amber-500" : "bg-emerald-500")} />
             {counts.queued === 0
               ? "Nothing in line — waiting for the next strong match"
-              : workerOnline ? "Applications are being submitted right now" : "In line safely — the apply helper will pick them up"}
+              : workerRecentlyActive
+                ? "The submission service is working on your queue"
+                : "Queued — submission is delayed, and not counted as applied"}
           </div>
         </div>
       </section>
@@ -834,9 +1084,16 @@ export default function AgentPage() {
       <section className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Auto-apply status at a glance">
         {[
           { label: "Matches found", value: matches.length, icon: Radar, note: plan === "free" ? "eligible, from your resume" : "eligible, checked every 10 minutes" },
-          { label: "Resume score", value: latestAts ? `${Math.round(latestAts.overall)}%` : "—", icon: FileCheck2, note: latestAts ? "from your last ATS check" : "no check yet" },
+          { label: "Latest job-requirement coverage", value: latestCoverageScore === null ? "—" : `${latestCoverageScore}%`, icon: FileCheck2, note: latestCoverageScore === null ? "no job-specific check yet" : "requirements covered by the latest tailored résumé" },
           { label: "Ready for you", value: counts.prepared, icon: ShieldCheck, note: `${counts.queued} in line to apply` },
-          { label: "Applied", value: counts.submitted, icon: Send, note: counts.failed + counts.skipped > 0 ? `${counts.failed + counts.skipped} need your help` : "confirmed receipts" },
+          {
+            label: "Applied",
+            value: counts.submitted,
+            icon: Send,
+            note: counts.failed + counts.skipped > 0
+              ? `${counts.failed} failed · ${counts.skipped} skipped`
+              : "confirmed receipts",
+          },
         ].map((item) => (
           <div key={item.label} className="bg-rp-canvas p-4 min-h-28">
             <div className="flex items-center justify-between">
@@ -873,13 +1130,13 @@ export default function AgentPage() {
               className="inline-flex items-center gap-2 px-2 text-xs font-medium text-rp-ink-2 hover:text-rp-ink"
               disabled={refreshing || batchPreparing}
             >
-              <RefreshCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> Refresh
+              <RefreshCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin motion-reduce:animate-none")} /> Refresh
             </button>
           </div>
         </div>
         {matches.length === 0 ? (
           <div className="p-8 text-center">
-            {matchSetup === "building" ? <RefreshCcw className="mx-auto h-8 w-8 animate-spin text-rp-accent" /> : <BriefcaseBusiness className="mx-auto h-8 w-8 text-rp-ink-3" />}
+            {matchSetup === "building" ? <RefreshCcw className="mx-auto h-8 w-8 animate-spin text-rp-accent motion-reduce:animate-none" /> : <BriefcaseBusiness className="mx-auto h-8 w-8 text-rp-ink-3" />}
             <p className="mt-3 text-sm font-semibold text-rp-ink">
               {!resume ? "Add your resume to get matches" : matchSetup === "building" ? "Finding jobs that fit your resume…" : matchSetup === "error" ? "The match refresh hit a snag" : "No strong matches right now"}
             </p>
@@ -917,15 +1174,18 @@ export default function AgentPage() {
           <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {topNow.map((match) => {
               const score = fitScore(match);
-              const title = match.scanned_job?.title ?? "Job match";
+              const title = match.scanned_job?.title ?? "Job opportunity";
               const company = match.scanned_job?.company?.name ?? "Unknown company";
               const status = matchStatus(match);
               const why = match.summary?.trim() || "This job fits your resume — open Matches for the full breakdown.";
               return (
                 <div key={match.id} className="flex flex-col border border-rp-rule bg-rp-paper p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tabular-nums", fitChipClasses(score))}>
-                      {score}% fit
+                    <span
+                      className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tabular-nums", fitChipClasses(score))}
+                      aria-label={`${score}% career fit`}
+                    >
+                      {score}% career fit
                     </span>
                     {(status.key === "matched" || status.key === "tailoring") && (
                       <button
@@ -955,7 +1215,7 @@ export default function AgentPage() {
                     )}
                     {status.key === "tailoring" && (
                       <Button size="sm" className="w-full" disabled>
-                        <RefreshCcw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Tailoring…
+                        <RefreshCcw className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Tailoring…
                       </Button>
                     )}
                     {status.key === "ready" && status.draftId && (
@@ -1007,6 +1267,8 @@ export default function AgentPage() {
                     <Send className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                   ) : item.kind === "needs_you" ? (
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+                  ) : item.kind === "skipped" ? (
+                    <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-rp-ink-3" />
                   ) : (
                     <FileText className="mt-0.5 h-4 w-4 shrink-0 text-rp-accent" />
                   )}
@@ -1028,45 +1290,50 @@ export default function AgentPage() {
         )}
       </section>
 
-      {/* RESUME CHECK (ATS) */}
+      {/* JOB-SPECIFIC RESUME MATCH */}
       <section className="mt-6 border border-rp-rule bg-rp-paper p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <FileCheck2 className="h-4 w-4 text-rp-accent" />
-              <h2 className="text-base font-semibold text-rp-ink">Resume check (ATS)</h2>
+              <h2 className="text-base font-semibold text-rp-ink">Tailored résumé job-requirement coverage</h2>
             </div>
-            <p className="mt-1 text-xs text-rp-ink-2">ATS is the software employers use to screen resumes. We check every tailored resume before applying.</p>
+            <p className="mt-1 text-xs text-rp-ink-2">Percentage of the job's extracted requirements supported by evidence in the tailored résumé. It is not a prediction of an employer decision.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => navigate("/ats-checker")}>Run a manual check</Button>
         </div>
-        {latestAts ? (
+        {latestAts && latestCoverageScore !== null ? (
           <div className="mt-6 grid md:grid-cols-[150px_1fr] gap-6 items-center">
             <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full border-[10px] border-rp-paper-2 bg-rp-canvas mx-auto">
-              <span className={cn("text-3xl font-semibold tabular-nums", scoreTone(latestAts.overall))}>{Math.round(latestAts.overall)}</span>
-              <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">ATS score</span>
+              <span className={cn("text-3xl font-semibold tabular-nums", scoreTone(latestCoverageScore))}>{latestCoverageScore}%</span>
+              <span className="text-center text-[10px] uppercase tracking-wider text-rp-ink-3">Job-requirement coverage</span>
             </div>
-            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
-              {ATS_DIMENSIONS.map((dimension) => {
-                const value = Number(latestAts[dimension.key] ?? 0);
-                return (
-                  <div key={dimension.key}>
-                    <div className="mb-1.5 flex items-center justify-between text-xs">
-                      <span className="text-rp-ink-2">{dimension.label}</span>
-                      <span className="font-medium tabular-nums text-rp-ink">{Math.round(value)}</span>
+            <div>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-rp-ink-3">
+                Generic résumé quality signals · separate from job coverage
+              </p>
+              <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                {ATS_DIMENSIONS.map((dimension) => {
+                  const value = normalizeScore(latestAts[dimension.key]) ?? 0;
+                  return (
+                    <div key={dimension.key}>
+                      <div className="mb-1.5 flex items-center justify-between text-xs">
+                        <span className="text-rp-ink-2">{dimension.label}</span>
+                        <span className="font-medium tabular-nums text-rp-ink">{value}%</span>
+                      </div>
+                      <Progress value={value} className="h-1.5" />
                     </div>
-                    <Progress value={value} className="h-1.5" />
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         ) : (
           <div className="mt-5 flex items-start gap-3 border border-dashed border-rp-rule-2 bg-rp-canvas p-5">
             <AlertTriangle className="mt-0.5 h-4 w-4 text-rp-ink-2" />
             <div>
-              <p className="text-sm font-semibold text-rp-ink">No resume check yet</p>
-              <p className="mt-1 text-xs text-rp-ink-2">Prepare an application and the tailored resume's score will appear here.</p>
+              <p className="text-sm font-semibold text-rp-ink">No job-specific check yet</p>
+              <p className="mt-1 text-xs text-rp-ink-2">Prepare an application and its tailored job-requirement coverage will appear here.</p>
             </div>
           </div>
         )}
@@ -1165,7 +1432,7 @@ export default function AgentPage() {
 
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-rp-rule pt-5">
                   <label className="space-y-2">
-                    <span className="text-xs font-semibold text-rp-ink">Minimum fit score</span>
+                    <span className="text-xs font-semibold text-rp-ink">Minimum career fit</span>
                     <input
                       type="number"
                       min="60"
@@ -1201,7 +1468,7 @@ export default function AgentPage() {
                     <span className="block text-[11px] leading-relaxed text-rp-ink-3">How much background work we may do daily.</span>
                   </label>
                   <label className="space-y-2">
-                    <span className="text-xs font-semibold text-rp-ink">Minimum resume score</span>
+                    <span className="text-xs font-semibold text-rp-ink">Minimum job-requirement coverage</span>
                     <input
                       type="number"
                       min="70"
@@ -1210,7 +1477,7 @@ export default function AgentPage() {
                       onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_ats_score: Number(event.target.value) }))}
                       className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
                     />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">The tailored resume must score at least this (default 85).</span>
+                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">The tailored résumé must cover at least this percentage of extracted job requirements (default 85).</span>
                   </label>
                 </div>
 
@@ -1305,11 +1572,19 @@ export default function AgentPage() {
                     <div className="mt-4 flex items-center justify-between gap-3">
                       <span className={cn(
                         "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                        lastRun.status === "completed" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                      )}>{lastRun.status}</span>
+                        lastRunLabel === "completed"
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : lastRunLabel === "running"
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : "bg-rp-paper-2 text-rp-ink-2",
+                      )}>{lastRunLabel}</span>
                       <span className="text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(lastRun.started_at), { addSuffix: true })}</span>
                     </div>
-                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">{lastRun.summary || "No summary was recorded."}</p>
+                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">
+                      {lastRun.status === "running" && !lastRunIsLive
+                        ? "This run stopped reporting and is not counted as active. Live application status above comes from the current task queue and confirmed receipts."
+                        : lastRun.summary || "No summary was recorded."}
+                    </p>
                   </>
                 ) : (
                   <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">No background runs yet. They start automatically once auto-apply is on.</p>

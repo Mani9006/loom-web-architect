@@ -9,7 +9,7 @@
  *   - Preview:    right column, the resume rendered on a "paper" card
  *                 floating on an off-white desk. Visible by default.
  *   - Tailor panel: collapsible right rail with JD input + tailor button +
- *                 live ATS score breakdown.
+ *                 live generic résumé-quality breakdown.
  *
  * The preview updates on every keystroke via the Zustand store (single source
  * of truth). Editor and preview share no parent state — just the store.
@@ -68,6 +68,11 @@ import { useResumeExport } from "@/hooks/use-resume-export";
 import { normalizeResumeSkills } from "@/lib/resume-skills";
 import { captureIncident } from "@/lib/incidents";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
+import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
+import {
+  getResumeReviewState,
+  RESUME_REVIEW_REQUIRED_MESSAGE,
+} from "../../supabase/functions/_shared/resume-review";
 
 // ─── Section registry ──────────────────────────────────────────────────────
 
@@ -105,6 +110,8 @@ export default function ResumeBuilderV2() {
   const [aiOpen, setAiOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState<"preview" | "json">("preview");
   const [parseQuality, setParseQuality] = useState<ResumeParseQuality | null>(null);
+  const [sourceHash, setSourceHash] = useState<string | null>(null);
+  const [confirmingReview, setConfirmingReview] = useState(false);
   const [importFormatMode, setImportFormatMode] = useState<"ats_recommended" | "preserve_source">("ats_recommended");
   const [sourceDocumentId, setSourceDocumentId] = useState<string | null>(null);
   const [storedExtras, setStoredExtras] = useState<Record<string, unknown>>({ document_role: "master" });
@@ -121,6 +128,8 @@ export default function ResumeBuilderV2() {
       reset();
       setResumeName("Untitled resume");
       setStoredExtras({ document_role: "master" });
+      setParseQuality(null);
+      setSourceHash(null);
       initialLoadDone.current = true;
       setHydrated(true);
       return;
@@ -148,6 +157,7 @@ export default function ResumeBuilderV2() {
       setResumeId(data.id);
       setResumeName(data.title ?? "Untitled resume");
       setParseQuality(isParseQuality(rawData.parse_quality) ? rawData.parse_quality : null);
+      setSourceHash(typeof rawData.source_hash === "string" ? rawData.source_hash : null);
       const personal = rawData.personal_info && typeof rawData.personal_info === "object"
         ? rawData.personal_info as Record<string, unknown>
         : {};
@@ -169,7 +179,8 @@ export default function ResumeBuilderV2() {
     const payload = resumeJSONToRow(resume, resumeName, user.id, importFormatMode, sourceDocumentId, storedExtras);
     const table = supabase.from("resumes") as ReturnType<typeof supabase.from>;
     if (resumeId) {
-      const { error } = await table.update(payload as never).eq("id", resumeId).eq("user_id", user.id);
+      const { user_id: _owner, source_document_id: _sourceDocument, ...editablePayload } = payload;
+      const { error } = await table.update(editablePayload as never).eq("id", resumeId).eq("user_id", user.id);
       if (error) {
         setStatus("error", error.message);
         void captureIncident(error, { source: "manual", operation: "resume_save" });
@@ -206,6 +217,79 @@ export default function ResumeBuilderV2() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume, resumeName, importFormatMode, hydrated]);
+
+  const reviewState = getResumeReviewState({
+    parse_quality: parseQuality,
+    source_hash: sourceHash,
+  });
+
+  const confirmImportReview = useCallback(async () => {
+    if (!user || !resumeId || !parseQuality || !reviewState.requiresReview || reviewState.confirmed) return;
+    const confirmed = window.confirm(
+      "Confirm that you compared this structured résumé with the original file and corrected any missing or inaccurate content. It will then be used for profile answers, matching, tailoring, and applications.",
+    );
+    if (!confirmed) return;
+
+    setConfirmingReview(true);
+    let confirmationSaved = false;
+    try {
+      const { data: confirmedQuality, error: resumeError } = await supabase.rpc(
+        "confirm_resume_import_review" as never,
+        { p_resume_id: resumeId } as never,
+      );
+      if (resumeError || !confirmedQuality) throw resumeError ?? new Error("Review confirmation was not saved.");
+      confirmationSaved = true;
+      setParseQuality(confirmedQuality as unknown as ResumeParseQuality);
+
+      const { error: primaryError } = await supabase
+        .from("profiles")
+        .update({ primary_resume_id: resumeId } as never)
+        .eq("user_id", user.id);
+      if (primaryError) throw primaryError;
+
+      await hydrateApplicationProfileFromResume({
+        userId: user.id,
+        resumeId,
+        resume: {
+          ...resumeJSONToRow(resume, resumeName, user.id, importFormatMode, sourceDocumentId, storedExtras),
+          parse_quality: confirmedQuality as unknown as ResumeParseQuality,
+          source_hash: sourceHash,
+        },
+        accountEmail: user.email,
+      });
+
+      const reviewResult = await supabase.functions.invoke("career-profile-review", {
+        body: { resume_id: resumeId, force: true },
+      });
+      if (reviewResult.error) {
+        void captureIncident(reviewResult.error, { source: "manual", operation: "confirmed_resume_profile_review" }, "warning");
+      }
+      const bootstrapResult = await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
+      if (bootstrapResult.error) {
+        void captureIncident(bootstrapResult.error, { source: "manual", operation: "confirmed_resume_bootstrap" }, "warning");
+      }
+      toast.success("Review confirmed. This résumé can now power your profile, matches, tailoring, and applications.");
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: "resume_review_confirmation" });
+      toast.error(confirmationSaved
+        ? "Your review was confirmed, but the profile and matches could not be fully refreshed. Retry from Matches."
+        : "We could not confirm this résumé yet. No automation was enabled.");
+    } finally {
+      setConfirmingReview(false);
+    }
+  }, [
+    importFormatMode,
+    parseQuality,
+    resume,
+    resumeId,
+    resumeName,
+    reviewState.confirmed,
+    reviewState.requiresReview,
+    sourceDocumentId,
+    sourceHash,
+    storedExtras,
+    user,
+  ]);
 
   const createTailoredVersion = useCallback(async (tailored: ResumeJSON) => {
     if (!user) throw new Error("Sign in before creating a tailored version.");
@@ -262,7 +346,14 @@ export default function ResumeBuilderV2() {
               Click any section to expand. Changes are saved automatically.
             </p>
 
-            {parseQuality && <ParseQualityCard quality={parseQuality} />}
+            {parseQuality && (
+              <ParseQualityCard
+                quality={parseQuality}
+                sourceHash={sourceHash}
+                confirming={confirmingReview}
+                onConfirm={() => void confirmImportReview()}
+              />
+            )}
             {sourceDocumentId && (
               <FormatWorkflowCard mode={importFormatMode} onChange={setImportFormatMode} />
             )}
@@ -314,14 +405,18 @@ export default function ResumeBuilderV2() {
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="flex items-center gap-2 text-base">
               <Sparkles className="size-4 text-amber-500" />
-              Job tailor + ATS score
+              Job tailor + résumé quality
             </SheetTitle>
             <SheetDescription className="sr-only">
-              Paste a job description to tailor your resume, and view your ATS score.
+              Paste a job description to tailor your résumé and view its separate generic quality estimate.
             </SheetDescription>
           </SheetHeader>
           <div className="h-[calc(100vh-3.5rem)] overflow-y-auto">
-            <AiTailorPanel onCreateTailoredVersion={createTailoredVersion} />
+            <AiTailorPanel
+              resumeId={resumeId}
+              automationAllowed={reviewState.allowed}
+              onCreateTailoredVersion={createTailoredVersion}
+            />
           </div>
         </SheetContent>
       </Sheet>
@@ -594,24 +689,37 @@ function FirstStepHint({ resume }: { resume: ResumeJSON }) {
   );
 }
 
-function ParseQualityCard({ quality }: { quality: ResumeParseQuality }) {
-  const passed = quality.status === "passed";
-  const Icon = passed ? ShieldCheck : TriangleAlert;
+function ParseQualityCard({
+  quality,
+  sourceHash,
+  confirming,
+  onConfirm,
+}: {
+  quality: ResumeParseQuality;
+  sourceHash: string | null;
+  confirming: boolean;
+  onConfirm: () => void;
+}) {
+  const review = getResumeReviewState({ parse_quality: quality, source_hash: sourceHash });
+  const trusted = review.allowed;
+  const Icon = trusted ? ShieldCheck : TriangleAlert;
   return (
     <div className={`mb-5 rounded-lg border px-4 py-3 ${
-      passed
+      trusted
         ? "border-emerald-500/25 bg-emerald-500/5"
         : "border-amber-500/30 bg-amber-500/5"
     }`}>
       <div className="flex items-start gap-3">
-        <Icon className={`mt-0.5 size-4 shrink-0 ${passed ? "text-emerald-600" : "text-amber-600"}`} />
+        <Icon className={`mt-0.5 size-4 shrink-0 ${trusted ? "text-emerald-600" : "text-amber-600"}`} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-sm font-semibold text-rp-ink">
-              Source coverage {quality.score}%
+              Parsing confidence {quality.score}%
             </p>
             <span className="text-[10px] uppercase tracking-[0.12em] text-rp-ink-3">
-              {passed ? "Quality gate passed" : "Review required"}
+              {review.confirmed
+                ? "User review confirmed"
+                : review.requiresReview ? "Review required" : "Quality gate passed"}
             </span>
           </div>
           <div className="mt-2 grid grid-cols-4 gap-2 text-[10.5px] text-rp-ink-2">
@@ -622,6 +730,23 @@ function ParseQualityCard({ quality }: { quality: ResumeParseQuality }) {
           </div>
           {quality.warnings.length > 0 && (
             <p className="mt-2 text-xs leading-relaxed text-rp-ink-2">{quality.warnings[0]}</p>
+          )}
+          {!review.allowed && (
+            <div className="mt-3 border-t border-amber-500/20 pt-3">
+              <p className="text-xs leading-relaxed text-rp-ink-2">
+                {RESUME_REVIEW_REQUIRED_MESSAGE} Compare every section with the original file before confirming.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                className="mt-2"
+                disabled={confirming}
+                onClick={onConfirm}
+              >
+                {confirming && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                I reviewed and corrected this résumé
+              </Button>
+            </div>
           )}
         </div>
       </div>
