@@ -44,6 +44,7 @@ const Analytics = lazy(() => import("./pages/Analytics"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Profile = lazy(() => import("./pages/Profile"));
 const InboxPage = lazy(() => import("./pages/InboxPage"));
+const InboxEmailDetailPage = lazy(() => import("./pages/InboxEmailDetailPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
@@ -124,6 +125,7 @@ const App = () => {
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
                     <Route path="/job-tracker" element={<JobTracker />} />
                     <Route path="/inbox" element={<InboxPage />} />
+                    <Route path="/inbox/:emailId" element={<InboxEmailDetailPage />} />
                     <Route path="/matches" element={<MatchesPage />} />
                     <Route path="/applications" element={<ApplicationsBoardPage />} />
                     <Route path="/applications/:id" element={<ApplicationReviewPage />} />
