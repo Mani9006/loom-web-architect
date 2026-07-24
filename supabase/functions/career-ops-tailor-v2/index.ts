@@ -24,7 +24,7 @@ import {
   enforceAccountActive,
   enforceDailyCap,
 } from "../_shared/guards.ts";
-import { callLlm } from "../_shared/llm.ts";
+import { chatFree } from "../_shared/llm.ts";
 
 interface RequestBody {
   resume?: unknown;
@@ -52,15 +52,19 @@ Deno.serve((req) =>
     const system = buildSystemPrompt();
     const userPrompt = buildUserPrompt(resume, jd);
 
-    const { text, tokens_in, tokens_out, model } = await callLlm<Record<string, unknown>>({
-      tier: "standard",
-      system,
-      user: userPrompt,
-      maxTokens: 4000,
-      temperature: 0.3,
-      parseJson: true,
-      usage: { svc, userId: user.id, kind: "tailor" },
-    });
+    const { text, tokens_in, tokens_out, model } = await chatFree<Record<string, unknown>>(
+      "standard",
+      [
+        { role: "system", content: system },
+        { role: "user", content: userPrompt },
+      ],
+      {
+        maxTokens: 4000,
+        temperature: 0.3,
+        parseJson: true,
+        usage: { svc, userId: user.id, kind: "tailor" },
+      },
+    );
 
     const tailored = sanitizeTailored(text, resume);
 

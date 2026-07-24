@@ -22,6 +22,17 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callClaude, type Tier as AnthropicTier } from "./ai.ts";
 import { logAiUsage, type UsageKind } from "./guards.ts";
+import {
+  type FreeProviderId,
+  type FreeTier,
+  hasFreeProvider,
+  planFreeChain,
+} from "./free-llm-plan.ts";
+import {
+  callOpenAiCompatibleChain,
+  type FreeChatMessage,
+  stripJsonFences,
+} from "./free-llm.ts";
 
 export type Tier = "cheap" | "standard" | "hard";
 export type Provider = "anthropic" | "openai";
@@ -223,5 +234,150 @@ export async function callLlmWithFallback<T = string>(opts: LlmCallOptions): Pro
     const isProviderUnconfigured = /(api.?key.*(?:not configured|not set|missing)|not configured)/i.test(msg);
     if (!isTransient && !isBillingDry && !isProviderUnconfigured) throw e;
     return await callLlm<T>({ ...opts, provider: secondary });
+  }
+}
+
+// ── Free-first routing (chatFree) ──────────────────────────────────────
+
+export type ChatFreeTier = FreeTier | Tier;
+
+export interface ChatFreeOptions {
+  maxTokens?: number;
+  /** 0–1. Defaults to 0.2 for deterministic outputs. */
+  temperature?: number;
+  /** If set, response is parsed as JSON. Throws on bad JSON. */
+  parseJson?: boolean;
+  /** Optional cost-logging hook, same semantics as LlmCallOptions.usage. */
+  usage?: {
+    svc: SupabaseClient;
+    userId: string;
+    kind: UsageKind;
+  };
+}
+
+/** LlmCallResult with the provider widened to any chain member. */
+export interface ChatFreeResult<T = string> extends Omit<LlmCallResult<T>, "provider"> {
+  provider: FreeProviderId;
+}
+
+function freeTierFor(tier: ChatFreeTier): FreeTier {
+  return tier === "lite" || tier === "cheap" ? "lite" : "standard";
+}
+
+function legacyTierFor(tier: ChatFreeTier): Tier {
+  if (tier === "lite" || tier === "cheap") return "cheap";
+  if (tier === "hard") return "hard";
+  return "standard";
+}
+
+/** Rebuild legacy system/user opts from a messages array (system msgs join, user msgs join). */
+function messagesToLegacy(
+  tier: ChatFreeTier,
+  messages: FreeChatMessage[],
+  opts: ChatFreeOptions,
+): LlmCallOptions {
+  const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
+  const user = messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n\n");
+  return {
+    tier: legacyTierFor(tier),
+    system,
+    user,
+    maxTokens: opts.maxTokens,
+    temperature: opts.temperature,
+    parseJson: opts.parseJson,
+  };
+}
+
+/**
+ * Free-first chat router. Walks the free provider chain (gemini → groq →
+ * openrouter → ollama — see free-llm-plan.ts) and degrades to the next
+ * provider on 429/5xx/timeouts. Legacy openai/anthropic chain entries run
+ * through the EXISTING paid clients, so paid behavior is unchanged.
+ *
+ * BACKWARDS COMPATIBLE: when no free provider key is configured
+ * (GEMINI_/GROQ_/OPENROUTER_API_KEY, OLLAMA_BASE_URL all unset) this falls
+ * through to callLlmWithFallback, i.e. byte-for-byte the old paid behavior.
+ *
+ * Tier mapping: "lite"/"cheap" → lite free models; "standard"/"hard" →
+ * standard free models.
+ */
+export async function chatFree<T = string>(
+  tier: ChatFreeTier,
+  messages: FreeChatMessage[],
+  opts: ChatFreeOptions = {},
+): Promise<ChatFreeResult<T>> {
+  const chain = planFreeChain((k) => Deno.env.get(k), freeTierFor(tier));
+
+  let result: ChatFreeResult<T>;
+
+  if (!hasFreeProvider(chain)) {
+    // No free keys at all → exact legacy behavior (provider from
+    // LLM_DEFAULT_PROVIDER, cross-fallback on transient failures).
+    const r = await callLlmWithFallback<T>(messagesToLegacy(tier, messages, opts));
+    result = r as ChatFreeResult<T>;
+  } else {
+    result = await walkChain<T>(chain, tier, messages, opts);
+  }
+
+  if (opts.usage) {
+    try {
+      await logAiUsage(opts.usage.svc, opts.usage.userId, opts.usage.kind, result.tokens_in, result.tokens_out);
+    } catch {
+      // Usage logging is best-effort; don't fail the call if the RPC errors.
+    }
+  }
+  return result;
+}
+
+async function walkChain<T>(
+  chain: ReturnType<typeof planFreeChain>,
+  tier: ChatFreeTier,
+  messages: FreeChatMessage[],
+  opts: ChatFreeOptions,
+): Promise<ChatFreeResult<T>> {
+  // Hop 1: every openai-compatible free provider, in order.
+  try {
+    const r = await callOpenAiCompatibleChain(chain, messages, {
+      maxTokens: opts.maxTokens,
+      temperature: opts.temperature,
+      parseJson: opts.parseJson,
+    });
+    let text: unknown = r.content;
+    if (opts.parseJson) {
+      const cleaned = stripJsonFences(r.content);
+      try {
+        text = JSON.parse(cleaned);
+      } catch {
+        throw new Error(`${r.provider} returned non-JSON: ${cleaned.slice(0, 200)}`);
+      }
+    }
+    return {
+      text: text as T,
+      tokens_in: r.tokens_in,
+      tokens_out: r.tokens_out,
+      cache_read_tokens: 0,
+      cache_write_tokens: 0,
+      model: r.model,
+      provider: r.provider,
+      stop_reason: r.stop_reason,
+    };
+  } catch (freeError) {
+    // Hop 2: legacy paid entries (if present in the chain), in chain order.
+    const legacy = chain.filter((s) => s.kind !== "openai-compatible");
+    if (legacy.length === 0) throw freeError;
+    console.warn(`[chatFree] all free providers failed; degrading to paid fallback (${legacy.map((s) => s.id).join(", ")})`);
+    let lastError: unknown = freeError;
+    for (const spec of legacy) {
+      try {
+        const r = await callLlm<T>({
+          ...messagesToLegacy(tier, messages, opts),
+          provider: spec.id === "openai" ? "openai" : "anthropic",
+        });
+        return r as ChatFreeResult<T>;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 }

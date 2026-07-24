@@ -2,7 +2,7 @@
 // Returns structured JSON scores instead of freeform chat text
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { callLlm } from "../_shared/llm.ts";
+import { chatFree } from "../_shared/llm.ts";
 import {
   enforceAccountActive,
   enforceDailyCap,
@@ -205,17 +205,18 @@ serve(async (req: Request) => {
       scoringContext += `\n\n## Note\nNo job description was provided. Score general ATS structure and evidence quality. Do not invent missing requirements.`;
     }
 
-    const result = await callLlm<ATSScoreResult>({
-      tier: "cheap",
-      provider: "openai",
-      model: "gpt-5.6-luna",
-      system: SCORING_PROMPT,
-      cachedContext: scoringContext,
-      user: "Score the supplied resume now. Return only the required JSON object.",
-      maxTokens: 1800,
-      parseJson: true,
-      usage: { svc, userId: user.id, kind: "ats" },
-    });
+    const result = await chatFree<ATSScoreResult>(
+      "lite",
+      [
+        { role: "system", content: `${SCORING_PROMPT}\n\n---\n\n${scoringContext}` },
+        { role: "user", content: "Score the supplied resume now. Return only the required JSON object." },
+      ],
+      {
+        maxTokens: 1800,
+        parseJson: true,
+        usage: { svc, userId: user.id, kind: "ats" },
+      },
+    );
     return jsonResponse(normalizeResult(result.text));
   } catch (error) {
     console.error("ATS score error:", error);

@@ -17,7 +17,7 @@
  * rewrites that use ONLY information already present in the base resume —
  * the critic must never invent facts, and neither may the fixes it suggests.
  */
-import { callLlmWithFallback } from "./llm.ts";
+import { chatFree } from "./llm.ts";
 
 export interface CriticFix {
   /** Exact line/section in the tailored resume to change. */
@@ -131,24 +131,30 @@ export interface TailorCriticOutput {
  * draft" (fail-open) so the tailor pipeline never regresses on critic outages.
  */
 export async function runTailorCritic(input: TailorCriticInput): Promise<TailorCriticOutput> {
-  const result = await callLlmWithFallback<unknown>({
-    tier: "standard",
-    system: CRITIC_SYSTEM_PROMPT,
-    cachedContext:
-      `Candidate BASE résumé (source of truth — nothing may be invented beyond it):\n\n${input.baseResumeText}\n\n` +
-      `---\n\nJob description:\n\n${input.jobDescription}`,
-    user:
-      `Company: ${input.company}\n` +
-      `Title: ${input.title}\n\n` +
-      (input.missingKeywords?.length
-        ? `Keywords a prior evaluation flagged as gaps: ${input.missingKeywords.join(", ")}.\n\n`
-        : "") +
-      `TAILORED resume to review:\n\n${input.tailoredResumeText}\n\n` +
-      `Review it now in the three stages and return the JSON verdict.`,
-    maxTokens: 2000,
-    temperature: 0.2,
-    parseJson: true,
-  });
+  const result = await chatFree<unknown>(
+    "standard",
+    [
+      {
+        role: "system",
+        content:
+          `${CRITIC_SYSTEM_PROMPT}\n\n---\n\n` +
+          `Candidate BASE résumé (source of truth — nothing may be invented beyond it):\n\n${input.baseResumeText}\n\n` +
+          `---\n\nJob description:\n\n${input.jobDescription}`,
+      },
+      {
+        role: "user",
+        content:
+          `Company: ${input.company}\n` +
+          `Title: ${input.title}\n\n` +
+          (input.missingKeywords?.length
+            ? `Keywords a prior evaluation flagged as gaps: ${input.missingKeywords.join(", ")}.\n\n`
+            : "") +
+          `TAILORED resume to review:\n\n${input.tailoredResumeText}\n\n` +
+          `Review it now in the three stages and return the JSON verdict.`,
+      },
+    ],
+    { maxTokens: 2000, temperature: 0.2, parseJson: true },
+  );
   return {
     result: normalizeCriticResult(result.text),
     tokens_in: result.tokens_in,
