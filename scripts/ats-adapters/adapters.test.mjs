@@ -19,8 +19,9 @@ import {
   requiredMissingFromFields,
 } from "./helpers.mjs";
 import { defineAdapter, submitRefusal } from "./contract.mjs";
-import { adapters, ashbyAdapter, genericAdapter, greenhouseAdapter, leverAdapter, pickAdapter } from "./index.mjs";
+import { adapters, ashbyAdapter, genericAdapter, greenhouseAdapter, leverAdapter, pickAdapter, workableAdapter } from "./index.mjs";
 import { ashbyConsentLabel, ashbyStandardValueFor, isAshbyUrl } from "./ashby.mjs";
+import { isWorkableCustomField, isWorkableUrl, workableStandardValueFor } from "./workable.mjs";
 
 // A page object that throws on any use: proves a code path never touched the
 // browser (used for gating tests and URL-only detection).
@@ -55,24 +56,77 @@ test("adapter detect() answers from URL alone (no page needed)", async () => {
   assert.equal(await greenhouseAdapter.detect("https://boards.greenhouse.io/acme/jobs/1", null), true);
   assert.equal(await leverAdapter.detect("https://jobs.lever.co/acme/role", null), true);
   assert.equal(await ashbyAdapter.detect("https://jobs.ashbyhq.com/openai/c59e2e83-59a6-45bc-82cd-665c6a8a5761", null), true);
+  assert.equal(await workableAdapter.detect("https://apply.workable.com/sigmadefense/j/6FEAD09BCC/", null), true);
   assert.equal(await greenhouseAdapter.detect("https://jobs.lever.co/acme/role", null), false);
   assert.equal(await leverAdapter.detect("https://boards.greenhouse.io/acme/jobs/1", null), false);
   assert.equal(await ashbyAdapter.detect("https://jobs.lever.co/acme/role", null), false);
   assert.equal(await ashbyAdapter.detect("https://careers.example.com/apply", null), false);
+  assert.equal(await workableAdapter.detect("https://jobs.lever.co/acme/role", null), false);
+  assert.equal(await workableAdapter.detect("https://careers.example.com/apply", null), false);
   assert.equal(genericAdapter.detect("https://anything.example.com", null), true);
 });
 
-test("pickAdapter routes greenhouse, lever, ashby, then generic", async () => {
+test("pickAdapter routes greenhouse, lever, ashby, workable, then generic", async () => {
   assert.equal((await pickAdapter("https://boards.greenhouse.io/acme/jobs/1")).metadata.name, "greenhouse");
   assert.equal((await pickAdapter("https://jobs.lever.co/acme/role/apply")).metadata.name, "lever");
   assert.equal((await pickAdapter("https://jobs.ashbyhq.com/openai/c59e2e83-59a6-45bc-82cd-665c6a8a5761")).metadata.name, "ashby");
   assert.equal((await pickAdapter("https://jobs.ashbyhq.com/openai/uuid-here/application")).metadata.name, "ashby");
+  assert.equal((await pickAdapter("https://apply.workable.com/sigmadefense/j/6FEAD09BCC/")).metadata.name, "workable");
+  assert.equal((await pickAdapter("https://apply.workable.com/sigmadefense/j/6FEAD09BCC/apply/")).metadata.name, "workable");
   assert.equal((await pickAdapter("https://careers.example.com/apply")).metadata.name, "generic");
   assert.equal((await pickAdapter("garbage-not-a-url")).metadata.name, "generic");
 });
 
 test("registry order tries specific adapters before generic", () => {
-  assert.deepEqual(adapters.map((a) => a.metadata.name), ["greenhouse", "lever", "ashby", "generic"]);
+  assert.deepEqual(adapters.map((a) => a.metadata.name), ["greenhouse", "lever", "ashby", "workable", "generic"]);
+});
+
+// --- Workable URL + field resolution -----------------------------------------
+
+test("isWorkableUrl classifies workable hosts and rejects lookalikes", () => {
+  assert.equal(isWorkableUrl("https://apply.workable.com/sigmadefense/j/6FEAD09BCC/"), true);
+  assert.equal(isWorkableUrl("https://apply.workable.com/sigmadefense/j/6FEAD09BCC/apply/"), true);
+  assert.equal(isWorkableUrl("https://acme.workable.com/jobs/123"), true);
+  assert.equal(isWorkableUrl("https://workable.com.evil.example/j/1"), false);
+  assert.equal(isWorkableUrl("https://notworkable.com/j/1"), false);
+  assert.equal(isWorkableUrl("not a url"), false);
+});
+
+test("workableStandardValueFor resolves stable-named identity fields", () => {
+  const profile = {
+    fullName: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+1 555 010 2030",
+    linkedinUrl: "https://linkedin.com/in/ada",
+    portfolioUrl: "https://ada.dev",
+    location: "London, UK",
+  };
+  assert.equal(workableStandardValueFor({ name: "firstname", id: "firstname", type: "text" }, profile), "Ada");
+  assert.equal(workableStandardValueFor({ name: "lastname", id: "lastname", type: "text" }, profile), "Lovelace");
+  assert.equal(workableStandardValueFor({ name: "email", id: "email", type: "email" }, profile), "ada@example.com");
+  assert.equal(workableStandardValueFor({ name: "phone", id: "", type: "tel" }, profile), "+1 555 010 2030");
+  assert.equal(workableStandardValueFor({ name: "address", id: "address", type: "text" }, profile), "London, UK");
+  assert.equal(workableStandardValueFor({ name: "city", id: "city", type: "text" }, profile), "London");
+  assert.equal(workableStandardValueFor({ name: "country", id: "country", type: "text" }, profile), "UK");
+  // Label-driven fields (labels resolved from nearby containers).
+  assert.equal(workableStandardValueFor({ name: "CA_9", id: "CA_9", type: "text", label: "LinkedIn Profile" }, profile), "https://linkedin.com/in/ada");
+  assert.equal(workableStandardValueFor({ name: "CA_10", id: "CA_10", type: "text", label: "Portfolio website" }, profile), "https://ada.dev");
+  // US locations resolve the country via the state inference.
+  assert.equal(workableStandardValueFor({ name: "country", id: "country", type: "text" }, { ...profile, location: "Austin, TX" }), "United States");
+  // CA_N/QA_N custom questions are NOT profile fields: answered from memory only.
+  assert.equal(workableStandardValueFor({ name: "CA_24481", id: "CA_24481", type: "text", label: "What are your salary requirements?" }, profile), "");
+  assert.equal(workableStandardValueFor({ name: "QA_6513608", id: "QA_6513608", type: "text", label: "List your clearance dates" }, profile), "");
+});
+
+test("workableStandardValueFor reuses first name for mononym last names", () => {
+  assert.equal(workableStandardValueFor({ name: "lastname", id: "lastname", type: "text" }, { fullName: "Cher" }), "Cher");
+});
+
+test("isWorkableCustomField flags CA_N/QA_N custom question names", () => {
+  assert.equal(isWorkableCustomField({ name: "CA_24481" }), true);
+  assert.equal(isWorkableCustomField({ name: "QA_6513608" }), true);
+  assert.equal(isWorkableCustomField({ name: "firstname" }), false);
+  assert.equal(isWorkableCustomField({ name: "" }), false);
 });
 
 // --- Ashby URL + label resolution -------------------------------------------
@@ -242,7 +296,7 @@ test("submitRefusal blocks without env gate or approval", () => {
   assert.equal(submitRefusal({ autoSubmit: true, approved: true }), null);
 });
 
-for (const adapter of [genericAdapter, greenhouseAdapter, leverAdapter, ashbyAdapter]) {
+for (const adapter of [genericAdapter, greenhouseAdapter, leverAdapter, ashbyAdapter, workableAdapter]) {
   test(`${adapter.metadata.name}.submit refuses without gates and never touches the page`, async () => {
     const noGate = await adapter.submit(explodingPage, { autoSubmit: false, approved: true });
     assert.equal(noGate.clicked, false);

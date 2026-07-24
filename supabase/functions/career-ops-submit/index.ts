@@ -330,7 +330,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
   const company = job?.company;
   if (!job || !company) throw new Error("associated job missing");
   const portal = asString(company.api_type).toLowerCase();
-  const supportedPortals = new Set(["greenhouse", "ashby", "lever"]);
+  const supportedPortals = new Set(["greenhouse", "ashby", "lever", "workable"]);
   if (!supportedPortals.has(portal)) {
     const e = new Error("This employer portal still needs review before submission.");
     (e as any).status = 422; throw e;

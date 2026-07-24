@@ -22,6 +22,7 @@ import { chromium } from "@playwright/test";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixturePath = path.join(here, "fixtures", "mock-greenhouse.html");
 const ashbyFixturePath = path.join(here, "fixtures", "mock-ashby.html");
+const workableFixturePath = path.join(here, "fixtures", "mock-workable.html");
 const WORKER_TOKEN = "mock-worker-token";
 
 const PROFILE = {
@@ -37,6 +38,12 @@ const ANSWERS = {
 const ASHBY_ANSWERS = {
   ...ANSWERS,
   "Are you authorized to work in the US?": "Yes",
+};
+const WORKABLE_ANSWERS = {
+  ...ASHBY_ANSWERS,
+  // Explicit stored affirmative: the only legal basis for ticking the consent
+  // checkbox (the adapter never auto-accepts consents).
+  "I consent to the processing of my personal data": "I consent",
 };
 
 let server;
@@ -113,7 +120,8 @@ before(async () => {
 
   const fixtureHtml = await readFile(fixturePath, "utf8");
   const ashbyFixtureHtml = await readFile(ashbyFixturePath, "utf8");
-  await startMockServer({ "/apply": fixtureHtml, "/ashby": ashbyFixtureHtml });
+  const workableFixtureHtml = await readFile(workableFixturePath, "utf8");
+  await startMockServer({ "/apply": fixtureHtml, "/ashby": ashbyFixtureHtml, "/workable": workableFixtureHtml });
 
   process.env.SUPABASE_URL = baseUrl;
   process.env.SUPABASE_ANON_KEY = "mock-anon-key";
@@ -223,6 +231,52 @@ test("mock e2e ashby: APPLYPASS_AUTO_SUBMIT=false blocks submit (dry-run)", asyn
   const { processJob } = await loadWorker(false);
 
   const result = await processJob(browser, "task-mock-ashby-dry-run", mockJob(true, "/ashby"), mockPayload(ASHBY_ANSWERS), resumePath, "mock-worker:1");
+
+  assert.equal(result.submitted, false);
+  assert.equal(result.status, "ready_for_review");
+  assert.equal(result.receipt, null);
+});
+
+// --- Workable mock e2e (mirrors the ashby cases above) ----------------------
+
+test("mock e2e workable: fills, submits, and confirms receipt with all gates on", async (t) => {
+  if (!requireBrowser(t)) return;
+  const { processJob } = await loadWorker(true);
+
+  const result = await processJob(browser, "task-mock-workable-submit", mockJob(true, "/workable"), mockPayload(WORKABLE_ANSWERS), resumePath, "mock-worker:1");
+
+  assert.equal(result.adapter, "workable");
+  assert.equal(result.status, "submitted");
+  assert.equal(result.submitted, true);
+  // first/last name + email + phone + address + city + country + 2 custom
+  // questions + 1 YES/NO radio group + 1 consent checkbox.
+  assert.ok(result.filledCount >= 8, `expected >=8 filled fields, got ${result.filledCount}`);
+  assert.equal(result.resumeUploaded, true);
+  assert.equal(result.receipt?.applicationId, "WK-MOCK-123");
+  assert.match(result.receipt?.confirmationText || "", /thank you for applying/i);
+  assert.ok(result.screenshotPath && existsSync(result.screenshotPath), "receipt screenshot should exist");
+  const authCheck = queueRequests.filter((req) => req.action === "authorization-status").pop();
+  assert.ok(authCheck, "worker should re-check authorization before submitting");
+  assert.equal(authCheck.workerToken, WORKER_TOKEN);
+});
+
+test("mock e2e workable: missing approval receipt blocks submit but still fills", async (t) => {
+  if (!requireBrowser(t)) return;
+  const { processJob } = await loadWorker(true);
+
+  const result = await processJob(browser, "task-mock-workable-no-approval", mockJob(false, "/workable"), mockPayload(WORKABLE_ANSWERS), resumePath, "mock-worker:1");
+
+  assert.equal(result.submitted, false);
+  assert.equal(result.status, "ready_for_review");
+  assert.equal(result.receipt, null);
+  assert.ok(result.filledCount >= 8, `dry fill should still complete, got ${result.filledCount}`);
+});
+
+test("mock e2e workable: APPLYPASS_AUTO_SUBMIT=false blocks submit (dry-run)", async (t) => {
+  if (!requireBrowser(t)) return;
+  const { processJob } = await loadWorker(false);
+
+  const result = await processJob(browser, "task-mock-workable-dry-run", mockJob(true, "/workable"), mockPayload(WORKABLE_ANSWERS), resumePath, "mock-worker:1");
 
   assert.equal(result.submitted, false);
   assert.equal(result.status, "ready_for_review");

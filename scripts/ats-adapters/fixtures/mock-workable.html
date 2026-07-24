@@ -1,0 +1,114 @@
+<!doctype html>
+<!-- Local mock of a Workable-hosted application form. The stable identity
+     field names (firstname/lastname/email/phone), CA_*/QA_* custom questions,
+     leading-"*" required labels without label[for], YES/NO radio pairs, the
+     no-name resume input, the "Submit application" button, and the "Powered
+     by Workable" footer make the real workable adapter's page-based detection
+     match, so the worker's processJob flow exercises production code paths
+     against this fixture. Mirrors live conventions verified on
+     apply.workable.com/sigmadefense (July 2026). -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="mock workable board">
+  <title>Acme — Senior Frontend Engineer</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    .field { margin-bottom: 1rem; }
+    .q-label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+    input, textarea { width: 24rem; padding: 0.4rem; }
+    input[type="radio"], input[type="checkbox"] { width: auto; }
+    .options label { display: inline-block; margin-right: 1rem; width: auto; }
+  </style>
+</head>
+<body>
+  <main data-ui="job-application">
+    <h1>Senior Frontend Engineer</h1>
+    <p>Acme Corp — Remote</p>
+
+    <form id="workable-form" class="styles--form" method="post" enctype="multipart/form-data">
+      <div class="field">
+        <label class="q-label">*First name</label>
+        <input type="text" id="firstname" name="firstname" required>
+      </div>
+      <div class="field">
+        <label class="q-label">*Last name</label>
+        <input type="text" id="lastname" name="lastname" required>
+      </div>
+      <div class="field">
+        <label class="q-label">*Email</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+      <div class="field">
+        <label class="q-label">*Phone</label>
+        <input type="tel" name="phone" class="iti__tel-input" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label class="q-label">*Address</label>
+        <input type="text" id="address" name="address" required>
+      </div>
+      <div class="field">
+        <input type="text" id="city" name="city" placeholder="City">
+        <input type="text" id="postcode" name="postcode" placeholder="Postal code">
+        <input type="text" id="country" name="country" placeholder="Country">
+      </div>
+      <div class="field">
+        <label class="q-label">*Why do you want to work at Acme?</label>
+        <textarea id="CA_1001" name="CA_1001" rows="3" required></textarea>
+      </div>
+      <div class="field">
+        <label class="q-label">*How many years of React experience do you have?</label>
+        <input type="text" id="CA_1002" name="CA_1002" required>
+      </div>
+      <div class="field question">
+        <span class="q-label">*Are you authorized to work in the US?</span>
+        <div class="options">
+          <label><input type="radio" name="QA_2001" required> YES</label>
+          <label><input type="radio" name="QA_2001" required> NO</label>
+        </div>
+      </div>
+      <div class="field">
+        <label class="q-label">Summary (Optional)</label>
+        <textarea id="summary" name="summary" rows="3"></textarea>
+      </div>
+      <div class="field">
+        <label class="q-label">Cover letter (Optional)</label>
+        <textarea id="cover_letter" name="cover_letter" rows="3"></textarea>
+      </div>
+      <div class="field">
+        <label class="q-label">*Resume</label>
+        <button type="button">Import resume from</button>
+        <input type="file" id="input_files_input_MdaNFtPYuwu5mHLU" accept=".pdf,.doc,.docx,.odt,.rtf" required>
+      </div>
+      <div class="field">
+        <label><input type="checkbox" id="CA_3002" name="CA_3002" required> I consent to the processing of my personal data</label>
+      </div>
+      <button type="submit" class="styles--submit">Submit application</button>
+    </form>
+  </main>
+
+  <footer>
+    <a href="https://www.workable.com/" target="_blank" rel="noopener">Powered by Workable</a>
+  </footer>
+
+  <script>
+    // Stand-in for the Workable submission endpoint: validate like the real
+    // form would, then render the confirmation the adapter's verifyReceipt()
+    // looks for ("Thank you for applying" text + an application id).
+    document.getElementById("workable-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = event.target;
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+      const confirmation = document.createElement("div");
+      confirmation.id = "workable-confirmation";
+      confirmation.innerHTML =
+        "<h2>Thank you for applying!</h2>" +
+        "<p>Your application has been submitted. Application ID: WK-MOCK-123</p>";
+      form.replaceWith(confirmation);
+    });
+  </script>
+</body>
+</html>
