@@ -1,6 +1,12 @@
 name: DEV ApplyPass browser worker
 
 on:
+  # Run one bounded, no-submit smoke task when this guarded workflow first
+  # lands on develop. Ongoing runs remain explicit manual dispatches.
+  push:
+    branches: [develop]
+    paths:
+      - ".github/workflows/continuous-apply-worker-dev.yml"
   workflow_dispatch:
     inputs:
       max_tasks:
@@ -39,11 +45,11 @@ jobs:
       APPLYPASS_WORKER_CONCURRENCY: "1"
       APPLYPASS_AUTO_SUBMIT: "false"
       APPLYPASS_RUNTIME_ENV: development
-      APPLYPASS_DEV_DIAGNOSTIC_SCREENSHOTS: ${{ inputs.diagnostic_screenshots == true && 'true' || 'false' }}
+      APPLYPASS_DEV_DIAGNOSTIC_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_screenshots == true && 'true' || 'false' }}
       APPLYPASS_SCREENSHOT_DIR: /tmp/applypass-dev-worker-artifacts/screenshots
       WORKER_ARTIFACT_DIR: /tmp/applypass-dev-worker-artifacts
       WORKER_LOG: /tmp/applypass-dev-worker-artifacts/worker.log
-      DEV_MAX_TASKS: ${{ inputs.max_tasks }}
+      DEV_MAX_TASKS: ${{ inputs.max_tasks || '1' }}
       EXPECTED_DEV_SUPABASE_HOST: vrtkizyddcoqazcrbulp.supabase.co
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
