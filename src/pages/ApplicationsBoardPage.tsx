@@ -77,6 +77,7 @@ export default function ApplicationsBoardPage() {
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [tab, setTab] = useState<BoardTab>("all");
 
   const load = useCallback(async (showSpinner = false) => {
@@ -91,7 +92,15 @@ export default function ApplicationsBoardPage() {
 
     if (draftError) {
       void captureIncident(new Error(draftError.message), { source: "manual", operation: "applications_board_load" });
+      // Honest failure: don't fall through to the "No applications yet"
+      // empty state when the read itself failed — show an error + retry
+      // instead. The 30s poll also retries automatically.
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
     }
+    setLoadError(false);
 
     const drafts = (draftData || []) as unknown as BoardDraft[];
     const taskIds = [...new Set(drafts.map((draft) => draft.applypass_task_id).filter((id): id is string => Boolean(id)))];
@@ -252,7 +261,18 @@ export default function ApplicationsBoardPage() {
       </div>
 
       {/* Board */}
-      {visibleRows.length === 0 ? (
+      {loadError ? (
+        <div className="mt-6 border border-dashed border-rp-rule-2 bg-rp-paper p-10 text-center">
+          <AlertTriangle className="mx-auto h-8 w-8 text-rp-ink-3" strokeWidth={1.6} />
+          <p className="mt-3 text-sm font-semibold text-rp-ink">Your applications couldn't be loaded</p>
+          <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-rp-ink-2">
+            Nothing is lost — this is a connection hiccup on our side. We retry automatically every 30 seconds, or you can try now.
+          </p>
+          <Button size="sm" className="mt-4" onClick={() => void load(true)} disabled={refreshing}>
+            {refreshing ? "Retrying…" : "Try again"}
+          </Button>
+        </div>
+      ) : visibleRows.length === 0 ? (
         <div className="mt-6 border border-dashed border-rp-rule-2 bg-rp-paper p-10 text-center">
           <emptyCopy.icon className="mx-auto h-8 w-8 text-rp-ink-3" strokeWidth={1.6} />
           <p className="mt-3 text-sm font-semibold text-rp-ink">{emptyCopy.title}</p>
