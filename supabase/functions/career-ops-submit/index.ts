@@ -526,8 +526,10 @@ async function enqueueSubmit(userId: string, draftId: string) {
     if (trackedLookupError) throw new Error("The application inbox could not be linked to this job.");
     if (existingTracked?.id) {
       trackedJobId = existingTracked.id;
+      // Keep the card in whatever session the user already put it in —
+      // don't silently move it into the auto-apply agent's session and make
+      // it disappear from the board where the user is tracking it.
       const { error: trackedUpdateError } = await svc.from("mc_tracked_jobs").update({
-        session_id: applicationSession.id,
         status: ["discovered", "saved"].includes(existingTracked.status) ? "saved" : existingTracked.status,
         apply_url: job.apply_url,
       }).eq("id", existingTracked.id);
