@@ -30,19 +30,26 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
 
   const load = useCallback(async () => {
     setLoadError(false);
-    const { data } = await supabase
+    // Select only columns present in every deployed shape of
+    // mc_gmail_connections (PROD has no status/last_error_* columns — DEV's
+    // health shape does). Selecting a missing column makes PostgREST return
+    // 400; combined with the error handling below, that used to render a
+    // healthy connection as "Not connected".
+    const { data, error } = await supabase
       .from("mc_gmail_connections")
       .select("id,gmail_email,enabled,last_polled_at,token_expires_at")
       .eq("session_id", sessionId)
       .eq("enabled", true)
       .maybeSingle();
-    if (!data) {
-      const { error } = await supabase
-        .from("mc_gmail_connections")
-        .select("id")
-        .eq("session_id", sessionId)
-        .limit(1);
-      if (error) setLoadError(true);
+    if (error) {
+      // A read failure (network blip, auth-token refresh race, transient
+      // PostgREST error) is NOT proof of disconnection. Keep the last known
+      // connection state, keep auto-polling alive, and offer a retry —
+      // never fall through to the "Connect Gmail" branch on an error.
+      console.error("gmail connection load", error);
+      setLoadError(true);
+      setLoading(false);
+      return;
     }
     setConn(data as Connection | null);
     onConnectionChange?.(Boolean(data?.enabled));
@@ -127,7 +134,7 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
 
   if (loading) return null;
 
-  if (loadError) {
+  if (loadError && !conn) {
     return (
       <Card className="p-4">
         <div className="flex items-center justify-between gap-4">
