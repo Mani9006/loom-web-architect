@@ -25,7 +25,7 @@ const CONCURRENCY = 6;
 const FETCH_TIMEOUT_MS = 15_000;
 const STALE_AFTER_HOURS = 24 * 7; // mark is_live=false if not seen in a week
 
-type ApiType = "greenhouse" | "ashby" | "lever" | "remotive" | "arbeitnow" | "adzuna";
+type ApiType = "greenhouse" | "ashby" | "lever" | "workable" | "remotive" | "arbeitnow" | "adzuna";
 interface ScanCompany {
   id: string;
   slug: string;
@@ -143,6 +143,54 @@ async function fetchLever(ident: string): Promise<Posting[]> {
   })).filter((p) => p.apply_url);
 }
 
+async function fetchWorkable(ident: string): Promise<Posting[]> {
+  // Public listing API (no key): POST /api/v3/accounts/{slug}/jobs with
+  // nextPage token pagination, 10 results/page. Workable softly throttles
+  // (~100 req/IP), so cap at 3 pages (30 freshest jobs) per hourly scan.
+  // NOTE: the listing payload has no description body; description_md stays
+  // empty until a detail-endpoint fetch is added.
+  const postings: Posting[] = [];
+  let token = "";
+  for (let page = 0; page < 3; page++) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(`https://apply.workable.com/api/v3/accounts/${encodeURIComponent(ident)}/jobs`, {
+        method: "POST",
+        signal: ctl.signal,
+        headers: { "Content-Type": "application/json", "User-Agent": "resumepreps-career-ops/1.0" },
+        body: JSON.stringify({ query: "", location: [], department: [], worktype: [], remote: [], token }),
+      });
+    } finally {
+      clearTimeout(t);
+    }
+    if (!res.ok) throw new Error(`workable ${res.status}`);
+    const json = await res.json();
+    const jobs: any[] = json.results || [];
+    if (jobs.length === 0) break;
+    postings.push(...jobs.map((j) => {
+      const loc = [j.location?.city, j.location?.region, j.location?.country].filter(Boolean).join(", ");
+      return {
+        external_id: String(j.shortcode || j.id),
+        title: j.title || "",
+        location: loc || null,
+        department: j.department?.[0] ?? null,
+        employment_type: j.type || null,
+        remote_policy: j.remote === true || j.workplace === "remote" ? "Remote" : null,
+        compensation_text: null,
+        description_md: "",
+        apply_url: `https://apply.workable.com/${ident}/j/${j.shortcode}/`,
+        posted_at: j.published || null,
+        raw: j,
+      };
+    }).filter((p) => p.title && !p.apply_url.endsWith("/j/undefined/")));
+    if (!json.nextPage) break;
+    token = String(json.nextPage);
+  }
+  return postings;
+}
+
 async function fetchRemotive(ident: string): Promise<Posting[]> {
   // No key required. ident = Remotive category slug ("software-dev", ...);
   // "all" pulls the full remote feed.
@@ -242,6 +290,7 @@ async function fetchCompany(c: ScanCompany): Promise<Posting[]> {
     case "greenhouse": return fetchGreenhouse(c.api_identifier);
     case "ashby":      return fetchAshby(c.api_identifier);
     case "lever":      return fetchLever(c.api_identifier);
+    case "workable":   return fetchWorkable(c.api_identifier);
     case "remotive":   return fetchRemotive(c.api_identifier);
     case "arbeitnow":  return fetchArbeitnow(c.api_identifier);
     case "adzuna":     return fetchAdzuna(c.api_identifier);

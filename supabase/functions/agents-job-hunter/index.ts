@@ -324,7 +324,7 @@ async function runAgent(userId: string, runId: string) {
           && prefs.review_mode === "eligible_only"
           && tailoredAtsScore >= (prefs.auto_apply_min_ats_score ?? 85)
           && typeof evaluation.portal === "string"
-          && ["greenhouse", "ashby", "lever"].includes(evaluation.portal)
+          && ["greenhouse", "ashby", "lever", "workable"].includes(evaluation.portal)
           && prefs.auto_apply_portals.includes(evaluation.portal);
         if (remaining > 0 && shouldAutoQueue && draftId) {
           try {
@@ -382,7 +382,7 @@ async function runAgent(userId: string, runId: string) {
     && prefs.review_mode === "eligible_only") {
     const minFit = prefs.auto_apply_min_fit_score ?? 82;
     const minAts = prefs.auto_apply_min_ats_score ?? 85;
-    const supportedPortals = new Set(["greenhouse", "ashby", "lever"]);
+    const supportedPortals = new Set(["greenhouse", "ashby", "lever", "workable"]);
     const enabledPortals = new Set(prefs.auto_apply_portals ?? []);
     const { data: readyDrafts } = await client.from("draft_applications")
       .select("id,tailored_resume_id,error_message,evaluation:job_evaluations(fit_score,eligible,dismissed_at,scanned_jobs(id,company:scan_companies(api_type)))")

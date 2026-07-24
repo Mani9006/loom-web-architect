@@ -149,8 +149,8 @@ async function callAsUser(name: string, authorization: string, body: Record<stri
 }
 
 // supported must mirror the portal set career-ops-submit accepts
-// (greenhouse, ashby, lever); anything else stays review-only.
-function detectPortal(value: string): { type: "greenhouse" | "ashby" | "lever"; identifier: string; supported: boolean } {
+// (greenhouse, ashby, lever, workable); anything else stays review-only.
+function detectPortal(value: string): { type: "greenhouse" | "ashby" | "lever" | "workable"; identifier: string; supported: boolean } {
   const url = new URL(value);
   const parts = url.pathname.split("/").filter(Boolean);
   if (/greenhouse\.io$/i.test(url.hostname)) {
@@ -159,6 +159,13 @@ function detectPortal(value: string): { type: "greenhouse" | "ashby" | "lever"; 
   }
   if (/ashbyhq\.com$/i.test(url.hostname)) return { type: "ashby", identifier: parts[0] || "unknown", supported: true };
   if (/lever\.co$/i.test(url.hostname)) return { type: "lever", identifier: parts[0] || "unknown", supported: true };
+  // apply.workable.com/<slug>/j/<shortcode>/ (and legacy <slug>.workable.com).
+  if (/workable\.com$/i.test(url.hostname)) {
+    const identifier = url.hostname === "apply.workable.com" || url.hostname === "www.workable.com"
+      ? parts[0] || "unknown"
+      : url.hostname.split(".")[0] || "unknown";
+    return { type: "workable", identifier, supported: true };
+  }
   return { type: "lever", identifier: "manual", supported: false };
 }
 
