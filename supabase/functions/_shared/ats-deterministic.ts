@@ -149,7 +149,13 @@ export function computeKeywordScore(resumeText: string, keywords: string[]): {
 }
 
 export function normalizeForMatch(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").replace(/\s+/g, " ").trim();
+  // A trailing sentence period must not glue to the final token ("systems."
+  // ≠ "systems"), while interior dots in names like "Node.js"/".NET" stay.
+  return value.toLowerCase()
+    .replace(/\.(?![a-z0-9+#])/gi, " ")
+    .replace(/[^a-z0-9+#.]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // deno-lint-ignore no-explicit-any
