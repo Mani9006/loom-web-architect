@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { decryptSecret, encryptSecret } from "../_shared/oauth-crypto.ts";
+import { classifyGmailPollFailure } from "../_shared/gmail-poll-failure.ts";
 import { chatFree } from "../_shared/llm.ts";
 import {
   applicationSenderDomain,
@@ -108,11 +109,14 @@ serve(async (req) => {
       failed += 1;
       console.error("mc-gmail-poll connection", connection.id, pollError);
       const message = pollError instanceof Error ? pollError.message : String(pollError);
-      const code = /secure_tokens_missing|decrypt|operationerror|gmail_list_(401|403)/i.test(message)
-        ? "INBOX_RECONNECT_REQUIRED"
-        : /gmail_list_429/i.test(message)
-          ? "INBOX_RATE_LIMITED"
-          : "INBOX_CHECK_FAILED";
+      // Only PERMANENT grant loss may disable the connection (see
+      // _shared/gmail-poll-failure.ts). Transient or server-side failures —
+      // decrypt/key problems, Gmail 401/403 (e.g. the Gmail API not being
+      // enabled for our OAuth client, which reconnecting can never fix),
+      // 5xx, network errors — must keep the connection row enabled; flipping
+      // enabled=false here made healthy connections "vanish" from the Inbox
+      // after the first failed poll.
+      const code = classifyGmailPollFailure(message);
       if (code === "INBOX_RECONNECT_REQUIRED") {
         // Do not keep presenting an unusable OAuth grant as connected. The
         // next Inbox visit will offer the normal Google reconnect flow.
@@ -360,7 +364,15 @@ async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: 
       grant_type: "refresh_token",
     }),
   });
-  if (!response.ok) throw new Error(`gmail_refresh_${response.status}`);
+  if (!response.ok) {
+    // invalid_grant = the refresh token was revoked or expired: the only
+    // failure here that reconnecting can actually fix, and the only one the
+    // caller may treat as permanent. Everything else (5xx, network, Google
+    // outages) is transient and must not cost the user their connection.
+    const body = await response.text().catch(() => "");
+    if (/invalid_grant/i.test(body)) throw new Error("gmail_refresh_invalid_grant");
+    throw new Error(`gmail_refresh_${response.status}`);
+  }
   const payload = await response.json();
   if (!payload.access_token) throw new Error("gmail_refresh_incomplete");
   return { accessToken: payload.access_token, expiresIn: Number(payload.expires_in || 3600) };
