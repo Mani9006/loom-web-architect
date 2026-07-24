@@ -75,7 +75,6 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
       const { data, error } = await supabase
@@ -85,30 +84,21 @@ export default function SessionPage() {
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
       if (error) {
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          const safeError = toUserFacingError(error, {
-            operation: "load_application_workspace",
-            defaultMessage: "This application workspace could not be loaded.",
-          });
-          toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
-        }
+        console.error("[SessionPage] load failed:", error.message);
+        const safeError = toUserFacingError(error, {
+          operation: "load_application_workspace",
+          defaultMessage: "This application workspace could not be loaded.",
+        });
+        toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
         return;
       }
-      hadInitialLoad = true;
       setSession(data as unknown as MCSession);
       setLoading(false);
     })();
