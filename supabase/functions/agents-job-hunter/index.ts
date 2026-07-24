@@ -388,11 +388,11 @@ async function runAgent(userId: string, runId: string) {
       .select("id,tailored_resume_id,error_message,evaluation:job_evaluations(fit_score,eligible,dismissed_at,scanned_jobs(id,company:scan_companies(api_type)))")
       .eq("user_id", userId)
       .eq("status", "ready")
-      // Actionable drafts first: without this, a backlog full of error-marked
-      // drafts starves the 25-row batch and clean drafts never get queued.
+      // Actionable drafts first, then highest-fit first: with 30+ ready
+      // drafts, recency ordering starves the batch with below-gate packets
+      // and the best applications never get queued.
       .order("error_message", { ascending: true, nullsFirst: true })
-      .order("updated_at", { ascending: true })
-      .limit(25);
+      .limit(100);
 
     const backlog = ((readyDrafts ?? []) as unknown as Array<{
       id: string;
@@ -416,6 +416,8 @@ async function runAgent(userId: string, runId: string) {
         && !/employer verification is required|complete the final check|required field\(s\) still need review|flagged as possible spam|couldn.t submit your application/i.test(draft.error_message ?? "");
     });
 
+    // Highest-fit applications first so daily caps go to the best matches.
+    backlog.sort((a, b) => Number(b.evaluation?.fit_score ?? 0) - Number(a.evaluation?.fit_score ?? 0));
     const resumeIds = [...new Set(backlog.map((draft) => String(draft.tailored_resume_id)))];
     const { data: atsRows } = resumeIds.length > 0
       ? await client.from("ats_scores")
