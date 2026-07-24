@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
 import {
@@ -265,7 +265,11 @@ export default function Landing() {
             <div className="w-6 h-6 rounded-md bg-foreground text-background flex items-center justify-center text-[12px] font-bold">R</div>
             <span className="text-[14px] font-semibold tracking-tight">ResumePreps</span>
           </div>
-          <p className="text-[12px] text-muted-foreground">&copy; {new Date().getFullYear()} ResumePreps. All rights reserved.</p>
+          <div className="flex items-center gap-5">
+            <Link to="/privacy" className="text-[12.5px] text-muted-foreground hover:text-foreground transition-colors">Privacy Policy</Link>
+            <Link to="/terms" className="text-[12.5px] text-muted-foreground hover:text-foreground transition-colors">Terms of Service</Link>
+            <p className="text-[12px] text-muted-foreground">&copy; {new Date().getFullYear()} ResumePreps. All rights reserved.</p>
+          </div>
         </div>
       </footer>
     </div>
