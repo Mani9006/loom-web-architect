@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -243,7 +243,7 @@ export default function Auth() {
                   <div className="flex items-start gap-2.5">
                     <input type="checkbox" id="terms" className="mt-0.5 rounded border-border" defaultChecked />
                     <label htmlFor="terms" className="text-xs text-muted-foreground leading-relaxed">
-                      I agree to the <a href="#" className="text-primary hover:underline">Terms</a> and <a href="#" className="text-primary hover:underline">Privacy Policy</a>
+                      I agree to the <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link> and <Link to="/privacy" className="text-primary hover:underline">Privacy Policy</Link>
                     </label>
                   </div>
                 )}

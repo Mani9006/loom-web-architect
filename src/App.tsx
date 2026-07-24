@@ -20,6 +20,10 @@ import { EnvBanner } from "@/components/EnvBanner";
 // Eager-loaded routes (critical path)
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
+// Public legal pages — eager so Google OAuth reviewers (and users) always get
+// a fast, working document at /privacy and /terms.
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 
 // Lazy-loaded routes
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
@@ -98,6 +102,8 @@ const App = () => {
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/print-resume" element={<PrintResume />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/terms" element={<TermsOfService />} />
 
                 {/* Protected app routes with sidebar layout */}
                 <Route element={<ProtectedRoute />}>
