@@ -25,7 +25,7 @@ export default function PrivacyPolicy() {
         and store this content so the platform can score, tailor, and prepare application materials for you.</p>
         <p><span className="font-medium text-foreground">Job-application activity.</span> We store the jobs you save,
         the matches we generate, the tailored résumés and cover letters prepared for each posting, your review
-        decisions, and — where you enable it — records of applications submitted on your behalf, including the
+        decisions, and, where you enable it, records of applications submitted on your behalf, including the
         employer portal, timestamps, and submission status (prepared, queued, submitted, failed, or skipped).</p>
         <p><span className="font-medium text-foreground">Gmail integration data.</span> If you connect your Gmail
         account, we process limited email data as described in Section 4. Connecting Gmail is optional.</p>
@@ -60,7 +60,7 @@ export default function PrivacyPolicy() {
         <LegalList
           items={[
             "One-time verification codes. When an employer or job portal emails you a sign-in or verification code during an application you asked us to help with, we detect that code so the application flow can continue.",
-            "Job-application status classification. We scan recent messages related to your job search and classify them into application-status categories — interview invitations, assessment requests, rejections, and offers — so your pipeline tracker stays accurate.",
+            "Job-application status classification. We scan recent messages related to your job search and classify them into application-status categories, interview invitations, assessment requests, rejections, and offers, so your pipeline tracker stays accurate.",
           ]}
         />
         <p>
@@ -89,8 +89,8 @@ export default function PrivacyPolicy() {
 
       <LegalSection title="5. AI processing of your content">
         <p>
-          Core features — résumé tailoring, cover-letter drafting, match scoring, and suggested answers to application
-          questions — are powered by large language models. To provide these features, your résumé content, profile
+          Core features, résumé tailoring, cover-letter drafting, match scoring, and suggested answers to application
+          questions, are powered by large language models. To provide these features, your résumé content, profile
         data, and relevant job descriptions are sent to third-party AI model providers for processing. Depending on
           your plan and current workload, this may include providers operating under free-tier or standard API terms.
         </p>
@@ -105,17 +105,17 @@ export default function PrivacyPolicy() {
         <p>We use the following categories of service providers to operate ResumePreps:</p>
         <LegalList
           items={[
-            "Supabase — database, authentication, and file storage for your account, résumés, and application records.",
-            "Stripe — payment processing and subscription management for paid plans.",
-            "Resend — transactional email delivery (welcome, password reset, and notification emails).",
-            "AI model providers — process résumé and job content to generate tailored application materials (see Section 5).",
-            "Vercel — hosting and product analytics for the web application.",
+            "Supabase, database, authentication, and file storage for your account, résumés, and application records.",
+            "Stripe, payment processing and subscription management for paid plans.",
+            "Resend, transactional email delivery (welcome, password reset, and notification emails).",
+            "AI model providers, process résumé and job content to generate tailored application materials (see Section 5).",
+            "Vercel, hosting and product analytics for the web application.",
           ]}
         />
         <p>
           Each processor handles data only as needed to provide its service to us and is bound by its own security and
-          privacy obligations. We do not share your data with employers except when you submit — or direct us to
-          submit — an application to them.
+          privacy obligations. We do not share your data with employers except when you submit, or direct us to
+          submit, an application to them.
         </p>
       </LegalSection>
 
@@ -131,7 +131,7 @@ export default function PrivacyPolicy() {
       <LegalSection title="8. Data retention">
         <p>
           We retain your account data, résumés, and application records for as long as your account is active so the
-          service can function — your pipeline history and résumé versions are part of the product. Derived Gmail
+          service can function, your pipeline history and résumé versions are part of the product. Derived Gmail
           classifications are retained as pipeline events; raw email bodies are not permanently stored. Backups and
           logs roll off on their normal retention cycles.
         </p>
@@ -143,7 +143,7 @@ export default function PrivacyPolicy() {
             "Access and export: you can view and export your résumés and application history from within the product.",
             "Correction: you can edit your profile, résumés, and saved answers at any time.",
             "Disconnect Gmail: revoke our Gmail access from Settings or from your Google account permissions page.",
-            "Deletion: you may request deletion of your account and associated data — including résumés, application records, and Gmail-derived data — by emailing us. We honor deletion requests without undue delay, subject to records we must keep for legal or fraud-prevention reasons.",
+            "Deletion: you may request deletion of your account and associated data, including résumés, application records, and Gmail-derived data, by emailing us. We honor deletion requests without undue delay, subject to records we must keep for legal or fraud-prevention reasons.",
           ]}
         />
         <p>
@@ -192,7 +192,7 @@ export default function PrivacyPolicy() {
           <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="text-foreground underline underline-offset-2 hover:text-foreground/70">
             {LEGAL_CONTACT_EMAIL}
           </a>
-          {" "}— ResumePreps, resumepreps.com.
+          {" "}, ResumePreps, resumepreps.com.
         </p>
       </LegalSection>
     </LegalLayout>

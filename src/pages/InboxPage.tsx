@@ -267,7 +267,7 @@ export default function InboxPage() {
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 lg:px-10 pt-10 pb-16">
-      <PageHeader title="Application inbox." status={`${unread} unread`} description="Confirmations, verification codes, interviews, assessments, offers, and status changes—separated from personal email." />
+      <PageHeader title="Application inbox." status={`${unread} unread`} description="Confirmations, verification codes, interviews, assessments, offers, and status changes,separated from personal email." />
 
       <div className="mt-7 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {sessionId ? <GmailConnectCard
@@ -309,7 +309,7 @@ export default function InboxPage() {
         </div>
 
         {loading ? <div className="space-y-3 p-4">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-28" />)}</div> : visible.length === 0 ? (
-          <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><Inbox className="h-9 w-9 text-rp-ink-3" /><p className="mt-3 text-sm font-semibold">{applicationOnly ? "No application messages yet" : "No matching messages"}</p><p className="mt-1 max-w-md text-xs text-rp-ink-2">{applicationOnly ? "Only emails about your applications appear here — OTPs, confirmations, interview invites, assessments, decisions." : "Nothing matches the current filters. Try a different search or filter."}</p></div>
+          <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><Inbox className="h-9 w-9 text-rp-ink-3" /><p className="mt-3 text-sm font-semibold">{applicationOnly ? "No application messages yet" : "No matching messages"}</p><p className="mt-1 max-w-md text-xs text-rp-ink-2">{applicationOnly ? "Only emails about your applications appear here, OTPs, confirmations, interview invites, assessments, decisions." : "Nothing matches the current filters. Try a different search or filter."}</p></div>
         ) : <div className="divide-y divide-rp-rule">{visible.map((message) => {
           const codeActive = Boolean(message.verification_code && (!message.verification_code_expires_at || new Date(message.verification_code_expires_at).getTime() > loadedAt));
           return <article key={message.id} className={`grid gap-3 p-4 sm:grid-cols-[28px_minmax(0,1fr)_auto] ${message.is_read ? "" : "bg-primary/[0.035]"}`}>

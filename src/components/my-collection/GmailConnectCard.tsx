@@ -31,7 +31,7 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
   const load = useCallback(async () => {
     setLoadError(false);
     // Select only columns present in every deployed shape of
-    // mc_gmail_connections (PROD has no status/last_error_* columns — DEV's
+    // mc_gmail_connections (PROD has no status/last_error_* columns, DEV's
     // health shape does). Selecting a missing column makes PostgREST return
     // 400; combined with the error handling below, that used to render a
     // healthy connection as "Not connected".
@@ -44,7 +44,7 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
     if (error) {
       // A read failure (network blip, auth-token refresh race, transient
       // PostgREST error) is NOT proof of disconnection. Keep the last known
-      // connection state, keep auto-polling alive, and offer a retry —
+      // connection state, keep auto-polling alive, and offer a retry ,
       // never fall through to the "Connect Gmail" branch on an error.
       console.error("gmail connection load", error);
       setLoadError(true);

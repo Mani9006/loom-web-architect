@@ -78,7 +78,7 @@ export function ChatWelcome({
           </p>
         </div>
 
-        {/* Quick Tools — Navigate to dedicated pages */}
+        {/* Quick Tools, Navigate to dedicated pages */}
         <div className="flex flex-wrap justify-center gap-2 mb-8">
           {quickActions.map((action) => (
             <button

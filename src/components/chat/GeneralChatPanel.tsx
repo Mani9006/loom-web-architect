@@ -167,7 +167,7 @@ export function GeneralChatPanel({
         </div>
       )}
 
-      {/* Input Area — Clean, minimal like Claude */}
+      {/* Input Area, Clean, minimal like Claude */}
       <div className="shrink-0 pb-4 pt-2 px-4">
         <div className="max-w-3xl mx-auto">
           <form onSubmit={handleSubmit}>

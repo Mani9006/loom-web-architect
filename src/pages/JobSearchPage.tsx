@@ -51,8 +51,8 @@ interface SearchJob {
 /**
  * Resilience fallback: when the perplexity-job-search edge function fails,
  * query the hourly-scanned direct job feeds (scanned_jobs, populated from
- * _shared/direct-job-sources.ts) straight from the client — same table the
- * Matches page reads — instead of dead-ending with an error toast.
+ * _shared/direct-job-sources.ts) straight from the client, same table the
+ * Matches page reads, instead of dead-ending with an error toast.
  */
 async function fetchDirectFeedJobs(q: string): Promise<SearchJob[]> {
   const terms = q.trim().split(/\s+/).filter(Boolean).slice(0, 3);
@@ -127,7 +127,7 @@ export default function JobSearchPage() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Search state — persisted across refresh
+  // Search state, persisted across refresh
   const [query, setQuery] = usePersistedState("jobSearch.query", "", "sessionStorage");
   const [location, setLocation] = usePersistedState("jobSearch.location", "", "sessionStorage");
   const [salaryRange, setSalaryRange] = usePersistedState("jobSearch.salaryRange", "any", "sessionStorage");
@@ -153,7 +153,7 @@ export default function JobSearchPage() {
     return JOB_ROLES.filter((r) => r.toLowerCase().includes(lower)).slice(0, 12);
   }, [query]);
 
-  // Results — persisted across refresh
+  // Results, persisted across refresh
   const [jobs, setJobs] = usePersistedState<SearchJob[]>("jobSearch.jobs", [], "sessionStorage");
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = usePersistedState("jobSearch.hasSearched", false, "sessionStorage");
@@ -176,7 +176,7 @@ export default function JobSearchPage() {
     return jobs.slice(start, start + JOBS_PER_PAGE);
   }, [jobs, currentPage]);
 
-  // Split view: selected job for detail panel — persisted across refresh
+  // Split view: selected job for detail panel, persisted across refresh
   const [selectedJob, setSelectedJob] = usePersistedState<SearchJob | null>("jobSearch.selectedJob", null, "sessionStorage");
 
   // Saved jobs tracking
@@ -456,7 +456,7 @@ export default function JobSearchPage() {
             setSelectedJob(fallbackJobs[0]);
             setSearchProgress(100);
             setFromCache(true);
-            setSearchStatus(`Live search is unavailable — showing ${fallbackJobs.length} recent roles from our direct job feeds.`);
+            setSearchStatus(`Live search is unavailable, showing ${fallbackJobs.length} recent roles from our direct job feeds.`);
             toast({
               title: "Showing jobs from our direct feeds",
               description: "Live job discovery is temporarily unavailable, so these results come from our hourly company scans. Retry in a moment for full results.",
@@ -502,12 +502,12 @@ export default function JobSearchPage() {
 
   // Pre-fetch more jobs in background for the next page
   // Strategy: if DB has more results, fetch next page from DB; otherwise use Perplexity
-  // Prefetch runs silently — no loading spinner shown to user
+  // Prefetch runs silently, no loading spinner shown to user
   const prefetchRef = useRef(false); // tracks if a prefetch is in-flight
   const fetchMoreJobs = useCallback(async () => {
     if (prefetchRef.current || !query.trim()) return;
     prefetchRef.current = true;
-    // Don't set isFetchingMore to true — we want SILENT prefetch with no loading UI
+    // Don't set isFetchingMore to true, we want SILENT prefetch with no loading UI
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
@@ -557,7 +557,7 @@ export default function JobSearchPage() {
         }));
         const newJobs = filterJobsForSearchIntent(providerJobs, query);
         if (newJobs.length > 0) {
-          // Deduplicate — don't add jobs already in the list
+          // Deduplicate, don't add jobs already in the list
           const existingKeys = new Set(jobs.map((j) => `${j.title}:::${j.company}`.toLowerCase()));
           const uniqueNew = newJobs.filter((j) => !existingKeys.has(`${j.title}:::${j.company}`.toLowerCase()));
           if (uniqueNew.length > 0) {
@@ -578,13 +578,13 @@ export default function JobSearchPage() {
 
   // Auto pre-fetch: only run after the user actively pages forward beyond
   // page 1. The previous logic fired this effect on every mount whenever
-  // hasSearched was persisted from a prior session — which kicked an
+  // hasSearched was persisted from a prior session, which kicked an
   // expensive web-search call on every page load and frequently timed out.
   // Tracking a ref instead of an unconditional effect prevents the
   // "mount-time runaway prefetch" footgun.
   useEffect(() => {
     if (!hasSearched || loading || jobs.length === 0) return;
-    if (currentPage < 2) return; // never prefetch from page 1 — too risky
+    if (currentPage < 2) return; // never prefetch from page 1, too risky
     const totalLoaded = jobs.length;
     const jobsNeededForNextPage = (currentPage + 1) * JOBS_PER_PAGE;
     if (totalLoaded < jobsNeededForNextPage && !prefetchRef.current && !nextPageFetched) {
@@ -917,7 +917,7 @@ export default function JobSearchPage() {
                 <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setRemoteFilter("all")} />
               </Badge>
             )}
-            {/* All-Sources chip removed — we always target company-direct pages. */}
+            {/* All-Sources chip removed, we always target company-direct pages. */}
           </div>
 
           {/* Advanced filters */}
@@ -995,7 +995,7 @@ export default function JobSearchPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {/* Search Source dropdown removed — we always target direct
+              {/* Search Source dropdown removed, we always target direct
                   company career pages (Greenhouse, Ashby, Lever, Workday,
                   etc.). No more LinkedIn/Indeed/Dice aggregators. */}
             </div>
@@ -1042,7 +1042,7 @@ export default function JobSearchPage() {
                 </div>
                 <Progress value={searchProgress} className="h-2" />
                 <p className="text-xs text-muted-foreground text-center">
-                  Searching company career pages — Greenhouse, Ashby, Lever, Workday & more
+                  Searching company career pages, Greenhouse, Ashby, Lever, Workday & more
                 </p>
               </CardContent>
             </Card>
@@ -1058,14 +1058,14 @@ export default function JobSearchPage() {
           </div>
         )}
 
-        {/* Initial state — quick roles */}
+        {/* Initial state, quick roles */}
         {viewMode === "search" && !loading && !hasSearched && (
           <div className="max-w-3xl mx-auto p-6">
             <div className="text-center py-12">
               <Globe className="w-16 h-16 mx-auto text-primary/20 mb-4" />
               <h3 className="text-lg font-medium">Find your next opportunity</h3>
               <p className="text-muted-foreground mt-1">
-                Real openings straight from company career pages — no aggregator spam
+                Real openings straight from company career pages, no aggregator spam
               </p>
             </div>
             <div className="mt-4">
@@ -1103,7 +1103,7 @@ export default function JobSearchPage() {
                   {fromCache && (
                     <span className="ml-1.5 text-green-600 dark:text-green-400">⚡ Cached</span>
                   )}
-                  {/* Prefetch is silent — no loading indicator */}
+                  {/* Prefetch is silent, no loading indicator */}
                 </p>
                 {fromCache && (
                   <Button
@@ -1201,7 +1201,7 @@ export default function JobSearchPage() {
                 </div>
               </ScrollArea>
 
-              {/* Pagination controls — always visible at bottom */}
+              {/* Pagination controls, always visible at bottom */}
               {totalPages > 0 && (
                 <div className="border-t bg-background px-3 py-2 flex items-center justify-between shrink-0">
                   <Button
@@ -1486,7 +1486,7 @@ export default function JobSearchPage() {
                     </div>
                     <ScrollArea className="flex-1">
                       <div className="max-w-3xl p-6 space-y-5">
-                        {/* Match score banner — single accent palette */}
+                        {/* Match score banner, single accent palette */}
                         {"match_score" in selectedJob && (
                           <div className={cn(
                             "rounded-lg p-3 flex items-center gap-3 border",

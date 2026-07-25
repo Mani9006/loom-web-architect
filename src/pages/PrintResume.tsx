@@ -147,7 +147,7 @@ export default function PrintResume() {
                         {exp.role || "Role"}
                       </span>
                       <span className="text-sm whitespace-nowrap ml-2">
-                        {exp.start_date || "Start"} — {exp.end_date || "End"}
+                        {exp.start_date || "Start"}, {exp.end_date || "End"}
                       </span>
                     </div>
 
@@ -254,7 +254,7 @@ export default function PrintResume() {
                       </span>
                       {(project.organization || project.date) && (
                         <span className="italic text-sm whitespace-nowrap ml-2">
-                          {project.organization && `${project.organization} — `}
+                          {project.organization && `${project.organization}, `}
                           {project.date}
                         </span>
                       )}

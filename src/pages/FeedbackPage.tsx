@@ -40,7 +40,7 @@ export default function FeedbackPage() {
         },
       });
       if (error) throw error;
-      toast.success("Thanks — we got it. We read every one.");
+      toast.success("Thanks, we got it. We read every one.");
       setSubject("");
       setMessage("");
       setCategory("feature");
@@ -62,7 +62,7 @@ export default function FeedbackPage() {
         Tell us what's on your mind
       </h1>
       <p className="mt-2 text-[14px] text-muted-foreground max-w-[64ch] leading-relaxed">
-        Bug, feature, kind words — all of it lands in our inbox. {user?.email ? `We'll reply to ${user.email}.` : ""}
+        Bug, feature, kind words, all of it lands in our inbox. {user?.email ? `We'll reply to ${user.email}.` : ""}
       </p>
 
       <div className="mt-8 space-y-6">

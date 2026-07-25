@@ -78,11 +78,12 @@ function careerFitScore(evaluation: Evaluation): number {
   return evaluation.fit_score ?? Math.round(evaluation.score * 20);
 }
 
-function fitChip(score: number): { label: string; tone: string } {
-  if (score >= 80) return { label: `Strong fit ${score}%`, tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" };
-  if (score >= 65) return { label: `Good fit ${score}%`, tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400" };
-  return { label: `Possible fit ${score}%`, tone: "bg-foreground/5 text-muted-foreground" };
+function fitBand(score: number): { label: string; tone: string } {
+  if (score >= 80) return { label: "Strong match", tone: "text-emerald-600 dark:text-emerald-400" };
+  if (score >= 65) return { label: "Good match", tone: "text-amber-600 dark:text-amber-400" };
+  return { label: "Possible match", tone: "text-muted-foreground" };
 }
+
 
 function safeMatchSummary(value: string | null): string | null {
   if (!value) return null;
@@ -298,8 +299,8 @@ export default function MatchesPage() {
     try {
       const { draftId, atsScore } = await prepareOne(evaluationId, scannedJobId);
       toast.success(atsScore
-        ? `Application ready · resume scores ${Math.round(atsScore)} — take a look before we submit`
-        : "Application ready — take a look before we submit");
+        ? `Application ready · resume scores ${Math.round(atsScore)}, take a look before we submit`
+        : "Application ready, take a look before we submit");
       navigate(`/applications/${draftId}`);
     } catch (e: unknown) {
       void captureIncident(e, { source: "manual", operation: "match_prepare" });
@@ -355,14 +356,14 @@ export default function MatchesPage() {
         prepared += 1;
       } catch (error) {
         failed += 1;
-        setApplyErrors((current) => ({ ...current, [evaluationId]: "Tailoring failed — try again in a moment." }));
+        setApplyErrors((current) => ({ ...current, [evaluationId]: "Tailoring failed, try again in a moment." }));
         void captureIncident(error, { source: "manual", operation: "match_batch_prepare" });
       }
     }
     setBatchProgress(null);
     setSelected(new Set());
     if (failed === 0) {
-      toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready — review them in Applications`);
+      toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready, review them in Applications`);
     } else {
       toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready · ${failed} need${failed === 1 ? "s" : ""} another try`);
     }
@@ -408,7 +409,7 @@ export default function MatchesPage() {
 
   return (
     <div className="max-w-[1200px] mx-auto px-6 lg:px-10 pt-10 pb-24">
-      {/* Page title — restrained, single line, no terminal typewriter */}
+      {/* Page title, restrained, single line, no terminal typewriter */}
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
@@ -418,7 +419,7 @@ export default function MatchesPage() {
             Jobs that fit you
           </h1>
           <p className="mt-2 text-[13px] text-muted-foreground max-w-[68ch] leading-relaxed">
-            Fresh jobs matched to your resume. Press <span className="text-foreground font-medium">Prepare application</span> and we&apos;ll tailor your resume for that job — you review it before anything is sent.
+            Fresh jobs matched to your resume. Press <span className="text-foreground font-medium">Prepare application</span> and we&apos;ll tailor your resume for that job, you review it before anything is sent.
           </p>
         </div>
         <button
@@ -431,8 +432,8 @@ export default function MatchesPage() {
         </button>
       </header>
 
-      {/* Single bordered container — all list state lives inside */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
+      {/* Single bordered container, all list state lives inside */}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
         {/* Container header: counts + tabs */}
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3 px-5 py-4 border-b border-border">
           <div className="flex items-baseline gap-6">
@@ -499,7 +500,7 @@ export default function MatchesPage() {
             {jobs.length === 0 ? (
               <>
                 <p className="text-[15px] font-semibold text-foreground">We&apos;re still finding jobs that fit your resume.</p>
-                <p className="text-[13px] text-muted-foreground mt-2">Fresh jobs are checked every hour — give it a moment, then refresh.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Fresh jobs are checked every hour, give it a moment, then refresh.</p>
                 <button
                   type="button"
                   onClick={() => void loadMatches(true)}
@@ -512,7 +513,7 @@ export default function MatchesPage() {
             ) : (
               <>
                 <p className="text-[15px] font-semibold text-foreground">Nothing fits these filters.</p>
-                <p className="text-[13px] text-muted-foreground mt-2">Your matches are still here — clear the filters to see them all.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Your matches are still here, clear the filters to see them all.</p>
                 <button
                   type="button"
                   onClick={() => { setFilter("recommended"); setLocationMode("all"); setMatchSearch(""); }}
@@ -527,13 +528,16 @@ export default function MatchesPage() {
           <ul className="divide-y divide-border">
             {filtered.map(({ job, evaluation }) => {
               const score = careerFitScore(evaluation);
-              const chip = fitChip(score);
+              const band = fitBand(score);
+              const matchedKw = Array.isArray(evaluation?.keyword_matches) ? evaluation.keyword_matches.length : 0;
+              const gapsKw = Array.isArray(evaluation?.gaps) ? evaluation.gaps.length : 0;
+              const totalKw = matchedKw + gapsKw;
               const isSelected = selected.has(evaluation.id);
               return (
                 <li
                   key={job.id}
                   className={cn(
-                    "group grid grid-cols-[auto_88px_1fr_auto_auto] items-center gap-x-5 px-5 py-4 transition-colors",
+                    "group grid grid-cols-[auto_150px_1fr_auto_auto] items-center gap-x-5 px-5 py-4 transition-colors",
                     isSelected ? "bg-primary/[0.04]" : "hover:bg-muted/40",
                   )}
                 >
@@ -546,16 +550,19 @@ export default function MatchesPage() {
                     className="h-4 w-4 rounded border-border accent-primary"
                   />
 
-                  {/* Fit */}
+                  {/* Fit: words first, number secondary */}
                   <div className="space-y-1.5">
-                    <div className="text-[20px] font-semibold tabular-nums text-foreground leading-none">{score}<span className="text-[11px] font-normal text-muted-foreground ml-0.5">%</span></div>
+                    <div className={cn("text-[13px] font-medium leading-tight", band.tone)}>
+                      {band.label}
+                    </div>
                     <div className="h-1 overflow-hidden rounded-full bg-muted">
                       <div className="h-full rounded-full bg-primary" style={{ width: `${score}%` }} />
                     </div>
-                    <div className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap", chip.tone)}>
-                      {chip.label.split(" ")[0]} {chip.label.split(" ")[1]}
+                    <div className="text-[12px] text-muted-foreground tabular-nums">
+                      {score}%{totalKw > 0 ? ` , ${matchedKw} of ${totalKw} keywords` : ""}
                     </div>
                   </div>
+
 
                   {/* Role */}
                   <div className="min-w-0">
@@ -625,7 +632,7 @@ export default function MatchesPage() {
       </div>
 
 
-      {/* Batch bar — appears only when something is selected */}
+      {/* Batch bar, appears only when something is selected */}
       {selected.size > 0 && (
         <div className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2">
           <div className="flex items-center gap-3 rounded-full border border-border bg-background px-5 py-3 shadow-lg">

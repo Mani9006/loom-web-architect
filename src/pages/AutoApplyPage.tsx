@@ -464,7 +464,7 @@ export default function AutoApplyPage() {
   // Real pipeline (same flow as JobApplyButton): career-ops-one-click prepares
   // the tailored packet and queues supported portals. Queueing is NOT a
   // verified submission, so we never write job_applications status='applied'
-  // here — the worker records the receipt after it actually submits.
+  // here, the worker records the receipt after it actually submits.
   const handleAutoApply = async (job: MatchedJob) => {
     if (!user) return;
     if (!hasAutoApply && !isOwnerOrAdmin) {
@@ -505,12 +505,12 @@ export default function AutoApplyPage() {
       if (response.ok) {
         const result = await response.json();
         // A packet/draft now exists for this job, so it leaves the
-        // "available" list — but nothing is claimed as submitted.
+        // "available" list, but nothing is claimed as submitted.
         setMatchedJobs((prev) => prev.filter((j) => j.id !== job.id));
 
         if (result.status === "queued") {
           toast({
-            title: "Application queued — the agent will submit it",
+            title: "Application queued, the agent will submit it",
             description: `ResumePreps prepared the tailored packet and queued the ${job.company} application.`,
           });
         } else {
@@ -523,7 +523,7 @@ export default function AutoApplyPage() {
         if (result.draft_id) {
           navigate(`/applications/${result.draft_id}`);
         } else if (result.needs_user_action && result.direct_apply_url) {
-          // Portal can't be queued — honest manual path (same as
+          // Portal can't be queued, honest manual path (same as
           // JobApplyButton's handleManualApply).
           window.open(result.direct_apply_url, "_blank", "noopener,noreferrer");
         }
@@ -625,7 +625,7 @@ export default function AutoApplyPage() {
                 <Link to="/pricing" className="flex-1">
                   <Button className="w-full bg-amber-600 hover:bg-amber-700 text-white" size="lg">
                     <Crown className="w-4 h-4 mr-2" />
-                    Choose Autopilot — $99/mo
+                    Choose Autopilot, $99/mo
                   </Button>
                 </Link>
               </div>
@@ -869,7 +869,7 @@ export default function AutoApplyPage() {
                       {skill} <XCircle className="w-3 h-3" />
                     </Badge>
                   ))}
-                  {(profile.skills || []).length === 0 && <p className="text-xs text-muted-foreground">No skills added yet — type to search or add custom skills</p>}
+                  {(profile.skills || []).length === 0 && <p className="text-xs text-muted-foreground">No skills added yet, type to search or add custom skills</p>}
                 </div>
                 {/* Quick add popular skills */}
                 {(profile.skills || []).length < 5 && (

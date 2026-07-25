@@ -257,7 +257,7 @@ export function ResumePreview({ data, isGenerating }: ResumePreviewProps) {
                       <div key={project.id}>
                         <div className="flex justify-between items-baseline">
                           <span className="font-bold" style={{ fontSize: "10pt" }}>{project.title}</span>
-                          {project.date && <span className="italic text-sm">{project.organization && `${project.organization} — `}{project.date}</span>}
+                          {project.date && <span className="italic text-sm">{project.organization && `${project.organization}, `}{project.date}</span>}
                         </div>
                         {project.bullets.length > 0 && (
                           <ul className="mt-1 ml-6 space-y-1 list-disc" style={{ fontSize: "10pt" }}>

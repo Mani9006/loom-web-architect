@@ -137,7 +137,7 @@ export function formatBullets(responsibilities: string | string[]): string[] {
     .filter(Boolean);
 }
 
-const BULLET_PREFIX = /^[\s\u000c]*(?:[•‣◦⁃∙▪▫●○■□◆\uF0B7]|[-–—*])\s*/u;
+const BULLET_PREFIX = /^[\s\u000c]*(?:[•‣◦⁃∙▪▫●○■□◆\uF0B7]|[-–,*])\s*/u;
 
 export function cleanBulletText(value: unknown): string {
   if (typeof value !== "string") return "";

@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
         // Deduplicate state updates. supabase fires TOKEN_REFRESHED on every
-        // tab visibility change with a freshly-allocated session object —
+        // tab visibility change with a freshly-allocated session object ,
         // if we naively setSession()/setUser() each time, downstream consumers
         // that depend on session/user identity (useEffect deps, react-query
         // keys) see "changes" and re-run, which is exactly what was causing
@@ -83,10 +83,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Only refetch roles when this is genuinely a *new* user signing in.
         // Supabase v2 sometimes re-fires SIGNED_IN on session re-validation
         // (tab visibility change, focus, manual getSession call) with the
-        // SAME user — refetching there flips `rolesReady` to false, which
+        // SAME user, refetching there flips `rolesReady` to false, which
         // flips `loading` to true, which makes ProtectedRoute swap to a
         // spinner. That spinner unmounts every page below it, blowing away
-        // dialog state, scroll position, in-progress forms, etc. — the
+        // dialog state, scroll position, in-progress forms, etc., the
         // "pages disappear when I switch apps" symptom.
         if (event === "SIGNED_IN" && newSession?.user &&
             fetchedRolesForUserRef.current !== newSession.user.id) {

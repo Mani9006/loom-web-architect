@@ -1,5 +1,5 @@
 /**
- * apply-progress-core — pure, component-free status derivation for
+ * apply-progress-core, pure, component-free status derivation for
  * ApplyProgressModal (mirrors how tailoring-report-core.ts is shared).
  * Kept separate so the modal file only exports components (react-refresh)
  * and the logic stays unit-testable.
@@ -12,10 +12,10 @@ export interface ApplyProgressJob {
 }
 
 export type ApplyStep =
-  | "tailoring"      // no draft yet — the tailor is rewriting the résumé
-  | "applying"       // queued/running — the worker is on the employer's form
+  | "tailoring"      // no draft yet, the tailor is rewriting the résumé
+  | "applying"       // queued/running, the worker is on the employer's form
   | "applied"        // ✅ receipt confirmed
-  | "needs_you"      // 🟠 failed — one answer/input is missing
+  | "needs_you"      // 🟠 failed, one answer/input is missing
   | "couldnt_apply"  // 🔴 skipped/blocked or the tailor itself failed
   | "ready";         // ✓ prepared, waiting for review (review-mode terminal)
 
@@ -85,14 +85,14 @@ export function deriveApplyStep(
     return {
       step: "needs_you",
       terminal: true,
-      reason: shortReason(draft.error_message ?? task?.error_message, "One answer is missing — open it to finish."),
+      reason: shortReason(draft.error_message ?? task?.error_message, "One answer is missing, open it to finish."),
       draftId: draft.id,
       submittedAt: null,
     };
   }
   if (draft.status === "skipped") {
-    return { step: "couldnt_apply", terminal: true, reason: shortReason(draft.error_message, "We held this one back — open it to see why."), draftId: draft.id, submittedAt: null };
+    return { step: "couldnt_apply", terminal: true, reason: shortReason(draft.error_message, "We held this one back, open it to see why."), draftId: draft.id, submittedAt: null };
   }
-  // draft / ready — prepared but not queued (review mode): terminal for this run.
+  // draft / ready, prepared but not queued (review mode): terminal for this run.
   return { step: "ready", terminal: true, reason: null, draftId: draft.id, submittedAt: null };
 }

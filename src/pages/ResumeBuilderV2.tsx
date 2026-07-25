@@ -1,10 +1,10 @@
 /**
- * Resume Builder v2 — full redesign.
+ * Resume Builder v2, full redesign.
  *
  * Visual model:
  *   - Top bar:    minimal (title input + save status + export + tailor toggle).
  *   - Editor:     left column, vertically stacked section accordions. No
- *                 tabs to flip through — everything's there, scroll to find
+ *                 tabs to flip through, everything's there, scroll to find
  *                 what you want. Click a section header to collapse/expand.
  *   - Preview:    right column, the resume rendered on a "paper" card
  *                 floating on an off-white desk. Visible by default.
@@ -12,7 +12,7 @@
  *                 live ATS score breakdown.
  *
  * The preview updates on every keystroke via the Zustand store (single source
- * of truth). Editor and preview share no parent state — just the store.
+ * of truth). Editor and preview share no parent state, just the store.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -211,7 +211,7 @@ export default function ResumeBuilderV2() {
     if (!user) throw new Error("Sign in before creating a tailored version.");
 
     const sourceTitle = resumeName.trim() || "Untitled resume";
-    const tailoredTitle = `${sourceTitle.replace(/\s+— tailored$/i, "")} — tailored`;
+    const tailoredTitle = `${sourceTitle.replace(/\s+, tailored$/i, "")}, tailored`;
     const tailoredExtras = {
       document_role: "tailored_draft",
       source_resume_id: resumeId ?? null,
@@ -586,7 +586,7 @@ function FirstStepHint({ resume }: { resume: ResumeJSON }) {
       <div className="flex items-start gap-2">
         <EyeOff className="size-4 mt-0.5 shrink-0" />
         <div>
-          <span className="font-medium text-rp-ink">Fresh start — fill in Header first.</span>{" "}
+          <span className="font-medium text-rp-ink">Fresh start, fill in Header first.</span>{" "}
           <span>Click the <strong>Header</strong> section above and add your name + email. The preview on the right updates as you type.</span>
         </div>
       </div>

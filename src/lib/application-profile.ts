@@ -1,7 +1,7 @@
 /**
  * Pure helpers for the Settings "Application answers" card.
  *
- * Storage contract: profiles.job_preferences.applypass — `profile` keys mirror
+ * Storage contract: profiles.job_preferences.applypass, `profile` keys mirror
  * exactly what supabase/functions/career-ops-submit reads (~L174-196):
  * fullName/email/phone/location/currentTitle/currentCompany/yearsExperience/
  * linkedinUrl/portfolioUrl/expectedSalary/workAuthorization/requiresSponsorship/

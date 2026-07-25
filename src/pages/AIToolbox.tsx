@@ -91,7 +91,7 @@ export default function AIToolbox() {
       );
 
       // Keep the HTTP status in the message so the catch below can map
-      // 412/429 to actionable copy — a bare "Failed" defeated that mapping.
+      // 412/429 to actionable copy, a bare "Failed" defeated that mapping.
       if (!response.ok) throw new Error(`Failed (${response.status})`);
 
       const reader = response.body?.getReader();
@@ -124,7 +124,7 @@ export default function AIToolbox() {
       const status = e instanceof FunctionsHttpError ? e.context.status : undefined;
       const msg = e instanceof Error ? e.message : "Failed to generate content";
       toast({ title: "Error", description: status === 412 || msg.includes("412")
-        ? "Upload or build a résumé first — we use it to ground the writing."
+        ? "Upload or build a résumé first, we use it to ground the writing."
         : status === 429 || msg.includes("429")
         ? "Daily cap hit. Upgrade for more."
         : "Failed to generate content", variant: "destructive" });

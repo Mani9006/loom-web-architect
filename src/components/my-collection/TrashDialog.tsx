@@ -26,7 +26,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   sessionId: string;
-  /** Called when something is restored — parent should reload its board. */
+  /** Called when something is restored, parent should reload its board. */
   onRestored: () => void;
 }
 

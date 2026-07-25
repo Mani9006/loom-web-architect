@@ -297,7 +297,7 @@ export default function MarketDominationMap() {
           <Map className="w-5 h-5 text-accent" /> Market Domination Map
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Competitive positioning strategy — moving ResumePreps to top-tier market leadership.
+          Competitive positioning strategy, moving ResumePreps to top-tier market leadership.
         </p>
       </div>
 

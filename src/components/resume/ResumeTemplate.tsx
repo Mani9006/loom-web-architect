@@ -89,7 +89,7 @@ function buildTitleAccentColor(templateId: string): string {
   }
 }
 
-// Shared bullet list style — ensures consistent rendering across all sections
+// Shared bullet list style, ensures consistent rendering across all sections
 const bulletListStyle: React.CSSProperties = {
   margin: `${SPACING.bulletListMarginTop} 0 0 ${SPACING.bulletIndent}`,
   padding: 0,
@@ -111,7 +111,7 @@ const rightMetaStyle: React.CSSProperties = {
   marginLeft: "8pt",
 };
 
-// Hyperlinked title style — looks identical to normal bold text for ATS/print,
+// Hyperlinked title style, looks identical to normal bold text for ATS/print,
 // but is a real <a> tag so PDF/screen readers can follow the link
 const linkedTitleStyle: React.CSSProperties = {
   color: "#000",

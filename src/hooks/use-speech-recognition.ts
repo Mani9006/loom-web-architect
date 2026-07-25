@@ -59,7 +59,7 @@ export function useSpeechRecognition({
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
   // Keep the latest callbacks in refs so the setup effect below doesn't need
-  // them as dependencies — callers frequently pass inline arrow functions,
+  // them as dependencies, callers frequently pass inline arrow functions,
   // which would otherwise get a new identity every render and tear down/
   // recreate the SpeechRecognition instance (killing the mic) mid-session.
   const onResultRef = useRef(onResult);

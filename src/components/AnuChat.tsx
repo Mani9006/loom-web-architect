@@ -16,7 +16,7 @@ interface Props {
 
 const INTRO: Msg = {
   role: "assistant",
-  content: "Hi, I'm ANU. Ask me anything about ResumePreps — what a screen does, how to get started, tips for writing a better résumé. I can't take actions for you, but I'll point you to the right button.",
+  content: "Hi, I'm ANU. Ask me anything about ResumePreps, what a screen does, how to get started, tips for writing a better résumé. I can't take actions for you, but I'll point you to the right button.",
 };
 
 export default function AnuChat({ open, onClose }: Props) {
@@ -56,14 +56,14 @@ export default function AnuChat({ open, onClose }: Props) {
         body: { messages: next.filter((m) => m.role !== "assistant" || m !== INTRO) },
       });
       if (error) throw error;
-      const reply = (data as { reply: string }).reply ?? "I couldn't reach my brain right now — try again in a moment.";
+      const reply = (data as { reply: string }).reply ?? "I couldn't reach my brain right now, try again in a moment.";
       setMessages([...next, { role: "assistant", content: reply }]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Something went wrong.";
       setMessages([...next, {
         role: "assistant",
         content: msg.includes("402")
-          ? "Your account looks inactive — check with the owner."
+          ? "Your account looks inactive, check with the owner."
           : "I couldn't get through. Try again in a second, or click Feedback if this keeps happening.",
       }]);
     } finally {

@@ -98,7 +98,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     //   1. session's master_resume_id (if explicitly set)
     //   2. the user's most recently updated resume (fallback so users don't
     //      have to pre-configure anything)
-    //   3. nothing — tell them to create one in Resume Builder
+    //   3. nothing, tell them to create one in Resume Builder
     const { data: sessRow } = await (supabase as any)
       .from("mc_sessions")
       .select("master_resume_id")
@@ -109,7 +109,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
     // Tier 1: session's pinned master resume.
     // The Resume Builder stores resumes as separate JSON columns (personal_info,
-    // summary, experience, education, ...), not a single content field — so we
+    // summary, experience, education, ...), not a single content field, so we
     // SELECT * and stitch them with resumeRowToMarkdown.
     if (sessRow?.master_resume_id) {
       const { data: res } = await (supabase as any)
@@ -189,7 +189,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       });
       void aiJobId;
 
-      // Re-check auth rather than reusing the check above — tailoring can
+      // Re-check auth rather than reusing the check above, tailoring can
       // take up to 6 minutes, long enough for the session to expire.
       const { data: freshUserData } = await supabase.auth.getUser();
       if (!freshUserData?.user) {
@@ -202,7 +202,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
           user_id: freshUserData.user.id,
           session_id: sessionId,
           source_job_id: null,
-          name: `${job.company} — ${job.job_title}`,
+          name: `${job.company}, ${job.job_title}`,
           cv_md: result,
         })
         .select("id")
@@ -221,7 +221,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       toast({ title: "Tailored resume ready", description: "Open it in the Resumes tab." });
     } catch (e) {
       // The user switched away mid-tailor (runOnLocalWorker was aborted on
-      // unmount) — not a real failure, so stay silent rather than toast.
+      // unmount), not a real failure, so stay silent rather than toast.
       if (isJobCancelled(e)) return;
       const msg = (e as Error).message || String(e);
       toast({ title: "Tailoring failed", description: msg, variant: "destructive" });
@@ -352,7 +352,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       <>
         <Card className="p-8 text-center border-dashed">
           <p className="text-sm text-muted-foreground mb-4">
-            No jobs on the board yet. Save some from the <strong>Discover</strong> tab — or add
+            No jobs on the board yet. Save some from the <strong>Discover</strong> tab, or add
             one manually if the scanner hasn't found matches yet.
           </p>
           <Button onClick={() => setAddOpen(true)}>

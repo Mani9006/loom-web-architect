@@ -413,7 +413,7 @@ function scoreSkills(data: ResumeJSON): ATSSectionScore {
     issues.push({ id: "sk-few", section: "Skills", severity: "warning", title: `Only ${allSkills.length} skills listed`, description: "Most competitive resumes list 10-20 relevant skills. Fewer skills means fewer keyword matches with job descriptions." });
     score += 2;
   } else if (allSkills.length < 8) {
-    issues.push({ id: "sk-more", section: "Skills", severity: "suggestion", title: `${allSkills.length} skills — could add more`, description: "You have a decent start. Adding 5-10 more relevant skills will significantly improve ATS match rates." });
+    issues.push({ id: "sk-more", section: "Skills", severity: "suggestion", title: `${allSkills.length} skills, could add more`, description: "You have a decent start. Adding 5-10 more relevant skills will significantly improve ATS match rates." });
     score += 4;
   } else if (allSkills.length < 12) {
     score += 6;
@@ -538,7 +538,7 @@ function scoreFormatting(data: ResumeJSON): ATSSectionScore {
     score += 1;
   }
 
-  // Pagination/format risk — same estimator the server scorer (ats-score-v2)
+  // Pagination/format risk, same estimator the server scorer (ats-score-v2)
   // uses, so client preview and server score never contradict each other.
   // Surfaced as a format issue only; no score penalty beyond the above.
   const pagination = estimatePaginationRisk(data);
@@ -902,7 +902,7 @@ CRITICAL RULES:
 8. Maintain the original meaning and scope of each bullet point
 9. Do NOT add "resulting in X% improvement" or "saving $X" unless those numbers exist in the original
 
-Return ONLY a JSON object of the shape {"experience": [...]} — an "experience" key holding an array of experience objects with "role", "company_or_client", and "bullets" fields. Preserve the same number of roles and similar bullet counts.`;
+Return ONLY a JSON object of the shape {"experience": [...]}, an "experience" key holding an array of experience objects with "role", "company_or_client", and "bullets" fields. Preserve the same number of roles and similar bullet counts.`;
 
     case "Skills":
       return `You are an ATS-optimization expert. The skills section has these issues.

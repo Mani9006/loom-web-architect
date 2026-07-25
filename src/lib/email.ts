@@ -21,7 +21,7 @@ interface SendEmailParams {
  * Sends a transactional email via the send-email edge function.
  *
  * Auth emails (verify, reset, OTP) are automatically handled by the
- * Supabase Auth hook — this function is for other transactional emails
+ * Supabase Auth hook, this function is for other transactional emails
  * triggered by app events (welcome, account changes, subscription, billing).
  */
 export async function sendEmail({ type, to, data }: SendEmailParams): Promise<{ success: boolean; error?: string }> {

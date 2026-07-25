@@ -1,5 +1,5 @@
 /**
- * ApplyProgressModal — Tsenta-style live "applying" animation, in our own
+ * ApplyProgressModal, Tsenta-style live "applying" animation, in our own
  * theme. When the user clicks Apply / Apply All, one row per job (up to 5,
  * parallel) walks a stepper: Tailoring résumé → Applying → result.
  *
@@ -7,11 +7,11 @@
  *   GREEN highlight when the tailoring report exists; otherwise shimmering
  *   skeleton lines + a typewriter status degrade gracefully.
  * - While applying: pulse + "Filling the application…" (+ last worker log).
- * - Result: ✅ Applied · <when> / 🟠 Needs you — <reason> / 🔴 Couldn't
- *   apply — <reason> / ✓ Ready for review (review-mode terminal).
+ * - Result: ✅ Applied · <when> / 🟠 Needs you, <reason> / 🔴 Couldn't
+ *   apply, <reason> / ✓ Ready for review (review-mode terminal).
  *
  * Self-contained: polls draft_applications + applypass_tasks while open
- * (Realtime on AgentPage keeps flowing too — no backend changes) and lazily
+ * (Realtime on AgentPage keeps flowing too, no backend changes) and lazily
  * fetches career-ops-tailor-report once per draft for the green lines.
  * Status logic lives in ./apply-progress-core (unit-tested).
  */
@@ -78,7 +78,7 @@ function ChangesPreview({ changes }: { changes: TailoringChange[] }) {
   return (
     <div className="border border-emerald-500/25 bg-emerald-500/[0.04] p-3" aria-label="Résumé edits for this job">
       <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-        <FileText className="h-3 w-3" /> Editing your résumé — changes in green
+        <FileText className="h-3 w-3" /> Editing your résumé, changes in green
       </p>
       <ul className="space-y-1.5">
         {lines.map((change, i) => (
@@ -139,21 +139,21 @@ function ResultLine({ info }: { info: ApplyStepInfo }) {
   if (info.step === "needs_you") {
     return (
       <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-medium text-orange-600 dark:text-orange-400">
-        🟠 Needs you — {info.reason}
+        🟠 Needs you, {info.reason}
       </motion.p>
     );
   }
   if (info.step === "couldnt_apply") {
     return (
       <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-medium text-rose-600 dark:text-rose-400">
-        🔴 Couldn't apply — {info.reason}
+        🔴 Couldn't apply, {info.reason}
       </motion.p>
     );
   }
   if (info.step === "ready") {
     return (
       <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
-        ✓ Résumé tailored — ready for your review
+        ✓ Résumé tailored, ready for your review
       </motion.p>
     );
   }
@@ -299,10 +299,10 @@ export default function ApplyProgressModal({
       <DialogContent className="max-w-2xl gap-0 overflow-hidden rounded-none border-rp-rule bg-rp-canvas p-0 [&>button]:hidden">
         <div className="border-b border-rp-rule px-5 py-4">
           <DialogTitle className="text-base font-semibold text-rp-ink">
-            {allDone ? "All done — receipts below" : `Applying to ${jobs.length} job${jobs.length === 1 ? "" : "s"}…`}
+            {allDone ? "All done, receipts below" : `Applying to ${jobs.length} job${jobs.length === 1 ? "" : "s"}…`}
           </DialogTitle>
           <DialogDescription className="mt-0.5 text-xs text-rp-ink-2">
-            {doneCount} of {jobs.length} finished{!allDone ? " — you can watch each step live" : ""}
+            {doneCount} of {jobs.length} finished{!allDone ? ", you can watch each step live" : ""}
           </DialogDescription>
         </div>
 
@@ -370,7 +370,7 @@ export default function ApplyProgressModal({
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
                       </span>
                       <p className="text-[12px] text-rp-ink-2">
-                        {taskRunning ? "Filling the application…" : "In line — submission starts shortly."}
+                        {taskRunning ? "Filling the application…" : "In line, submission starts shortly."}
                         {taskRunning && logLine && <span className="text-rp-ink-3"> {shortReason(logLine, "")}</span>}
                       </p>
                     </div>
@@ -390,7 +390,7 @@ export default function ApplyProgressModal({
           <p className="text-[11px] text-rp-ink-3">
             {allDone
               ? closingIn !== null ? `Closing in ${closingIn}s…` : "Closing…"
-              : "Live — updates every few seconds"}
+              : "Live, updates every few seconds"}
           </p>
           <Button size="sm" variant={allDone ? "default" : "outline"} onClick={onClose}>
             {allDone ? "Done" : "Close"}

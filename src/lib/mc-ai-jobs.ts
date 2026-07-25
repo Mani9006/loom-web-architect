@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// mc-ai-jobs.ts — frontend helper for the local-Claude job queue.
+// mc-ai-jobs.ts, frontend helper for the local-Claude job queue.
 //
 // The website never calls Anthropic API directly. Instead it inserts a row
 // into mc_ai_jobs (Supabase). The user's Mac mini runs a worker that picks
@@ -20,7 +20,7 @@ export type JobKind =
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "canceled";
 
-// We deliberately exclude opus from the supported set — Sonnet 4.6 is the
+// We deliberately exclude opus from the supported set, Sonnet 4.6 is the
 // cap for cost reasons. Haiku 4.5 is the default for cheap operations.
 export type JobModel = "haiku-4-5" | "sonnet-4-6";
 
@@ -29,15 +29,15 @@ export type JobModel = "haiku-4-5" | "sonnet-4-6";
  * heavy synthesis (full-document tailoring, multi-step job search).
  * Haiku = everything else (single-line rewrites, classification, scoring,
  * company research, simple summarization). This is wired so the
- * frontend doesn't have to think about model choice — the queue helper
+ * frontend doesn't have to think about model choice, the queue helper
  * applies a sensible default per JobKind.
  */
 const DEFAULT_MODEL_FOR_KIND: Record<JobKind, JobModel> = {
-  tailor: "sonnet-4-6",          // outputs a full resume — complex
-  score_job: "haiku-4-5",        // single fit score — cheap
-  classify_email: "haiku-4-5",   // categorize one email — cheap
-  rewrite_line: "haiku-4-5",     // tighten one bullet — cheap
-  company_research: "haiku-4-5", // produce a brief — cheap
+  tailor: "sonnet-4-6",          // outputs a full resume, complex
+  score_job: "haiku-4-5",        // single fit score, cheap
+  classify_email: "haiku-4-5",   // categorize one email, cheap
+  rewrite_line: "haiku-4-5",     // tighten one bullet, cheap
+  company_research: "haiku-4-5", // produce a brief, cheap
   test: "haiku-4-5",
   other: "sonnet-4-6",           // catchall: assume non-trivial
 };
@@ -90,7 +90,7 @@ export interface EnqueueResult {
 }
 
 /**
- * Insert a job into the queue. Returns the jobId — the worker on the user's
+ * Insert a job into the queue. Returns the jobId, the worker on the user's
  * Mac will pick it up within ~3 seconds.
  */
 export async function enqueueJob(args: EnqueueArgs): Promise<EnqueueResult> {
@@ -143,7 +143,7 @@ export async function waitForJob(
   const initial = await fetchJob(jobId);
   if (!initial) throw new Error("Job not found");
   // Abort events aren't replayed, so a signal that fired while the fetch
-  // above was in flight would otherwise go unnoticed — re-check here,
+  // above was in flight would otherwise go unnoticed, re-check here,
   // before subscribing, rather than relying solely on the listener below.
   if (opts.signal?.aborted) throw new Error("Cancelled");
   opts.onProgress?.(initial.status);
@@ -248,7 +248,7 @@ export async function runOnLocalWorker(
  * Converts a row from the `resumes` table (Resume Builder schema) into a
  * single markdown string the AI tailor can read.
  *
- * The `resumes` table doesn't have one big "content" column — it stores the
+ * The `resumes` table doesn't have one big "content" column, it stores the
  * resume as a set of JSON columns: personal_info, summary, experience,
  * education, skills, projects, certifications, languages, section_order.
  * This helper stitches them back into well-formed markdown.
@@ -269,7 +269,7 @@ export function resumeRowToMarkdown(row: any): string {
   if (Array.isArray(row.experience) && row.experience.length) {
     parts.push("## Experience");
     for (const e of row.experience) {
-      const head = `**${e.role ?? ""}**${e.company_or_client ? ` — ${e.company_or_client}` : ""}`;
+      const head = `**${e.role ?? ""}**${e.company_or_client ? `, ${e.company_or_client}` : ""}`;
       const datesParts = [e.start_date, e.end_date].filter(Boolean);
       const meta = [datesParts.join(" – "), e.location].filter(Boolean).join(" · ");
       parts.push(`${head}${meta ? `  \n${meta}` : ""}`);
@@ -282,7 +282,7 @@ export function resumeRowToMarkdown(row: any): string {
   if (Array.isArray(row.education) && row.education.length) {
     parts.push("## Education");
     for (const ed of row.education) {
-      const head = `**${ed.degree ?? ""}${ed.field ? ` in ${ed.field}` : ""}**${ed.institution ? ` — ${ed.institution}` : ""}`;
+      const head = `**${ed.degree ?? ""}${ed.field ? ` in ${ed.field}` : ""}**${ed.institution ? `, ${ed.institution}` : ""}`;
       const meta = [ed.graduation_date, ed.location, ed.gpa ? `GPA ${ed.gpa}` : ""].filter(Boolean).join(" · ");
       parts.push(`${head}${meta ? `  \n${meta}` : ""}`);
     }
@@ -301,7 +301,7 @@ export function resumeRowToMarkdown(row: any): string {
   if (Array.isArray(row.projects) && row.projects.length) {
     parts.push("## Projects");
     for (const p of row.projects) {
-      const head = `**${p.title ?? ""}**${p.organization ? ` — ${p.organization}` : ""}${p.date ? ` (${p.date})` : ""}`;
+      const head = `**${p.title ?? ""}**${p.organization ? `, ${p.organization}` : ""}${p.date ? ` (${p.date})` : ""}`;
       parts.push(head);
       if (Array.isArray(p.bullets)) for (const b of p.bullets) parts.push(`- ${b}`);
     }
@@ -311,7 +311,7 @@ export function resumeRowToMarkdown(row: any): string {
     parts.push("## Certifications");
     for (const c of row.certifications) {
       parts.push(
-        `- ${c.name ?? ""}${c.issuer ? ` — ${c.issuer}` : ""}${c.date ? ` (${c.date})` : ""}`,
+        `- ${c.name ?? ""}${c.issuer ? `, ${c.issuer}` : ""}${c.date ? ` (${c.date})` : ""}`,
       );
     }
   }
