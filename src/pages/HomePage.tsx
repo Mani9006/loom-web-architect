@@ -382,38 +382,47 @@ export default function HomePage() {
               </dl>
             </section>
 
-            {/* 03 / Workspace */}
-            <section className="col-span-12 pt-8 space-y-6">
+            {/* 03 / Workspace — hairline row, not a grid of boxes */}
+            <section className="col-span-12 pt-12 space-y-6">
               <SectionLabel n="03" title="Workspace" trailing="Quick access modules" />
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-px bg-rp-rule border border-rp-rule">
-                {workspace.map((w) => (
-                  <button
-                    key={w.path}
-                    onClick={() => navigate(w.path)}
-                    className="bg-rp-canvas p-6 lg:p-8 text-left hover:bg-rp-paper transition-colors group relative"
-                  >
-                    <div
-                      className="text-rp-accent mb-4 opacity-60 group-hover:opacity-100 transition-opacity"
-                      style={{ ...URBAN, fontSize: "22px", lineHeight: 1 }}
+              <ul className="divide-y divide-rp-rule border-t border-rp-rule">
+                {workspace.map((w, i) => (
+                  <li key={w.path}>
+                    <button
+                      onClick={() => navigate(w.path)}
+                      className="w-full grid grid-cols-12 items-center gap-4 py-5 group hover:bg-rp-paper/40 transition-colors text-left px-2 -mx-2"
                     >
-                      {w.glyph}
-                    </div>
-                    <div
-                      className="text-rp-ink mb-1"
-                      style={{ ...URBAN, fontSize: "11.5px", letterSpacing: "0.18em", textTransform: "uppercase", fontWeight: 600 }}
-                    >
-                      {w.label}
-                    </div>
-                    <div className="text-rp-ink-3" style={{ ...EPI, fontSize: "11.5px", fontWeight: 300 }}>
-                      {w.desc}
-                    </div>
-                    <ArrowUpRight
-                      className="w-3.5 h-3.5 absolute top-4 right-4 text-rp-ink-3 opacity-0 group-hover:opacity-100 group-hover:text-rp-accent transition-opacity"
-                      strokeWidth={1.6}
-                    />
-                  </button>
+                      <span
+                        className="col-span-1 text-rp-ink-3 tabular-nums"
+                        style={{ ...MONO, fontSize: "10.5px", letterSpacing: "0.14em" }}
+                      >
+                        {pad2(i + 1)}
+                      </span>
+                      <span
+                        className="col-span-1 text-rp-accent opacity-70 group-hover:opacity-100 transition-opacity"
+                        style={{ ...URBAN, fontSize: "20px", lineHeight: 1 }}
+                      >
+                        {w.glyph}
+                      </span>
+                      <span
+                        className="col-span-4 text-rp-ink group-hover:text-rp-accent transition-colors"
+                        style={{ ...URBAN, fontSize: "17px", fontWeight: 500, letterSpacing: "-0.01em" }}
+                      >
+                        {w.label}
+                      </span>
+                      <span
+                        className="col-span-5 text-rp-ink-2"
+                        style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}
+                      >
+                        {w.desc}
+                      </span>
+                      <span className="col-span-1 text-right">
+                        <ArrowUpRight className="inline w-4 h-4 text-rp-ink-3 group-hover:text-rp-accent group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" strokeWidth={1.5} />
+                      </span>
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </section>
 
             {/* 04 / Recent Activity */}
