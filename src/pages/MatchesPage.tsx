@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+
 import { PageHeader } from "@/components/PageHeader";
 import ApplyProgressModal from "@/components/agent/ApplyProgressModal";
 import type { ApplyProgressJob } from "@/components/agent/apply-progress-core";
