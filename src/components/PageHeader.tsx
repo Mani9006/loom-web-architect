@@ -1,74 +1,64 @@
 /**
  * Shared header for every interior page.
  *
- *   <PageHeader title="Find your next role." status="job-search · live" />
+ * Product-first: small mono crumb, tight title, single-line description,
+ * optional right-aligned action slot. No typewriter effect, no blinking
+ * cursor, no big display font. Density matches the app shell.
  *
- * Renders:
- *   - Top row with date on the left, status badge in mono on the right,
- *     hairline rule underneath.
- *   - Big typed title with the red cursor.
- *   - Optional Inter description paragraph.
- *
- * Keeps the visual cadence of /home and /resume-builder consistent across
- * Job Search, ATS Checker, Cover Letters, Interview Prep, Matches, etc.
+ *   <PageHeader
+ *     title="Matches"
+ *     status="live"
+ *     description="Roles scored against your resume."
+ *     action={<button>New search</button>}
+ *   />
  */
-import { TerminalText } from "@/components/Terminal";
+import { ReactNode } from "react";
 
 export function PageHeader({
   title,
   status,
   description,
-  speed = 80,
-  startDelay = 150,
+  action,
 }: {
   title: string;
   status?: string;
   description?: string;
+  action?: ReactNode;
+  /** kept for backward-compat with existing call sites, ignored */
   speed?: number;
   startDelay?: number;
 }) {
   return (
-    <div className="mb-10">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pb-4 border-b border-rp-rule">
+    <div className="mb-6">
+      <div className="flex items-baseline gap-2 mb-2">
         <span
-          className="text-rp-ink-2"
-          style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
+          className="text-[11px] uppercase tracking-[0.14em] text-rp-ink-3 font-mono"
         >
-          {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+          {status || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}
         </span>
-        {status && (
-          <span
-            className="text-rp-ink-3"
-            style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
+      </div>
+
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1
+            className="text-rp-ink font-semibold tracking-[-0.015em]"
+            style={{ fontSize: "22px", lineHeight: "28px" }}
           >
-            {status}
-          </span>
-        )}
+            {title}
+          </h1>
+          {description && (
+            <p
+              className="text-rp-ink-2 mt-1"
+              style={{ fontSize: "13px", lineHeight: "20px" }}
+            >
+              {description}
+            </p>
+          )}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
 
-      <div className="mt-10 mb-3">
-        <h1
-          className="text-rp-ink"
-          style={{
-            fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-            fontSize: "clamp(36px, 5.5vw, 56px)",
-            lineHeight: 1.04,
-            letterSpacing: "-0.02em",
-            fontWeight: 700,
-          }}
-        >
-          <TerminalText text={title} speed={speed} startDelay={startDelay} />
-        </h1>
-      </div>
-
-      {description && (
-        <p
-          className="text-rp-ink-2 max-w-2xl"
-          style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "16px", lineHeight: 1.6 }}
-        >
-          {description}
-        </p>
-      )}
+      <div className="mt-5 h-px bg-rp-rule" />
     </div>
   );
 }

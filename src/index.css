@@ -1,14 +1,17 @@
-/* ResumePreps editorial design system. Light and dark share the same ink,
- * paper, signal-red, typography, and spacing language. The rendered CV
- * remains a white print surface in both themes.
+/* ResumePreps design system — Product-first (Linear / Vercel language).
+ *
+ * Neutral surfaces, one restrained indigo accent, hairline borders,
+ * tight components, no page-load flourishes. Both themes share the same
+ * spacing grid, radius scale, and type stack. The rendered CV surface
+ * (surface-paper) is always white regardless of theme.
+ *
+ * Existing components read `rp-*` tokens; those names are preserved so
+ * the redesign lands without renaming across dozens of files. Only the
+ * *values* changed. Editorial-era ornaments (grain, dot grid, ambient
+ * halos, red signal ring) are gone.
  */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Urbanist:wght@200;300;400;500;600;700;800&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Epilogue:wght@300;400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -16,119 +19,131 @@
 
 @layer base {
   :root {
-    --background: 45 33% 97%;
-    --foreground: 0 0% 7%;
+    /* Light: paper white, near-black ink, indigo accent */
+    --background: 0 0% 100%;
+    --foreground: 220 15% 8%;
 
-    --card: 45 20% 99%;
-    --card-foreground: 0 0% 7%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 15% 8%;
 
-    --popover: 45 20% 99%;
-    --popover-foreground: 0 0% 7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 15% 8%;
 
-    --primary: 0 0% 7%;
-    --primary-foreground: 45 33% 97%;
+    --primary: 239 84% 60%;             /* #6366F1 indigo */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 40 16% 92%;
-    --secondary-foreground: 0 0% 12%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 220 15% 8%;
 
-    --muted: 40 16% 92%;
-    --muted-foreground: 0 0% 38%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 220 8% 45%;
 
-    --accent: 40 16% 92%;
-    --accent-foreground: 0 0% 10%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 220 15% 8%;
 
-    --destructive: 4 100% 59%;       /* signal red */
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 35 12% 84%;
-    --input: 35 12% 80%;
-    --ring: 4 100% 59%;        /* signal red focus ring */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 239 84% 60%;
 
-    --radius: 0.5rem;          /* tighter, more "tool" */
+    --radius: 0.5rem;
 
-    --sidebar-background: 45 22% 95%;
-    --sidebar-foreground: 0 0% 20%;
-    --sidebar-primary: 0 0% 7%;
-    --sidebar-primary-foreground: 45 33% 97%;
-    --sidebar-accent: 40 16% 90%;
-    --sidebar-accent-foreground: 0 0% 7%;
-    --sidebar-border: 35 12% 84%;
-    --sidebar-ring: 4 100% 59%;
+    --sidebar-background: 0 0% 99%;
+    --sidebar-foreground: 220 10% 30%;
+    --sidebar-primary: 239 84% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 96%;
+    --sidebar-accent-foreground: 220 15% 8%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 239 84% 60%;
 
-    --shadow-glow: 0 0 80px -20px hsl(4 100% 59% / 0.12);
-    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 0% / 0.08);
-    --shadow-card: 0 0 0 1px hsl(0 0% 0% / 0.04), 0 8px 24px -12px hsl(0 0% 0% / 0.16);
-    --shadow-card-hover: 0 0 0 1px hsl(0 0% 0% / 0.08), 0 12px 32px -8px hsl(0 0% 0% / 0.2);
-    --shadow-elevated: 0 24px 64px -16px hsl(0 0% 0% / 0.28);
+    --shadow-glow: 0 0 0 0 transparent;
+    --shadow-subtle: 0 1px 2px 0 hsl(220 15% 8% / 0.04);
+    --shadow-card: 0 1px 2px 0 hsl(220 15% 8% / 0.04);
+    --shadow-card-hover: 0 1px 3px 0 hsl(220 15% 8% / 0.08);
+    --shadow-elevated: 0 8px 24px -8px hsl(220 15% 8% / 0.12);
 
-    --rp-canvas: 45 33% 97%;
-    --rp-paper: 45 20% 99%;
-    --rp-paper-2: 40 16% 92%;
-    --rp-ink: 0 0% 7%;
-    --rp-ink-2: 0 0% 35%;
-    --rp-ink-3: 0 0% 48%;
-    --rp-rule: 35 12% 84%;
-    --rp-rule-2: 32 10% 70%;
-    --rp-accent: 4 100% 59%;
-    --rp-accent-2: 4 100% 67%;
+    /* rp-* tokens (preserved names, product-first values) */
+    --rp-canvas: 0 0% 100%;
+    --rp-paper: 0 0% 99%;
+    --rp-paper-2: 240 5% 96%;
+    --rp-ink: 220 15% 8%;
+    --rp-ink-2: 220 8% 40%;
+    --rp-ink-3: 220 6% 58%;
+    --rp-rule: 220 13% 91%;
+    --rp-rule-2: 220 13% 85%;
+    --rp-accent: 239 84% 60%;           /* indigo */
+    --rp-accent-2: 243 75% 54%;         /* indigo hover */
 
-    --chart-1: 4 100% 59%;     /* signal red */
-    --chart-2: 215 70% 46%;
-    --chart-3: 155 56% 35%;
-    --chart-4: 38 86% 45%;
-    --chart-5: 270 48% 48%;
+    --chart-1: 239 84% 60%;
+    --chart-2: 173 58% 45%;
+    --chart-3: 27 87% 55%;
+    --chart-4: 262 60% 55%;
+    --chart-5: 340 75% 55%;
 
     --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-display: 'Manrope', 'Inter', ui-sans-serif, system-ui, sans-serif;
-    --font-serif: 'EB Garamond', 'Source Serif 4', Georgia, serif;
+    --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-serif: 'Inter', ui-sans-serif, system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   }
 
   .dark {
-    /* Noir & Gold — editorial prestige palette */
-    --background: 0 0% 5%;              /* #0d0d0d */
-    --foreground: 0 0% 98%;
-    --card: 0 0% 10%;                   /* #1a1a1a */
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 43 51% 54%;              /* #c9a84c gold */
-    --primary-foreground: 0 0% 5%;
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 60%;
-    --accent: 43 51% 54%;
-    --accent-foreground: 0 0% 5%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 100% / 0.10;
-    --input: 0 0% 100% / 0.14;
-    --ring: 43 51% 54%;
-    --sidebar-background: 0 0% 5%;
-    --sidebar-foreground: 0 0% 70%;
-    --sidebar-primary: 43 51% 54%;
-    --sidebar-primary-foreground: 0 0% 5%;
-    --sidebar-accent: 0 0% 10%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 100% / 0.10;
-    --shadow-glow: 0 0 80px -20px hsl(43 51% 54% / 0.30);
-    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 0% / 0.6);
-    --shadow-card: 0 0 0 1px hsl(0 0% 100% / 0.06), 0 8px 24px -12px hsl(0 0% 0% / 0.7);
-    --shadow-card-hover: 0 0 0 1px hsl(43 51% 54% / 0.35), 0 16px 40px -12px hsl(0 0% 0% / 0.75);
-    --shadow-elevated: 0 24px 64px -16px hsl(0 0% 0% / 0.8);
+    /* Dark: Linear/Vercel neutral — near-black canvas, faint surfaces */
+    --background: 240 6% 4%;            /* #0A0A0A */
+    --foreground: 0 0% 93%;             /* #EDEDED */
 
-    /* rp-* editorial tokens re-mapped to noir & gold */
-    --rp-canvas: 0 0% 5%;               /* #0d0d0d */
-    --rp-paper: 0 0% 10%;               /* #1a1a1a */
-    --rp-paper-2: 0 0% 14%;
-    --rp-ink: 0 0% 98%;                 /* #fafafa */
-    --rp-ink-2: 0 0% 62%;
-    --rp-ink-3: 0 0% 42%;
-    --rp-rule: 0 0% 100% / 0.10;
-    --rp-rule-2: 0 0% 100% / 0.18;
-    --rp-accent: 43 51% 54%;            /* #c9a84c gold */
-    --rp-accent-2: 42 78% 75%;          /* #f0d78c highlight */
+    --card: 240 5% 7%;                  /* #111113 */
+    --card-foreground: 0 0% 93%;
+
+    --popover: 240 5% 9%;
+    --popover-foreground: 0 0% 93%;
+
+    --primary: 239 84% 67%;             /* slightly brighter indigo on dark */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 5% 10%;
+    --secondary-foreground: 0 0% 93%;
+
+    --muted: 240 5% 10%;
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 240 5% 12%;
+    --accent-foreground: 0 0% 93%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 4% 14%;               /* #232326 hairline */
+    --input: 240 4% 16%;
+    --ring: 239 84% 67%;
+
+    --sidebar-background: 240 6% 4%;
+    --sidebar-foreground: 240 5% 65%;
+    --sidebar-primary: 239 84% 67%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 10%;
+    --sidebar-accent-foreground: 0 0% 93%;
+    --sidebar-border: 240 4% 14%;
+    --sidebar-ring: 239 84% 67%;
+
+    --shadow-glow: 0 0 0 0 transparent;
+    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
+    --shadow-card: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
+    --shadow-card-hover: 0 1px 3px 0 hsl(0 0% 0% / 0.6);
+    --shadow-elevated: 0 8px 24px -8px hsl(0 0% 0% / 0.6);
+
+    --rp-canvas: 240 6% 4%;
+    --rp-paper: 240 5% 7%;
+    --rp-paper-2: 240 5% 10%;
+    --rp-ink: 0 0% 93%;
+    --rp-ink-2: 240 5% 65%;
+    --rp-ink-3: 240 4% 42%;
+    --rp-rule: 240 4% 14%;
+    --rp-rule-2: 240 4% 20%;
+    --rp-accent: 239 84% 67%;
+    --rp-accent-2: 243 75% 60%;
   }
 
   html { color-scheme: light; }
@@ -142,238 +157,130 @@
 
   html {
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    font-feature-settings: "ss01", "cv11";
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
     @apply text-foreground antialiased;
     background-color: hsl(var(--background));
-    background-image:
-      /* Top-right red halo — very subtle, just for warmth */
-      radial-gradient(800px 600px at 92% -10%, hsl(var(--rp-accent) / 0.06), transparent 60%),
-      /* Mid-left cool wash */
-      radial-gradient(700px 500px at -5% 40%, hsl(var(--rp-ink) / 0.025), transparent 55%);
-    background-attachment: fixed;
-    background-repeat: no-repeat;
-    position: relative;
+    font-family: var(--font-sans);
   }
 
-  /* Fine grain noise overlay — gives the canvas a film-photograph feel.
-   * SVG turbulence filter rendered to a data URI, 5% opacity, mix-blend
-   * overlay so it picks up on darker areas without washing the highlights. */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0.5;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
+  #root { position: relative; }
 
-  /* Faint dot grid — 1px dots on a 24px grid at 4% opacity. Sits behind
-   * everything but ahead of the body solid color. */
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background-image: radial-gradient(circle, hsl(var(--rp-ink) / 0.045) 1px, transparent 1.5px);
-    background-size: 28px 28px;
-    background-position: 0 0;
-    mask-image: radial-gradient(ellipse at center, black 30%, transparent 90%);
-    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 90%);
-  }
-
-  /* Make sure app shell content sits above the grain/grid pseudo-layers. */
-  #root { position: relative; z-index: 1; }
-
-  /* Display utility — Manrope, tight tracking. */
-  .font-display {
-    font-family: var(--font-display) !important;
-    letter-spacing: -0.02em;
-  }
-  .font-serif {
-    font-family: var(--font-serif) !important;
-  }
+  .font-display { font-family: var(--font-display) !important; letter-spacing: -0.015em; }
+  .font-serif   { font-family: var(--font-serif) !important; }
+  .font-mono    { font-family: var(--font-mono) !important; }
 }
 
 @layer utilities {
-  /* "Print" surface — pure white card used for the CanonicalTemplate
-   * resume preview. The only thing in the app that should not be dark. */
+  /* Print surface — the resume preview only. Always white. */
   .surface-paper {
     background: #ffffff;
     color: #0b0e14;
   }
 
-  /* Amber accent text */
+  /* Text tone helpers kept for legacy call sites */
   .text-accent-amber { color: hsl(38 92% 50%); }
 
-  /* Shared card surfaces */
+  /* Standard product surface — hairline, subtle, no shadow */
   .surface-card {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    border-radius: var(--radius);
-    box-shadow: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
-    transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
+    border-radius: 10px;
+    transition: border-color 150ms ease;
   }
-  .surface-card:hover {
-    border-color: hsl(var(--rp-rule-2));
-    box-shadow: var(--shadow-card-hover);
-  }
+  .surface-card:hover { border-color: hsl(var(--rp-rule-2)); }
 
-  /* Glass-card alias for legacy call sites */
   .glass-card {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    border-radius: var(--radius);
-    box-shadow: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
-    transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
+    border-radius: 10px;
+    transition: border-color 150ms ease;
   }
-  .glass-card:hover {
-    border-color: hsl(var(--rp-rule-2));
-    box-shadow: var(--shadow-card-hover);
-  }
+  .glass-card:hover { border-color: hsl(var(--rp-rule-2)); }
 
-  /* Nav chrome */
   .liquid-nav {
-    background: hsl(var(--background) / 0.78);
-    backdrop-filter: blur(14px) saturate(1.2);
-    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    background: hsl(var(--background) / 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid hsl(var(--border));
   }
 
-  /* Ink panel — accent button surface */
   .ink-panel {
     background: hsl(var(--rp-accent));
-    color: white;
-    border-radius: var(--radius);
-    box-shadow: 0 8px 24px -12px hsl(4 100% 59% / 0.4);
+    color: hsl(var(--primary-foreground));
+    border-radius: 6px;
   }
 
-  /* Feature tile — dark with hover lift */
   .feature-tile {
     position: relative;
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    border-radius: calc(var(--radius) + 2px);
-    transition: background 200ms ease, transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+    border-radius: 10px;
+    transition: border-color 150ms ease, background 150ms ease;
   }
   .feature-tile:hover {
-    background: hsl(var(--accent));
     border-color: hsl(var(--rp-rule-2));
-    box-shadow: var(--shadow-card-hover);
+    background: hsl(var(--accent));
   }
 
   .glass-surface {
-    @apply bg-card/70 backdrop-blur-xl border border-border;
+    @apply bg-card border border-border;
   }
 
   .bento-card {
-    @apply rounded-lg border border-border bg-card p-6 transition-all duration-300;
-    box-shadow: var(--shadow-card);
+    @apply rounded-[10px] border border-border bg-card p-6;
+    transition: border-color 150ms ease;
   }
-  .bento-card:hover {
-    box-shadow: var(--shadow-card-hover);
-    transform: translateY(-2px);
-  }
+  .bento-card:hover { border-color: hsl(var(--rp-rule-2)); }
 
-  /* Drag-drop zone */
   .dropzone-dark {
     background: hsl(var(--card));
     border: 1.5px dashed hsl(var(--rp-rule-2));
-    border-radius: var(--radius);
-    transition: border-color 200ms ease, background 200ms ease;
+    border-radius: 8px;
+    transition: border-color 150ms ease, background 150ms ease;
   }
   .dropzone-dark:hover,
   .dropzone-dark.dragging {
     border-color: hsl(var(--rp-accent));
-    background: hsl(var(--rp-accent) / 0.04);
+    background: hsl(var(--rp-accent) / 0.05);
   }
 
-  /* ── Terminal cursor — Nothing-style red block ─────────────────────
-   * A solid red rectangle that blinks on/off. Sized to cap-height (≈0.76em)
-   * and aligned just below the baseline so it sits at the same visible
-   * height as capital letters in display Manrope / JetBrains Mono. */
-  .terminal-cursor {
-    display: inline-block;
-    width: 0.5em;
-    height: 0.76em;
-    margin-left: 0.18em;
-    background: hsl(4 100% 59%);
-    vertical-align: -0.02em;
-    animation: cursor-blink 1.3s steps(1) infinite;
-  }
-
-  @keyframes cursor-blink {
-    0%, 49% { opacity: 1; }
-    50%, 100% { opacity: 0; }
-  }
-
-  /* Subtle scanline overlay — used inside terminal-styled panels.
-   * Horizontal 2px stripes at 4% white opacity. */
-  .scanlines {
-    position: relative;
-  }
-  .scanlines::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image: repeating-linear-gradient(
-      0deg,
-      transparent 0px,
-      transparent 2px,
-      hsl(0 0% 100% / 0.025) 2px,
-      hsl(0 0% 100% / 0.025) 3px
-    );
-    mix-blend-mode: overlay;
-  }
-
-  /* Terminal frame — for blocks that should read as a CLI surface */
+  /* Terminal-era classes kept as no-ops so legacy pages don't break */
+  .terminal-cursor { display: none; }
+  .scanlines { position: relative; }
   .terminal-frame {
-    background: hsl(0 0% 6%);
-    border: 1px solid hsl(0 0% 16%);
-    border-radius: 4px;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
     font-family: var(--font-mono);
-    color: hsl(0 0% 92%);
-    box-shadow:
-      inset 0 0 0 1px hsl(0 0% 100% / 0.02),
-      0 16px 40px -16px hsl(0 0% 0% / 0.6);
+    color: hsl(var(--foreground));
   }
 
-  /* Card-open animation — used when content reveals (modals, accordions,
-   * tailor results). Sharper than a normal fade. */
+  /* Motion — keep small, feedback-only */
   @keyframes card-open {
-    0%   { opacity: 0; transform: translateY(8px) scale(0.98); }
-    100% { opacity: 1; transform: translateY(0) scale(1); }
+    0%   { opacity: 0; transform: translateY(4px); }
+    100% { opacity: 1; transform: translateY(0); }
   }
-  .animate-card-open {
-    animation: card-open 0.34s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
+  .animate-card-open { animation: card-open 180ms ease-out forwards; }
 
-  /* Typing-line stagger — for multi-line terminal sequences */
   @keyframes line-in {
-    0%   { opacity: 0; transform: translateX(-4px); }
+    0%   { opacity: 0; transform: translateX(-2px); }
     100% { opacity: 1; transform: translateX(0); }
   }
-  .animate-line-in {
-    animation: line-in 0.22s ease-out forwards;
-  }
+  .animate-line-in { animation: line-in 160ms ease-out forwards; }
 
-  /* Subtle scanline shimmer used by loaders / progress bars */
   @keyframes scanline-shimmer {
     0%, 100% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
   }
 
-  .chat-input-glow {
-    box-shadow: var(--shadow-glow);
-  }
+  .chat-input-glow { box-shadow: 0 0 0 3px hsl(var(--rp-accent) / 0.12); }
 
-  /* Aurora / orb kept as no-ops so legacy pages don't break. */
+  /* Legacy no-ops (safe defaults, old pages call these classes) */
   .aurora { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
   .orb { position: absolute; opacity: 0; pointer-events: none; }
   .mesh-bg { background-image: none; }
@@ -383,21 +290,17 @@
     50% { background-position: 100% 50%; }
   }
   @keyframes aurora-drift {
-    0%, 100% { background-position: 0% 0%, 100% 0%, 50% 100%, 0% 100%; transform: translate3d(0,0,0) scale(1); }
-    33% { background-position: 30% 20%, 70% 10%, 40% 80%, 20% 90%; transform: translate3d(-2%, 1%, 0) scale(1.04); }
-    66% { background-position: 60% 40%, 40% 30%, 60% 60%, 10% 70%; transform: translate3d(1%, -1%, 0) scale(0.98); }
+    0%, 100% { background-position: 0% 0%; transform: none; }
   }
   @keyframes shimmer {
     0%, 100% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
   }
   @keyframes fade-in {
-    from { opacity: 0; transform: translateY(10px); }
+    from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  .animate-fade-in {
-    animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
+  .animate-fade-in { animation: fade-in 180ms ease-out forwards; }
   @keyframes pulse-dot {
     0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
     40% { transform: scale(1); opacity: 1; }
@@ -412,28 +315,21 @@
   .animate-scroll-logos { animation: scroll-logos 30s linear infinite; }
   @keyframes float {
     0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-10px); }
+    50% { transform: translateY(-6px); }
   }
   .animate-float { animation: float 6s ease-in-out infinite; }
   @keyframes slide-up {
-    from { opacity: 0; transform: translateY(20px); }
+    from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  .animate-slide-up {
-    animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
+  .animate-slide-up { animation: slide-up 220ms ease-out forwards; }
   @keyframes count-up {
-    from { opacity: 0; transform: scale(0.5); }
+    from { opacity: 0; transform: scale(0.9); }
     to { opacity: 1; transform: scale(1); }
   }
-  .animate-count-up {
-    animation: count-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
+  .animate-count-up { animation: count-up 220ms ease-out forwards; }
   @keyframes blob {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    25% { transform: translate(20px, -30px) scale(1.1); }
-    50% { transform: translate(-10px, 20px) scale(0.95); }
-    75% { transform: translate(15px, 10px) scale(1.05); }
+    0%, 100% { transform: none; }
   }
-  .animate-blob { animation: blob 8s ease-in-out infinite; }
+  .animate-blob { animation: none; }
 }
