@@ -37,7 +37,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         const [jobsResult, resumesResult] = await Promise.all([
           (supabase as any)
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
           (supabase as any)
@@ -51,13 +51,20 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
+        const rows: { status: string; applied_at: string | null }[] = jobsResult.data ?? [];
         const tally = (s: string) => rows.filter((r) => r.status === s).length;
+        // `status` is a single mutually-exclusive kanban column, so once a
+        // job progresses past "applied" (e.g. to "interview"), tallying the
+        // "applied" status alone undercounts everyone who actually applied.
+        // applied_at is set once, the first time a card moves into
+        // "applied" (see BoardTab.moveTo), so it survives later status
+        // changes and is the right denominator for the response rate below.
+        const everApplied = rows.filter((r) => r.applied_at).length;
 
         setCounts({
           total: rows.length,
           saved: tally("saved"),
-          applied: tally("applied"),
+          applied: everApplied,
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),

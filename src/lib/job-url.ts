@@ -47,6 +47,22 @@ const DIRECT_JOB_PATTERNS = [
 ];
 
 /**
+ * Adds an https:// scheme to a URL that's missing one. Users frequently
+ * paste a URL copied from an address bar without its protocol (e.g.
+ * "stripe.com/jobs/123") — rendered as-is in an <a href>, that resolves as
+ * a relative link on our own domain instead of navigating to the job, so
+ * the "Open application" button silently 404s instead of opening the
+ * posting. Leaves URLs that already have a scheme (including non-http ones)
+ * untouched.
+ */
+export function normalizeUrlScheme(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+/**
  * Checks if a URL appears to be broken, fake, or a placeholder.
  */
 export function looksLikelyBrokenUrl(url: string | null | undefined): boolean {

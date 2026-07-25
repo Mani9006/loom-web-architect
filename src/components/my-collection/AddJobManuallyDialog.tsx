@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeUrlScheme } from "@/lib/job-url";
 
 interface Props {
   open: boolean;
@@ -135,7 +136,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         job_title: jobTitle.trim(),
         company: company.trim(),
         location: location.trim() || null,
-        apply_url: applyUrl.trim() || null,
+        apply_url: applyUrl.trim() ? normalizeUrlScheme(applyUrl) : null,
         jd_md: jdMd.trim() || null,
         status: "saved",
       })
