@@ -513,7 +513,7 @@ export default function MatchesPage() {
             ) : (
               <>
                 <p className="text-[15px] font-semibold text-foreground">Nothing fits these filters.</p>
-                <p className="text-[13px] text-muted-foreground mt-2">Your matches are still here, clear the filters to see them all.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Your matches are still here. Clear the filters to see them all.</p>
                 <button
                   type="button"
                   onClick={() => { setFilter("recommended"); setLocationMode("all"); setMatchSearch(""); }}
