@@ -433,7 +433,7 @@ export default function MatchesPage() {
       </header>
 
       {/* Single bordered container, all list state lives inside */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
         {/* Container header: counts + tabs */}
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3 px-5 py-4 border-b border-border">
           <div className="flex items-baseline gap-6">
