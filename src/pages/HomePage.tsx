@@ -600,8 +600,8 @@ function SectionLabel({ n, title, trailing }: { n: string; title: string; traili
   );
 }
 
-// ─── Stat tile ─────────────────────────────────────────────────────────
-function StatTile({
+// ─── Ledger row (editorial, borderless) ───────────────────────────────
+function LedgerRow({
   label, value, tone, onClick,
 }: {
   label: string;
@@ -616,17 +616,20 @@ function StatTile({
   return (
     <button
       onClick={onClick}
-      className="bg-rp-paper border border-rp-rule p-6 flex flex-col justify-between h-32 text-left hover:border-rp-accent/40 transition-colors group"
+      className="w-full flex items-baseline justify-between py-4 group hover:pl-2 transition-[padding] duration-200"
     >
-      <p className="text-rp-ink-3 uppercase" style={{ ...MONO, fontSize: "10px", letterSpacing: "0.18em" }}>
+      <span
+        className="text-rp-ink-2 group-hover:text-rp-accent transition-colors"
+        style={{ ...URBAN, fontSize: "11.5px", letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 500 }}
+      >
         {label}
-      </p>
-      <p
+      </span>
+      <span
         className={`${color} tabular-nums`}
-        style={{ ...URBAN, fontSize: "40px", lineHeight: 1, fontWeight: 300, letterSpacing: "-0.02em" }}
+        style={{ ...URBAN, fontSize: "34px", lineHeight: 1, fontWeight: 200, letterSpacing: "-0.02em" }}
       >
         {String(value).padStart(2, "0")}
-      </p>
+      </span>
     </button>
   );
 }
