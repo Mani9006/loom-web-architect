@@ -559,7 +559,7 @@ export default function MatchesPage() {
                       <div className="h-full rounded-full bg-primary" style={{ width: `${score}%` }} />
                     </div>
                     <div className="text-[12px] text-muted-foreground tabular-nums">
-                      {score}%{totalKw > 0 ? ` , ${matchedKw} of ${totalKw} keywords` : ""}
+                      {score}%{totalKw > 0 ? `, ${matchedKw} of ${totalKw} keywords` : ""}
                     </div>
                   </div>
 
