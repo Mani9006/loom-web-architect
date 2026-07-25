@@ -341,96 +341,104 @@ export default function ATSCheckerPage() {
     );
   }
 
-  // INPUT FORM VIEW
+  // INPUT FORM VIEW — Editorial
   return (
-    <div className="bg-muted/30 min-h-full">
+    <div className="min-h-full bg-rp-canvas text-rp-ink">
       <ScrollArea className="h-[calc(100vh-68px)]">
-        <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16 space-y-6">
+        <div className="max-w-[1180px] mx-auto px-8 lg:px-12 pt-12 pb-24">
           <PageHeader
             title="Score it."
             status="ats · 6 dimensions"
             description="Deep analysis across formatting, keywords, experience relevance, skills coverage, education, and content quality. Paste your résumé and a job description; we'll tell you exactly what to fix."
           />
 
+          <div className="grid grid-cols-12 gap-10 lg:gap-14 mt-4">
+            {/* Left — inputs, no card boxes */}
+            <div className="col-span-12 lg:col-span-8 space-y-14">
+              <section>
+                <SectionHead n="01" title="Your résumé" required />
+                <div className="mt-6 border border-dashed border-rp-rule-2 p-6 rounded-none">
+                  <DocumentUpload onTextExtracted={handleDocumentExtracted} isLoading={loading} label="Upload résumé (PDF / Word)" />
+                </div>
+                {uploadedFileName && (
+                  <p className="mt-3 text-rp-ink-3" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}>
+                    Loaded: <span className="text-rp-ink">{uploadedFileName}</span>
+                  </p>
+                )}
+                <Textarea
+                  aria-label="Résumé text"
+                  placeholder="Or paste your résumé content here…"
+                  value={resumeText}
+                  onChange={(e) => { setResumeText(e.target.value); setUploadedFileName(null); }}
+                  className="mt-4 min-h-[180px] resize-none border-0 border-b border-rp-rule-2 rounded-none bg-transparent px-0 focus-visible:ring-0 focus-visible:border-rp-accent"
+                />
+              </section>
 
-          {/* Resume Input */}
-          <Card>
-            <CardContent className="p-5 space-y-4">
-              <Label className="text-base font-medium flex items-center gap-2">
-                <FileText className="w-4 h-4" /> Your Resume *
-              </Label>
-
-              <DocumentUpload
-                onTextExtracted={handleDocumentExtracted}
-                isLoading={loading}
-                label="Upload Resume (PDF/Word)"
-              />
-
-              {uploadedFileName && (
-                <p className="text-sm text-muted-foreground">
-                  Loaded: <span className="font-medium">{uploadedFileName}</span>
+              <section>
+                <SectionHead n="02" title="Job description" trailing="Recommended" />
+                <p className="mt-2 text-rp-ink-2 max-w-lg leading-relaxed" style={{ fontFamily: '"Epilogue", sans-serif', fontSize: "13px", fontWeight: 300 }}>
+                  Paste the target posting to get keyword-match analysis and tailored recommendations.
                 </p>
-              )}
+                <Textarea
+                  aria-label="Target job description"
+                  placeholder="Paste the target job description here…"
+                  value={jobDescription}
+                  onChange={(e) => setJobDescription(e.target.value)}
+                  className="mt-4 min-h-[160px] resize-none border-0 border-b border-rp-rule-2 rounded-none bg-transparent px-0 focus-visible:ring-0 focus-visible:border-rp-accent"
+                />
+              </section>
 
-              <Textarea
-                aria-label="Résumé text"
-                placeholder="Or paste your resume content here..."
-                value={resumeText}
-                onChange={(e) => { setResumeText(e.target.value); setUploadedFileName(null); }}
-                className="min-h-[180px] resize-none"
-              />
-            </CardContent>
-          </Card>
+              <button
+                onClick={analyze}
+                disabled={!resumeText.trim() || loading}
+                className={cn(
+                  "group w-full inline-flex items-center justify-center gap-3 py-4 transition-colors",
+                  "bg-rp-accent text-rp-canvas hover:bg-rp-accent-2 disabled:opacity-50 disabled:cursor-not-allowed",
+                )}
+                style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "12px", fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase" }}
+              >
+                {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing across 6 dimensions…</> : <>Analyze ATS compatibility <Target className="w-4 h-4" /></>}
+              </button>
+            </div>
 
-          {/* Job Description */}
-          <Card>
-            <CardContent className="p-5 space-y-4">
-              <Label className="text-base font-medium flex items-center gap-2">
-                <Briefcase className="w-4 h-4" /> Job Description
-                <Badge variant="secondary" className="text-[10px]">Recommended</Badge>
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Paste the job posting to get keyword match analysis and tailored recommendations
-              </p>
-              <Textarea
-                aria-label="Target job description"
-                placeholder="Paste the target job description here..."
-                value={jobDescription}
-                onChange={(e) => setJobDescription(e.target.value)}
-                className="min-h-[140px] resize-none"
-              />
-            </CardContent>
-          </Card>
-
-          {/* Scoring Preview */}
-          <Card className="bg-muted/50">
-            <CardContent className="p-4">
-              <p className="text-xs font-medium text-muted-foreground mb-2">SCORING DIMENSIONS</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {SECTION_CONFIG.map((config) => {
+            {/* Right — sidebar of dimensions */}
+            <aside className="col-span-12 lg:col-span-4">
+              <SectionHead n="—" title="Scoring dimensions" />
+              <ul className="mt-4 divide-y divide-rp-rule border-t border-rp-rule">
+                {SECTION_CONFIG.map((config, i) => {
                   const Icon = config.icon;
                   return (
-                    <div key={config.key} className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Icon className="w-3.5 h-3.5" />
-                      <span>{config.label}</span>
-                      <span className="text-[10px] opacity-50">{config.weight}</span>
-                    </div>
+                    <li key={config.key} className="flex items-center gap-3 py-3">
+                      <span className="text-rp-ink-3 tabular-nums" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.14em" }}>
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <Icon className="w-3.5 h-3.5 text-rp-accent" strokeWidth={1.6} />
+                      <span className="flex-1 text-rp-ink" style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "13.5px", fontWeight: 500 }}>
+                        {config.label}
+                      </span>
+                      <span className="text-rp-ink-3" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}>
+                        {config.weight}
+                      </span>
+                    </li>
                   );
                 })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Analyze Button */}
-          <Button onClick={analyze} disabled={!resumeText.trim() || loading} className="w-full gap-2" size="lg">
-            {loading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing across 6 dimensions...</>
-            ) : (
-              <><Target className="w-4 h-4" /> Analyze ATS Compatibility</>
-            )}
-          </Button>
+              </ul>
+            </aside>
+          </div>
         </div>
       </ScrollArea>
+    </div>
+  );
+}
+
+function SectionHead({ n, title, required, trailing }: { n: string; title: string; required?: boolean; trailing?: string }) {
+  return (
+    <div className="flex items-baseline gap-3 border-b border-rp-rule pb-3">
+      <span className="text-rp-accent tabular-nums" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.14em" }}>{n}</span>
+      <h2 className="text-rp-ink" style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "20px", fontWeight: 400, letterSpacing: "-0.015em" }}>{title}</h2>
+      {required && <span className="text-rp-accent" style={{ fontSize: "12px" }}>*</span>}
+      <span className="flex-1" />
+      {trailing && <span className="text-rp-ink-3" style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "10px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}>{trailing}</span>}
     </div>
   );
 }

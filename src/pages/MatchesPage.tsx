@@ -402,87 +402,84 @@ export default function MatchesPage() {
   }
 
   return (
-    <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-24 space-y-10">
-      <PageHeader
-        title="Jobs that fit you"
-        status="only 50%+ fits"
-        description="Fresh jobs matched to your resume. Press “Prepare application” and we'll tailor your resume for that job — you review it before anything is sent."
-      />
-
-      <div className="-mt-6 flex justify-end">
-        <button
-          type="button"
-          onClick={() => void loadMatches(true)}
-          disabled={refreshing}
-          className="inline-flex h-9 items-center rounded-md border border-border px-3.5 text-[12px] font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-        >
-          {refreshing ? "Checking fresh jobs…" : "Check for new matches"}
-        </button>
-      </div>
-
-      {/* Stat strip */}
-      <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-5 sm:p-6 flex flex-wrap gap-8">
-        <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Matches found</p>
-          <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.total}</div>
-        </div>
-        <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Good fits · 70%+</p>
-          <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.scored}</div>
-        </div>
-        <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Ready to auto-apply</p>
-          <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.top}</div>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          {(["recommended", "strong", "autopilot"] as const).map((k) => (
-            <button
-              key={k}
-              onClick={() => setFilter(k)}
-              className={cn(
-                "h-8 px-3 rounded-md text-[12px] font-medium transition-colors",
-                filter === k
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              {k === "recommended" ? "Recommended" : k === "strong" ? "Strong · 80%+" : "Ready to auto-apply"}
-            </button>
-          ))}
-        </div>
-      </motion.div>
-
-      <div className="-mt-6 flex flex-col gap-3 rounded-xl border border-border bg-background/50 p-4 lg:flex-row lg:items-center">
-        <input
-          aria-label="Filter job matches"
-          value={matchSearch}
-          onChange={(event) => setMatchSearch(event.target.value)}
-          placeholder="Filter by role, company, or city"
-          className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-[12.5px] outline-none focus:border-foreground/30"
+    <div className="min-h-full bg-rp-canvas text-rp-ink">
+      <div className="max-w-[1280px] mx-auto px-8 lg:px-12 pt-12 pb-24">
+        <PageHeader
+          title="Jobs that fit you."
+          status={`matches · ${stats.total} live`}
+          description="Fresh jobs matched to your résumé. Press Prepare application and we'll tailor your résumé for that job. You review it before anything is sent."
         />
-        <div className="flex flex-wrap gap-1.5">
-          {(["all", "remote", "hybrid", "onsite"] as const).map((mode) => (
+
+        {/* Ledger stat rail — three numerals, hairline dividers, refresh anchor */}
+        <div className="grid grid-cols-1 md:grid-cols-4 border-y border-rp-rule -mt-2">
+          <StatCell label="Matches found" value={stats.total} tone="ink" />
+          <StatCell label="Good fits · 70%+" value={stats.scored} tone="accent" />
+          <StatCell label="Ready to auto-apply" value={stats.top} tone="highlight" />
+          <div className="flex items-center justify-end px-6 py-6">
             <button
-              key={mode}
               type="button"
-              onClick={() => setLocationMode(mode)}
-              className={cn(
-                "h-9 rounded-md px-3 text-[12px] font-medium capitalize transition-colors",
-                locationMode === mode ? "bg-foreground text-background" : "border border-border text-muted-foreground hover:text-foreground",
-              )}
+              onClick={() => void loadMatches(true)}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 border-b border-rp-rule-2 text-rp-ink-2 hover:text-rp-accent hover:border-rp-accent transition-colors pb-1 disabled:opacity-50"
+              style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
             >
-              {mode === "all" ? "All locations" : mode === "onsite" ? "On-site" : mode}
+              {refreshing ? "Checking…" : "Check for new matches →"}
             </button>
-          ))}
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate("/career-ops/preferences")}
-          className="h-9 rounded-md border border-border px-3 text-[12px] font-medium text-foreground hover:bg-muted"
-        >
-          Match preferences
-        </button>
-      </div>
+
+        {/* Filter row */}
+        <div className="mt-10 flex flex-wrap items-center gap-4 pb-4 border-b border-rp-rule">
+          <div className="flex items-center gap-1.5">
+            {(["recommended", "strong", "autopilot"] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setFilter(k)}
+                className={cn(
+                  "h-8 px-3 text-[11px] tracking-[0.14em] uppercase transition-colors",
+                  filter === k
+                    ? "bg-rp-accent text-rp-canvas"
+                    : "text-rp-ink-2 hover:text-rp-accent border border-rp-rule",
+                )}
+                style={{ fontFamily: '"Urbanist", sans-serif', fontWeight: 600 }}
+              >
+                {k === "recommended" ? "Recommended" : k === "strong" ? "Strong · 80%+" : "Auto-apply ready"}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {(["all", "remote", "hybrid", "onsite"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setLocationMode(mode)}
+                className={cn(
+                  "h-8 px-3 text-[11px] tracking-[0.14em] uppercase transition-colors",
+                  locationMode === mode ? "text-rp-accent border-b border-rp-accent" : "text-rp-ink-3 hover:text-rp-ink",
+                )}
+                style={{ fontFamily: '"Urbanist", sans-serif', fontWeight: 500 }}
+              >
+                {mode === "all" ? "All locations" : mode === "onsite" ? "On-site" : mode}
+              </button>
+            ))}
+          </div>
+          <input
+            aria-label="Filter job matches"
+            value={matchSearch}
+            onChange={(event) => setMatchSearch(event.target.value)}
+            placeholder="Filter by role, company, or city"
+            className="ml-auto h-8 min-w-[220px] flex-1 max-w-xs bg-transparent border-0 border-b border-rp-rule-2 px-0 text-[13px] text-rp-ink placeholder:text-rp-ink-3/60 focus:outline-none focus:border-rp-accent"
+            style={{ fontFamily: '"Epilogue", sans-serif' }}
+          />
+          <button
+            type="button"
+            onClick={() => navigate("/career-ops/preferences")}
+            className="text-rp-ink-2 hover:text-rp-accent transition-colors"
+            style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+          >
+            Match prefs →
+          </button>
+        </div>
 
       {/* Table */}
       {filtered.length === 0 ? (
@@ -676,6 +673,19 @@ export default function MatchesPage() {
           navigate(`/applications/${draftId}`);
         }}
       />
+      </div>
+    </div>
+  );
+}
+
+function StatCell({ label, value, tone }: { label: string; value: number; tone: "ink" | "accent" | "highlight" }) {
+  const color = tone === "accent" ? "text-rp-accent" : tone === "highlight" ? "text-rp-accent-2" : "text-rp-ink";
+  return (
+    <div className="px-6 py-6 border-r border-rp-rule last:border-r-0">
+      <p className="text-rp-ink-3" style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}>{label}</p>
+      <div className={`${color} tabular-nums mt-2`} style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "38px", lineHeight: 1, fontWeight: 200, letterSpacing: "-0.02em" }}>
+        {String(value).padStart(2, "0")}
+      </div>
     </div>
   );
 }

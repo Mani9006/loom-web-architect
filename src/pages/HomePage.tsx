@@ -326,97 +326,103 @@ export default function HomePage() {
           {/* ── Grid ───────────────────────────────────────────────── */}
           <div className="grid grid-cols-12 gap-8">
 
-            {/* 01 / Priority Action */}
-            <section className="col-span-12 lg:col-span-8 space-y-4">
+            {/* 01 / Priority Action — no card, just typography + a rule */}
+            <section className="col-span-12 lg:col-span-8 space-y-6 relative">
               <SectionLabel n="01" title="Priority Action" />
-              <button
-                onClick={() => navigate(lede.href)}
-                className="relative w-full text-left bg-rp-paper border border-rp-rule p-10 overflow-hidden group hover:border-rp-accent/50 transition-colors"
-              >
-                {/* gold ember glow, top right */}
+              <div className="relative pr-8">
+                {/* faint gold wash, no border */}
                 <div
                   aria-hidden
-                  className="absolute top-0 right-0 w-56 h-56 rounded-full blur-3xl translate-x-12 -translate-y-12"
-                  style={{ background: "hsl(var(--rp-accent) / 0.10)" }}
+                  className="absolute -top-10 -left-10 w-[420px] h-[280px] rounded-full blur-3xl pointer-events-none"
+                  style={{ background: "hsl(var(--rp-accent) / 0.07)" }}
                 />
-                {/* oversized index shadow */}
                 <div
                   aria-hidden
-                  className="absolute right-8 top-4 select-none text-rp-ink/[0.04] pointer-events-none"
-                  style={{ ...URBAN, fontSize: "180px", fontWeight: 700, lineHeight: 1, letterSpacing: "-0.05em" }}
+                  className="absolute right-0 -top-6 select-none text-rp-ink/[0.05] pointer-events-none"
+                  style={{ ...URBAN, fontSize: "220px", fontWeight: 700, lineHeight: 1, letterSpacing: "-0.05em" }}
                 >
                   01
                 </div>
                 <div className="relative z-10">
-                  <div
-                    className="inline-block border border-rp-accent/30 text-rp-accent px-2 py-0.5 mb-6"
+                  <p
+                    className="text-rp-accent mb-5"
                     style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
                   >
-                    {lede.eyebrow}
-                  </div>
+                    — {lede.eyebrow}
+                  </p>
                   <h3
-                    className="text-rp-ink max-w-xl mb-4"
-                    style={{ ...URBAN, fontSize: "clamp(26px, 2.8vw, 34px)", lineHeight: 1.15, fontWeight: 500, letterSpacing: "-0.015em" }}
+                    className="text-rp-ink max-w-2xl mb-5"
+                    style={{ ...URBAN, fontSize: "clamp(30px, 3.4vw, 44px)", lineHeight: 1.08, fontWeight: 400, letterSpacing: "-0.02em" }}
                   >
                     {lede.headline}
                   </h3>
-                  <p className="text-rp-ink-2 max-w-md mb-8 leading-relaxed" style={{ ...EPI, fontSize: "14px", fontWeight: 300 }}>
+                  <p className="text-rp-ink-2 max-w-lg mb-8 leading-relaxed" style={{ ...EPI, fontSize: "15px", fontWeight: 300 }}>
                     {lede.body}
                   </p>
-                  <span
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-rp-accent text-rp-canvas group-hover:bg-rp-accent-2 transition-colors"
-                    style={{ ...URBAN, fontSize: "11px", fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase" }}
+                  <button
+                    onClick={() => navigate(lede.href)}
+                    className="group inline-flex items-center gap-3 border-b border-rp-accent pb-1 text-rp-accent hover:text-rp-accent-2 hover:border-rp-accent-2 transition-colors"
+                    style={{ ...URBAN, fontSize: "12px", fontWeight: 600, letterSpacing: "0.22em", textTransform: "uppercase" }}
                   >
                     {lede.cta}
-                    <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={2.2} />
-                  </span>
-                </div>
-              </button>
-            </section>
-
-            {/* 02 / Pipeline Stats */}
-            <section className="col-span-12 lg:col-span-4 space-y-4">
-              <SectionLabel n="02" title="Pipeline" />
-              <div className="grid grid-cols-2 gap-4">
-                <StatTile label="Applied"     value={stats.applied}     tone="ink"    onClick={() => navigate("/job-tracker")} />
-                <StatTile label="Interviewing" value={stats.interviewing} tone="accent" onClick={() => navigate("/job-tracker")} />
-                <StatTile label="Offer"       value={stats.offer}       tone="highlight" onClick={() => navigate("/job-tracker")} />
-                <StatTile label="Saved"       value={stats.saved}       tone="muted"  onClick={() => navigate("/job-tracker")} />
-              </div>
-            </section>
-
-            {/* 03 / Workspace */}
-            <section className="col-span-12 pt-8 space-y-6">
-              <SectionLabel n="03" title="Workspace" trailing="Quick access modules" />
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-px bg-rp-rule border border-rp-rule">
-                {workspace.map((w) => (
-                  <button
-                    key={w.path}
-                    onClick={() => navigate(w.path)}
-                    className="bg-rp-canvas p-6 lg:p-8 text-left hover:bg-rp-paper transition-colors group relative"
-                  >
-                    <div
-                      className="text-rp-accent mb-4 opacity-60 group-hover:opacity-100 transition-opacity"
-                      style={{ ...URBAN, fontSize: "22px", lineHeight: 1 }}
-                    >
-                      {w.glyph}
-                    </div>
-                    <div
-                      className="text-rp-ink mb-1"
-                      style={{ ...URBAN, fontSize: "11.5px", letterSpacing: "0.18em", textTransform: "uppercase", fontWeight: 600 }}
-                    >
-                      {w.label}
-                    </div>
-                    <div className="text-rp-ink-3" style={{ ...EPI, fontSize: "11.5px", fontWeight: 300 }}>
-                      {w.desc}
-                    </div>
-                    <ArrowUpRight
-                      className="w-3.5 h-3.5 absolute top-4 right-4 text-rp-ink-3 opacity-0 group-hover:opacity-100 group-hover:text-rp-accent transition-opacity"
-                      strokeWidth={1.6}
-                    />
+                    <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" strokeWidth={1.8} />
                   </button>
-                ))}
+                </div>
               </div>
+            </section>
+
+            {/* 02 / Pipeline — no boxes, a small ledger */}
+            <section className="col-span-12 lg:col-span-4 space-y-6">
+              <SectionLabel n="02" title="Pipeline" />
+              <dl className="divide-y divide-rp-rule">
+                <LedgerRow label="Applied" value={stats.applied} tone="ink" onClick={() => navigate("/job-tracker")} />
+                <LedgerRow label="Interviewing" value={stats.interviewing} tone="accent" onClick={() => navigate("/job-tracker")} />
+                <LedgerRow label="Offer" value={stats.offer} tone="highlight" onClick={() => navigate("/job-tracker")} />
+                <LedgerRow label="Saved" value={stats.saved} tone="muted" onClick={() => navigate("/job-tracker")} />
+              </dl>
+            </section>
+
+            {/* 03 / Workspace — hairline row, not a grid of boxes */}
+            <section className="col-span-12 pt-12 space-y-6">
+              <SectionLabel n="03" title="Workspace" trailing="Quick access modules" />
+              <ul className="divide-y divide-rp-rule border-t border-rp-rule">
+                {workspace.map((w, i) => (
+                  <li key={w.path}>
+                    <button
+                      onClick={() => navigate(w.path)}
+                      className="w-full grid grid-cols-12 items-center gap-4 py-5 group hover:bg-rp-paper/40 transition-colors text-left px-2 -mx-2"
+                    >
+                      <span
+                        className="col-span-1 text-rp-ink-3 tabular-nums"
+                        style={{ ...MONO, fontSize: "10.5px", letterSpacing: "0.14em" }}
+                      >
+                        {pad2(i + 1)}
+                      </span>
+                      <span
+                        className="col-span-1 text-rp-accent opacity-70 group-hover:opacity-100 transition-opacity"
+                        style={{ ...URBAN, fontSize: "20px", lineHeight: 1 }}
+                      >
+                        {w.glyph}
+                      </span>
+                      <span
+                        className="col-span-4 text-rp-ink group-hover:text-rp-accent transition-colors"
+                        style={{ ...URBAN, fontSize: "17px", fontWeight: 500, letterSpacing: "-0.01em" }}
+                      >
+                        {w.label}
+                      </span>
+                      <span
+                        className="col-span-5 text-rp-ink-2"
+                        style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}
+                      >
+                        {w.desc}
+                      </span>
+                      <span className="col-span-1 text-right">
+                        <ArrowUpRight className="inline w-4 h-4 text-rp-ink-3 group-hover:text-rp-accent group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" strokeWidth={1.5} />
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </section>
 
             {/* 04 / Recent Activity */}
@@ -603,8 +609,8 @@ function SectionLabel({ n, title, trailing }: { n: string; title: string; traili
   );
 }
 
-// ─── Stat tile ─────────────────────────────────────────────────────────
-function StatTile({
+// ─── Ledger row (editorial, borderless) ───────────────────────────────
+function LedgerRow({
   label, value, tone, onClick,
 }: {
   label: string;
@@ -619,17 +625,20 @@ function StatTile({
   return (
     <button
       onClick={onClick}
-      className="bg-rp-paper border border-rp-rule p-6 flex flex-col justify-between h-32 text-left hover:border-rp-accent/40 transition-colors group"
+      className="w-full flex items-baseline justify-between py-4 group hover:pl-2 transition-[padding] duration-200"
     >
-      <p className="text-rp-ink-3 uppercase" style={{ ...MONO, fontSize: "10px", letterSpacing: "0.18em" }}>
+      <span
+        className="text-rp-ink-2 group-hover:text-rp-accent transition-colors"
+        style={{ ...URBAN, fontSize: "11.5px", letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 500 }}
+      >
         {label}
-      </p>
-      <p
+      </span>
+      <span
         className={`${color} tabular-nums`}
-        style={{ ...URBAN, fontSize: "40px", lineHeight: 1, fontWeight: 300, letterSpacing: "-0.02em" }}
+        style={{ ...URBAN, fontSize: "34px", lineHeight: 1, fontWeight: 200, letterSpacing: "-0.02em" }}
       >
         {String(value).padStart(2, "0")}
-      </p>
+      </span>
     </button>
   );
 }
