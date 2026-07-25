@@ -326,63 +326,60 @@ export default function HomePage() {
           {/* ── Grid ───────────────────────────────────────────────── */}
           <div className="grid grid-cols-12 gap-8">
 
-            {/* 01 / Priority Action */}
-            <section className="col-span-12 lg:col-span-8 space-y-4">
+            {/* 01 / Priority Action — no card, just typography + a rule */}
+            <section className="col-span-12 lg:col-span-8 space-y-6 relative">
               <SectionLabel n="01" title="Priority Action" />
-              <button
-                onClick={() => navigate(lede.href)}
-                className="relative w-full text-left bg-rp-paper border border-rp-rule p-10 overflow-hidden group hover:border-rp-accent/50 transition-colors"
-              >
-                {/* gold ember glow, top right */}
+              <div className="relative pr-8">
+                {/* faint gold wash, no border */}
                 <div
                   aria-hidden
-                  className="absolute top-0 right-0 w-56 h-56 rounded-full blur-3xl translate-x-12 -translate-y-12"
-                  style={{ background: "hsl(var(--rp-accent) / 0.10)" }}
+                  className="absolute -top-10 -left-10 w-[420px] h-[280px] rounded-full blur-3xl pointer-events-none"
+                  style={{ background: "hsl(var(--rp-accent) / 0.07)" }}
                 />
-                {/* oversized index shadow */}
                 <div
                   aria-hidden
-                  className="absolute right-8 top-4 select-none text-rp-ink/[0.04] pointer-events-none"
-                  style={{ ...URBAN, fontSize: "180px", fontWeight: 700, lineHeight: 1, letterSpacing: "-0.05em" }}
+                  className="absolute right-0 -top-6 select-none text-rp-ink/[0.05] pointer-events-none"
+                  style={{ ...URBAN, fontSize: "220px", fontWeight: 700, lineHeight: 1, letterSpacing: "-0.05em" }}
                 >
                   01
                 </div>
                 <div className="relative z-10">
-                  <div
-                    className="inline-block border border-rp-accent/30 text-rp-accent px-2 py-0.5 mb-6"
+                  <p
+                    className="text-rp-accent mb-5"
                     style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
                   >
-                    {lede.eyebrow}
-                  </div>
+                    — {lede.eyebrow}
+                  </p>
                   <h3
-                    className="text-rp-ink max-w-xl mb-4"
-                    style={{ ...URBAN, fontSize: "clamp(26px, 2.8vw, 34px)", lineHeight: 1.15, fontWeight: 500, letterSpacing: "-0.015em" }}
+                    className="text-rp-ink max-w-2xl mb-5"
+                    style={{ ...URBAN, fontSize: "clamp(30px, 3.4vw, 44px)", lineHeight: 1.08, fontWeight: 400, letterSpacing: "-0.02em" }}
                   >
                     {lede.headline}
                   </h3>
-                  <p className="text-rp-ink-2 max-w-md mb-8 leading-relaxed" style={{ ...EPI, fontSize: "14px", fontWeight: 300 }}>
+                  <p className="text-rp-ink-2 max-w-lg mb-8 leading-relaxed" style={{ ...EPI, fontSize: "15px", fontWeight: 300 }}>
                     {lede.body}
                   </p>
-                  <span
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-rp-accent text-rp-canvas group-hover:bg-rp-accent-2 transition-colors"
-                    style={{ ...URBAN, fontSize: "11px", fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase" }}
+                  <button
+                    onClick={() => navigate(lede.href)}
+                    className="group inline-flex items-center gap-3 border-b border-rp-accent pb-1 text-rp-accent hover:text-rp-accent-2 hover:border-rp-accent-2 transition-colors"
+                    style={{ ...URBAN, fontSize: "12px", fontWeight: 600, letterSpacing: "0.22em", textTransform: "uppercase" }}
                   >
                     {lede.cta}
-                    <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={2.2} />
-                  </span>
+                    <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" strokeWidth={1.8} />
+                  </button>
                 </div>
-              </button>
+              </div>
             </section>
 
-            {/* 02 / Pipeline Stats */}
-            <section className="col-span-12 lg:col-span-4 space-y-4">
+            {/* 02 / Pipeline — no boxes, a small ledger */}
+            <section className="col-span-12 lg:col-span-4 space-y-6">
               <SectionLabel n="02" title="Pipeline" />
-              <div className="grid grid-cols-2 gap-4">
-                <StatTile label="Applied"     value={stats.applied}     tone="ink"    onClick={() => navigate("/job-tracker")} />
-                <StatTile label="Interviewing" value={stats.interviewing} tone="accent" onClick={() => navigate("/job-tracker")} />
-                <StatTile label="Offer"       value={stats.offer}       tone="highlight" onClick={() => navigate("/job-tracker")} />
-                <StatTile label="Saved"       value={stats.saved}       tone="muted"  onClick={() => navigate("/job-tracker")} />
-              </div>
+              <dl className="divide-y divide-rp-rule">
+                <LedgerRow label="Applied" value={stats.applied} tone="ink" onClick={() => navigate("/job-tracker")} />
+                <LedgerRow label="Interviewing" value={stats.interviewing} tone="accent" onClick={() => navigate("/job-tracker")} />
+                <LedgerRow label="Offer" value={stats.offer} tone="highlight" onClick={() => navigate("/job-tracker")} />
+                <LedgerRow label="Saved" value={stats.saved} tone="muted" onClick={() => navigate("/job-tracker")} />
+              </dl>
             </section>
 
             {/* 03 / Workspace */}
