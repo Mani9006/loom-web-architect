@@ -528,13 +528,16 @@ export default function MatchesPage() {
           <ul className="divide-y divide-border">
             {filtered.map(({ job, evaluation }) => {
               const score = careerFitScore(evaluation);
-              const chip = fitChip(score);
+              const band = fitBand(score);
+              const matchedKw = Array.isArray(evaluation?.keyword_matches) ? evaluation.keyword_matches.length : 0;
+              const gapsKw = Array.isArray(evaluation?.gaps) ? evaluation.gaps.length : 0;
+              const totalKw = matchedKw + gapsKw;
               const isSelected = selected.has(evaluation.id);
               return (
                 <li
                   key={job.id}
                   className={cn(
-                    "group grid grid-cols-[auto_88px_1fr_auto_auto] items-center gap-x-5 px-5 py-4 transition-colors",
+                    "group grid grid-cols-[auto_150px_1fr_auto_auto] items-center gap-x-5 px-5 py-4 transition-colors",
                     isSelected ? "bg-primary/[0.04]" : "hover:bg-muted/40",
                   )}
                 >
@@ -547,16 +550,19 @@ export default function MatchesPage() {
                     className="h-4 w-4 rounded border-border accent-primary"
                   />
 
-                  {/* Fit */}
+                  {/* Fit: words first, number secondary */}
                   <div className="space-y-1.5">
-                    <div className="text-[20px] font-semibold tabular-nums text-foreground leading-none">{score}<span className="text-[11px] font-normal text-muted-foreground ml-0.5">%</span></div>
+                    <div className={cn("text-[13px] font-medium leading-tight", band.tone)}>
+                      {band.label}
+                    </div>
                     <div className="h-1 overflow-hidden rounded-full bg-muted">
                       <div className="h-full rounded-full bg-primary" style={{ width: `${score}%` }} />
                     </div>
-                    <div className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap", chip.tone)}>
-                      {chip.label.split(" ")[0]} {chip.label.split(" ")[1]}
+                    <div className="text-[12px] text-muted-foreground tabular-nums">
+                      {score}%{totalKw > 0 ? ` , ${matchedKw} of ${totalKw} keywords` : ""}
                     </div>
                   </div>
+
 
                   {/* Role */}
                   <div className="min-w-0">
