@@ -1,34 +1,32 @@
+/**
+ * Profile — Editorial Prestige.
+ *
+ * Editorial two-column: a slim identity rail on the left, a long-form form
+ * on the right, everything separated by hairline rules instead of card
+ * boxes. Fields are indexed with 01/02 numerals like a print form.
+ *
+ * Data, saves and validation unchanged.
+ */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BriefcaseBusiness, CheckCircle2, FileText, Loader2, Mail, MapPin, Phone, Save, ShieldCheck, User as UserIcon } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, Save, ShieldCheck, ArrowUpRight } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
+
+const URBAN = { fontFamily: '"Urbanist", "Manrope", system-ui, sans-serif' } as const;
+const EPI = { fontFamily: '"Epilogue", "Inter", system-ui, sans-serif' } as const;
+const MONO = { fontFamily: '"JetBrains Mono", ui-monospace, monospace' } as const;
 
 interface ProfileState {
-  full_name: string;
-  email: string;
-  phone: string;
-  location: string;
-  linkedin_url: string;
-  target_role: string;
-  years_of_experience: string;
-  work_authorization: string;
-  expected_salary: string;
-  portfolio_url: string;
-  notice_period: string;
+  full_name: string; email: string; phone: string; location: string; linkedin_url: string;
+  target_role: string; years_of_experience: string; work_authorization: string;
+  expected_salary: string; portfolio_url: string; notice_period: string;
   requires_sponsorship: boolean;
 }
-
 interface ResumeSummary { id: string; title: string; updated_at: string }
 
 const emptyProfile: ProfileState = {
@@ -36,6 +34,16 @@ const emptyProfile: ProfileState = {
   years_of_experience: "", work_authorization: "", expected_salary: "", portfolio_url: "",
   notice_period: "", requires_sponsorship: false,
 };
+
+const WORK_AUTH_OPTIONS = [
+  { value: "unspecified", label: "Select status" },
+  { value: "us_citizen", label: "U.S. citizen" },
+  { value: "permanent_resident", label: "Permanent resident" },
+  { value: "ead", label: "Employment authorization" },
+  { value: "h1b", label: "H-1B" },
+  { value: "f1_opt", label: "F-1 OPT / CPT" },
+  { value: "other", label: "Other" },
+];
 
 export default function Profile() {
   const { user } = useAuth();
@@ -54,11 +62,8 @@ export default function Profile() {
       supabase.from("resumes").select("id,title,updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (profileResult.error) {
-      // Without this, a failed read renders as an empty editable form and the
-      // next save can overwrite good data with blanks.
       toast({ title: "Couldn't load your profile", description: "Refresh to try again before editing.", variant: "destructive" });
-      setLoading(false);
-      return;
+      setLoading(false); return;
     }
     const row = profileResult.data;
     const preferences = (row?.job_preferences || {}) as Record<string, unknown>;
@@ -94,10 +99,6 @@ export default function Profile() {
     if (!user) return;
     setSaving(true);
     const oldApplypass = (jobPreferences.applypass || {}) as Record<string, unknown>;
-    // Spread the existing applypass.profile first, Settings (ApplicationProfileCard)
-    // stores additional fields here (country, city, currentCompany, discoverySource,
-    // ...) that this page doesn't have inputs for. Without the spread, saving here
-    // silently wiped those out instead of only updating the fields below.
     const oldApplicationProfile = (oldApplypass.profile || {}) as Record<string, unknown>;
     const applicationProfile = {
       ...oldApplicationProfile,
@@ -108,15 +109,11 @@ export default function Profile() {
       requiresSponsorship: profile.requires_sponsorship,
     };
     const profileResult = await supabase.from("profiles").upsert({
-        user_id: user.id,
-        full_name: profile.full_name.trim(), email: profile.email.trim(),
-        job_preferences: { ...jobPreferences, applypass: { ...oldApplypass, profile: applicationProfile } },
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
-
-    // Newer environments mirror these defaults into typed matching columns.
-    // The JSON source of truth above keeps profile editing compatible while a
-    // staged database migration is still rolling through preview/production.
+      user_id: user.id,
+      full_name: profile.full_name.trim(), email: profile.email.trim(),
+      job_preferences: { ...jobPreferences, applypass: { ...oldApplypass, profile: applicationProfile } },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
     void supabase.from("user_job_prefs").upsert({
       user_id: user.id,
       requires_sponsorship: profile.requires_sponsorship,
@@ -130,46 +127,261 @@ export default function Profile() {
     toast({ title: "Application profile saved", description: "Future matching, tailoring, and forms will use these verified details." });
   }
 
-  if (loading) return <div className="flex min-h-80 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>;
-  const initials = profile.full_name.split(" ").map((part) => part[0]).join("").toUpperCase().slice(0, 2) || profile.email[0]?.toUpperCase() || "U";
+  if (loading) return <div className="flex min-h-80 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-rp-accent" /></div>;
+
+  const initials = profile.full_name.split(" ").map((p) => p[0]).join("").toUpperCase().slice(0, 2) || profile.email[0]?.toUpperCase() || "U";
 
   return (
-    <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-16">
-      <PageHeader title="Application profile." status={`${completion}% complete`} description="Your verified identity, experience level, contact details, and reusable application answers. ResumePreps uses this source of truth instead of guessing." />
+    <div className="min-h-full bg-rp-canvas text-rp-ink">
+      <div className="max-w-[1280px] mx-auto px-8 lg:px-12 pt-12 pb-24">
+        <PageHeader
+          title="Application profile."
+          status={`profile · ${completion}% complete`}
+          description="Your verified identity, experience level, contact details, and reusable application answers. ResumePreps uses this instead of guessing."
+        />
 
-      <div className="mt-7 grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="space-y-5">
-          <Card><CardContent className="pt-6"><div className="flex items-center gap-4"><Avatar className="h-16 w-16"><AvatarFallback className="bg-primary text-lg font-bold text-primary-foreground">{initials}</AvatarFallback></Avatar><div className="min-w-0"><p className="truncate font-semibold">{profile.full_name || "Your name"}</p><p className="truncate text-xs text-muted-foreground">{user?.email}</p></div></div><div className="mt-5 flex items-center justify-between text-xs"><span className="text-muted-foreground">Profile completeness</span><span className="font-semibold">{completion}%</span></div><Progress value={completion} className="mt-2 h-2" /></CardContent></Card>
-          <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileText className="h-4 w-4 text-primary" />Source résumé</CardTitle></CardHeader><CardContent>{resume ? <><div className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" /><div className="min-w-0"><p className="truncate text-sm font-medium">{resume.title || "Untitled résumé"}</p><p className="mt-1 text-xs text-muted-foreground">Updated {new Date(resume.updated_at).toLocaleDateString()}</p></div></div><Button className="mt-4 w-full" variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${resume.id}`)}>Review résumé</Button></> : <><p className="text-xs leading-relaxed text-muted-foreground">Import a résumé before the Agent can match your full career story.</p><Button className="mt-4 w-full" size="sm" onClick={() => navigate("/resume-builder")}>Import résumé</Button></>}</CardContent></Card>
-          <Card><CardContent className="pt-6"><div className="flex gap-3"><ShieldCheck className="h-5 w-5 shrink-0 text-primary" /><div><p className="text-sm font-semibold">Used with your approval</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Sensitive or missing questions are never guessed. They move the application to Needs attention.</p></div></div></CardContent></Card>
-        </aside>
+        <div className="grid grid-cols-12 gap-10 lg:gap-14 mt-4">
+          {/* ── Identity rail ─────────────────────────────────── */}
+          <aside className="col-span-12 lg:col-span-4 space-y-10">
+            <div>
+              <div className="flex items-baseline gap-3 mb-6">
+                <span className="text-rp-accent" style={{ ...MONO, fontSize: "11px", letterSpacing: "0.14em" }}>00</span>
+                <span className="text-rp-ink-2" style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}>Identity</span>
+                <span className="flex-1 h-px bg-rp-rule" />
+              </div>
+              <div className="flex items-center gap-4">
+                <div
+                  className="inline-flex items-center justify-center w-14 h-14 border border-rp-rule-2 text-rp-ink"
+                  style={{ ...URBAN, fontSize: "20px", fontWeight: 500, letterSpacing: "-0.01em" }}
+                >
+                  {initials}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-rp-ink" style={{ ...URBAN, fontSize: "20px", fontWeight: 500, letterSpacing: "-0.01em" }}>
+                    {profile.full_name || "Your name"}
+                  </p>
+                  <p className="truncate text-rp-ink-3" style={{ ...MONO, fontSize: "11px", letterSpacing: "0.06em" }}>{user?.email}</p>
+                </div>
+              </div>
+              <div className="mt-6 flex items-baseline justify-between">
+                <span className="text-rp-ink-3" style={{ ...MONO, fontSize: "10.5px", letterSpacing: "0.14em", textTransform: "uppercase" }}>Completeness</span>
+                <span className="text-rp-accent tabular-nums" style={{ ...URBAN, fontSize: "22px", fontWeight: 300, letterSpacing: "-0.01em" }}>{completion}%</span>
+              </div>
+              <div className="mt-2 h-[3px] w-full bg-rp-paper-2 overflow-hidden">
+                <div className="h-full bg-rp-accent transition-[width] duration-700" style={{ width: `${completion}%` }} />
+              </div>
+            </div>
 
-        <main className="space-y-5">
-          <Card><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><UserIcon className="h-5 w-5 text-primary" />Identity and contact</CardTitle><CardDescription>Information employers receive on application forms.</CardDescription></CardHeader><CardContent className="grid gap-5 sm:grid-cols-2">
-            <Field label="Full name" icon={UserIcon}><Input value={profile.full_name} onChange={(event) => setProfile((value) => ({ ...value, full_name: event.target.value }))} placeholder="First and last name" /></Field>
-            <Field label="Application email" icon={Mail}><Input type="email" value={profile.email} onChange={(event) => setProfile((value) => ({ ...value, email: event.target.value }))} /></Field>
-            <Field label="Phone" icon={Phone}><Input type="tel" value={profile.phone} onChange={(event) => setProfile((value) => ({ ...value, phone: event.target.value }))} placeholder="+1 555 123 4567" /></Field>
-            <Field label="Location" icon={MapPin}><Input value={profile.location} onChange={(event) => setProfile((value) => ({ ...value, location: event.target.value }))} placeholder="City, State, Country" /></Field>
-            <div className="space-y-2"><Label>LinkedIn URL</Label><Input value={profile.linkedin_url} onChange={(event) => setProfile((value) => ({ ...value, linkedin_url: event.target.value }))} placeholder="https://linkedin.com/in/..." /></div>
-            <div className="space-y-2"><Label>Portfolio or website</Label><Input value={profile.portfolio_url} onChange={(event) => setProfile((value) => ({ ...value, portfolio_url: event.target.value }))} placeholder="https://..." /></div>
-          </CardContent></Card>
+            <div>
+              <div className="flex items-baseline gap-3 mb-4">
+                <span className="text-rp-accent" style={{ ...MONO, fontSize: "11px", letterSpacing: "0.14em" }}>—</span>
+                <span className="text-rp-ink-2" style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}>Source résumé</span>
+                <span className="flex-1 h-px bg-rp-rule" />
+              </div>
+              {resume ? (
+                <div>
+                  <div className="flex gap-3">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-rp-accent shrink-0" strokeWidth={1.75} />
+                    <div className="min-w-0">
+                      <p className="truncate text-rp-ink" style={{ ...URBAN, fontSize: "15px", fontWeight: 500 }}>{resume.title || "Untitled résumé"}</p>
+                      <p className="mt-1 text-rp-ink-3" style={{ ...MONO, fontSize: "10.5px", letterSpacing: "0.06em" }}>
+                        Updated {new Date(resume.updated_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/resume-builder/${resume.id}`)}
+                    className="mt-5 inline-flex items-center gap-2 border-b border-rp-rule-2 text-rp-ink hover:text-rp-accent hover:border-rp-accent transition-colors pb-1"
+                    style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+                  >
+                    Review résumé <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-rp-ink-2 leading-relaxed" style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}>
+                    Import a résumé before the Agent can match your full career story.
+                  </p>
+                  <button
+                    onClick={() => navigate("/resume-builder")}
+                    className="mt-5 inline-flex items-center gap-2 border-b border-rp-accent text-rp-accent hover:text-rp-accent-2 hover:border-rp-accent-2 transition-colors pb-1"
+                    style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+                  >
+                    Import résumé <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+                  </button>
+                </div>
+              )}
+            </div>
 
-          <Card><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><BriefcaseBusiness className="h-5 w-5 text-primary" />Experience and application defaults</CardTitle><CardDescription>These values become hard filters and reusable form answers.</CardDescription></CardHeader><CardContent className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-2"><Label>Current or target title</Label><Input value={profile.target_role} onChange={(event) => setProfile((value) => ({ ...value, target_role: event.target.value }))} placeholder="Senior Data Engineer" /></div>
-            <div className="space-y-2"><Label>Total years of experience</Label><Input type="number" min="0" max="60" step="0.5" value={profile.years_of_experience} onChange={(event) => setProfile((value) => ({ ...value, years_of_experience: event.target.value }))} /></div>
-            <div className="space-y-2"><Label>Work authorization</Label><Select value={profile.work_authorization || "unspecified"} onValueChange={(value) => setProfile((current) => ({ ...current, work_authorization: value === "unspecified" ? "" : value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="unspecified">Select status</SelectItem><SelectItem value="us_citizen">U.S. citizen</SelectItem><SelectItem value="permanent_resident">Permanent resident</SelectItem><SelectItem value="ead">Employment authorization document</SelectItem><SelectItem value="h1b">H-1B</SelectItem><SelectItem value="f1_opt">F-1 OPT/CPT</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label>Expected salary</Label><Input value={profile.expected_salary} onChange={(event) => setProfile((value) => ({ ...value, expected_salary: event.target.value }))} placeholder="Example: $125,000 base" /></div>
-            <div className="space-y-2"><Label>Notice period / start date</Label><Input value={profile.notice_period} onChange={(event) => setProfile((value) => ({ ...value, notice_period: event.target.value }))} placeholder="Two weeks" /></div>
-            <label className="flex items-start gap-3 border border-border p-4"><input type="checkbox" checked={profile.requires_sponsorship} onChange={(event) => setProfile((value) => ({ ...value, requires_sponsorship: event.target.checked }))} className="mt-1 h-4 w-4" /><span><span className="block text-sm font-medium">I require present or future sponsorship</span><span className="mt-1 block text-xs text-muted-foreground">Used as a hard match filter and a consistent application answer.</span></span></label>
-          </CardContent></Card>
+            <div className="pt-2 border-t border-rp-rule">
+              <div className="flex gap-3 pt-6">
+                <ShieldCheck className="h-4 w-4 shrink-0 text-rp-accent mt-0.5" strokeWidth={1.75} />
+                <div>
+                  <p className="text-rp-ink" style={{ ...URBAN, fontSize: "13px", fontWeight: 600 }}>Used with your approval</p>
+                  <p className="mt-1.5 leading-relaxed text-rp-ink-2" style={{ ...EPI, fontSize: "12.5px", fontWeight: 300 }}>
+                    Sensitive or missing answers are never guessed. They move the application to <em className="text-rp-accent not-italic">Needs attention</em>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </aside>
 
-          <div className="flex flex-wrap justify-between gap-3"><Button variant="outline" onClick={() => navigate("/career-ops/preferences")}>Edit job match preferences</Button><Button onClick={save} disabled={saving} className="min-w-40">{saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : <><Save className="mr-2 h-4 w-4" />Save profile</>}</Button></div>
-        </main>
+          {/* ── Long form ────────────────────────────────────── */}
+          <main className="col-span-12 lg:col-span-8 space-y-14">
+            <FormSection n="01" title="Identity & contact" description="Information employers receive on application forms.">
+              <FormRow>
+                <TextField label="Full name" value={profile.full_name} onChange={(v) => setProfile((p) => ({ ...p, full_name: v }))} placeholder="First and last name" />
+                <TextField label="Application email" type="email" value={profile.email} onChange={(v) => setProfile((p) => ({ ...p, email: v }))} />
+              </FormRow>
+              <FormRow>
+                <TextField label="Phone" type="tel" value={profile.phone} onChange={(v) => setProfile((p) => ({ ...p, phone: v }))} placeholder="+1 555 123 4567" />
+                <TextField label="Location" value={profile.location} onChange={(v) => setProfile((p) => ({ ...p, location: v }))} placeholder="City, State, Country" />
+              </FormRow>
+              <FormRow>
+                <TextField label="LinkedIn URL" value={profile.linkedin_url} onChange={(v) => setProfile((p) => ({ ...p, linkedin_url: v }))} placeholder="https://linkedin.com/in/..." />
+                <TextField label="Portfolio / website" value={profile.portfolio_url} onChange={(v) => setProfile((p) => ({ ...p, portfolio_url: v }))} placeholder="https://..." />
+              </FormRow>
+            </FormSection>
+
+            <FormSection n="02" title="Experience & application defaults" description="These become hard filters and reusable form answers.">
+              <FormRow>
+                <TextField label="Current or target title" value={profile.target_role} onChange={(v) => setProfile((p) => ({ ...p, target_role: v }))} placeholder="Senior Data Engineer" />
+                <TextField label="Years of experience" type="number" value={profile.years_of_experience} onChange={(v) => setProfile((p) => ({ ...p, years_of_experience: v }))} />
+              </FormRow>
+              <FormRow>
+                <SelectField label="Work authorization" value={profile.work_authorization || "unspecified"} onChange={(v) => setProfile((p) => ({ ...p, work_authorization: v === "unspecified" ? "" : v }))} options={WORK_AUTH_OPTIONS} />
+                <TextField label="Expected salary" value={profile.expected_salary} onChange={(v) => setProfile((p) => ({ ...p, expected_salary: v }))} placeholder="Example: $125,000 base" />
+              </FormRow>
+              <FormRow>
+                <TextField label="Notice period / start date" value={profile.notice_period} onChange={(v) => setProfile((p) => ({ ...p, notice_period: v }))} placeholder="Two weeks" />
+                <label className="flex items-start gap-3 mt-6 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={profile.requires_sponsorship}
+                    onChange={(event) => setProfile((v) => ({ ...v, requires_sponsorship: event.target.checked }))}
+                    className="mt-1 h-4 w-4 accent-rp-accent"
+                  />
+                  <span>
+                    <span className="block text-rp-ink" style={{ ...URBAN, fontSize: "13.5px", fontWeight: 500 }}>Requires visa sponsorship</span>
+                    <span className="mt-1 block text-rp-ink-3 leading-relaxed" style={{ ...EPI, fontSize: "12px", fontWeight: 300 }}>
+                      Used as a hard match filter and a consistent application answer.
+                    </span>
+                  </span>
+                </label>
+              </FormRow>
+            </FormSection>
+
+            <div className="flex flex-wrap justify-between gap-4 pt-6 border-t border-rp-rule">
+              <button
+                onClick={() => navigate("/career-ops/preferences")}
+                className="inline-flex items-center gap-2 border-b border-rp-rule-2 text-rp-ink-2 hover:text-rp-accent hover:border-rp-accent transition-colors pb-1"
+                style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+              >
+                Edit job match preferences <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={save}
+                disabled={saving}
+                className="inline-flex items-center gap-2 bg-rp-accent text-rp-canvas hover:bg-rp-accent-2 transition-colors px-8 py-3 disabled:opacity-50"
+                style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 700 }}
+              >
+                {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</> : <><Save className="w-3.5 h-3.5" /> Save profile</>}
+              </button>
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );
 }
 
-function Field({ label, icon: Icon, children }: { label: string; icon: typeof UserIcon; children: React.ReactNode }) {
-  return <div className="space-y-2"><Label>{label}</Label><div className="relative"><Icon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><div className="[&_input]:pl-10">{children}</div></div></div>;
+// ─── Editorial form primitives ────────────────────────────────────────
+
+function FormSection({ n, title, description, children }: {
+  n: string; title: string; description?: string; children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <header className="border-b border-rp-rule pb-4 mb-6">
+        <div className="flex items-baseline gap-3">
+          <span
+            className="text-rp-accent tabular-nums"
+            style={{ ...MONO, fontSize: "11px", letterSpacing: "0.14em" }}
+          >
+            {n}
+          </span>
+          <h2
+            className="text-rp-ink"
+            style={{ ...URBAN, fontSize: "22px", fontWeight: 400, letterSpacing: "-0.015em" }}
+          >
+            {title}
+          </h2>
+        </div>
+        {description && (
+          <p className="mt-2 text-rp-ink-2 max-w-lg leading-relaxed" style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}>
+            {description}
+          </p>
+        )}
+      </header>
+      <div className="space-y-6">{children}</div>
+    </section>
+  );
+}
+
+function FormRow({ children }: { children: React.ReactNode }) {
+  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">{children}</div>;
+}
+
+function TextField({
+  label, value, onChange, type = "text", placeholder,
+}: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span
+        className="block text-rp-ink-2 mb-2"
+        style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}
+      >
+        {label}
+      </span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn(
+          "w-full bg-transparent border-0 border-b border-rp-rule-2 px-0 py-2 text-rp-ink placeholder:text-rp-ink-3/60",
+          "focus:outline-none focus:border-rp-accent transition-colors",
+        )}
+        style={{ ...EPI, fontSize: "15px" }}
+      />
+    </label>
+  );
+}
+
+function SelectField({
+  label, value, onChange, options,
+}: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="block">
+      <span
+        className="block text-rp-ink-2 mb-2"
+        style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}
+      >
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-transparent border-0 border-b border-rp-rule-2 px-0 py-2 text-rp-ink focus:outline-none focus:border-rp-accent transition-colors"
+        style={{ ...EPI, fontSize: "15px" }}
+      >
+        {options.map((o) => <option key={o.value} value={o.value} className="bg-rp-canvas text-rp-ink">{o.label}</option>)}
+      </select>
+    </label>
+  );
 }
