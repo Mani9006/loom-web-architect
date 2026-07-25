@@ -419,7 +419,7 @@ export default function MatchesPage() {
             Jobs that fit you
           </h1>
           <p className="mt-2 text-[13px] text-muted-foreground max-w-[68ch] leading-relaxed">
-            Fresh jobs matched to your resume. Press <span className="text-foreground font-medium">Prepare application</span> and we&apos;ll tailor your resume for that job, you review it before anything is sent.
+            Fresh jobs matched to your resume. Press <span className="text-foreground font-medium">Prepare application</span> and we&apos;ll tailor your resume for that job. You review it before anything is sent.
           </p>
         </div>
         <button
@@ -500,7 +500,7 @@ export default function MatchesPage() {
             {jobs.length === 0 ? (
               <>
                 <p className="text-[15px] font-semibold text-foreground">We&apos;re still finding jobs that fit your resume.</p>
-                <p className="text-[13px] text-muted-foreground mt-2">Fresh jobs are checked every hour, give it a moment, then refresh.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Fresh jobs are checked every hour. Give it a moment, then refresh.</p>
                 <button
                   type="button"
                   onClick={() => void loadMatches(true)}
@@ -513,7 +513,7 @@ export default function MatchesPage() {
             ) : (
               <>
                 <p className="text-[15px] font-semibold text-foreground">Nothing fits these filters.</p>
-                <p className="text-[13px] text-muted-foreground mt-2">Your matches are still here, clear the filters to see them all.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Your matches are still here. Clear the filters to see them all.</p>
                 <button
                   type="button"
                   onClick={() => { setFilter("recommended"); setLocationMode("all"); setMatchSearch(""); }}
@@ -559,7 +559,7 @@ export default function MatchesPage() {
                       <div className="h-full rounded-full bg-primary" style={{ width: `${score}%` }} />
                     </div>
                     <div className="text-[12px] text-muted-foreground tabular-nums">
-                      {score}%{totalKw > 0 ? ` , ${matchedKw} of ${totalKw} keywords` : ""}
+                      {score}%{totalKw > 0 ? `, ${matchedKw} of ${totalKw} keywords` : ""}
                     </div>
                   </div>
 
