@@ -1,13 +1,13 @@
 /**
- * Terminal primitives — vintage CLI aesthetic with a Nothing-style red
+ * Terminal primitives, vintage CLI aesthetic with a Nothing-style red
  * block cursor.
  *
  * Components:
- *   <TerminalText text="..." />          — types one string out
- *   <TerminalLines lines={[...]} />      — types a sequence of lines, one
+ *   <TerminalText text="..." />         , types one string out
+ *   <TerminalLines lines={[...]} />     , types a sequence of lines, one
  *                                          after another, like a build log
- *   <TerminalCursor />                   — just the blinking red block
- *   <TerminalLoader status="..." />      — used by loading / uploading /
+ *   <TerminalCursor />                  , just the blinking red block
+ *   <TerminalLoader status="..." />     , used by loading / uploading /
  *                                          importing states
  *
  * Visual: monospace JetBrains Mono, white text, blinking red square

@@ -54,7 +54,7 @@ function writeDraft(sessionId: string, d: Draft) {
   try {
     sessionStorage.setItem(draftKey(sessionId), JSON.stringify(d));
   } catch {
-    // sessionStorage can throw in private mode — non-fatal
+    // sessionStorage can throw in private mode, non-fatal
   }
 }
 
@@ -82,7 +82,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
   const [jdMd, setJdMd] = useState<string>(initial.current.jdMd);
   const [saving, setSaving] = useState(false);
 
-  // Persist draft on every change. sessionStorage is sync and tiny — no cost.
+  // Persist draft on every change. sessionStorage is sync and tiny, no cost.
   useEffect(() => {
     writeDraft(sessionId, { company, jobTitle, location, applyUrl, jdMd });
   }, [sessionId, company, jobTitle, location, applyUrl, jdMd]);
@@ -162,7 +162,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
 
   function handleClose() {
     if (saving) return;
-    // Don't auto-clear on close — user might be intentionally stepping out
+    // Don't auto-clear on close, user might be intentionally stepping out
     // to grab the JD. They can hit Cancel explicitly to wipe.
     onClose();
   }
@@ -179,7 +179,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         <DialogHeader>
           <DialogTitle>Add job manually</DialogTitle>
           <DialogDescription>
-            Drop a job onto the board. Your input is auto-saved while you're typing — switch to another
+            Drop a job onto the board. Your input is auto-saved while you're typing, switch to another
             tab to grab the JD and your work will still be here when you come back.
           </DialogDescription>
         </DialogHeader>

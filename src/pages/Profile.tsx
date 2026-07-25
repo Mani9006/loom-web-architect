@@ -94,7 +94,7 @@ export default function Profile() {
     if (!user) return;
     setSaving(true);
     const oldApplypass = (jobPreferences.applypass || {}) as Record<string, unknown>;
-    // Spread the existing applypass.profile first — Settings (ApplicationProfileCard)
+    // Spread the existing applypass.profile first, Settings (ApplicationProfileCard)
     // stores additional fields here (country, city, currentCompany, discoverySource,
     // ...) that this page doesn't have inputs for. Without the spread, saving here
     // silently wiped those out instead of only updating the fields below.

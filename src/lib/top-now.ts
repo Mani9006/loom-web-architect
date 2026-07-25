@@ -3,7 +3,7 @@
  *
  * The pool query already returns eligible, non-dismissed evaluations with
  * fit_score >= 50, ordered by fit_score descending. These helpers decide
- * which of them are actionable right now — pure functions so the strip's
+ * which of them are actionable right now, pure functions so the strip's
  * rules stay testable.
  */
 
@@ -17,7 +17,7 @@ export interface TopNowDraft {
 }
 
 /**
- * Evaluations without a submitted draft — the cards the strip shows (max 5).
+ * Evaluations without a submitted draft, the cards the strip shows (max 5).
  * In-flight drafts (draft/ready/queued/failed/skipped) keep their card so the
  * user can watch progress; submitted ones graduate to the activity receipts.
  */
@@ -31,7 +31,7 @@ export function selectTopNow<T extends TopNowEvaluation>(pool: T[], drafts: TopN
 }
 
 /**
- * Strip cards with no draft packet yet — the ones "Apply to all" still needs
+ * Strip cards with no draft packet yet, the ones "Apply to all" still needs
  * to tailor (and queue, when auto-apply settings allow). Cards that already
  * have a packet get a per-card Review/Watch action instead of re-tailoring.
  */

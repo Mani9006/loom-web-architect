@@ -20,7 +20,7 @@ import { EnvBanner } from "@/components/EnvBanner";
 // Eager-loaded routes (critical path)
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
-// Public legal pages — eager so Google OAuth reviewers (and users) always get
+// Public legal pages, eager so Google OAuth reviewers (and users) always get
 // a fast, working document at /privacy and /terms.
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";

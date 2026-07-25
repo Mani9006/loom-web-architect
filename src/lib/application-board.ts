@@ -9,7 +9,7 @@
  * Board tabs: All / In flight / Needs you / Failed / Skipped.
  *   - In flight  = the live pipeline: Tailoring, Queued, Applying, Submitted
  *     (Submitted stays here because the application is out with the employer
- *     awaiting their decision — the flight is not over until they respond.)
+ *     awaiting their decision, the flight is not over until they respond.)
  *   - Needs you  = blocked on the user (review, employer verification, fix)
  *   - Failed     = did not go through (Couldn't apply, Job expired, Failed)
  *   - Skipped    = deliberately held back (Skipped)
@@ -154,7 +154,7 @@ export function deriveBoardStatus(draft: BoardDraft, task: BoardTask | null | un
       if (task?.status === "running") {
         return makeStatus("applying", "We're on the employer's form right now.", "in_flight");
       }
-      return makeStatus("queued", "In line — submission starts shortly.", "in_flight");
+      return makeStatus("queued", "In line, submission starts shortly.", "in_flight");
     }
 
     case "submitted":
@@ -167,7 +167,7 @@ export function deriveBoardStatus(draft: BoardDraft, task: BoardTask | null | un
       if (job?.status === "stopped") {
         return makeStatus("skipped", "Stopped before submission.", "skipped");
       }
-      return makeStatus("skipped", shortReason(reason, "We held this one back — open it to see why."), "skipped");
+      return makeStatus("skipped", shortReason(reason, "We held this one back, open it to see why."), "skipped");
     }
 
     case "failed": {
@@ -180,7 +180,7 @@ export function deriveBoardStatus(draft: BoardDraft, task: BoardTask | null | un
       if (EMPLOYER_BLOCK_PATTERN.test(reason ?? "") || job?.status === "needs_attention") {
         return makeStatus("cant_apply", shortReason(reason, "The employer's form blocked this submission."), "failed");
       }
-      return makeStatus("failed", shortReason(reason, "Something went wrong — open it to see what happened."), "failed");
+      return makeStatus("failed", shortReason(reason, "Something went wrong, open it to see what happened."), "failed");
     }
 
     case "ready":

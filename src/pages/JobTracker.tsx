@@ -316,7 +316,7 @@ export default function JobTracker() {
       .eq("id", jobId);
 
     if (error) {
-      // Roll back the optimistic update — otherwise the board keeps showing
+      // Roll back the optimistic update, otherwise the board keeps showing
       // a status that was never actually saved, until the next reload.
       setJobs((prev) => prev.map((j) => (j.id === jobId && current ? current : j)));
       toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
@@ -335,7 +335,7 @@ export default function JobTracker() {
       .eq("id", jobId);
 
     if (error) {
-      // Roll back — otherwise a failed delete still disappears the card.
+      // Roll back, otherwise a failed delete still disappears the card.
       if (removed) setJobs((prev) => [removed, ...prev]);
       toast({ title: "Error", description: "Failed to delete job", variant: "destructive" });
       return;
@@ -344,7 +344,7 @@ export default function JobTracker() {
   };
 
   const deleteSavedJobDetail = async (savedJob: SavedJobDetail) => {
-    // Remove from saved_jobs — bail out with an error toast instead of a
+    // Remove from saved_jobs, bail out with an error toast instead of a
     // false "removed" success when the delete fails.
     const { error } = await supabase.from("saved_jobs").delete().eq("id", savedJob.id);
     if (error) {
@@ -541,7 +541,7 @@ export default function JobTracker() {
       <PageHeader
         title="Applications."
         status="kanban · pipeline"
-        description="One record for every opportunity—from match and tailored resume through application, interview, and offer."
+        description="One record for every opportunity,from match and tailored resume through application, interview, and offer."
       />
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-px bg-rp-rule border border-rp-rule mb-6">
         <button onClick={() => navigate("/matches")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
@@ -723,7 +723,7 @@ export default function JobTracker() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{job.title}</p>
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                          <Building2 className="w-3 h-3" /><span className="truncate">{job.company || "—"}</span>
+                          <Building2 className="w-3 h-3" /><span className="truncate">{job.company || ","}</span>
                         </div>
                         <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1">
                           <Clock className="w-2.5 h-2.5" />

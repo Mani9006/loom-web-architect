@@ -1277,7 +1277,7 @@ Format with clear headers and bullet points. Be specific to the role and company
 
     try {
       const title = `Resume: ${resumeData.header.name || "Untitled"}`;
-      // Tag as resume-chat so reloads restore the editor view — the default
+      // Tag as resume-chat so reloads restore the editor view, the default
       // "general" mode made saved sessions reopen as plain chat.
       const convId = await createNewConversation(title, "resume-chat");
       if (!convId) {
@@ -1694,7 +1694,7 @@ ${experienceSummary}
       messages: messagesData || [],
     });
 
-    // Delete messages first, then conversation. Check both — an unchecked
+    // Delete messages first, then conversation. Check both, an unchecked
     // failure here used to surface as a false "Conversation deleted" toast.
     const { error: msgsError } = await supabase.from("messages").delete().eq("conversation_id", id);
     const convError = msgsError

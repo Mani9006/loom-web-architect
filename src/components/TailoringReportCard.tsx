@@ -205,7 +205,7 @@ export default function TailoringReportCard({ report, loading }: { report: Tailo
         <FileDiff className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold">What changed for this application</h3>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">How the tailor rewrote your master résumé for this job — score, keywords, and bullet-level edits.</p>
+      <p className="mt-1 text-xs text-muted-foreground">How the tailor rewrote your master résumé for this job, score, keywords, and bullet-level edits.</p>
 
       <div className="mt-4 flex flex-wrap items-center gap-5">
         <div className="flex items-center gap-3">
@@ -257,7 +257,7 @@ export default function TailoringReportCard({ report, loading }: { report: Tailo
         </div>
       )}
       {groups.length === 0 && (
-        <p className="mt-4 text-xs text-muted-foreground">No textual edits detected — the tailor kept your master résumé wording for this application.</p>
+        <p className="mt-4 text-xs text-muted-foreground">No textual edits detected, the tailor kept your master résumé wording for this application.</p>
       )}
     </motion.section>
   );

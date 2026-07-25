@@ -187,7 +187,7 @@ function scoreTone(score: number): string {
   return "text-rp-ink-2";
 }
 
-/** Fit % chip for the Top 5 strip — our own badge style, tone follows the score. */
+/** Fit % chip for the Top 5 strip, our own badge style, tone follows the score. */
 function fitChipClasses(score: number): string {
   if (score >= 85) return "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
   if (score >= 70) return "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400";
@@ -402,7 +402,7 @@ export default function AgentPage() {
     })();
   }, [loading, matches.length, matchSetup, plan, resume, user]);
 
-  // Pipeline counters — single definition shared with the Applications page
+  // Pipeline counters, single definition shared with the Applications page
   // (JobTracker automationCounts): prepared = packets in status draft/ready,
   // queued = status queued, etc. These reflect CURRENT draft_applications
   // state; the "Last Agent run" summary instead counts only that run's new
@@ -445,10 +445,10 @@ export default function AgentPage() {
   const taskById = useMemo(() => new Map(submitTasks.map((task) => [task.id, task])), [submitTasks]);
 
   // Top 5 right now: highest-fit eligible matches whose application isn't
-  // submitted yet — submitted ones graduate to the activity receipts below.
+  // submitted yet, submitted ones graduate to the activity receipts below.
   const topNow = useMemo(() => selectTopNow(matches, drafts), [matches, drafts]);
 
-  // Cards with no packet yet — the ones "Apply to all 5" still starts.
+  // Cards with no packet yet, the ones "Apply to all 5" still starts.
   const applyAllTargets = useMemo(() => selectAppliableNow(topNow, drafts), [topNow, drafts]);
 
   // Per-job plain status for the Top matches list:
@@ -469,7 +469,7 @@ export default function AgentPage() {
         key: "matched" as const,
         label: "Matched",
         tone: "bg-rp-paper-2 text-rp-ink-2",
-        detail: "This job fits your resume — nothing for you to do yet.",
+        detail: "This job fits your resume, nothing for you to do yet.",
         draftId: null as string | null,
       };
     }
@@ -480,7 +480,7 @@ export default function AgentPage() {
         key: "applying" as const,
         label: running ? "Applying now" : "Queued",
         tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-        detail: running ? "We're on the employer's form right now." : "In line — we start applying shortly.",
+        detail: running ? "We're on the employer's form right now." : "In line, we start applying shortly.",
         draftId: draft.id,
       };
     }
@@ -500,7 +500,7 @@ export default function AgentPage() {
         key: "needs_you" as const,
         label: "Needs you 🟠",
         tone: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-        detail: shortReason(draft.error_message, "One answer is missing — open it to finish."),
+        detail: shortReason(draft.error_message, "One answer is missing, open it to finish."),
         draftId: draft.id,
       };
     }
@@ -508,7 +508,7 @@ export default function AgentPage() {
       key: "ready" as const,
       label: "Ready",
       tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-      detail: "Resume tailored — review it and we'll apply.",
+      detail: "Resume tailored, review it and we'll apply.",
       draftId: draft.id,
     };
   }, [draftsByEvaluation, preparingIds, taskById]);
@@ -535,7 +535,7 @@ export default function AgentPage() {
             id: draft.id,
             kind: "applying" as const,
             sentence: `Applying to ${where}`,
-            detail: running ? String(lastMessage ?? "On the employer's form right now.") : "In line — the apply helper will submit it for you.",
+            detail: running ? String(lastMessage ?? "On the employer's form right now.") : "In line, the apply helper will submit it for you.",
             when,
             draftId: draft.id,
           };
@@ -555,7 +555,7 @@ export default function AgentPage() {
             id: draft.id,
             kind: "needs_you" as const,
             sentence: `Skipped ${where}`,
-            detail: shortReason(draft.error_message, "We held this one back — open it to see why."),
+            detail: shortReason(draft.error_message, "We held this one back, open it to see why."),
             when,
             draftId: draft.id,
           };
@@ -722,7 +722,7 @@ export default function AgentPage() {
         needsAttention += 1;
         setApplyErrors((current) => ({
           ...current,
-          [match.id]: shortReason(error instanceof Error ? error.message : null, "Tailoring failed — try again in a moment."),
+          [match.id]: shortReason(error instanceof Error ? error.message : null, "Tailoring failed, try again in a moment."),
         }));
         void captureIncident(error, { source: "manual", operation: "agent_batch_prepare" });
       }
@@ -738,7 +738,7 @@ export default function AgentPage() {
     toast.success(`${prepared} application${prepared === 1 ? "" : "s"} prepared · ${queued} in line to apply · ${reviewReady + needsAttention} to review`);
   };
 
-  // "Apply to all 5" — tailor (and queue, per review settings) every strip
+  // "Apply to all 5", tailor (and queue, per review settings) every strip
   // card that doesn't have a packet yet. prepareMatches re-filters and caps
   // at 5, so the batch stays inside the existing pipeline limits.
   const prepareTopMatches = async () => prepareMatches(applyAllTargets);
@@ -764,7 +764,7 @@ export default function AgentPage() {
         description="We find jobs that fit your resume, tailor it, and apply for you. You can watch everything here."
       />
 
-      {/* HERO — the one master control: is it working for me right now? */}
+      {/* HERO, the one master control: is it working for me right now? */}
       <section className={cn(
         "mt-7 border p-6 sm:p-8 transition-colors",
         isRunning ? "border-emerald-500/40 bg-emerald-500/[0.06]" : "border-rp-rule bg-rp-paper",
@@ -785,11 +785,11 @@ export default function AgentPage() {
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
               {isRunning
-                ? "We're finding jobs that fit your resume, tailoring it for each one, and submitting applications. You can close this page — every step shows up below."
+                ? "We're finding jobs that fit your resume, tailoring it for each one, and submitting applications. You can close this page, every step shows up below."
                 : "We find jobs that fit your resume, tailor it, and apply for you. You can watch everything here."}
             </p>
             {!hasAutoApply && (
-              <p className="mt-2 text-xs text-rp-ink-3">Auto-applying is part of the Autopilot plan — the button takes you to the options.</p>
+              <p className="mt-2 text-xs text-rp-ink-3">Auto-applying is part of the Autopilot plan, the button takes you to the options.</p>
             )}
           </div>
           <Button
@@ -824,8 +824,8 @@ export default function AgentPage() {
           <div className="flex items-center gap-2 text-xs text-rp-ink-2 xl:justify-end">
             <span className={cn("h-2 w-2 rounded-full", counts.queued === 0 || workerOnline ? "bg-emerald-500" : "bg-amber-500")} />
             {counts.queued === 0
-              ? "Nothing in line — waiting for the next strong match"
-              : workerOnline ? "Applications are being submitted right now" : "In line safely — the apply helper will pick them up"}
+              ? "Nothing in line, waiting for the next strong match"
+              : workerOnline ? "Applications are being submitted right now" : "In line safely, the apply helper will pick them up"}
           </div>
         </div>
       </section>
@@ -834,7 +834,7 @@ export default function AgentPage() {
       <section className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Auto-apply status at a glance">
         {[
           { label: "Matches found", value: matches.length, icon: Radar, note: plan === "free" ? "eligible, from your resume" : "eligible, checked every 10 minutes" },
-          { label: "Resume score", value: latestAts ? `${Math.round(latestAts.overall)}%` : "—", icon: FileCheck2, note: latestAts ? "from your last ATS check" : "no check yet" },
+          { label: "Resume score", value: latestAts ? `${Math.round(latestAts.overall)}%` : ",", icon: FileCheck2, note: latestAts ? "from your last ATS check" : "no check yet" },
           { label: "Ready for you", value: counts.prepared, icon: ShieldCheck, note: `${counts.queued} in line to apply` },
           { label: "Applied", value: counts.submitted, icon: Send, note: counts.failed + counts.skipped > 0 ? `${counts.failed + counts.skipped} need your help` : "confirmed receipts" },
         ].map((item) => (
@@ -849,7 +849,7 @@ export default function AgentPage() {
         ))}
       </section>
 
-      {/* TOP 5 RIGHT NOW — five cards, one click to apply to all */}
+      {/* TOP 5 RIGHT NOW, five cards, one click to apply to all */}
       <section className="mt-6 border border-rp-rule bg-rp-canvas" aria-label="Top 5 right now">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rp-rule p-5">
           <div>
@@ -885,11 +885,11 @@ export default function AgentPage() {
             </p>
             <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-rp-ink-2">
               {!resume
-                ? "Upload it once — we'll pull out your experience and start finding jobs that fit."
+                ? "Upload it once, we'll pull out your experience and start finding jobs that fit."
                 : matchSetup === "building"
                   ? "This takes a minute or two. You can leave this page while it finishes."
                   : matchSetup === "error"
-                    ? "Your resume is safe — just try the refresh again."
+                    ? "Your resume is safe, just try the refresh again."
                     : "We check fresh jobs every hour and will show them here as soon as something fits you."}
             </p>
             <div className="mt-4 flex justify-center gap-2">
@@ -907,7 +907,7 @@ export default function AgentPage() {
             <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
             <p className="mt-3 text-sm font-semibold text-rp-ink">All top matches are in flight</p>
             <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-rp-ink-2">
-              Every strong match already has an application going — watch it in Recent activity below. New matches land here as we find them.
+              Every strong match already has an application going, watch it in Recent activity below. New matches land here as we find them.
             </p>
             <div className="mt-4 flex justify-center gap-2">
               <Button size="sm" variant="outline" onClick={() => navigate("/job-tracker")}>Track applications</Button>
@@ -920,7 +920,7 @@ export default function AgentPage() {
               const title = match.scanned_job?.title ?? "Job match";
               const company = match.scanned_job?.company?.name ?? "Unknown company";
               const status = matchStatus(match);
-              const why = match.summary?.trim() || "This job fits your resume — open Matches for the full breakdown.";
+              const why = match.summary?.trim() || "This job fits your resume, open Matches for the full breakdown.";
               return (
                 <div key={match.id} className="flex flex-col border border-rp-rule bg-rp-paper p-4">
                   <div className="flex items-start justify-between gap-2">
@@ -934,7 +934,7 @@ export default function AgentPage() {
                         disabled={batchPreparing}
                         className="text-rp-ink-3 transition-colors hover:text-rp-ink disabled:opacity-50"
                         aria-label={`Pass on ${title} at ${company}`}
-                        title="Pass — stop showing this job"
+                        title="Pass, stop showing this job"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -980,7 +980,7 @@ export default function AgentPage() {
         </button>
       </section>
 
-      {/* RECENT ACTIVITY — receipts for everything */}
+      {/* RECENT ACTIVITY, receipts for everything */}
       <section className="mt-6 border border-rp-rule bg-rp-paper p-5 sm:p-6" aria-label="Recent activity">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -991,7 +991,7 @@ export default function AgentPage() {
             See all applications <ArrowUpRight className="h-3.5 w-3.5" />
           </button>
         </div>
-        <p className="mt-1 text-xs text-rp-ink-2">A receipt for everything we do for you — newest first.</p>
+        <p className="mt-1 text-xs text-rp-ink-2">A receipt for everything we do for you, newest first.</p>
         {recentActivity.length === 0 ? (
           <p className="mt-5 border border-dashed border-rp-rule-2 bg-rp-canvas p-5 text-center text-xs leading-relaxed text-rp-ink-2">
             Nothing here yet. Once auto-apply starts working, every match, tailored resume, and application shows up here with a time stamp.
@@ -1072,7 +1072,7 @@ export default function AgentPage() {
         )}
       </section>
 
-      {/* SETTINGS — everything advanced lives behind this one disclosure */}
+      {/* SETTINGS, everything advanced lives behind this one disclosure */}
       <section className="mt-6 border border-rp-rule bg-rp-paper">
         <button
           type="button"
@@ -1098,7 +1098,7 @@ export default function AgentPage() {
                     <h3 className="text-sm font-semibold text-rp-ink">Auto-apply settings</h3>
                   </div>
                   <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
-                    Choose how bold we should be. Defaults work well for most people — you can change them any time.
+                    Choose how bold we should be. Defaults work well for most people, you can change them any time.
                   </p>
                 </div>
                 <button

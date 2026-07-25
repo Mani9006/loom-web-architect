@@ -218,7 +218,7 @@ export default function ATSCheckerPage() {
       });
 
       if (!response.ok) {
-        // Function returns { error } on 4xx/5xx — surface it when present.
+        // Function returns { error } on 4xx/5xx, surface it when present.
         const body = await response.json().catch(() => null);
         throw new Error(typeof body?.error === "string" ? body.error : `ATS analysis request failed (${response.status})`);
       }

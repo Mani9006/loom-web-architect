@@ -1,16 +1,16 @@
 /**
- * Home — editorial redesign.
+ * Home, editorial redesign.
  *
  * Conceit: open the app, see the front page of YOUR career today. A
  * masthead (Volume / Issue / Date), a one-line lede, a single brief
  * to anchor the day, and dense recent-work columns below.
  *
- * Everything below the masthead is restrained — no gradient tiles, no
+ * Everything below the masthead is restrained, no gradient tiles, no
  * gradient cards, no shadow stacking. Borders are hairlines. The only
  * accent is the warm amber rp-accent, used once on the lede.
  *
- * Data wiring is unchanged from the prior version — same queries, same
- * state shape — only the surface treatment is new.
+ * Data wiring is unchanged from the prior version, same queries, same
+ * state shape, only the surface treatment is new.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -182,7 +182,7 @@ export default function HomePage() {
             tier: String(m.tier ?? ""),
             summary: (m.summary as string | null) ?? null,
             title: sj.title,
-            company: sj.company?.name ?? "—",
+            company: sj.company?.name ?? ",",
             location: sj.location ?? "Location not listed",
             dimensions: Array.isArray(m.dimension_scores)
               ? (m.dimension_scores as Array<{ key: string; label: string; score: number }>)
@@ -228,13 +228,13 @@ export default function HomePage() {
   const now = useMemo(() => new Date(), []);
   const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
 
-  // ── Today's lede — the single thing worth doing right now ─────────────
+  // ── Today's lede, the single thing worth doing right now ─────────────
   const lede = useMemo(() => {
     if (!hasResume) {
       return {
         eyebrow: "Today · Get set up",
         headline: "Start your first résumé.",
-        body: "We'll parse your existing PDF or you can build one from scratch — the AI tailor turns it into a job-specific application in seconds.",
+        body: "We'll parse your existing PDF or you can build one from scratch, the AI tailor turns it into a job-specific application in seconds.",
         cta: "Open the builder",
         href: "/resume-builder",
       };
@@ -243,7 +243,7 @@ export default function HomePage() {
       return {
         eyebrow: "Today · Apply",
         headline: `A ${topMatches[0].score}% match for you at ${topMatches[0].company}.`,
-        body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title} — ${topMatches[0].score}% career fit before the ATS check.`,
+        body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title}, ${topMatches[0].score}% career fit before the ATS check.`,
         cta: "Tailor and review",
         href: "/matches",
       };
@@ -408,7 +408,7 @@ export default function HomePage() {
               </button>
             </section>
 
-            {/* Quick actions — restrained list, not gradient tiles */}
+            {/* Quick actions, restrained list, not gradient tiles */}
             <aside>
               <SectionHead n={2} title="Workspace" />
               <ul className="mt-3 grid grid-cols-1 gap-px bg-rp-rule border border-rp-rule">
@@ -462,7 +462,7 @@ export default function HomePage() {
                   className="mt-3 text-rp-ink-2/70 flex items-center gap-2"
                   style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.08em", textTransform: "uppercase" }}
                 >
-                  Last run · {agentSummary.lastAt ? new Date(agentSummary.lastAt).toLocaleString() : "—"}
+                  Last run · {agentSummary.lastAt ? new Date(agentSummary.lastAt).toLocaleString() : ","}
                   <span className="w-px h-3 bg-rp-rule" />
                   <button onClick={() => navigate("/career-ops/preferences")} className="hover:text-rp-accent transition-colors">
                     Tune preferences
@@ -488,7 +488,7 @@ export default function HomePage() {
                         className="text-rp-ink-3"
                         style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
                       >
-                        {m.tier ? `Tier ${m.tier}` : "—"}
+                        {m.tier ? `Tier ${m.tier}` : ","}
                       </span>
                       <span
                         className="text-rp-accent tabular-nums"
@@ -607,7 +607,7 @@ function SectionHead({ n, title }: { n: number; title: string }) {
   );
 }
 
-// ─── Brief — today's lede ──────────────────────────────────────────────
+// ─── Brief, today's lede ──────────────────────────────────────────────
 
 function Brief({
   eyebrow,

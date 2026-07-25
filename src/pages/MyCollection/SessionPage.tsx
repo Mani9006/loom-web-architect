@@ -58,12 +58,12 @@ export default function SessionPage() {
     try {
       sessionStorage.setItem(`mc:active-tab:${window.location.pathname}`, tab);
     } catch {
-      // sessionStorage can throw in private mode — non-fatal
+      // sessionStorage can throw in private mode, non-fatal
     }
   }, [tab]);
 
   // A link elsewhere in the app (e.g. BoardTab's "View tailored resume")
-  // navigates to this same route with a new ?tab= — since the route doesn't
+  // navigates to this same route with a new ?tab=, since the route doesn't
   // remount, pick up the change here instead of only reading it once at
   // mount via useState's initializer.
   useEffect(() => {
@@ -88,7 +88,7 @@ export default function SessionPage() {
       // Don't bounce the user back to /my-collection on transient failures
       // (e.g. Supabase token refresh on tab focus, network blip). Only
       // navigate away if we KNOW the session doesn't exist on the very
-      // first load — otherwise just keep showing what we already have.
+      // first load, otherwise just keep showing what we already have.
       if (error) {
         console.error("[SessionPage] reload failed:", error.message);
         if (!hadInitialLoad) {
@@ -117,7 +117,7 @@ export default function SessionPage() {
     };
     // Intentionally only re-run when sessionId changes. navigate/toast are
     // unstable references that, if included, would cause this effect to
-    // re-fire on every render — which on tab focus produces a flash and
+    // re-fire on every render, which on tab focus produces a flash and
     // can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);

@@ -155,7 +155,7 @@ export default function Landing() {
             <p className="text-[12px] font-medium text-muted-foreground mb-2">Platform</p>
             <h2 className="text-[32px] sm:text-[40px] font-bold tracking-tight text-foreground leading-[1.1]">Eight tools. One workspace.</h2>
             <p className="mt-3 text-[15px] text-muted-foreground leading-relaxed">
-              Every surface holds a single discipline. Move between them as the work demands \u2014 the pieces compose into a candidacy that reads like you.
+              Every surface holds a single discipline. Move between them as the work demands. The pieces compose into a candidacy that reads like you.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">

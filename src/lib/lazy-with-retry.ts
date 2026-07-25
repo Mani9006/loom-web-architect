@@ -3,7 +3,7 @@
  *
  * When Vite/Vercel deploys new code, old chunk filenames (with content
  * hashes) stop existing. Any browser tab still running the OLD index.html
- * — referencing those old chunks — will throw "Failed to fetch dynamically
+ *, referencing those old chunks, will throw "Failed to fetch dynamically
  * imported module" the next time the user navigates to a lazy-loaded route.
  *
  * Strategy:
@@ -34,7 +34,7 @@ export function lazyWithReload<T extends ComponentType<unknown>>(
   return lazy(async () => {
     try {
       const mod = await factory();
-      // Clear the flag once we've successfully loaded a chunk — the next stale
+      // Clear the flag once we've successfully loaded a chunk, the next stale
       // deploy gets a fresh chance to reload.
       sessionStorage.removeItem(RELOAD_FLAG);
       return mod;
@@ -62,7 +62,7 @@ export function installChunkReloadGuard(): void {
   if (typeof window === "undefined") return;
   window.addEventListener("error", (e) => {
     const target = e.target as HTMLElement | null;
-    // `<script>` / `<link rel=modulepreload>` failed to load — same root cause
+    // `<script>` / `<link rel=modulepreload>` failed to load, same root cause
     // as the dynamic-import case.
     if (target && (target.tagName === "SCRIPT" || target.tagName === "LINK")) {
       const src = (target as HTMLScriptElement).src || (target as HTMLLinkElement).href || "";

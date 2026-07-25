@@ -68,7 +68,7 @@ function writeDraft(d: Draft) {
   try {
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d));
   } catch {
-    // sessionStorage can throw in private mode — non-fatal
+    // sessionStorage can throw in private mode, non-fatal
   }
 }
 
@@ -94,7 +94,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   const [visa, setVisa] = useState<string>(initial.current.visa);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load resumes whenever the dialog opens. We do NOT reset form state here —
+  // Load resumes whenever the dialog opens. We do NOT reset form state here ,
   // the whole point of the persisted draft is that values survive tab-switches
   // and dialog re-mounts. The draft is cleared explicitly on successful create
   // or explicit cancel.
@@ -138,7 +138,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   }
 
   function handleCancel() {
-    // User explicitly cancelling — clear so they get a fresh form next time.
+    // User explicitly cancelling, clear so they get a fresh form next time.
     resetForm();
     onClose();
   }
@@ -216,7 +216,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
               <Label htmlFor="mc-name">Session name</Label>
               <Input
                 id="mc-name"
-                placeholder="e.g. ML Engineer — financial services"
+                placeholder="e.g. ML Engineer, financial services"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoFocus

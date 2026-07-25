@@ -57,7 +57,7 @@ export default function Dashboard() {
       setUserEmail(user.email || null);
 
       const [profileResult, conversationsResult, coverLettersResult] = await Promise.all([
-        // NOTE: profiles has no `phone` column — selecting it makes PostgREST
+        // NOTE: profiles has no `phone` column, selecting it makes PostgREST
         // reject the whole query. Phone lives in job_preferences.applypass.
         supabase.from("profiles").select("full_name, email, location, avatar_url, job_preferences" as any).eq("user_id", user.id).maybeSingle() as any,
         supabase.from("conversations").select("id, title, chat_mode, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),

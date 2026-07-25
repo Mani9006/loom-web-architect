@@ -101,7 +101,7 @@ export function ApplicationProfileCard() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg"><ClipboardCheck className="h-5 w-5 text-primary" />Application answers</CardTitle>
-          <CardDescription>We use these answers to fill application forms for you — set once, we handle the rest.</CardDescription>
+          <CardDescription>We use these answers to fill application forms for you, set once, we handle the rest.</CardDescription>
         </CardHeader>
         <CardContent className="flex min-h-32 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></CardContent>
       </Card>
@@ -112,7 +112,7 @@ export function ApplicationProfileCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg"><ClipboardCheck className="h-5 w-5 text-primary" />Application answers</CardTitle>
-        <CardDescription>We use these answers to fill application forms for you — set once, we handle the rest.</CardDescription>
+        <CardDescription>We use these answers to fill application forms for you, set once, we handle the rest.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2" data-testid="application-answers-completeness">

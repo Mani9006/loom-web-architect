@@ -43,7 +43,7 @@ interface PersistedDiscover {
   /** mc_ai_jobs.id of the most recent search. Used to re-attach if user
    *  switches away mid-search and comes back. */
   activeJobId: string | null;
-  /** Snapshot of the conversation that the activeJobId was launched with —
+  /** Snapshot of the conversation that the activeJobId was launched with ,
    *  needed because Claude's response interpretation depends on history. */
   activeJobHistory: ClarificationTurn[];
 }
@@ -63,7 +63,7 @@ function writePersisted(sid: string, p: PersistedDiscover) {
   try {
     sessionStorage.setItem(stateKey(sid), JSON.stringify(p));
   } catch {
-    // sessionStorage can throw in private mode — non-fatal
+    // sessionStorage can throw in private mode, non-fatal
   }
 }
 
@@ -96,7 +96,7 @@ interface Props {
 }
 
 /**
- * AI-driven job discovery. Standalone — does NOT touch the rest of the
+ * AI-driven job discovery. Standalone, does NOT touch the rest of the
  * site's job-search / matches / scanned_jobs infrastructure. The user's
  * Mac mini worker runs Claude with their master resume + target profile,
  * and Claude either asks clarifying questions or returns a list of jobs.
@@ -182,7 +182,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         await handleSearchResult(job, activeJobHistory);
       } catch (e) {
         if (cancelled) return;
-        // Job is gone or timed out — clear so the user can re-trigger.
+        // Job is gone or timed out, clear so the user can re-trigger.
         setActiveJobId(null);
         setActiveJobHistory([]);
         // Don't toast on transient mount-time failures; the user might not
@@ -258,21 +258,21 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           "\n────────────────────────────────\n";
 
     return [
-      "You are an autonomous job-search orchestrator. The user is running you with --dangerously-skip-permissions, which means you have FULL access to Bash, WebFetch, WebSearch, and Task. Use them. Do NOT respond with 'I cannot fetch live job postings' — you can.",
+      "You are an autonomous job-search orchestrator. The user is running you with --dangerously-skip-permissions, which means you have FULL access to Bash, WebFetch, WebSearch, and Task. Use them. Do NOT respond with 'I cannot fetch live job postings', you can.",
       "",
       "Your ENTIRE FINAL response must be a single JSON object inside a ```json fenced block. No prose, no preamble, no explanation outside the fence.",
       "",
       "── HOW TO ACTUALLY FIND JOBS ──",
-      "Try these in order. Do NOT stop at the first one that fails — fall through.",
+      "Try these in order. Do NOT stop at the first one that fails, fall through.",
       "",
-      "1. **Apify (PRIMARY — use FIRST if available)**. Check whether $APIFY_TOKEN is set in your environment via `bash: echo $APIFY_TOKEN | head -c 8`. If it is, you have a full job-scraping pipeline at your fingertips. Use these actors:",
+      "1. **Apify (PRIMARY, use FIRST if available)**. Check whether $APIFY_TOKEN is set in your environment via `bash: echo $APIFY_TOKEN | head -c 8`. If it is, you have a full job-scraping pipeline at your fingertips. Use these actors:",
       "   • LinkedIn jobs:  POST https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items?token=$APIFY_TOKEN",
       "       body: {\"queries\":[\"data scientist remote\"], \"location\":\"United States\", \"limit\":50, \"posted_at\":\"week\"}",
       "   • Indeed:          POST https://api.apify.com/v2/acts/bebity~indeed-scraper/run-sync-get-dataset-items?token=$APIFY_TOKEN",
       "       body: {\"position\":\"data scientist\", \"country\":\"us\", \"location\":\"Remote\", \"maxItems\":50}",
       "   • Glassdoor:       POST https://api.apify.com/v2/acts/thomasdivert~glassdoor-jobs/run-sync-get-dataset-items?token=$APIFY_TOKEN",
       "       body: {\"keyword\":\"data scientist\", \"location\":\"United States\", \"maxItems\":30}",
-      "   Each query returns rich JSON with title, company, location, salary, description, application URL. The actor's own search handles relevance — much better than WebSearch.",
+      "   Each query returns rich JSON with title, company, location, salary, description, application URL. The actor's own search handles relevance, much better than WebSearch.",
       "",
       "2. **WebSearch** for each target role if Apify isn't available (e.g. 'data scientist remote 2026', 'senior ML engineer remote'). Filter to recent results (last 7-30 days).",
       "",
@@ -282,37 +282,37 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       "   • Greenhouse:  curl -s 'https://boards-api.greenhouse.io/v1/boards/{company-slug}/jobs?content=true'",
       "   • Lever:       curl -s 'https://api.lever.co/v0/postings/{company-slug}?mode=json'",
       "   • Ashby:       curl -s 'https://api.ashbyhq.com/posting-api/job-board/{company-slug}'",
-      "   Try a list of well-known companies that hire for the user's target roles (Stripe, Datadog, Anthropic, OpenAI, Cohere, Hugging Face, Scale AI, Anduril, Plaid, Notion, etc.) — pick 8-15 relevant to the user's roles.",
+      "   Try a list of well-known companies that hire for the user's target roles (Stripe, Datadog, Anthropic, OpenAI, Cohere, Hugging Face, Scale AI, Anduril, Plaid, Notion, etc.), pick 8-15 relevant to the user's roles.",
       "",
-      "5. **Parallelize with Task** — spawn one Haiku sub-agent per source. They each do their own curl/WebFetch and return a small JSON list. You aggregate.",
+      "5. **Parallelize with Task**, spawn one Haiku sub-agent per source. They each do their own curl/WebFetch and return a small JSON list. You aggregate.",
       "",
       "── DELEGATE PARALLEL WORK TO HAIKU ──",
       "You're Sonnet 4.6 (expensive). For each parallelizable subtask, call Task with subagent_type='general-purpose'. The sub-agent inherits cheap default models. Examples:",
       "  • One sub-agent per ATS+company combo to fetch and parse",
       "  • One sub-agent per posting to compute fit_score against the candidate",
       "  • One sub-agent to deduplicate the aggregate list",
-      "Aggregate at the end. Don't sequentially curl 15 companies yourself — fan out.",
+      "Aggregate at the end. Don't sequentially curl 15 companies yourself, fan out.",
       "",
       "── ANTI-FABRICATION ──",
       "NEVER invent companies, URLs, titles, or postings. Every entry in your final JSON must be backed by a real fetch you (or a sub-agent) did in this session. Drop any posting whose URL you couldn't reach.",
       "",
       "── ONLY ASK FOR CLARIFICATION IF YOU GENUINELY CAN'T PROCEED ──",
-      "Only return needs_clarification if (a) target_roles is missing/ambiguous AND (b) you cannot guess from the resume. Do NOT ask about salary specifics or industries — score those silently using the data you have.",
+      "Only return needs_clarification if (a) target_roles is missing/ambiguous AND (b) you cannot guess from the resume. Do NOT ask about salary specifics or industries, score those silently using the data you have.",
       "",
       "────── CANDIDATE RESUME ──────",
-      resumeMd || "(no resume on file — use the targets only)",
+      resumeMd || "(no resume on file, use the targets only)",
       "",
       "────── TARGETS ──────",
       targetBlock || "(no targets specified)",
       historyBlock,
       "────── OUTPUT FORMAT (choose ONE of these two shapes) ──────",
       "",
-      "Shape A — only if you truly cannot proceed (max 2 short questions):",
+      "Shape A, only if you truly cannot proceed (max 2 short questions):",
       "```json",
       `{"needs_clarification": true, "questions": ["...", "..."]}`,
       "```",
       "",
-      "Shape B — the expected case:",
+      "Shape B, the expected case:",
       "```json",
       `{"jobs":[{"title":"...","company":"...","location":"...","apply_url":"https://...","summary":"...","fit_score":1,"fit_reason":"..."}]}`,
       "```",
@@ -360,7 +360,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           : "Empty response. Click Search again.",
         variant: "destructive",
       });
-      // Job consumed — clear activeJobId
+      // Job consumed, clear activeJobId
       setActiveJobId(null);
       setActiveJobHistory([]);
       return;
@@ -412,7 +412,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       description: "The AI didn't return jobs or clarification questions. Try again.",
       variant: "destructive",
     });
-    // Suppress unused-history warning — kept in signature for future use.
+    // Suppress unused-history warning, kept in signature for future use.
     void history;
   }
 
@@ -456,7 +456,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       await handleSearchResult(finished, history);
     } catch (e) {
       // The user switched away mid-search (waitForJob was aborted on
-      // unmount) — not a real failure, so stay silent rather than toast.
+      // unmount), not a real failure, so stay silent rather than toast.
       if (isJobCancelled(e)) return;
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Search failed", description: msg, variant: "destructive" });
@@ -546,7 +546,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       }
       let trackedJobId: string | null = null;
       if (savedTitles.has(key)) {
-        // Already saved — find the existing row.
+        // Already saved, find the existing row.
         const { data: existing } = await (supabase as any)
           .from("mc_tracked_jobs")
           .select("id")
@@ -582,7 +582,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         setSavedTitles((s) => new Set(s).add(key));
       }
 
-      // 2. Build the tailor prompt — same anti-fabrication rules as BoardTab.
+      // 2. Build the tailor prompt, same anti-fabrication rules as BoardTab.
       const prompt = [
         "You are an expert resume tailor. Rewrite the candidate's resume below to maximize fit for the target job, ATS-aligned.",
         "STRICT RULES:",
@@ -625,7 +625,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           user_id: userData.user.id,
           session_id: sessionId,
           source_job_id: null,
-          name: `${job.company} — ${job.title}`,
+          name: `${job.company}, ${job.title}`,
           cv_md: result,
         })
         .select("id")
@@ -645,11 +645,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
       toast({
         title: "Tailored resume ready",
-        description: `${job.company} · ${job.title} — see the Resumes tab.`,
+        description: `${job.company} · ${job.title}, see the Resumes tab.`,
       });
     } catch (e) {
       // The user switched away mid-tailor (runOnLocalWorker was aborted on
-      // unmount) — not a real failure, so stay silent rather than toast.
+      // unmount), not a real failure, so stay silent rather than toast.
       if (isJobCancelled(e)) return;
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Tailor failed", description: msg, variant: "destructive" });

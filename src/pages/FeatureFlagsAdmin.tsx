@@ -101,7 +101,7 @@ function FlagRow({ name, label, description }: { name: FlagName; label: string; 
 
   const onClear = () => {
     clearLocal(name);
-    toast.message(`${label} override removed — falling back to ${resolved.source === "env" ? "env var" : "default"}`);
+    toast.message(`${label} override removed, falling back to ${resolved.source === "env" ? "env var" : "default"}`);
   };
 
   return (

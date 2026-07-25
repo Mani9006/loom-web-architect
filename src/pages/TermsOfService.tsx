@@ -18,11 +18,11 @@ export default function TermsOfService() {
         <p>ResumePreps is an AI-assisted career platform. The service includes:</p>
         <LegalList
           items={[
-            "Résumé builder and ATS checker — draft, parse, score, and export résumés, with job-description-aware keyword analysis.",
-            "Job search and matches — fresh, company-direct openings scored against your résumé and preferences.",
-            "Application preparation — AI-tailored résumés, cover letters, and suggested answers for specific postings, presented to you for review.",
-            "Application submission — at your direction and under the settings you choose, ResumePreps can submit job applications on your behalf to employer portals, using the tailored materials you approved and the answers you provided.",
-            "Pipeline tracking — a board of saved, prepared, submitted, and completed applications, with statuses that can be updated automatically when you connect Gmail.",
+            "Résumé builder and ATS checker, draft, parse, score, and export résumés, with job-description-aware keyword analysis.",
+            "Job search and matches, fresh, company-direct openings scored against your résumé and preferences.",
+            "Application preparation, AI-tailored résumés, cover letters, and suggested answers for specific postings, presented to you for review.",
+            "Application submission, at your direction and under the settings you choose, ResumePreps can submit job applications on your behalf to employer portals, using the tailored materials you approved and the answers you provided.",
+            "Pipeline tracking, a board of saved, prepared, submitted, and completed applications, with statuses that can be updated automatically when you connect Gmail.",
           ]}
         />
         <p>
@@ -44,14 +44,14 @@ export default function TermsOfService() {
         <p>
           You retain ownership of the résumés, cover letters, profile details, and answers you provide ("Your
           Content"). You grant us a limited license to host, process, and transmit Your Content solely to operate the
-          service — including sending it to AI model providers to generate tailored materials and to employers when
+          service, including sending it to AI model providers to generate tailored materials and to employers when
           you submit an application.
         </p>
         <p>You are responsible for the accuracy of everything submitted in your name. Specifically:</p>
         <LegalList
           items={[
             "The résumé, profile, and answers you provide must be truthful and yours to use.",
-            "AI-generated suggestions are drafting aids. You must review tailored résumés, cover letters, and answers before they are submitted, unless you have deliberately enabled auto-submit — and even then you remain responsible for what is sent.",
+            "AI-generated suggestions are drafting aids. You must review tailored résumés, cover letters, and answers before they are submitted, unless you have deliberately enabled auto-submit, and even then you remain responsible for what is sent.",
             "We design the system to avoid fabricated content: our prompts instruct models not to invent employers, dates, credentials, skills, or metrics, and unsupported claims are filtered where detected. We cannot guarantee perfection, so review remains your responsibility.",
           ]}
         />
@@ -70,7 +70,7 @@ export default function TermsOfService() {
         />
         <p>
           Where an employer portal presents a CAPTCHA or explicitly prohibits automation, the correct behavior is to
-          stop and hand the application back to you — and that is what we build the product to do.
+          stop and hand the application back to you, and that is what we build the product to do.
         </p>
       </LegalSection>
 
@@ -87,7 +87,7 @@ export default function TermsOfService() {
 
       <LegalSection title="7. Intellectual property">
         <p>
-          The ResumePreps service — its software, design, scoring rubrics, prompts, and branding — is owned by us and
+          The ResumePreps service, its software, design, scoring rubrics, prompts, and branding, is owned by us and
           protected by intellectual-property laws. These Terms give you a personal, non-exclusive, non-transferable
           right to use the service while your account is in good standing. You may not copy, resell, or reverse
           engineer the service except as permitted by law. Your Content remains yours, as described in Section 4.
@@ -96,7 +96,7 @@ export default function TermsOfService() {
 
       <LegalSection title="8. Third-party sites and services">
         <p>
-          ResumePreps links to and interacts with third-party services — employer career portals, job boards, Google
+          ResumePreps links to and interacts with third-party services, employer career portals, job boards, Google
           (Gmail), Stripe, and AI model providers. Those services are governed by their own terms and privacy policies.
           We are not responsible for third-party content, availability, or decisions, including any employer's
           response to your application.
@@ -121,8 +121,8 @@ export default function TermsOfService() {
       <LegalSection title="10. Limitation of liability">
         <p>
           To the maximum extent permitted by law, ResumePreps and its operators will not be liable for any indirect,
-          incidental, special, consequential, or punitive damages — including lost job opportunities, lost income, lost
-          data, or reputational harm — arising from or related to your use of the service. Our aggregate liability for
+          incidental, special, consequential, or punitive damages, including lost job opportunities, lost income, lost
+          data, or reputational harm, arising from or related to your use of the service. Our aggregate liability for
           any claim relating to the service is limited to the amount you paid us in the twelve months before the event
           giving rise to the claim, or, if you paid nothing, one hundred US dollars (US$100). Some jurisdictions do not
           allow these limits; in that case they apply to the fullest extent permitted.
@@ -133,7 +133,7 @@ export default function TermsOfService() {
         <p>
           You agree to indemnify and hold harmless ResumePreps from claims, damages, and expenses (including
           reasonable legal fees) arising out of Your Content, your breach of these Terms, your violation of any
-          third party's rights or terms — including the terms of job boards and employer portals — or applications
+          third party's rights or terms, including the terms of job boards and employer portals, or applications
           submitted under your account with information you provided or approved.
         </p>
       </LegalSection>
@@ -141,7 +141,7 @@ export default function TermsOfService() {
       <LegalSection title="12. Termination">
         <p>
           You may stop using the service and delete your account at any time. We may suspend or terminate access if
-          you breach these Terms, use the service unlawfully, or create risk for us or other users — with notice where
+          you breach these Terms, use the service unlawfully, or create risk for us or other users, with notice where
           practicable. On termination, your right to use the service ends; provisions that by their nature should
           survive (including ownership, disclaimers, limitation of liability, and indemnification) survive. Your data
           is handled after termination as described in the Privacy Policy, and you may request deletion at any time.
@@ -172,7 +172,7 @@ export default function TermsOfService() {
           <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="text-foreground underline underline-offset-2 hover:text-foreground/70">
             {LEGAL_CONTACT_EMAIL}
           </a>
-          {" "}— ResumePreps, resumepreps.com.
+          {" "}, ResumePreps, resumepreps.com.
         </p>
       </LegalSection>
     </LegalLayout>

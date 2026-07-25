@@ -56,7 +56,7 @@ Sincerely,
 
 Hi [Hiring Manager],
 
-I've spent the last [X years] turning impossible briefs into award-winning work. At [Company], I led a campaign that [specific achievement] — and honestly? I'm just getting started.
+I've spent the last [X years] turning impossible briefs into award-winning work. At [Company], I led a campaign that [specific achievement], and honestly? I'm just getting started.
 
 Here's what I bring to the table:
 • [Key skill] that drove [result]

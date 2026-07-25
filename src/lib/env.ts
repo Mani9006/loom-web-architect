@@ -7,7 +7,7 @@
  *   - "development" → local `npm run dev`
  *
  * Feature flags follow the convention `VITE_ENABLE_<FEATURE>`. When unset,
- * a feature defaults to "on in non-production, off in production" — that's
+ * a feature defaults to "on in non-production, off in production", that's
  * what lets us test new work in staging without exposing it to real users.
  */
 
@@ -28,5 +28,5 @@ export const isStaging = () => getEnv() === "staging";
 export const isDevelopment = () => getEnv() === "development";
 export const isPreProduction = () => !isProduction();
 
-// Flag system lives in `src/lib/feature-flags.ts` — it supports
+// Flag system lives in `src/lib/feature-flags.ts`, it supports
 // localStorage overrides via the /admin/flags UI.

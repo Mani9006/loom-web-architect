@@ -35,7 +35,7 @@ export default function LegalLayout({ title, subtitle, children }: LegalLayoutPr
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
-    document.title = `${title} — ResumePreps`;
+    document.title = `${title}, ResumePreps`;
   }, [title]);
 
   return (

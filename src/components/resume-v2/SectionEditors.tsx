@@ -2,7 +2,7 @@
  * Section editors for the v2 resume builder.
  *
  * Each editor is a controlled form that reads from + writes to the Zustand
- * store. No prop drilling — components subscribe to the slice they care about.
+ * store. No prop drilling, components subscribe to the slice they care about.
  */
 import { cloneElement, isValidElement, useId, useState, type ReactElement } from "react";
 import { useShallow } from "zustand/react/shallow";

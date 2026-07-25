@@ -3,7 +3,7 @@
  *
  * Old ResumeBuilder.tsx uses local useState + prop drilling and is 1700+ lines.
  * This store replaces that with a flat Zustand state. Components subscribe to
- * the slices they care about — no parent relay, no prop drilling.
+ * the slices they care about, no parent relay, no prop drilling.
  *
  * Lives alongside the old builder until v2 reaches parity, then we cut over
  * and delete the old code.

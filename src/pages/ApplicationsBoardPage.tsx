@@ -67,7 +67,7 @@ interface EmptyCopy {
 
 function relativeTime(iso: string): string {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return ",";
   return formatDistanceToNow(date, { addSuffix: true });
 }
 
@@ -93,7 +93,7 @@ export default function ApplicationsBoardPage() {
     if (draftError) {
       void captureIncident(new Error(draftError.message), { source: "manual", operation: "applications_board_load" });
       // Honest failure: don't fall through to the "No applications yet"
-      // empty state when the read itself failed — show an error + retry
+      // empty state when the read itself failed, show an error + retry
       // instead. The 30s poll also retries automatically.
       setLoadError(true);
       setLoading(false);
@@ -167,14 +167,14 @@ export default function ApplicationsBoardPage() {
         return {
           icon: CircleSlash,
           title: "No failed applications",
-          body: "Anything we couldn't submit — and the reason why — shows up here so you can fix it and retry.",
+          body: "Anything we couldn't submit, and the reason why, shows up here so you can fix it and retry.",
           actionLabel: "Find more matches",
         };
       case "skipped":
         return {
           icon: Inbox,
           title: "Nothing skipped",
-          body: "Applications we deliberately held back — with the reason — show up here.",
+          body: "Applications we deliberately held back, with the reason, show up here.",
           actionLabel: "Review matches",
         };
       case "all":
@@ -219,7 +219,7 @@ export default function ApplicationsBoardPage() {
       <PageHeader
         title="All applications."
         status={`auto-apply · ${counts.all} total`}
-        description="Every application we're preparing, sending, or have sent for you — with a receipt for each step."
+        description="Every application we're preparing, sending, or have sent for you, with a receipt for each step."
       />
 
       {/* Tabs with counts */}
@@ -266,7 +266,7 @@ export default function ApplicationsBoardPage() {
           <AlertTriangle className="mx-auto h-8 w-8 text-rp-ink-3" strokeWidth={1.6} />
           <p className="mt-3 text-sm font-semibold text-rp-ink">Your applications couldn't be loaded</p>
           <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-rp-ink-2">
-            Nothing is lost — this is a connection hiccup on our side. We retry automatically every 30 seconds, or you can try now.
+            Nothing is lost, this is a connection hiccup on our side. We retry automatically every 30 seconds, or you can try now.
           </p>
           <Button size="sm" className="mt-4" onClick={() => void load(true)} disabled={refreshing}>
             {refreshing ? "Retrying…" : "Try again"}
@@ -305,7 +305,7 @@ export default function ApplicationsBoardPage() {
                   }}
                   tabIndex={0}
                   className="cursor-pointer border-rp-rule hover:bg-rp-paper focus-visible:outline-none focus-visible:bg-rp-paper"
-                  aria-label={`${row.title} at ${row.company} — ${row.status.label}`}
+                  aria-label={`${row.title} at ${row.company}, ${row.status.label}`}
                 >
                   <TableCell className="py-3.5">
                     <p className="truncate text-sm font-semibold text-rp-ink">{row.title}</p>
@@ -321,7 +321,7 @@ export default function ApplicationsBoardPage() {
                         <Loader2 className="h-3.5 w-3.5 animate-spin" /> Tailoring…
                       </span>
                     ) : (
-                      <span className="text-xs text-rp-ink-3">—</span>
+                      <span className="text-xs text-rp-ink-3">,</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -351,7 +351,7 @@ export default function ApplicationsBoardPage() {
       )}
 
       <p className="mt-4 text-xs leading-relaxed text-rp-ink-3">
-        Open any row to review the tailored resume, answers, and submission receipt — or to finish a step that's waiting on you.
+        Open any row to review the tailored resume, answers, and submission receipt, or to finish a step that's waiting on you.
       </p>
     </div>
   );

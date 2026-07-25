@@ -298,8 +298,8 @@ export default function MatchesPage() {
     try {
       const { draftId, atsScore } = await prepareOne(evaluationId, scannedJobId);
       toast.success(atsScore
-        ? `Application ready · resume scores ${Math.round(atsScore)} — take a look before we submit`
-        : "Application ready — take a look before we submit");
+        ? `Application ready · resume scores ${Math.round(atsScore)}, take a look before we submit`
+        : "Application ready, take a look before we submit");
       navigate(`/applications/${draftId}`);
     } catch (e: unknown) {
       void captureIncident(e, { source: "manual", operation: "match_prepare" });
@@ -355,14 +355,14 @@ export default function MatchesPage() {
         prepared += 1;
       } catch (error) {
         failed += 1;
-        setApplyErrors((current) => ({ ...current, [evaluationId]: "Tailoring failed — try again in a moment." }));
+        setApplyErrors((current) => ({ ...current, [evaluationId]: "Tailoring failed, try again in a moment." }));
         void captureIncident(error, { source: "manual", operation: "match_batch_prepare" });
       }
     }
     setBatchProgress(null);
     setSelected(new Set());
     if (failed === 0) {
-      toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready — review them in Applications`);
+      toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready, review them in Applications`);
     } else {
       toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready · ${failed} need${failed === 1 ? "s" : ""} another try`);
     }
@@ -408,7 +408,7 @@ export default function MatchesPage() {
 
   return (
     <div className="max-w-[1200px] mx-auto px-6 lg:px-10 pt-10 pb-24">
-      {/* Page title — restrained, single line, no terminal typewriter */}
+      {/* Page title, restrained, single line, no terminal typewriter */}
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
@@ -418,7 +418,7 @@ export default function MatchesPage() {
             Jobs that fit you
           </h1>
           <p className="mt-2 text-[13px] text-muted-foreground max-w-[68ch] leading-relaxed">
-            Fresh jobs matched to your resume. Press <span className="text-foreground font-medium">Prepare application</span> and we&apos;ll tailor your resume for that job — you review it before anything is sent.
+            Fresh jobs matched to your resume. Press <span className="text-foreground font-medium">Prepare application</span> and we&apos;ll tailor your resume for that job, you review it before anything is sent.
           </p>
         </div>
         <button
@@ -431,7 +431,7 @@ export default function MatchesPage() {
         </button>
       </header>
 
-      {/* Single bordered container — all list state lives inside */}
+      {/* Single bordered container, all list state lives inside */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         {/* Container header: counts + tabs */}
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3 px-5 py-4 border-b border-border">
@@ -499,7 +499,7 @@ export default function MatchesPage() {
             {jobs.length === 0 ? (
               <>
                 <p className="text-[15px] font-semibold text-foreground">We&apos;re still finding jobs that fit your resume.</p>
-                <p className="text-[13px] text-muted-foreground mt-2">Fresh jobs are checked every hour — give it a moment, then refresh.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Fresh jobs are checked every hour, give it a moment, then refresh.</p>
                 <button
                   type="button"
                   onClick={() => void loadMatches(true)}
@@ -512,7 +512,7 @@ export default function MatchesPage() {
             ) : (
               <>
                 <p className="text-[15px] font-semibold text-foreground">Nothing fits these filters.</p>
-                <p className="text-[13px] text-muted-foreground mt-2">Your matches are still here — clear the filters to see them all.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Your matches are still here, clear the filters to see them all.</p>
                 <button
                   type="button"
                   onClick={() => { setFilter("recommended"); setLocationMode("all"); setMatchSearch(""); }}
@@ -625,7 +625,7 @@ export default function MatchesPage() {
       </div>
 
 
-      {/* Batch bar — appears only when something is selected */}
+      {/* Batch bar, appears only when something is selected */}
       {selected.size > 0 && (
         <div className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2">
           <div className="flex items-center gap-3 rounded-full border border-border bg-background px-5 py-3 shadow-lg">

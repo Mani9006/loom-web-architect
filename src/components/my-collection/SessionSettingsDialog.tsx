@@ -147,7 +147,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         <DialogHeader>
           <DialogTitle>Session settings</DialogTitle>
           <DialogDescription>
-            Edit who this session is targeting. Changes apply right away — Discover and the AI tailor
+            Edit who this session is targeting. Changes apply right away, Discover and the AI tailor
             both pull from these values.
           </DialogDescription>
         </DialogHeader>
@@ -167,7 +167,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
             <Label htmlFor="mc-set-resume">Master resume</Label>
             <Select value={resumeId || ""} onValueChange={setResumeId} disabled={saving}>
               <SelectTrigger id="mc-set-resume">
-                <SelectValue placeholder="None — pick a resume" />
+                <SelectValue placeholder="None, pick a resume" />
               </SelectTrigger>
               <SelectContent>
                 {resumes.map((r) => (

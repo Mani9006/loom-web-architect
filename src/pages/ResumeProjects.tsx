@@ -135,7 +135,7 @@ export default function ResumeProjects() {
         // contains the word "tailored". Generated copies do not carry the source
         // document link and stay with their application instead.
         if (resume.source_document_id) return true;
-        return !/—\s*tailored(?:\s*—|$)|application resume$/i.test(resume.title || "");
+        return !/,\s*tailored(?:\s*,|$)|application resume$/i.test(resume.title || "");
       });
       if (masters.length === 0 && nonApplicationResumes.length > 0) {
         // Legacy records predate document-role metadata. Keep the oldest one as
@@ -234,7 +234,7 @@ export default function ResumeProjects() {
         template: "professional",
       };
     } else {
-      // "upload" or "existing" — get extracted text and AI-parse it
+      // "upload" or "existing", get extracted text and AI-parse it
       let textToParse: string;
       let sourceDocumentId: string | null = null;
       if (resumeSource === "upload") {
@@ -577,7 +577,7 @@ export default function ResumeProjects() {
           </button>
         </div>
 
-        {/* Action row — primary uses default (white-on-black) like the rest of the app */}
+        {/* Action row, primary uses default (white-on-black) like the rest of the app */}
         <div className="mt-7 flex items-center gap-2">
           <Button onClick={() => setCreateOpen(true)} className="gap-2">
             <Plus className="h-4 w-4" />
@@ -765,7 +765,7 @@ export default function ResumeProjects() {
                     <SelectContent>
                       {existingDocuments.map((doc) => (
                         <SelectItem key={doc.id} value={doc.id}>
-                          {doc.file_name} — {format(new Date(doc.created_at), "MMM dd, yyyy")}
+                          {doc.file_name}, {format(new Date(doc.created_at), "MMM dd, yyyy")}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -801,7 +801,7 @@ export default function ResumeProjects() {
               </div>
             )}
           </div>
-          {/* Terminal-style loader while parsing — visible right above
+          {/* Terminal-style loader while parsing, visible right above
               the footer when the AI parse is running. */}
           {(isCreating || isParsingImport) && (
             <div className="px-4 pb-2">
@@ -903,7 +903,7 @@ function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimar
       className="group relative rounded-xl border border-border bg-card overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all cursor-pointer"
       onClick={onClick}
     >
-      {/* Thumbnail — zoomed to show top portion of resume, centered */}
+      {/* Thumbnail, zoomed to show top portion of resume, centered */}
       <div className="relative h-52 overflow-hidden bg-rp-paper border-b border-border flex items-start justify-center">
         <div
           className="pointer-events-none select-none shrink-0"
@@ -927,7 +927,7 @@ function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimar
           </div>
         )}
 
-        {/* Hover overlay — dark pill against the white resume thumbnail */}
+        {/* Hover overlay, dark pill against the white resume thumbnail */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
             <div className="bg-rp-ink/95 text-rp-canvas backdrop-blur-sm rounded-md px-3 py-1.5 flex items-center gap-2 text-xs font-medium">

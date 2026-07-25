@@ -20,7 +20,7 @@ const GENERIC_CAREER_PAGE_PATTERNS = [
   /\/career-opportunities/i,
 ];
 
-/** Domains that are known job aggregators — search URLs here are NOT direct job links */
+/** Domains that are known job aggregators, search URLs here are NOT direct job links */
 const AGGREGATOR_SEARCH_PATTERNS = [
   /linkedin\.com\/jobs\/search/i,
   /indeed\.com\/jobs\?/i,

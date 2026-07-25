@@ -1,15 +1,15 @@
 /**
- * App shell — editorial redesign.
+ * App shell, editorial redesign.
  *
  * Aesthetic: think a printed broadsheet that happens to be interactive.
  *   - Paper sidebar with hairline rules in light and dark themes.
  *   - Wordmark in EB Garamond, headline-weight, italic-leaning.
- *   - Nav items as a typographic list (not buttons / pills) — active
+ *   - Nav items as a typographic list (not buttons / pills), active
  *     state is a left ink rule + heavier weight, not a filled background.
  *   - Section labels are small caps with tracking, with a hairline rule.
  *   - Upgrade module reads like a tear-out box from the back of a magazine.
  *   - Header crumb in mono small caps; page title space is intentionally
- *     restrained — we let the page below own the display typography.
+ *     restrained, we let the page below own the display typography.
  *
  * The shell follows one clear journey: find, match, apply, then prepare.
  */
@@ -143,7 +143,7 @@ export default function AppLayout() {
             : "text-rp-ink/60 hover:bg-rp-paper-2/60 hover:text-rp-ink",
         )}
       >
-        {/* Active rule — a thin vertical ink mark instead of a filled background */}
+        {/* Active rule, a thin vertical ink mark instead of a filled background */}
         {showText && (
           <span
             aria-hidden

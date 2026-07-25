@@ -29,7 +29,7 @@ export function usePersistedState<T>(
         return JSON.parse(stored) as T;
       }
     } catch {
-      // Invalid JSON or storage error — use default
+      // Invalid JSON or storage error, use default
     }
     return defaultValue;
   });
@@ -47,7 +47,7 @@ export function usePersistedState<T>(
         storageObj.setItem(key, serialized);
       }
     } catch {
-      // Storage full or unavailable — silently ignore
+      // Storage full or unavailable, silently ignore
     }
   }, [key, value, storageObj, defaultValue]);
 

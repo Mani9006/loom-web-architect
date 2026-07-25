@@ -322,7 +322,7 @@ export default function ResumeBuilder() {
         section_order: resumeJson.section_order as any,
         template: selectedTemplate,
       };
-      // Supabase query errors resolve on `error`, they don't throw — without
+      // Supabase query errors resolve on `error`, they don't throw, without
       // checking it, a failed write still marked the resume "Saved" below,
       // so users could lose edits with no warning.
       if (currentResumeId) {

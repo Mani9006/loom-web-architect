@@ -471,7 +471,7 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
     }
 
     setBrowserPaneState("loading");
-    // Reduced from 12s to 6s — most legit sites load within 3-4s;
+    // Reduced from 12s to 6s, most legit sites load within 3-4s;
     // sites that block iframes show "refused to connect" immediately but
     // the onLoad event still fires, so we need a tighter fallback window.
     const timeoutId = window.setTimeout(() => {
@@ -490,7 +490,7 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
 
   // Auto-switch to cloud mode when a cloud session already exists and the
   // primary URL is blocklisted. We no longer auto-*create* cloud sessions
-  // for blocklisted URLs — the UI shows action buttons instead.
+  // for blocklisted URLs, the UI shows action buttons instead.
   useEffect(() => {
     if (browserMode !== "primary") return;
     if (!primaryBrowserUrl) return;
@@ -1718,7 +1718,7 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
                   <div className="flex-1 p-3 min-h-0">
                     {activeBrowserUrl ? (
                       primaryUrlIsBlocked && browserMode === "primary" ? (
-                        /* Blocklisted domain — skip iframe entirely, show actions */
+                        /* Blocklisted domain, skip iframe entirely, show actions */
                         <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
                           <div className="space-y-2">
                             <p className="text-sm font-medium">

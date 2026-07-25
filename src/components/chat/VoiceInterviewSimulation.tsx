@@ -55,7 +55,7 @@ export function VoiceInterviewSimulation({
   const [questions, setQuestions] = useState<string[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [transcript, setTranscript] = useState<InterviewTranscript[]>([]);
-  // Ref mirror so completion always hands over the full transcript — a
+  // Ref mirror so completion always hands over the full transcript, a
   // setState immediately before onComplete would otherwise drop the last Q&A.
   const transcriptRef = useRef<InterviewTranscript[]>([]);
   const appendTranscript = (entry: InterviewTranscript) => {

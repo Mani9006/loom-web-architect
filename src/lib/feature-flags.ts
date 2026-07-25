@@ -2,13 +2,13 @@
  * Runtime-toggleable feature flags.
  *
  * Three layers of precedence (highest wins):
- *   1. Local override — flipped via `/admin/flags` UI, stored in localStorage.
+ *   1. Local override, flipped via `/admin/flags` UI, stored in localStorage.
  *      Per-browser. Useful for owner to test features in prod without
  *      affecting other users.
- *   2. Env override — `VITE_ENABLE_<NAME>=true|false` at build time.
- *   3. Env default — true in staging/dev, false in production.
+ *   2. Env override, `VITE_ENABLE_<NAME>=true|false` at build time.
+ *   3. Env default, true in staging/dev, false in production.
  *
- * Components consume flags via `useFlag(name)` — reactive, re-renders when
+ * Components consume flags via `useFlag(name)`, reactive, re-renders when
  * the local override changes. Non-React code can call `getFlag(name)` for
  * a one-shot read.
  */
@@ -68,7 +68,7 @@ function writeLocalOverrides(o: Overrides): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(o));
   } catch {
-    /* quota / SSR — noop */
+    /* quota / SSR, noop */
   }
 }
 
@@ -146,7 +146,7 @@ export function useFlag(name: FlagName): boolean {
   return resolveFlag(name, overrides).enabled;
 }
 
-/** Reactive flag read returning the full source info — used by the admin UI. */
+/** Reactive flag read returning the full source info, used by the admin UI. */
 export function useResolvedFlag(name: FlagName): ResolvedFlag {
   const overrides = useFlagsStore((s) => s.overrides);
   return resolveFlag(name, overrides);

@@ -373,7 +373,7 @@ function CanvasEditor({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast({ title: "Couldn't copy — try selecting and copying manually" });
+      toast({ title: "Couldn't copy, try selecting and copying manually" });
     }
   }
 
@@ -392,7 +392,7 @@ function CanvasEditor({
           <div className="flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Markdown — click any line to enable AI suggestions
+                Markdown, click any line to enable AI suggestions
               </span>
               <Button size="sm" variant="ghost" onClick={copyMarkdown} className="h-6 text-[10px]">
                 {copied ? "Copied!" : "Copy .md"}

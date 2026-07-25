@@ -51,7 +51,7 @@ const sections = [
     title: "Ask ANU",
     icon: Bell,
     path: null,
-    body: "Click Ask in the top-right. ANU is a small help assistant that answers questions about this platform — what each screen does, how to get started, tips for writing. ANU never makes changes or submits applications; it just explains.",
+    body: "Click Ask in the top-right. ANU is a small help assistant that answers questions about this platform, what each screen does, how to get started, tips for writing. ANU never makes changes or submits applications; it just explains.",
   },
 ];
 
