@@ -7,6 +7,8 @@
 @import url("https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Urbanist:wght@200;300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Epilogue:wght@300;400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -83,43 +85,50 @@
   }
 
   .dark {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 96%;
-    --card: 0 0% 9%;
-    --card-foreground: 0 0% 96%;
-    --popover: 0 0% 9%;
-    --popover-foreground: 0 0% 96%;
-    --primary: 0 0% 96%;
-    --primary-foreground: 0 0% 4%;
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 96%;
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 64%;
-    --accent: 0 0% 14%;
-    --accent-foreground: 0 0% 96%;
-    --destructive-foreground: 0 0% 96%;
-    --border: 0 0% 16%;
-    --input: 0 0% 16%;
-    --sidebar-background: 0 0% 6%;
-    --sidebar-foreground: 0 0% 80%;
-    --sidebar-primary: 0 0% 96%;
-    --sidebar-primary-foreground: 0 0% 4%;
-    --sidebar-accent: 0 0% 12%;
-    --sidebar-accent-foreground: 0 0% 96%;
-    --sidebar-border: 0 0% 14%;
-    --shadow-glow: 0 0 80px -20px hsl(4 100% 59% / 0.18);
-    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
-    --shadow-card: 0 0 0 1px hsl(0 0% 100% / 0.04), 0 8px 24px -12px hsl(0 0% 0% / 0.5);
-    --shadow-card-hover: 0 0 0 1px hsl(0 0% 100% / 0.08), 0 12px 32px -8px hsl(0 0% 0% / 0.6);
-    --shadow-elevated: 0 24px 64px -16px hsl(0 0% 0% / 0.7);
-    --rp-canvas: 0 0% 4%;
-    --rp-paper: 0 0% 9%;
-    --rp-paper-2: 0 0% 15%;
-    --rp-ink: 0 0% 98%;
-    --rp-ink-2: 0 0% 64%;
-    --rp-ink-3: 0 0% 45%;
-    --rp-rule: 0 0% 15%;
-    --rp-rule-2: 0 0% 25%;
+    /* Noir & Gold — editorial prestige palette */
+    --background: 0 0% 5%;              /* #0d0d0d */
+    --foreground: 0 0% 98%;
+    --card: 0 0% 10%;                   /* #1a1a1a */
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 43 51% 54%;              /* #c9a84c gold */
+    --primary-foreground: 0 0% 5%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 43 51% 54%;
+    --accent-foreground: 0 0% 5%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 100% / 0.10;
+    --input: 0 0% 100% / 0.14;
+    --ring: 43 51% 54%;
+    --sidebar-background: 0 0% 5%;
+    --sidebar-foreground: 0 0% 70%;
+    --sidebar-primary: 43 51% 54%;
+    --sidebar-primary-foreground: 0 0% 5%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 100% / 0.10;
+    --shadow-glow: 0 0 80px -20px hsl(43 51% 54% / 0.30);
+    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 0% / 0.6);
+    --shadow-card: 0 0 0 1px hsl(0 0% 100% / 0.06), 0 8px 24px -12px hsl(0 0% 0% / 0.7);
+    --shadow-card-hover: 0 0 0 1px hsl(43 51% 54% / 0.35), 0 16px 40px -12px hsl(0 0% 0% / 0.75);
+    --shadow-elevated: 0 24px 64px -16px hsl(0 0% 0% / 0.8);
+
+    /* rp-* editorial tokens re-mapped to noir & gold */
+    --rp-canvas: 0 0% 5%;               /* #0d0d0d */
+    --rp-paper: 0 0% 10%;               /* #1a1a1a */
+    --rp-paper-2: 0 0% 14%;
+    --rp-ink: 0 0% 98%;                 /* #fafafa */
+    --rp-ink-2: 0 0% 62%;
+    --rp-ink-3: 0 0% 42%;
+    --rp-rule: 0 0% 100% / 0.10;
+    --rp-rule-2: 0 0% 100% / 0.18;
+    --rp-accent: 43 51% 54%;            /* #c9a84c gold */
+    --rp-accent-2: 42 78% 75%;          /* #f0d78c highlight */
   }
 
   html { color-scheme: light; }

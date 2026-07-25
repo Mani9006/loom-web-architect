@@ -6,10 +6,11 @@ const STORAGE_KEY = "theme";
 const THEME_EVENT = "resumepreps:theme-change";
 
 function preferredTheme(): Theme {
-  if (typeof window === "undefined") return "light";
+  if (typeof window === "undefined") return "dark";
   const saved = window.localStorage.getItem(STORAGE_KEY);
   if (saved === "light" || saved === "dark") return saved;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  // Default to the noir-and-gold editorial dark aesthetic.
+  return "dark";
 }
 
 function applyTheme(theme: Theme) {

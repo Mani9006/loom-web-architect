@@ -1,35 +1,28 @@
 /**
- * Home, editorial redesign.
+ * Home — Editorial Prestige.
  *
- * Conceit: open the app, see the front page of YOUR career today. A
- * masthead (Volume / Issue / Date), a one-line lede, a single brief
- * to anchor the day, and dense recent-work columns below.
+ * A noir-and-gold masthead for your career today.
  *
- * Everything below the masthead is restrained, no gradient tiles, no
- * gradient cards, no shadow stacking. Borders are hairlines. The only
- * accent is the warm amber rp-accent, used once on the lede.
+ *   Header    : date eyebrow · greeting · profile-strength readout
+ *   01 / Priority Action  (8 cols, gold ember glow)
+ *   02 / Pipeline Stats   (4 cols, 2x2 numeric tiles)
+ *   03 / Workspace        (6 col hairline grid)
+ *   04 / Recent Activity  (12 col table rows, hairline dividers)
  *
- * Data wiring is unchanged from the prior version, same queries, same
- * state shape, only the surface treatment is new.
+ * Data wiring is unchanged: same queries, same shape. Only the surface
+ * treatment changed. Urbanist for numerals and titles, Epilogue for body,
+ * a single gold accent used sparingly.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowUpRight,
-  FileText,
-  Search,
-  Target,
-  Bot,
-  Sparkles,
-  Columns3,
-  Quote,
+  ArrowUpRight, Search, Target, Bot, Sparkles, FileText, Columns3,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { OnboardingModal } from "@/components/OnboardingModal";
-import { TerminalText } from "@/components/Terminal";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -40,7 +33,6 @@ interface Stats {
   offer: number;
   rejected: number;
 }
-
 interface TopMatch {
   evaluation_id: string;
   score: number;
@@ -51,7 +43,6 @@ interface TopMatch {
   location: string;
   dimensions: Array<{ key: string; label: string; score: number }>;
 }
-
 interface RecentApplication {
   id: string;
   title: string;
@@ -60,7 +51,6 @@ interface RecentApplication {
   tailoredResumeId: string | null;
   updated_at: string;
 }
-
 interface AgentSummary {
   runs24h: number;
   lastSummary: string | null;
@@ -69,43 +59,39 @@ interface AgentSummary {
 
 // ─── Static content ────────────────────────────────────────────────────
 
-const quickActions: Array<{ label: string; desc: string; icon: React.ElementType; path: string }> = [
-  { label: "Job Search",   desc: "Direct company openings",     icon: Search,      path: "/job-search" },
-  { label: "Matches",      desc: "Resume-scored opportunities", icon: Sparkles,    path: "/matches" },
-  { label: "Agent",        desc: "Match, tailor, check, queue",  icon: Bot,         path: "/agent" },
-  { label: "Resume",       desc: "Edit, tailor, export",         icon: FileText,    path: "/resume-builder" },
-  { label: "ATS Preview",  desc: "Score against a job",         icon: Target,      path: "/ats-checker" },
-  { label: "Applications", desc: "Status and receipts",         icon: Columns3,    path: "/job-tracker" },
+const workspace: Array<{ label: string; glyph: string; path: string; desc: string }> = [
+  { label: "Job Search",   glyph: "◎", path: "/job-search",      desc: "Direct openings" },
+  { label: "Matches",      glyph: "✦", path: "/matches",         desc: "Scored for you" },
+  { label: "Agent",        glyph: "⬡", path: "/agent",           desc: "Auto tailor" },
+  { label: "Resume",       glyph: "▥", path: "/resume-builder",  desc: "Edit and export" },
+  { label: "ATS Preview",  glyph: "⚖", path: "/ats-checker",     desc: "Score a job" },
+  { label: "Applications", glyph: "☷", path: "/job-tracker",     desc: "Status & receipts" },
 ];
 
-// ─── Date helpers (masthead) ───────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────
 
-function pad2(n: number): string {
-  return n.toString().padStart(2, "0");
-}
-
+function pad2(n: number): string { return n.toString().padStart(2, "0"); }
 function relativeDays(iso: string): string {
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const days = Math.max(0, Math.floor((now - then) / 86400000));
+  const days = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
   if (days === 0) return "today";
-  if (days === 1) return "yesterday";
+  if (days === 1) return "1d ago";
   if (days < 7) return `${days}d ago`;
   if (days < 30) return `${Math.floor(days / 7)}w ago`;
   return `${Math.floor(days / 30)}mo ago`;
 }
-
 function applicationStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    draft: "Preparing",
-    ready: "Ready for review",
-    queued: "Queued",
-    submitted: "Submitted",
-    failed: "Needs attention",
-    skipped: "Skipped",
+    draft: "Preparing", ready: "Ready", queued: "Queued",
+    submitted: "Submitted", failed: "Needs attention", skipped: "Skipped",
   };
   return labels[status.toLowerCase()] ?? "In progress";
 }
+
+// ─── Typography helper classes ─────────────────────────────────────────
+
+const URBAN = { fontFamily: '"Urbanist", "Manrope", system-ui, sans-serif' } as const;
+const EPI   = { fontFamily: '"Epilogue", "Inter", system-ui, sans-serif' } as const;
+const MONO  = { fontFamily: '"JetBrains Mono", ui-monospace, monospace' } as const;
 
 // ─── Page ──────────────────────────────────────────────────────────────
 
@@ -182,7 +168,7 @@ export default function HomePage() {
             tier: String(m.tier ?? ""),
             summary: (m.summary as string | null) ?? null,
             title: sj.title,
-            company: sj.company?.name ?? ",",
+            company: sj.company?.name ?? ".",
             location: sj.location ?? "Location not listed",
             dimensions: Array.isArray(m.dimension_scores)
               ? (m.dimension_scores as Array<{ key: string; label: string; score: number }>)
@@ -217,8 +203,6 @@ export default function HomePage() {
       } catch { /* agent_runs may 404 for users without the feature */ }
     })()
       .catch((err) => {
-        // Without this, any failed query left the skeleton up forever with
-        // no feedback.
         console.error("Home load failed:", err);
         toast({ title: "Couldn't load your home page", description: "Refresh to try again.", variant: "destructive" });
       })
@@ -228,38 +212,47 @@ export default function HomePage() {
   const now = useMemo(() => new Date(), []);
   const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
 
-  // ── Today's lede, the single thing worth doing right now ─────────────
+  // Profile strength: honest, based on available signals.
+  const profileStrength = useMemo(() => {
+    let score = 20;
+    if (hasResume) score += 40;
+    if (stats.applied + stats.interviewing > 0) score += 20;
+    if (topMatches.length > 0) score += 20;
+    return Math.min(100, score);
+  }, [hasResume, stats, topMatches]);
+
+  // Today's priority action.
   const lede = useMemo(() => {
     if (!hasResume) {
       return {
-        eyebrow: "Today · Get set up",
-        headline: "Start your first résumé.",
-        body: "We'll parse your existing PDF or you can build one from scratch, the AI tailor turns it into a job-specific application in seconds.",
+        eyebrow: "Get set up",
+        headline: <>Start your first <span className="text-rp-accent-2">résumé</span>.</>,
+        body: "Upload a PDF and we'll parse every section, or build from scratch. The AI tailor turns it into a job-specific application in seconds.",
         cta: "Open the builder",
         href: "/resume-builder",
       };
     }
     if (topMatches.length > 0) {
       return {
-        eyebrow: "Today · Apply",
-        headline: `A ${topMatches[0].score}% match for you at ${topMatches[0].company}.`,
-        body: topMatches[0].summary ?? `Tailor your résumé to ${topMatches[0].title}, ${topMatches[0].score}% career fit before the ATS check.`,
-        cta: "Tailor and review",
+        eyebrow: "Priority action",
+        headline: <>Tailor for <span className="text-rp-accent-2">{topMatches[0].title}</span> at {topMatches[0].company}.</>,
+        body: topMatches[0].summary ?? `A ${topMatches[0].score}% career-fit role. Review the tailored draft before anything ships.`,
+        cta: "Auto-tailor résumé",
         href: "/matches",
       };
     }
     if (stats.applied + stats.interviewing > 0) {
       return {
-        eyebrow: "Today · Follow up",
-        headline: "Check on jobs you've applied to.",
+        eyebrow: "Follow up",
+        headline: <>Check on jobs you've <span className="text-rp-accent-2">applied to</span>.</>,
         body: `${stats.applied} applied, ${stats.interviewing} interviewing. A short, polite nudge often re-opens the conversation.`,
         cta: "Open pipeline",
         href: "/job-tracker",
       };
     }
     return {
-      eyebrow: "Today · Score it",
-      headline: "Run your résumé through ATS.",
+      eyebrow: "Score it",
+      headline: <>Run your résumé through <span className="text-rp-accent-2">ATS</span>.</>,
       body: "See exactly which keywords ATS systems miss when they parse your most recent draft. Two minutes; pasteable feedback.",
       cta: "Run ATS check",
       href: "/ats-checker",
@@ -269,443 +262,395 @@ export default function HomePage() {
   if (loading) {
     return (
       <div className="min-h-full bg-rp-canvas">
-        <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-24">
-          <div className="h-3 w-72 bg-rp-paper rounded-sm animate-pulse mb-3" />
-          <div className="h-12 w-[28rem] bg-rp-paper rounded-sm animate-pulse mb-3" />
-          <div className="h-4 w-96 bg-rp-paper rounded-sm animate-pulse" />
+        <div className="max-w-[1280px] mx-auto px-8 lg:px-12 pt-12 pb-24">
+          <div className="h-3 w-56 bg-rp-paper rounded-sm animate-pulse mb-4" />
+          <div className="h-14 w-[32rem] bg-rp-paper rounded-sm animate-pulse mb-4" />
+          <div className="h-40 w-full bg-rp-paper rounded-sm animate-pulse" />
         </div>
       </div>
     );
   }
 
+  const dateEyebrow = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  // Prefer real recent applications; fall back to a single row hint.
+  const activityRows = recentApplications;
+
   return (
     <>
       <OnboardingModal open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
 
-      <div className="min-h-full bg-rp-canvas">
-        <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-24">
-          {/* ── Date + status row ──────────────────────────────────── */}
-          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pb-4 border-b border-rp-rule">
-            <span
-              className="text-rp-ink-2"
-              style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
-            >
-              {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-            </span>
-            <span
-              className="text-rp-ink-3"
-              style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
-            >
-              {recentApplications.length} recent application{recentApplications.length === 1 ? "" : "s"} · {stats.applied + stats.interviewing} active · {topMatches.length} match{topMatches.length === 1 ? "" : "es"}
-            </span>
-          </div>
-
-          {/* ── Greeting (types out, red cursor) ──────────────────────── */}
-          <div className="mt-10 mb-4">
-            <h1
-              className="text-rp-ink"
-              style={{
-                fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-                fontSize: "clamp(38px, 6vw, 60px)",
-                lineHeight: 1.04,
-                letterSpacing: "-0.02em",
-                fontWeight: 700,
-              }}
-            >
-              <TerminalText text={`${greeting}, ${displayName}.`} speed={80} startDelay={150} />
-            </h1>
-            <div
-              className="mt-3 text-rp-ink-3"
-              style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
-            >
-              <span className="text-rp-accent">resumepreps</span>{" "}
-              <span className="opacity-60">~</span>{" "}
-              <span>session_ready</span>
-            </div>
-          </div>
-
-          <p
-            className="text-rp-ink-2 max-w-2xl"
-            style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "16px", lineHeight: 1.6 }}
-          >
-            {!hasResume
-              ? "Start with your first résumé. Upload a PDF to parse every section, or build from scratch."
-              : `You have ${stats.applied + stats.interviewing} application${stats.applied + stats.interviewing === 1 ? "" : "s"} in flight${topMatches.length > 0 ? ` and ${topMatches.length} fresh match${topMatches.length === 1 ? "" : "es"} waiting` : ""}.`}
-          </p>
-
-          {/* ── Today's brief ───────────────────────────────────────── */}
-          <Brief
-            eyebrow={lede.eyebrow}
-            headline={lede.headline}
-            body={lede.body}
-            cta={lede.cta}
-            href={lede.href}
-            external={Boolean("external" in lede && lede.external)}
-            onNavigate={navigate}
-          />
-
-          {/* ── Two-column block: recent work + actions ────────────── */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-x-12 gap-y-10 mt-16">
-            {/* Application work */}
-            <section>
-              <SectionHead n={1} title="Recent applications" />
-              {recentApplications.length === 0 ? (
-                <EmptyApplications onBrowse={() => navigate("/matches")} />
-              ) : (
-                <ol className="mt-3 divide-y divide-rp-rule border-t border-b border-rp-rule">
-                  {recentApplications.map((application, i) => (
-                    <li key={application.id} className="flex items-center gap-2 py-1">
-                      <button
-                        onClick={() => navigate(`/applications/${application.id}`)}
-                        className="min-w-0 flex-1 flex items-baseline gap-5 py-3 text-left group"
-                      >
-                        <span
-                          className="text-rp-ink-2/70 w-7 shrink-0 text-right"
-                          style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.02em" }}
-                        >
-                          {pad2(i + 1)}
-                        </span>
-                        <span
-                          className="flex-1 min-w-0 text-rp-ink group-hover:text-rp-accent transition-colors truncate"
-                          style={{
-                            fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-                            fontSize: "20px",
-                            letterSpacing: "-0.005em",
-                            fontWeight: 500,
-                          }}
-                        >
-                          <span className="block truncate">{application.title}</span>
-                          <span className="block truncate text-xs font-normal text-rp-ink-2 mt-0.5">{application.company} · {applicationStatusLabel(application.status)}</span>
-                        </span>
-                        <span
-                          className="text-rp-ink-2/70 hidden sm:inline shrink-0"
-                          style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.05em", textTransform: "uppercase" }}
-                        >
-                          {relativeDays(application.updated_at)}
-                        </span>
-                        <ArrowUpRight className="w-3.5 h-3.5 text-rp-ink-2/40 group-hover:text-rp-accent shrink-0" strokeWidth={1.6} />
-                      </button>
-                      {application.tailoredResumeId && (
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/resume-builder/${application.tailoredResumeId}`)}
-                          className="mr-2 shrink-0 border border-rp-rule px-2.5 py-1.5 text-[11px] text-rp-ink-2 hover:border-rp-ink hover:text-rp-ink transition-colors"
-                        >
-                          Résumé used
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              )}
-              <button
-                onClick={() => navigate("/job-tracker")}
-                className="mt-5 inline-flex items-center gap-1.5 text-rp-ink-2 hover:text-rp-ink transition-colors group"
-                style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "12.5px" }}
+      <div className="min-h-full bg-rp-canvas text-rp-ink">
+        <div className="max-w-[1280px] mx-auto px-8 lg:px-12 pt-12 pb-24">
+          {/* ── Header ─────────────────────────────────────────────── */}
+          <header className="flex flex-wrap justify-between items-end gap-6 mb-16">
+            <div className="min-w-0">
+              <p
+                className="text-rp-accent uppercase mb-3"
+                style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", fontWeight: 600 }}
               >
-                Browse all applications
-                <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" strokeWidth={1.6} />
+                {dateEyebrow}
+              </p>
+              <h1
+                className="text-rp-ink"
+                style={{
+                  ...URBAN,
+                  fontSize: "clamp(40px, 5.4vw, 60px)",
+                  lineHeight: 1.04,
+                  letterSpacing: "-0.02em",
+                  fontWeight: 200,
+                }}
+              >
+                {greeting}, <span style={{ fontWeight: 600 }}>{displayName}.</span>
+              </h1>
+            </div>
+            <div className="text-right">
+              <div className="text-rp-ink-2" style={{ ...EPI, fontSize: "12px", letterSpacing: "0.02em" }}>
+                Profile strength
+              </div>
+              <div
+                className="text-rp-accent-2 tabular-nums mt-1"
+                style={{ ...URBAN, fontSize: "26px", fontWeight: 300, letterSpacing: "-0.01em" }}
+              >
+                {profileStrength}%
+              </div>
+              <div className="mt-2 h-[3px] w-40 bg-rp-paper-2 overflow-hidden">
+                <div
+                  className="h-full bg-rp-accent transition-[width] duration-700"
+                  style={{ width: `${profileStrength}%` }}
+                />
+              </div>
+            </div>
+          </header>
+
+          {/* ── Grid ───────────────────────────────────────────────── */}
+          <div className="grid grid-cols-12 gap-8">
+
+            {/* 01 / Priority Action */}
+            <section className="col-span-12 lg:col-span-8 space-y-4">
+              <SectionLabel n="01" title="Priority Action" />
+              <button
+                onClick={() => navigate(lede.href)}
+                className="relative w-full text-left bg-rp-paper border border-rp-rule p-10 overflow-hidden group hover:border-rp-accent/50 transition-colors"
+              >
+                {/* gold ember glow, top right */}
+                <div
+                  aria-hidden
+                  className="absolute top-0 right-0 w-56 h-56 rounded-full blur-3xl translate-x-12 -translate-y-12"
+                  style={{ background: "hsl(var(--rp-accent) / 0.10)" }}
+                />
+                {/* oversized index shadow */}
+                <div
+                  aria-hidden
+                  className="absolute right-8 top-4 select-none text-rp-ink/[0.04] pointer-events-none"
+                  style={{ ...URBAN, fontSize: "180px", fontWeight: 700, lineHeight: 1, letterSpacing: "-0.05em" }}
+                >
+                  01
+                </div>
+                <div className="relative z-10">
+                  <div
+                    className="inline-block border border-rp-accent/30 text-rp-accent px-2 py-0.5 mb-6"
+                    style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+                  >
+                    {lede.eyebrow}
+                  </div>
+                  <h3
+                    className="text-rp-ink max-w-xl mb-4"
+                    style={{ ...URBAN, fontSize: "clamp(26px, 2.8vw, 34px)", lineHeight: 1.15, fontWeight: 500, letterSpacing: "-0.015em" }}
+                  >
+                    {lede.headline}
+                  </h3>
+                  <p className="text-rp-ink-2 max-w-md mb-8 leading-relaxed" style={{ ...EPI, fontSize: "14px", fontWeight: 300 }}>
+                    {lede.body}
+                  </p>
+                  <span
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-rp-accent text-rp-canvas group-hover:bg-rp-accent-2 transition-colors"
+                    style={{ ...URBAN, fontSize: "11px", fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase" }}
+                  >
+                    {lede.cta}
+                    <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={2.2} />
+                  </span>
+                </div>
               </button>
             </section>
 
-            {/* Quick actions, restrained list, not gradient tiles */}
-            <aside>
-              <SectionHead n={2} title="Workspace" />
-              <ul className="mt-3 grid grid-cols-1 gap-px bg-rp-rule border border-rp-rule">
-                {quickActions.map((a) => {
-                  const Icon = a.icon;
-                  return (
-                    <li key={a.path} className="bg-rp-canvas">
-                      <button
-                        onClick={() => navigate(a.path)}
-                        className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-rp-paper transition-colors group"
-                      >
-                        <Icon className="w-3.5 h-3.5 text-rp-ink-2 shrink-0 group-hover:text-rp-accent transition-colors" strokeWidth={1.6} />
-                        <span
-                          className="flex-1 text-rp-ink"
-                          style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "13px", fontWeight: 500 }}
-                        >
-                          {a.label}
-                        </span>
-                        <span
-                          className="text-rp-ink-2/65 hidden sm:inline"
-                          style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "12.5px", fontStyle: "italic" }}
-                        >
-                          {a.desc}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </aside>
-          </div>
-
-          {/* ── Agent activity block (quote treatment) ───────────────── */}
-          {agentSummary && (
-            <section className="mt-16">
-              <SectionHead n={3} title="Agent activity" />
-              <blockquote className="mt-4 border-l-2 border-rp-accent pl-5 max-w-3xl">
-                <Quote className="w-4 h-4 text-rp-accent mb-2" strokeWidth={1.6} />
-                <p
-                  className="text-rp-ink"
-                  style={{
-                    fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-                    fontSize: "22px",
-                    lineHeight: 1.45,
-                    letterSpacing: "-0.005em",
-                  }}
-                >
-                  {agentSummary.lastSummary || `Auto-pilot ran ${agentSummary.runs24h} time${agentSummary.runs24h === 1 ? "" : "s"} in the last 24 hours.`}
-                </p>
-                <footer
-                  className="mt-3 text-rp-ink-2/70 flex items-center gap-2"
-                  style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.08em", textTransform: "uppercase" }}
-                >
-                  Last run · {agentSummary.lastAt ? new Date(agentSummary.lastAt).toLocaleString() : ","}
-                  <span className="w-px h-3 bg-rp-rule" />
-                  <button onClick={() => navigate("/career-ops/preferences")} className="hover:text-rp-accent transition-colors">
-                    Tune preferences
-                  </button>
-                </footer>
-              </blockquote>
+            {/* 02 / Pipeline Stats */}
+            <section className="col-span-12 lg:col-span-4 space-y-4">
+              <SectionLabel n="02" title="Pipeline" />
+              <div className="grid grid-cols-2 gap-4">
+                <StatTile label="Applied"     value={stats.applied}     tone="ink"    onClick={() => navigate("/job-tracker")} />
+                <StatTile label="Interviewing" value={stats.interviewing} tone="accent" onClick={() => navigate("/job-tracker")} />
+                <StatTile label="Offer"       value={stats.offer}       tone="highlight" onClick={() => navigate("/job-tracker")} />
+                <StatTile label="Saved"       value={stats.saved}       tone="muted"  onClick={() => navigate("/job-tracker")} />
+              </div>
             </section>
-          )}
 
-          {/* ── Top matches as numbered clippings ────────────────────── */}
-          {topMatches.length > 0 && (
-            <section className="mt-16">
-              <SectionHead n={4} title="Top matches" />
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-rp-rule border border-rp-rule mt-3">
-                {topMatches.map((m, i) => (
+            {/* 03 / Workspace */}
+            <section className="col-span-12 pt-8 space-y-6">
+              <SectionLabel n="03" title="Workspace" trailing="Quick access modules" />
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-px bg-rp-rule border border-rp-rule">
+                {workspace.map((w) => (
                   <button
-                    key={m.evaluation_id}
-                    onClick={() => navigate("/matches")}
-                    className="bg-rp-canvas p-5 block text-left hover:bg-rp-paper transition-colors no-underline group"
+                    key={w.path}
+                    onClick={() => navigate(w.path)}
+                    className="bg-rp-canvas p-6 lg:p-8 text-left hover:bg-rp-paper transition-colors group relative"
                   >
-                    <div className="flex items-baseline justify-between">
-                      <span
-                        className="text-rp-ink-3"
-                        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
-                      >
-                        {m.tier ? `Tier ${m.tier}` : ","}
-                      </span>
-                      <span
-                        className="text-rp-accent tabular-nums"
-                        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "12px", fontWeight: 600 }}
-                      >
-                        {m.score}%
-                      </span>
+                    <div
+                      className="text-rp-accent mb-4 opacity-60 group-hover:opacity-100 transition-opacity"
+                      style={{ ...URBAN, fontSize: "22px", lineHeight: 1 }}
+                    >
+                      {w.glyph}
                     </div>
-                    <h3
-                      className="mt-2 text-rp-ink group-hover:text-rp-accent transition-colors"
-                      style={{
-                        fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-                        fontSize: "20px",
-                        lineHeight: 1.18,
-                        fontWeight: 500,
-                        letterSpacing: "-0.005em",
-                      }}
+                    <div
+                      className="text-rp-ink mb-1"
+                      style={{ ...URBAN, fontSize: "11.5px", letterSpacing: "0.18em", textTransform: "uppercase", fontWeight: 600 }}
                     >
-                      {m.title}
-                    </h3>
-                    <p
-                      className="text-rp-ink-2 mt-1"
-                      style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "13px", fontStyle: "italic" }}
-                    >
-                      {m.company}
-                    </p>
-                    <p className="mt-1 text-[11px] text-rp-ink-3">{m.location}</p>
-                    {m.summary && (
-                      <p
-                        className="text-rp-ink-2 mt-3 line-clamp-3"
-                        style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "13.5px", lineHeight: 1.45 }}
-                      >
-                        {m.summary}
-                      </p>
-                    )}
-                    {m.dimensions.length > 0 && (
-                      <div className="mt-4 flex flex-wrap gap-1.5">
-                        {m.dimensions.slice(0, 3).map((dimension) => (
-                          <span key={dimension.key} className="border border-rp-rule px-2 py-1 text-[10px] text-rp-ink-2">
-                            {dimension.label} {Math.round(dimension.score)}%
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                      {w.label}
+                    </div>
+                    <div className="text-rp-ink-3" style={{ ...EPI, fontSize: "11.5px", fontWeight: 300 }}>
+                      {w.desc}
+                    </div>
+                    <ArrowUpRight
+                      className="w-3.5 h-3.5 absolute top-4 right-4 text-rp-ink-3 opacity-0 group-hover:opacity-100 group-hover:text-rp-accent transition-opacity"
+                      strokeWidth={1.6}
+                    />
                   </button>
                 ))}
               </div>
             </section>
-          )}
 
-          {/* ── Pipeline summary footer ───────────────────────────────── */}
-          <section className="mt-20 pt-8 border-t border-rp-rule">
-            <SectionHead n={5} title="Pipeline" />
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-rp-rule border border-rp-rule mt-3">
-              {[
-                { label: "Saved", n: stats.saved },
-                { label: "Applied", n: stats.applied },
-                { label: "Interviewing", n: stats.interviewing },
-                { label: "Offer", n: stats.offer },
-                { label: "Rejected", n: stats.rejected },
-              ].map((c) => (
+            {/* 04 / Recent Activity */}
+            <section className="col-span-12 pt-8 space-y-4">
+              <SectionLabel n="04" title="Recent Activity" trailing={
                 <button
-                  key={c.label}
                   onClick={() => navigate("/job-tracker")}
-                  className="bg-rp-canvas px-5 py-5 text-left hover:bg-rp-paper transition-colors"
+                  className="text-rp-ink-2 hover:text-rp-accent transition-colors inline-flex items-center gap-1"
+                  style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.18em", textTransform: "uppercase", fontWeight: 600 }}
                 >
-                  <div
-                    className="text-rp-ink tabular-nums"
-                    style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "34px", lineHeight: 1, fontWeight: 500 }}
-                  >
-                    {c.n}
-                  </div>
-                  <div
-                    className="text-rp-ink-2/65 mt-2"
-                    style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.14em" }}
-                  >
-                    {c.label}
-                  </div>
+                  Browse all <ArrowUpRight className="w-3 h-3" strokeWidth={2} />
                 </button>
-              ))}
-            </div>
-          </section>
+              } />
+
+              {activityRows.length === 0 ? (
+                <EmptyActivity onBrowse={() => navigate("/matches")} />
+              ) : (
+                <div className="space-y-px bg-rp-rule border border-rp-rule">
+                  {activityRows.map((a, i) => (
+                    <div
+                      key={a.id}
+                      className="bg-rp-paper grid grid-cols-12 items-center px-6 py-5 hover:bg-rp-paper-2/60 transition-colors group"
+                    >
+                      <div className="col-span-1">
+                        <span className="text-rp-ink-3 tabular-nums" style={{ ...MONO, fontSize: "11px", letterSpacing: "0.06em" }}>
+                          {pad2(i + 1)}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => navigate(`/applications/${a.id}`)}
+                        className="col-span-4 text-left"
+                      >
+                        <p className="text-rp-ink-3 mb-1" style={{ ...MONO, fontSize: "10px", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                          Company
+                        </p>
+                        <p className="text-rp-ink group-hover:text-rp-accent transition-colors" style={{ ...URBAN, fontSize: "15px", fontWeight: 500, letterSpacing: "-0.005em" }}>
+                          {a.company}
+                        </p>
+                      </button>
+                      <div className="col-span-3">
+                        <p className="text-rp-ink-3 mb-1" style={{ ...MONO, fontSize: "10px", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                          Role
+                        </p>
+                        <p className="text-rp-ink-2 truncate" style={{ ...EPI, fontSize: "13.5px" }}>
+                          {a.title}
+                        </p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-rp-ink-3 mb-1" style={{ ...MONO, fontSize: "10px", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                          Stage
+                        </p>
+                        <span
+                          className="inline-block px-2 py-1 border border-rp-rule text-rp-ink-2"
+                          style={{ ...MONO, fontSize: "10px", letterSpacing: "0.14em", textTransform: "uppercase" }}
+                        >
+                          {applicationStatusLabel(a.status)}
+                        </span>
+                      </div>
+                      <div className="col-span-1">
+                        <p className="text-rp-ink-3 mb-1" style={{ ...MONO, fontSize: "10px", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                          When
+                        </p>
+                        <p className="text-rp-ink-2 tabular-nums" style={{ ...MONO, fontSize: "12px" }}>
+                          {relativeDays(a.updated_at)}
+                        </p>
+                      </div>
+                      <div className="col-span-1 text-right">
+                        {a.tailoredResumeId ? (
+                          <button
+                            onClick={() => navigate(`/resume-builder/${a.tailoredResumeId}`)}
+                            className="inline-flex items-center gap-1 text-rp-accent hover:text-rp-accent-2 transition-colors"
+                            style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.18em", textTransform: "uppercase", fontWeight: 600 }}
+                            title="Open tailored résumé"
+                          >
+                            Résumé <ArrowUpRight className="w-3 h-3" strokeWidth={2} />
+                          </button>
+                        ) : (
+                          <span className="text-rp-accent" style={{ fontSize: "18px" }}>→</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* 05 / Top Matches, if present */}
+            {topMatches.length > 0 && (
+              <section className="col-span-12 pt-8 space-y-4">
+                <SectionLabel n="05" title="Top Matches" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-rp-rule border border-rp-rule">
+                  {topMatches.map((m) => (
+                    <button
+                      key={m.evaluation_id}
+                      onClick={() => navigate("/matches")}
+                      className="bg-rp-paper text-left p-6 hover:bg-rp-paper-2/60 transition-colors group"
+                    >
+                      <div className="flex items-baseline justify-between mb-4">
+                        <span className="text-rp-ink-3" style={{ ...MONO, fontSize: "10px", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                          {m.tier ? `Tier ${m.tier}` : "Match"}
+                        </span>
+                        <span className="text-rp-accent-2 tabular-nums" style={{ ...URBAN, fontSize: "18px", fontWeight: 300 }}>
+                          {m.score}%
+                        </span>
+                      </div>
+                      <h3
+                        className="text-rp-ink group-hover:text-rp-accent transition-colors mb-1"
+                        style={{ ...URBAN, fontSize: "18px", lineHeight: 1.2, fontWeight: 500, letterSpacing: "-0.005em" }}
+                      >
+                        {m.title}
+                      </h3>
+                      <p className="text-rp-ink-2" style={{ ...EPI, fontSize: "13px" }}>{m.company}</p>
+                      <p className="text-rp-ink-3 mt-0.5" style={{ ...MONO, fontSize: "10.5px", letterSpacing: "0.06em" }}>{m.location}</p>
+                      {m.summary && (
+                        <p className="text-rp-ink-2 mt-4 line-clamp-3" style={{ ...EPI, fontSize: "13px", lineHeight: 1.55, fontWeight: 300 }}>
+                          {m.summary}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Agent activity strip */}
+            {agentSummary && (
+              <section className="col-span-12 pt-8">
+                <SectionLabel n="06" title="Agent Activity" />
+                <div className="mt-4 border border-rp-rule bg-rp-paper p-6 flex items-start gap-6">
+                  <div className="shrink-0">
+                    <div
+                      className="w-2 h-2 rounded-full bg-rp-accent mb-1"
+                      style={{ boxShadow: "0 0 12px hsl(var(--rp-accent) / 0.7)" }}
+                    />
+                    <span className="text-rp-accent" style={{ ...MONO, fontSize: "10px", letterSpacing: "0.18em", textTransform: "uppercase" }}>
+                      Active
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-rp-ink" style={{ ...URBAN, fontSize: "18px", lineHeight: 1.45, fontWeight: 400, letterSpacing: "-0.005em" }}>
+                      {agentSummary.lastSummary || `Auto-pilot ran ${agentSummary.runs24h} time${agentSummary.runs24h === 1 ? "" : "s"} in the last 24 hours.`}
+                    </p>
+                    <div className="mt-3 flex items-center gap-4 text-rp-ink-3" style={{ ...MONO, fontSize: "10.5px", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                      <span>Last run · {agentSummary.lastAt ? new Date(agentSummary.lastAt).toLocaleString() : "-"}</span>
+                      <button onClick={() => navigate("/career-ops/preferences")} className="hover:text-rp-accent transition-colors">
+                        Tune preferences →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+          </div>
         </div>
       </div>
     </>
   );
 }
 
-// ─── Section head ──────────────────────────────────────────────────────
-// Simple two-digit number + title + hairline rule. No roman numerals,
-// no chapter marks, no newspaper labels.
-
-function SectionHead({ n, title }: { n: number; title: string }) {
+// ─── Section label ────────────────────────────────────────────────────
+function SectionLabel({ n, title, trailing }: { n: string; title: string; trailing?: React.ReactNode }) {
   return (
-    <div className="flex items-baseline gap-3">
-      <span
-        className="text-rp-accent"
-        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em", fontWeight: 600 }}
-      >
-        {String(n).padStart(2, "0")}
-      </span>
-      <h2
-        className="text-rp-ink"
-        style={{
-          fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-          fontSize: "20px",
-          lineHeight: 1.2,
-          letterSpacing: "-0.01em",
-          fontWeight: 600,
-        }}
-      >
-        {title}
-      </h2>
-      <span className="flex-1 h-px bg-rp-rule" />
-    </div>
-  );
-}
-
-// ─── Brief, today's lede ──────────────────────────────────────────────
-
-function Brief({
-  eyebrow,
-  headline,
-  body,
-  cta,
-  href,
-  external,
-  onNavigate,
-}: {
-  eyebrow: string;
-  headline: string;
-  body: string;
-  cta: string;
-  href: string;
-  external: boolean;
-  onNavigate: (p: string) => void;
-}) {
-  const content = (
-    <>
-        <div
-          className="text-rp-accent"
-          style={{
-            fontFamily: '"JetBrains Mono", monospace',
-            fontSize: "10.5px",
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-          }}
-        >
-          {eyebrow}
-        </div>
-        <h2
-          className="mt-2 text-rp-ink max-w-3xl"
-          style={{
-            fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-            fontSize: "clamp(28px, 4vw, 42px)",
-            lineHeight: 1.1,
-            letterSpacing: "-0.012em",
-            fontWeight: 500,
-          }}
-        >
-          {headline}
-        </h2>
-        <p
-          className="mt-3 text-rp-ink-2 max-w-2xl"
-          style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "16px", lineHeight: 1.55 }}
-        >
-          {body}
-        </p>
+    <div className="flex items-center justify-between gap-3 border-b border-rp-rule pb-3">
+      <div className="flex items-center gap-3">
         <span
-          className="mt-4 inline-flex items-center gap-1.5 text-rp-ink hover:text-rp-accent transition-colors"
-          style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "13px", fontWeight: 500 }}
+          className="border border-rp-accent/30 text-rp-accent px-2 py-0.5"
+          style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.14em", fontWeight: 600 }}
         >
-          {cta}
-          <ArrowUpRight className="w-4 h-4" strokeWidth={1.75} />
+          {n}
         </span>
-    </>
-  );
-
-  return (
-    <div className="mt-10 border-y-2 border-rp-ink py-7">
-      {external ? (
-        <a href={href} target="_blank" rel="noreferrer noopener" className="block">
-          {content}
-        </a>
-      ) : (
-        <button onClick={() => onNavigate(href)} className="block text-left w-full">
-          {content}
-        </button>
+        <h2
+          className="text-rp-ink-2"
+          style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}
+        >
+          {title}
+        </h2>
+      </div>
+      {trailing && (
+        <div className="text-rp-ink-3" style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+          {trailing}
+        </div>
       )}
     </div>
   );
 }
 
-// ─── Empty state for recent resumes ────────────────────────────────────
-
-function EmptyApplications({ onBrowse }: { onBrowse: () => void }) {
+// ─── Stat tile ─────────────────────────────────────────────────────────
+function StatTile({
+  label, value, tone, onClick,
+}: {
+  label: string;
+  value: number;
+  tone: "ink" | "accent" | "highlight" | "muted";
+  onClick: () => void;
+}) {
+  const color =
+    tone === "accent" ? "text-rp-accent" :
+    tone === "highlight" ? "text-rp-accent-2" :
+    tone === "muted" ? "text-rp-ink-3" : "text-rp-ink";
   return (
-    <div className="mt-4 border border-rp-rule p-8 bg-rp-paper/40">
-      <p
-        className="text-rp-ink"
-        style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "20px", letterSpacing: "-0.005em", fontWeight: 500 }}
-      >
-        No application packets yet.
+    <button
+      onClick={onClick}
+      className="bg-rp-paper border border-rp-rule p-6 flex flex-col justify-between h-32 text-left hover:border-rp-accent/40 transition-colors group"
+    >
+      <p className="text-rp-ink-3 uppercase" style={{ ...MONO, fontSize: "10px", letterSpacing: "0.18em" }}>
+        {label}
       </p>
       <p
-        className="text-rp-ink-2 mt-1.5 max-w-md"
-        style={{ fontFamily: '"Source Serif 4", Georgia, serif', fontSize: "14px", lineHeight: 1.55 }}
+        className={`${color} tabular-nums`}
+        style={{ ...URBAN, fontSize: "40px", lineHeight: 1, fontWeight: 300, letterSpacing: "-0.02em" }}
       >
+        {String(value).padStart(2, "0")}
+      </p>
+    </button>
+  );
+}
+
+// ─── Empty activity ────────────────────────────────────────────────────
+function EmptyActivity({ onBrowse }: { onBrowse: () => void }) {
+  return (
+    <div className="border border-rp-rule bg-rp-paper p-10">
+      <p className="text-rp-ink" style={{ ...URBAN, fontSize: "20px", fontWeight: 500, letterSpacing: "-0.005em" }}>
+        No application packets yet.
+      </p>
+      <p className="text-rp-ink-2 mt-2 max-w-md leading-relaxed" style={{ ...EPI, fontSize: "13.5px", fontWeight: 300 }}>
         Open a résumé-aligned match and prepare it. The exact job-specific résumé will stay attached to that application here.
       </p>
       <button
         onClick={onBrowse}
-        className="mt-4 inline-flex items-center gap-1.5 px-4 h-9 bg-rp-ink text-rp-canvas hover:bg-rp-accent transition-colors"
-        style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "12.5px", fontWeight: 500 }}
+        className="mt-6 inline-flex items-center gap-2 px-6 py-3 bg-rp-accent text-rp-canvas hover:bg-rp-accent-2 transition-colors"
+        style={{ ...URBAN, fontSize: "11px", fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase" }}
       >
         Browse your matches
-        <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+        <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={2.2} />
       </button>
     </div>
   );
