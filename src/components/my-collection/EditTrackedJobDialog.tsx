@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2 } from "lucide-react";
+import { normalizeUrlScheme } from "@/lib/job-url";
 
 export interface EditableTrackedJob {
   id: string;
@@ -74,7 +75,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       company: company.trim(),
       job_title: jobTitle.trim(),
       location: location.trim() || null,
-      apply_url: applyUrl.trim() || null,
+      apply_url: applyUrl.trim() ? normalizeUrlScheme(applyUrl) : null,
       jd_md: jdMd.trim() || null,
       notes: notes.trim() || null,
     };

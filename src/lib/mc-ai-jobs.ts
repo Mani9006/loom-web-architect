@@ -162,7 +162,12 @@ export async function waitForJob(
       if (pollHandle) clearInterval(pollHandle);
       opts.signal?.removeEventListener("abort", onAbort);
       try {
-        channel.unsubscribe();
+        // unsubscribe() alone closes the socket subscription but leaves the
+        // channel object in the client's internal registry — every search/
+        // tailor call creates a new `mc_ai_job_${jobId}` channel via
+        // waitForJob, so over a session these would otherwise accumulate
+        // indefinitely. removeChannel() also deregisters it.
+        supabase.removeChannel(channel);
       } catch { /* Realtime cleanup is best-effort. */ }
       if (err) reject(err);
       else if (job) resolve(job);

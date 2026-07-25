@@ -417,6 +417,10 @@ function CanvasEditor({
                 if (line.length > 5 && line !== selectedLine) {
                   setSelectedLine(line);
                   setSelectedRange({ start: lineStart, end: lineEnd });
+                  // Suggestions on screen were generated for the previous
+                  // line — moving the selection without clearing them lets
+                  // a stale suggestion get spliced into the new line's range.
+                  setAiSuggestions([]);
                 }
               }}
               className="font-mono text-xs flex-1 resize-none"
