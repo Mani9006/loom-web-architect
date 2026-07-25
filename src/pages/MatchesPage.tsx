@@ -419,7 +419,7 @@ export default function MatchesPage() {
             Jobs that fit you
           </h1>
           <p className="mt-2 text-[13px] text-muted-foreground max-w-[68ch] leading-relaxed">
-            Fresh jobs matched to your resume. Press <span className="text-foreground font-medium">Prepare application</span> and we&apos;ll tailor your resume for that job, you review it before anything is sent.
+            Fresh jobs matched to your resume. Press <span className="text-foreground font-medium">Prepare application</span> and we&apos;ll tailor your resume for that job. You review it before anything is sent.
           </p>
         </div>
         <button
