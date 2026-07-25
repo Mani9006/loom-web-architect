@@ -52,10 +52,15 @@ interface UserPrefs {
   auto_apply_enabled: boolean;
 }
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.04, duration: 0.5, ease: [0.16, 1, 0.3, 1] as const } }),
-};
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+      <div className="text-[20px] font-semibold tabular-nums text-foreground mt-0.5 tracking-tight leading-none">{value}</div>
+    </div>
+  );
+}
+
 
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
