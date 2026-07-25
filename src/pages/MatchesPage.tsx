@@ -500,7 +500,7 @@ export default function MatchesPage() {
             {jobs.length === 0 ? (
               <>
                 <p className="text-[15px] font-semibold text-foreground">We&apos;re still finding jobs that fit your resume.</p>
-                <p className="text-[13px] text-muted-foreground mt-2">Fresh jobs are checked every hour, give it a moment, then refresh.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Fresh jobs are checked every hour. Give it a moment, then refresh.</p>
                 <button
                   type="button"
                   onClick={() => void loadMatches(true)}
