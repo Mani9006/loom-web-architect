@@ -19,7 +19,6 @@ import {
   Plus,
 } from "lucide-react";
 import {
-  runOnLocalWorker,
   resumeRowToMarkdown,
   waitForJob,
   enqueueJob,
@@ -28,6 +27,7 @@ import {
   type AIJob,
 } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
+import { normalizeUrlScheme } from "@/lib/job-url";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 // Discover state lives in sessionStorage so switching apps/tabs/refreshing the
@@ -46,6 +46,12 @@ interface PersistedDiscover {
   /** Snapshot of the conversation that the activeJobId was launched with —
    *  needed because Claude's response interpretation depends on history. */
   activeJobHistory: ClarificationTurn[];
+  /** mc_ai_jobs.id of an in-flight "Tailor to job" run, same re-attach
+   *  purpose as activeJobId but for tailoring instead of search — without
+   *  this, switching tabs mid-tailor aborts the wait client-side while the
+   *  worker keeps running, and the finished tailor is never saved/linked. */
+  activeTailorJobId: string | null;
+  activeTailorContext: { key: string; trackedJobId: string; company: string; title: string } | null;
 }
 
 const stateKey = (sid: string) => `mc:discover-state:${sid}:v1`;
@@ -90,6 +96,19 @@ interface ClarificationTurn {
   answers: string[];
 }
 
+/**
+ * Stable local identity for a discovered posting. `company::title` alone
+ * collapses distinct postings that share both (e.g. the same role open in
+ * two locations, which AI searches return often) — two different cards then
+ * fight over one "saved"/"tailoring" state and one tracked_jobs lookup can
+ * silently attach a tailored resume to the wrong card. apply_url is the most
+ * specific signal available; fall back to including location when it's
+ * missing.
+ */
+function jobKey(job: FoundJob): string {
+  return job.apply_url ? `url::${job.apply_url}` : `${job.company}::${job.title}::${job.location ?? ""}`;
+}
+
 interface Props {
   sessionId: string;
   session: { master_resume_id: string | null; target_profile: Record<string, unknown> };
@@ -125,13 +144,22 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [activeJobHistory, setActiveJobHistory] = useState<ClarificationTurn[]>(
     initial.current?.activeJobHistory ?? [],
   );
-  const [tailoringKey, setTailoringKey] = useState<string | null>(null);
-  const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
+  // Keyed by jobKey(job) so tailoring two different cards concurrently
+  // doesn't share one status variable (which would let the first job to
+  // finish clear the busy state the other card's button is relying on).
+  const [tailoringMap, setTailoringMap] = useState<Record<string, JobStatus>>({});
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+  const [activeTailorJobId, setActiveTailorJobId] = useState<string | null>(
+    initial.current?.activeTailorJobId ?? null,
+  );
+  const [activeTailorContext, setActiveTailorContext] = useState<
+    { key: string; trackedJobId: string; company: string; title: string } | null
+  >(initial.current?.activeTailorContext ?? null);
   const [addOpen, setAddOpen] = useState(false);
 
-  // Ties every waitForJob/runOnLocalWorker call below to this component
-  // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
-  // Tabs unmounts inactive content) tears down the realtime subscription
+  // Ties every waitForJob call below to this component instance's lifetime,
+  // so a tab switch that unmounts DiscoverTab (Radix Tabs unmounts inactive
+  // content) tears down the realtime subscription
   // and poll interval instead of leaking them until the AI job times out.
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -149,8 +177,20 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       savedKeys: Array.from(savedTitles),
       activeJobId,
       activeJobHistory,
+      activeTailorJobId,
+      activeTailorContext,
     });
-  }, [sessionId, foundJobs, clarification, conversation, savedTitles, activeJobId, activeJobHistory]);
+  }, [
+    sessionId,
+    foundJobs,
+    clarification,
+    conversation,
+    savedTitles,
+    activeJobId,
+    activeJobHistory,
+    activeTailorJobId,
+    activeTailorContext,
+  ]);
 
   // Auto-reattach to an in-flight search on mount. If the user clicked
   // "Find jobs with AI" and switched apps/tabs/refreshed before the worker
@@ -200,6 +240,64 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       cancelled = true;
     };
     // Run once per mount with the persisted activeJobId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Same idea as the search reattach above, but for an in-flight "Tailor to
+  // job" run: if the user switched tabs mid-tailor, the previous mount's
+  // waitForJob was aborted client-side, but the mc_ai_jobs row keeps running
+  // on the worker. Without this, the finished tailor would never get saved
+  // to mc_tailored_resumes or linked to its card.
+  const reattachedTailorRef = useRef(false);
+  useEffect(() => {
+    if (reattachedTailorRef.current) return;
+    if (!activeTailorJobId || !activeTailorContext) {
+      reattachedTailorRef.current = true;
+      return;
+    }
+    reattachedTailorRef.current = true;
+    const { key, trackedJobId, company, title } = activeTailorContext;
+
+    let cancelled = false;
+    setTailoringMap((m) => ({ ...m, [key]: "running" }));
+    (async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const finished = await waitForJob(activeTailorJobId, {
+          timeoutMs: 6 * 60 * 1000,
+          onProgress: (s) => {
+            if (!cancelled) setTailoringMap((m) => ({ ...m, [key]: s }));
+          },
+          signal: abortRef.current?.signal,
+        });
+        if (cancelled) return;
+        if (userData?.user) {
+          await finishTailoring(finished.result ?? "", trackedJobId, company, title, userData.user.id);
+        }
+        setActiveTailorJobId(null);
+        setActiveTailorContext(null);
+      } catch (e) {
+        if (cancelled) return;
+        // Aborted again (another quick tab switch) — leave the persisted
+        // job id in place so a later mount can retry the reattach.
+        if (isJobCancelled(e)) return;
+        setActiveTailorJobId(null);
+        setActiveTailorContext(null);
+        console.warn("[Discover] couldn't reattach to previous tailor job:", e);
+      } finally {
+        if (!cancelled) {
+          setTailoringMap((m) => {
+            const next = { ...m };
+            delete next[key];
+            return next;
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Run once per mount with the persisted activeTailorJobId
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -483,28 +581,121 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) {
-      toast({ title: "Not signed in", variant: "destructive" });
-      return;
+    const key = jobKey(job);
+    if (savingKeys.has(key) || savedTitles.has(key)) return;
+    // Set synchronously before the first await so a fast double-click can't
+    // both fire before `disabled` reflects the in-flight request, which
+    // would otherwise insert two duplicate mc_tracked_jobs rows.
+    setSavingKeys((s) => new Set(s).add(key));
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) {
+        toast({ title: "Not signed in", variant: "destructive" });
+        return;
+      }
+      const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
+        user_id: userData.user.id,
+        session_id: sessionId,
+        scanned_job_id: null,
+        job_title: job.title,
+        company: job.company,
+        location: job.location ?? null,
+        apply_url: job.apply_url ? normalizeUrlScheme(job.apply_url) : null,
+        jd_md: job.summary ?? null,
+        status: "saved",
+      });
+      if (error) {
+        toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
+        return;
+      }
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
+    } finally {
+      setSavingKeys((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
     }
-    const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
-      user_id: userData.user.id,
-      session_id: sessionId,
-      scanned_job_id: null,
-      job_title: job.title,
-      company: job.company,
-      location: job.location ?? null,
-      apply_url: job.apply_url ?? null,
-      jd_md: job.summary ?? null,
-      status: "saved",
+  }
+
+  /**
+   * Finds (or creates) the mc_tracked_jobs row for a discovered posting.
+   * Shared by tailorFromDiscover — a card may already be on the board from
+   * "Save only", or may need to be created here so the tailored resume has
+   * something to link to.
+   */
+  async function resolveTrackedJobId(job: FoundJob, key: string, userId: string): Promise<string> {
+    if (savedTitles.has(key)) {
+      let query = (supabase as any)
+        .from("mc_tracked_jobs")
+        .select("id")
+        .eq("session_id", sessionId)
+        .eq("company", job.company)
+        .eq("job_title", job.title)
+        .is("deleted_at", null);
+      query = job.location ? query.eq("location", job.location) : query.is("location", null);
+      const { data: existing } = await query.order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (existing?.id) return existing.id;
+    }
+    const { data: tracked, error: trackErr } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .insert({
+        user_id: userId,
+        session_id: sessionId,
+        scanned_job_id: null,
+        job_title: job.title,
+        company: job.company,
+        location: job.location ?? null,
+        apply_url: job.apply_url ? normalizeUrlScheme(job.apply_url) : null,
+        jd_md: job.summary,
+        status: "saved",
+      })
+      .select("id")
+      .single();
+    if (trackErr || !tracked) {
+      throw new Error(trackErr?.message || "Couldn't save card before tailoring");
+    }
+    setSavedTitles((s) => new Set(s).add(key));
+    return tracked.id;
+  }
+
+  /** Saves a finished tailor result and links it to its tracked job. Shared
+   *  by tailorFromDiscover and the tailor-reattach effect above. */
+  async function finishTailoring(
+    cvMd: string,
+    trackedJobId: string,
+    company: string,
+    title: string,
+    userId: string,
+  ) {
+    const { data: tailored, error: insertErr } = await (supabase as any)
+      .from("mc_tailored_resumes")
+      .insert({
+        user_id: userId,
+        session_id: sessionId,
+        source_job_id: null,
+        name: `${company} — ${title}`,
+        cv_md: cvMd,
+      })
+      .select("id")
+      .single();
+    if (insertErr || !tailored) {
+      throw new Error(insertErr?.message || "Couldn't save tailored resume");
+    }
+
+    const { error: linkErr } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .update({ tailored_resume_id: tailored.id })
+      .eq("id", trackedJobId);
+    if (linkErr) {
+      console.error("Couldn't link tailored resume to card:", linkErr.message);
+    }
+
+    toast({
+      title: "Tailored resume ready",
+      description: `${company} · ${title} — see the Resumes tab.`,
     });
-    if (error) {
-      toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
-      return;
-    }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
-    toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
   /**
@@ -514,7 +705,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * master resume directly from session settings.
    */
   async function tailorFromDiscover(job: FoundJob) {
-    const key = `${job.company}::${job.title}`;
+    const key = jobKey(job);
+    if (tailoringMap[key]) return;
     if (!job.summary || !job.summary.trim()) {
       toast({
         title: "AI didn't return a job description",
@@ -534,55 +726,17 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       return;
     }
 
-    setTailoringKey(key);
-    setTailoringStatus("queued");
+    setTailoringMap((m) => ({ ...m, [key]: "queued" }));
 
     try {
-      // 1. Save the discovered job to mc_tracked_jobs so we can link the tailored resume.
       const { data: userData } = await supabase.auth.getUser();
       if (!userData?.user) {
         toast({ title: "Not signed in", variant: "destructive" });
         return;
       }
-      let trackedJobId: string | null = null;
-      if (savedTitles.has(key)) {
-        // Already saved — find the existing row.
-        const { data: existing } = await (supabase as any)
-          .from("mc_tracked_jobs")
-          .select("id")
-          .eq("session_id", sessionId)
-          .eq("company", job.company)
-          .eq("job_title", job.title)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        trackedJobId = existing?.id ?? null;
-      }
-      if (!trackedJobId) {
-        const { data: tracked, error: trackErr } = await (supabase as any)
-          .from("mc_tracked_jobs")
-          .insert({
-            user_id: userData.user.id,
-            session_id: sessionId,
-            scanned_job_id: null,
-            job_title: job.title,
-            company: job.company,
-            location: job.location ?? null,
-            apply_url: job.apply_url ?? null,
-            jd_md: job.summary,
-            status: "saved",
-          })
-          .select("id")
-          .single();
-        if (trackErr || !tracked) {
-          throw new Error(trackErr?.message || "Couldn't save card before tailoring");
-        }
-        trackedJobId = tracked.id;
-        setSavedTitles((s) => new Set(s).add(key));
-      }
+      const trackedJobId = await resolveTrackedJobId(job, key, userData.user.id);
 
-      // 2. Build the tailor prompt — same anti-fabrication rules as BoardTab.
+      // Build the tailor prompt — same anti-fabrication rules as BoardTab.
       const prompt = [
         "You are an expert resume tailor. Rewrite the candidate's resume below to maximize fit for the target job, ATS-aligned.",
         "STRICT RULES:",
@@ -607,55 +761,44 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         .filter(Boolean)
         .join("\n");
 
-      const { result } = await runOnLocalWorker({
+      // Enqueue and persist the job id immediately (before awaiting) so a
+      // tab switch before the worker finishes can still re-attach and save
+      // the result on the next mount, instead of the finished tailor being
+      // silently discarded.
+      const enq = await enqueueJob({
         kind: "tailor",
         sessionId,
         prompt,
         model: "sonnet-4-6",
         input: { tracked_job_id: trackedJobId, company: job.company, job_title: job.title },
+      });
+      setActiveTailorJobId(enq.jobId);
+      setActiveTailorContext({ key, trackedJobId, company: job.company, title: job.title });
+
+      const finished = await waitForJob(enq.jobId, {
         timeoutMs: 6 * 60 * 1000,
-        onProgress: (s) => setTailoringStatus(s),
+        onProgress: (s) => setTailoringMap((m) => ({ ...m, [key]: s })),
         signal: abortRef.current?.signal,
       });
 
-      // 3. Save tailored resume + link it to the tracked job.
-      const { data: tailored, error: insertErr } = await (supabase as any)
-        .from("mc_tailored_resumes")
-        .insert({
-          user_id: userData.user.id,
-          session_id: sessionId,
-          source_job_id: null,
-          name: `${job.company} — ${job.title}`,
-          cv_md: result,
-        })
-        .select("id")
-        .single();
-      if (insertErr || !tailored) {
-        throw new Error(insertErr?.message || "Couldn't save tailored resume");
-      }
-
-      const { error: linkErr } = await (supabase as any)
-        .from("mc_tracked_jobs")
-        .update({ tailored_resume_id: tailored.id })
-        .eq("id", trackedJobId);
-      if (linkErr) {
-
-        console.error("Couldn't link tailored resume to card:", linkErr.message);
-      }
-
-      toast({
-        title: "Tailored resume ready",
-        description: `${job.company} · ${job.title} — see the Resumes tab.`,
-      });
+      await finishTailoring(finished.result ?? "", trackedJobId, job.company, job.title, userData.user.id);
+      setActiveTailorJobId(null);
+      setActiveTailorContext(null);
     } catch (e) {
-      // The user switched away mid-tailor (runOnLocalWorker was aborted on
-      // unmount) — not a real failure, so stay silent rather than toast.
+      // The user switched away mid-tailor (waitForJob was aborted on
+      // unmount) — not a real failure, so stay silent and leave
+      // activeTailorJobId persisted for the reattach effect to pick up.
       if (isJobCancelled(e)) return;
+      setActiveTailorJobId(null);
+      setActiveTailorContext(null);
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Tailor failed", description: msg, variant: "destructive" });
     } finally {
-      setTailoringKey(null);
-      setTailoringStatus(null);
+      setTailoringMap((m) => {
+        const next = { ...m };
+        delete next[key];
+        return next;
+      });
     }
   }
 
@@ -796,8 +939,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     foundJobs.length === 0 ? null : (
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
-          const key = `${job.company}::${job.title}`;
+          const key = jobKey(job);
           const isSaved = savedTitles.has(key);
+          const isSaving = savingKeys.has(key);
+          const tailoringStatus = tailoringMap[key] ?? null;
+          const isTailoring = Boolean(tailoringStatus);
           return (
             <Card key={`${key}::${idx}`} className="p-4">
               <div className="flex items-start gap-3">
@@ -830,10 +976,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
-                    disabled={tailoringKey === key}
+                    disabled={isTailoring}
                     className="h-7 text-[11px]"
                   >
-                    {tailoringKey === key ? (
+                    {isTailoring ? (
                       <>
                         <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                         {tailoringStatus === "queued" && "Queued…"}
@@ -851,11 +997,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || isSaving || isTailoring}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
-                    {isSaved ? "Saved" : "Save only"}
+                    {isSaved ? "Saved" : isSaving ? "Saving…" : "Save only"}
                   </Button>
                   {job.apply_url && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
