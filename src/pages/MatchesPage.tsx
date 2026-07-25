@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+
 import { PageHeader } from "@/components/PageHeader";
 import ApplyProgressModal from "@/components/agent/ApplyProgressModal";
 import type { ApplyProgressJob } from "@/components/agent/apply-progress-core";
@@ -52,10 +52,15 @@ interface UserPrefs {
   auto_apply_enabled: boolean;
 }
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.04, duration: 0.5, ease: [0.16, 1, 0.3, 1] as const } }),
-};
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+      <div className="text-[20px] font-semibold tabular-nums text-foreground mt-0.5 tracking-tight leading-none">{value}</div>
+    </div>
+  );
+}
+
 
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
@@ -402,242 +407,223 @@ export default function MatchesPage() {
   }
 
   return (
-    <div className="max-w-[1180px] mx-auto px-6 lg:px-10 pt-10 pb-24 space-y-10">
-      <PageHeader
-        title="Jobs that fit you"
-        status="only 50%+ fits"
-        description="Fresh jobs matched to your resume. Press “Prepare application” and we'll tailor your resume for that job — you review it before anything is sent."
-      />
-
-      <div className="-mt-6 flex justify-end">
+    <div className="max-w-[1200px] mx-auto px-6 lg:px-10 pt-10 pb-24">
+      {/* Page title — restrained, single line, no terminal typewriter */}
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Matches · only 50%+ fits
+          </p>
+          <h1 className="mt-1.5 text-[32px] font-semibold tracking-tight text-foreground leading-[1.1]">
+            Jobs that fit you
+          </h1>
+          <p className="mt-2 text-[13px] text-muted-foreground max-w-[68ch] leading-relaxed">
+            Fresh jobs matched to your resume. Press <span className="text-foreground font-medium">Prepare application</span> and we&apos;ll tailor your resume for that job — you review it before anything is sent.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => void loadMatches(true)}
           disabled={refreshing}
-          className="inline-flex h-9 items-center rounded-md border border-border px-3.5 text-[12px] font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+          className="inline-flex h-9 items-center rounded-md border border-border bg-card px-3.5 text-[12px] font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
         >
           {refreshing ? "Checking fresh jobs…" : "Check for new matches"}
         </button>
-      </div>
+      </header>
 
-      {/* Stat strip */}
-      <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-5 sm:p-6 flex flex-wrap gap-8">
-        <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Matches found</p>
-          <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.total}</div>
-        </div>
-        <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Good fits · 70%+</p>
-          <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.scored}</div>
-        </div>
-        <div>
-          <p className="text-[11.5px] font-medium text-muted-foreground">Ready to auto-apply</p>
-          <div className="text-[26px] font-bold tabular-nums text-foreground mt-1 tracking-tight">{stats.top}</div>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          {(["recommended", "strong", "autopilot"] as const).map((k) => (
-            <button
-              key={k}
-              onClick={() => setFilter(k)}
-              className={cn(
-                "h-8 px-3 rounded-md text-[12px] font-medium transition-colors",
-                filter === k
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              {k === "recommended" ? "Recommended" : k === "strong" ? "Strong · 80%+" : "Ready to auto-apply"}
-            </button>
-          ))}
-        </div>
-      </motion.div>
-
-      <div className="-mt-6 flex flex-col gap-3 rounded-xl border border-border bg-background/50 p-4 lg:flex-row lg:items-center">
-        <input
-          aria-label="Filter job matches"
-          value={matchSearch}
-          onChange={(event) => setMatchSearch(event.target.value)}
-          placeholder="Filter by role, company, or city"
-          className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-[12.5px] outline-none focus:border-foreground/30"
-        />
-        <div className="flex flex-wrap gap-1.5">
-          {(["all", "remote", "hybrid", "onsite"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setLocationMode(mode)}
-              className={cn(
-                "h-9 rounded-md px-3 text-[12px] font-medium capitalize transition-colors",
-                locationMode === mode ? "bg-foreground text-background" : "border border-border text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {mode === "all" ? "All locations" : mode === "onsite" ? "On-site" : mode}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => navigate("/career-ops/preferences")}
-          className="h-9 rounded-md border border-border px-3 text-[12px] font-medium text-foreground hover:bg-muted"
-        >
-          Match preferences
-        </button>
-      </div>
-
-      {/* Table */}
-      {filtered.length === 0 ? (
-        <div className="glass-card p-12 text-center">
-          {jobs.length === 0 ? (
-            <>
-              <p className="text-[16px] font-semibold text-foreground">We're still finding jobs that fit your resume.</p>
-              <p className="text-[13px] text-muted-foreground mt-2">
-                Fresh jobs are checked every hour — give it a moment, then refresh.
-              </p>
+      {/* Single bordered container — all list state lives inside */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        {/* Container header: counts + tabs */}
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 px-5 py-4 border-b border-border">
+          <div className="flex items-baseline gap-6">
+            <Stat label="Matches" value={stats.total} />
+            <Stat label="Good fits · 70%+" value={stats.scored} />
+            <Stat label="Ready to auto-apply" value={stats.top} />
+          </div>
+          <div className="ml-auto flex items-center gap-1">
+            {(["recommended", "strong", "autopilot"] as const).map((k) => (
               <button
-                type="button"
-                onClick={() => void loadMatches(true)}
-                disabled={refreshing}
-                className="mt-5 inline-flex h-9 items-center rounded-md bg-foreground px-4 text-[12.5px] font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
+                key={k}
+                onClick={() => setFilter(k)}
+                className={cn(
+                  "h-8 px-3 rounded-md text-[12px] font-medium transition-colors",
+                  filter === k
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
               >
-                {refreshing ? "Checking…" : "Refresh now"}
+                {k === "recommended" ? "Recommended" : k === "strong" ? "Strong · 80%+" : "Ready to auto-apply"}
               </button>
-            </>
-          ) : (
-            <>
-              <p className="text-[16px] font-semibold text-foreground">Nothing fits these filters.</p>
-              <p className="text-[13px] text-muted-foreground mt-2">
-                Your matches are still here — clear the filters to see them all.
-              </p>
-              <button
-                type="button"
-                onClick={() => { setFilter("recommended"); setLocationMode("all"); setMatchSearch(""); }}
-                className="mt-5 inline-flex h-9 items-center rounded-md bg-foreground px-4 text-[12.5px] font-medium text-background hover:bg-foreground/90"
-              >
-                Clear filters
-              </button>
-            </>
-          )}
+            ))}
+          </div>
         </div>
-      ) : (
-        <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={2} className="glass-card overflow-hidden">
-          <table className="w-full text-[13.5px]">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="w-10 px-3 py-3" aria-label="Select" />
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 w-28">Fit</th>
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Role</th>
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Location</th>
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 hidden lg:table-cell">Seen</th>
-                <th className="text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-5 py-3">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(({ job, evaluation }) => (
-                <tr key={job.id} className={cn("border-b border-border last:border-0 hover:bg-muted/40 transition-colors", selected.has(evaluation.id) && "bg-muted/50")}>
-                  <td className="px-3 py-4 align-middle">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${job.title} at ${job.company.name}`}
-                      checked={selected.has(evaluation.id)}
-                      onChange={() => toggleSelected(evaluation.id)}
-                      disabled={Boolean(batchProgress)}
-                      className="h-4 w-4 rounded border-border accent-foreground align-middle"
-                    />
-                  </td>
-                  <td className="px-3 py-4">
-                    {evaluation ? (
-                      <div className="w-28 space-y-1.5">
-                        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap", fitChip(careerFitScore(evaluation)).tone)}>
-                          {fitChip(careerFitScore(evaluation)).label}
-                        </span>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-foreground transition-[width]" style={{ width: `${careerFitScore(evaluation)}%` }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-dashed border-border text-muted-foreground text-[11px]">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-4">
-                    <div className="text-[14px] font-semibold text-foreground leading-tight">{job.title}</div>
-                    <div className="text-[11.5px] text-muted-foreground mt-1">
+
+        {/* Filter row */}
+        <div className="flex flex-col gap-3 px-5 py-3 border-b border-border bg-background/40 lg:flex-row lg:items-center">
+          <input
+            aria-label="Filter job matches"
+            value={matchSearch}
+            onChange={(event) => setMatchSearch(event.target.value)}
+            placeholder="Filter by role, company, or city"
+            className="h-9 min-w-0 flex-1 rounded-md border border-border bg-card px-3 text-[13px] outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/15 transition"
+          />
+          <div className="flex flex-wrap gap-1">
+            {(["all", "remote", "hybrid", "onsite"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setLocationMode(mode)}
+                className={cn(
+                  "h-9 rounded-md px-3 text-[12px] font-medium capitalize transition-colors border",
+                  locationMode === mode
+                    ? "bg-foreground text-background border-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",
+                )}
+              >
+                {mode === "all" ? "All locations" : mode === "onsite" ? "On-site" : mode}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/career-ops/preferences")}
+            className="h-9 rounded-md border border-border bg-card px-3 text-[12px] font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            Match preferences
+          </button>
+        </div>
+
+        {/* Rows */}
+        {filtered.length === 0 ? (
+          <div className="px-6 py-16 text-center">
+            {jobs.length === 0 ? (
+              <>
+                <p className="text-[15px] font-semibold text-foreground">We&apos;re still finding jobs that fit your resume.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Fresh jobs are checked every hour — give it a moment, then refresh.</p>
+                <button
+                  type="button"
+                  onClick={() => void loadMatches(true)}
+                  disabled={refreshing}
+                  className="mt-5 inline-flex h-9 items-center rounded-md bg-primary px-4 text-[12.5px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {refreshing ? "Checking…" : "Refresh now"}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-[15px] font-semibold text-foreground">Nothing fits these filters.</p>
+                <p className="text-[13px] text-muted-foreground mt-2">Your matches are still here — clear the filters to see them all.</p>
+                <button
+                  type="button"
+                  onClick={() => { setFilter("recommended"); setLocationMode("all"); setMatchSearch(""); }}
+                  className="mt-5 inline-flex h-9 items-center rounded-md bg-primary px-4 text-[12.5px] font-medium text-primary-foreground hover:opacity-90"
+                >
+                  Clear filters
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {filtered.map(({ job, evaluation }) => {
+              const score = careerFitScore(evaluation);
+              const chip = fitChip(score);
+              const isSelected = selected.has(evaluation.id);
+              return (
+                <li
+                  key={job.id}
+                  className={cn(
+                    "group grid grid-cols-[auto_88px_1fr_auto_auto] items-center gap-x-5 px-5 py-4 transition-colors",
+                    isSelected ? "bg-primary/[0.04]" : "hover:bg-muted/40",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${job.title} at ${job.company.name}`}
+                    checked={isSelected}
+                    onChange={() => toggleSelected(evaluation.id)}
+                    disabled={Boolean(batchProgress)}
+                    className="h-4 w-4 rounded border-border accent-primary"
+                  />
+
+                  {/* Fit */}
+                  <div className="space-y-1.5">
+                    <div className="text-[20px] font-semibold tabular-nums text-foreground leading-none">{score}<span className="text-[11px] font-normal text-muted-foreground ml-0.5">%</span></div>
+                    <div className="h-1 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${score}%` }} />
+                    </div>
+                    <div className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap", chip.tone)}>
+                      {chip.label.split(" ")[0]} {chip.label.split(" ")[1]}
+                    </div>
+                  </div>
+
+                  {/* Role */}
+                  <div className="min-w-0">
+                    <div className="text-[15px] font-semibold text-foreground leading-tight truncate">{job.title}</div>
+                    <div className="text-[12px] text-muted-foreground mt-1">
                       {job.company.name}
-                      {job.department ? <span className="opacity-60"> · {job.department}</span> : null}
+                      {job.department ? <span className="opacity-70"> · {job.department}</span> : null}
+                      {job.location ? <span className="opacity-70"> · {job.location}</span> : null}
+                      {job.remote_policy ? <span className="opacity-70"> · {job.remote_policy}</span> : null}
                     </div>
                     {safeMatchSummary(evaluation?.summary ?? null) ? (
-                      <div className="text-[12.5px] text-muted-foreground mt-1.5 max-w-[60ch] line-clamp-2">{safeMatchSummary(evaluation?.summary ?? null)}</div>
+                      <div className="text-[12.5px] text-muted-foreground/90 mt-1.5 max-w-[68ch] line-clamp-2">
+                        {safeMatchSummary(evaluation?.summary ?? null)}
+                      </div>
                     ) : null}
                     {evaluation && !evaluation.eligible ? (
-                      <div className="text-[11.5px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">
-                        Outside your saved preferences · {evaluation.hard_filters?.[0] ?? "review your preferences if you want us to auto-apply to jobs like this"}
-                      </div>
-                    ) : evaluation?.fit_confidence != null ? (
-                      <div className="text-[11px] text-muted-foreground/80 mt-1">
-                        {Math.round(evaluation.fit_confidence * 100)}% confidence in this match
+                      <div className="text-[11px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">
+                        Outside your saved preferences · {evaluation.hard_filters?.[0] ?? "review preferences to auto-apply"}
                       </div>
                     ) : null}
-                  </td>
-                  <td className="px-3 py-4 text-[13px] text-muted-foreground">
-                    {job.location || "—"}
-                    {job.remote_policy ? <div className="text-[11px] text-muted-foreground/80 mt-0.5">{job.remote_policy}</div> : null}
-                  </td>
-                  <td className="px-3 py-4 text-[12px] text-muted-foreground hidden lg:table-cell">{relativeTime(job.last_seen_at)}</td>
-                  <td className="px-5 py-4 text-right whitespace-nowrap">
-                    {evaluation ? (
-                      <>
-                        {drafts[evaluation.id] ? (
-                          <button
-                            onClick={() => navigate(`/applications/${drafts[evaluation.id].id}`)}
-                            className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
-                          >
-                            Review application
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => prepareApplication(evaluation.id, job.id)}
-                            disabled={preparing === evaluation.id || Boolean(batchProgress)}
-                            title={!evaluation.eligible ? "You can still prepare this application; we just won't auto-submit it." : undefined}
-                            className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
-                          >
-                            {preparing === evaluation.id ? "Preparing…" : "Prepare application"}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => runEvaluation(job.id)}
-                          disabled={evaluating === job.id}
-                          className="ml-1.5 inline-flex h-8 px-3 items-center rounded-md text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
-                        >
-                          {evaluating === job.id ? "…" : "Rescore"}
-                        </button>
-                      </>
+                  </div>
+
+                  {/* Seen */}
+                  <div className="hidden lg:block text-[11px] text-muted-foreground whitespace-nowrap tabular-nums">
+                    {relativeTime(job.last_seen_at)}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1.5 justify-end whitespace-nowrap">
+                    {drafts[evaluation.id] ? (
+                      <button
+                        onClick={() => navigate(`/applications/${drafts[evaluation.id].id}`)}
+                        className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-primary text-primary-foreground hover:opacity-90 transition"
+                      >
+                        Review application
+                      </button>
                     ) : (
                       <button
-                        onClick={() => runEvaluation(job.id)}
-                        disabled={evaluating === job.id}
-                        className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                        onClick={() => prepareApplication(evaluation.id, job.id)}
+                        disabled={preparing === evaluation.id || Boolean(batchProgress)}
+                        title={!evaluation.eligible ? "You can still prepare this; we just won't auto-submit it." : undefined}
+                        className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-primary text-primary-foreground hover:opacity-90 transition disabled:opacity-50"
                       >
-                        {evaluating === job.id ? "Scoring…" : "Score"}
+                        {preparing === evaluation.id ? "Preparing…" : "Prepare application"}
                       </button>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </motion.div>
-      )}
+                    <button
+                      onClick={() => runEvaluation(job.id)}
+                      disabled={evaluating === job.id}
+                      className="inline-flex h-8 px-2.5 items-center rounded-md text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition disabled:opacity-50"
+                    >
+                      {evaluating === job.id ? "…" : "Rescore"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
 
-      <div className="flex items-center justify-between text-[12px] text-muted-foreground mt-6">
-        <p>
-          Jobs come straight from employer sites and refresh hourly · every match can be prepared manually
-        </p>
-        <button
-          onClick={() => navigate("/job-search")}
-          className="hover:text-foreground transition-colors"
-        >
+      <div className="flex items-center justify-between text-[12px] text-muted-foreground mt-5">
+        <p>Jobs come straight from employer sites and refresh hourly · every match can be prepared manually</p>
+        <button onClick={() => navigate("/job-search")} className="hover:text-foreground transition-colors">
           Open General Job Search →
         </button>
       </div>
+
 
       {/* Batch bar — appears only when something is selected */}
       {selected.size > 0 && (
