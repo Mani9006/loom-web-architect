@@ -78,11 +78,12 @@ function careerFitScore(evaluation: Evaluation): number {
   return evaluation.fit_score ?? Math.round(evaluation.score * 20);
 }
 
-function fitChip(score: number): { label: string; tone: string } {
-  if (score >= 80) return { label: `Strong fit ${score}%`, tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" };
-  if (score >= 65) return { label: `Good fit ${score}%`, tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400" };
-  return { label: `Possible fit ${score}%`, tone: "bg-foreground/5 text-muted-foreground" };
+function fitBand(score: number): { label: string; tone: string } {
+  if (score >= 80) return { label: "Strong match", tone: "text-emerald-600 dark:text-emerald-400" };
+  if (score >= 65) return { label: "Good match", tone: "text-amber-600 dark:text-amber-400" };
+  return { label: "Possible match", tone: "text-muted-foreground" };
 }
+
 
 function safeMatchSummary(value: string | null): string | null {
   if (!value) return null;

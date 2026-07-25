@@ -45,7 +45,7 @@
     --input: 30 10% 84%;
     --ring: 244 58% 51%;
 
-    --radius: 0.375rem;
+    --radius: 0.5rem;                  /* 8px controls, rounded-xl (12px) for surfaces */
 
     --sidebar-background: 40 25% 96%;
     --sidebar-foreground: 222 15% 25%;
