@@ -673,6 +673,19 @@ export default function MatchesPage() {
           navigate(`/applications/${draftId}`);
         }}
       />
+      </div>
+    </div>
+  );
+}
+
+function StatCell({ label, value, tone }: { label: string; value: number; tone: "ink" | "accent" | "highlight" }) {
+  const color = tone === "accent" ? "text-rp-accent" : tone === "highlight" ? "text-rp-accent-2" : "text-rp-ink";
+  return (
+    <div className="px-6 py-6 border-r border-rp-rule last:border-r-0">
+      <p className="text-rp-ink-3" style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}>{label}</p>
+      <div className={`${color} tabular-nums mt-2`} style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "38px", lineHeight: 1, fontWeight: 200, letterSpacing: "-0.02em" }}>
+        {String(value).padStart(2, "0")}
+      </div>
     </div>
   );
 }
