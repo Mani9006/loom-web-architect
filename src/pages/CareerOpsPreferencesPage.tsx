@@ -185,10 +185,15 @@ export default function CareerOpsPreferencesPage() {
         supabase.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
         supabase.from("agent_runs").select("*").eq("user_id", user.id)
           .order("started_at", { ascending: false }).limit(8),
-        supabase.from("profiles").select("years_of_experience").eq("user_id", user.id).maybeSingle(),
+        // years_of_experience is not a real column on public.profiles (no migration
+        // ever added it) — the "confirmed total experience" value lives inside
+        // job_preferences.confirmed_experience_years instead.
+        supabase.from("profiles").select("job_preferences").eq("user_id", user.id).maybeSingle(),
       ]);
       if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as unknown as Prefs) });
-      setConfirmedExperienceYears(typeof profileRes.data?.years_of_experience === "number" ? profileRes.data.years_of_experience : null);
+      const storedPreferences = (profileRes.data?.job_preferences || {}) as Record<string, unknown>;
+      const confirmedExperience = storedPreferences.confirmed_experience_years;
+      setConfirmedExperienceYears(typeof confirmedExperience === "number" ? confirmedExperience : null);
       setRuns((runsRes.data || []).map((run) => ({
         ...run,
         actions: Array.isArray(run.actions) ? run.actions as unknown as AgentRun["actions"] : [],
@@ -204,9 +209,13 @@ export default function CareerOpsPreferencesPage() {
       ...prefs,
       remote_only: prefs.work_modes.length === 1 && prefs.work_modes[0] === "remote",
     };
+    const { data: currentProfile } = await supabase.from("profiles").select("job_preferences").eq("user_id", user.id).maybeSingle();
+    const existingPreferences = (currentProfile?.job_preferences || {}) as Record<string, unknown>;
     const [prefsResult, profileResult] = await Promise.all([
       supabase.from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
-      supabase.from("profiles").update({ years_of_experience: confirmedExperienceYears } as never).eq("user_id", user.id),
+      supabase.from("profiles").update({
+        job_preferences: { ...existingPreferences, confirmed_experience_years: confirmedExperienceYears },
+      }).eq("user_id", user.id),
     ]);
     setSaving(false);
     if (prefsResult.error || profileResult.error) toast.error("Your matching settings could not be saved. Try again in a moment.");
