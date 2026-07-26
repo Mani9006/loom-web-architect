@@ -113,7 +113,7 @@ export async function hydrateApplicationProfileFromResume(args: {
 }): Promise<InferredApplicationProfile> {
   const inferred = inferApplicationProfileFromResume(args.resume, args.accountEmail);
   const { data: existing } = await supabase.from("profiles")
-    .select("full_name,email,phone,location,target_role,years_of_experience,linkedin_url,job_preferences")
+    .select("full_name,email,phone,location,target_role,job_preferences")
     .eq("user_id", args.userId)
     .maybeSingle();
   const preferences = record(existing?.job_preferences);
@@ -131,6 +131,9 @@ export async function hydrateApplicationProfileFromResume(args: {
     portfolioUrl: preserve(storedProfile, "portfolioUrl", inferred.portfolioUrl),
   };
 
+  // years_of_experience and linkedin_url are not real columns on public.profiles
+  // (no migration ever added them) — they live inside job_preferences.applypass.profile
+  // (mergedProfile above), which is the durable store for these ad-hoc application fields.
   const { error } = await supabase.from("profiles").upsert({
     user_id: args.userId,
     full_name: existing?.full_name || inferred.fullName || null,
@@ -138,8 +141,6 @@ export async function hydrateApplicationProfileFromResume(args: {
     phone: existing?.phone || inferred.phone || null,
     location: existing?.location || inferred.location || null,
     target_role: existing?.target_role || inferred.currentTitle || null,
-    years_of_experience: existing?.years_of_experience ?? (Number(inferred.yearsExperience) || null),
-    linkedin_url: existing?.linkedin_url || inferred.linkedinUrl || null,
     job_preferences: {
       ...preferences,
       applypass: { ...applypass, profile: mergedProfile },
