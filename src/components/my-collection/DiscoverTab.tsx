@@ -639,14 +639,18 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         .update({ tailored_resume_id: tailored.id })
         .eq("id", trackedJobId);
       if (linkErr) {
-
         console.error("Couldn't link tailored resume to card:", linkErr.message);
+        toast({
+          title: "Tailored resume saved, but not linked",
+          description: `${job.company} · ${job.title} is on the Resumes tab, but the board card couldn't be updated. Link it manually from the card.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Tailored resume ready",
+          description: `${job.company} · ${job.title}, see the Resumes tab.`,
+        });
       }
-
-      toast({
-        title: "Tailored resume ready",
-        description: `${job.company} · ${job.title}, see the Resumes tab.`,
-      });
     } catch (e) {
       // The user switched away mid-tailor (runOnLocalWorker was aborted on
       // unmount), not a real failure, so stay silent rather than toast.
