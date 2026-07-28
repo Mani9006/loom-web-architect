@@ -205,8 +205,8 @@ export default function CareerOpsPreferencesPage() {
       remote_only: prefs.work_modes.length === 1 && prefs.work_modes[0] === "remote",
     };
     const [prefsResult, profileResult] = await Promise.all([
-      supabase.from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
-      supabase.from("profiles").update({ years_of_experience: confirmedExperienceYears } as never).eq("user_id", user.id),
+      (supabase as any).from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
+      (supabase as any).from("profiles").update({ years_of_experience: confirmedExperienceYears } as never).eq("user_id", user.id),
     ]);
     setSaving(false);
     if (prefsResult.error || profileResult.error) toast.error("Your matching settings could not be saved. Try again in a moment.");
