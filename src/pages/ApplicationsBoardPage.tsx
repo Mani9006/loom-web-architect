@@ -84,7 +84,7 @@ export default function ApplicationsBoardPage() {
     if (!user) return;
     if (showSpinner) setRefreshing(true);
 
-    const { data: draftData, error: draftError } = await supabase
+    const { data: draftData, error: draftError } = await (supabase as any)
       .from("draft_applications")
       .select("id,status,error_message,submitted_at,created_at,updated_at,applypass_task_id,tailored_resume_id,tailored_cv_md,answers,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
       .eq("user_id", user.id)
@@ -107,7 +107,7 @@ export default function ApplicationsBoardPage() {
 
     let taskById = new Map<string, BoardTask>();
     if (taskIds.length > 0) {
-      const { data: taskData, error: taskError } = await supabase
+      const { data: taskData, error: taskError } = await (supabase as any)
         .from("applypass_tasks")
         .select("id,status,error_message,result,created_at")
         .in("id", taskIds);
