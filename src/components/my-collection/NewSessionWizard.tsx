@@ -165,6 +165,26 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       return;
     }
 
+    // Re-check the active-session cap against the database right before
+    // creating. The New Session button is disabled client-side once a
+    // cached session list hits 5 active, but that cache can be stale
+    // (another tab/device created sessions since this page loaded), so
+    // confirm here rather than let a 6th active session slip through.
+    const { count: activeCount, error: countErr } = await supabase
+      .from("mc_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userData.user.id)
+      .eq("status", "active");
+    if (!countErr && (activeCount ?? 0) >= 5) {
+      setSubmitting(false);
+      toast({
+        title: "Reached active session limit",
+        description: "You can have at most 5 active sessions. Archive one first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const targetProfile = {
       target_roles: targetRolesText
         .split(",")
@@ -179,7 +199,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       visa_status: visa,
     };
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_sessions")
       .insert({
         user_id: userData.user.id,
