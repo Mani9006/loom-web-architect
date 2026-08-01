@@ -79,7 +79,7 @@ jobs:
 
       - name: Post progress comment
         if: github.event_name == 'issues' || github.event_name == 'issue_comment'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.issues.createComment({
