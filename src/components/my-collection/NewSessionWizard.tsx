@@ -23,6 +23,11 @@ interface Resume {
   updated_at: string;
 }
 
+// Must match ACTIVE_LIMIT in src/pages/MyCollection/MyCollectionPage.tsx.
+// Re-checked here (not just relying on the parent disabling the "New
+// Session" button) so a stale count in another tab can't race past the cap.
+const ACTIVE_LIMIT = 5;
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -160,6 +165,21 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       toast({
         title: "Couldn't create",
         description: "You're not signed in. Refresh and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { count: activeCount, error: countErr } = await (supabase as any)
+      .from("mc_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userData.user.id)
+      .eq("status", "active");
+    if (!countErr && (activeCount ?? 0) >= ACTIVE_LIMIT) {
+      setSubmitting(false);
+      toast({
+        title: "Reached active session limit",
+        description: `You can have at most ${ACTIVE_LIMIT} active sessions. Archive one first.`,
         variant: "destructive",
       });
       return;
