@@ -79,8 +79,9 @@ export default function MyCollectionPage() {
         };
       }
       setStatsMap(map);
-    } catch {
-      // Non-critical, cards just show "," if this fails.
+    } catch (err) {
+      console.error("Failed to load session stats", err);
+      // Non-critical, cards just show "–" if this fails.
     }
   }
 
@@ -296,9 +297,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
