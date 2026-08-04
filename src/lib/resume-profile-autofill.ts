@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- profiles.years_of_experience and user_job_prefs are not yet in the generated client types */
 import { supabase } from "@/integrations/supabase/client";
 
 type UnknownRecord = Record<string, unknown>;
@@ -112,7 +113,7 @@ export async function hydrateApplicationProfileFromResume(args: {
   accountEmail?: string;
 }): Promise<InferredApplicationProfile> {
   const inferred = inferApplicationProfileFromResume(args.resume, args.accountEmail);
-  const { data: existing } = await supabase.from("profiles")
+  const { data: existing } = await (supabase as any).from("profiles")
     .select("full_name,email,phone,location,target_role,years_of_experience,linkedin_url,job_preferences")
     .eq("user_id", args.userId)
     .maybeSingle();
@@ -131,7 +132,7 @@ export async function hydrateApplicationProfileFromResume(args: {
     portfolioUrl: preserve(storedProfile, "portfolioUrl", inferred.portfolioUrl),
   };
 
-  const { error } = await supabase.from("profiles").upsert({
+  const { error } = await (supabase as any).from("profiles").upsert({
     user_id: args.userId,
     full_name: existing?.full_name || inferred.fullName || null,
     email: existing?.email || inferred.email || args.accountEmail || null,
@@ -154,13 +155,13 @@ export async function hydrateApplicationProfileFromResume(args: {
   }, { onConflict: "user_id" });
   if (error) throw error;
 
-  const { data: currentPrefs, error: prefsLoadError } = await supabase.from("user_job_prefs")
+  const { data: currentPrefs, error: prefsLoadError } = await (supabase as any).from("user_job_prefs")
     .select("target_roles,target_countries,min_years_experience,max_years_experience")
     .eq("user_id", args.userId)
     .maybeSingle();
   if (!prefsLoadError) {
     const years = Number(inferred.yearsExperience) || 0;
-    await supabase.from("user_job_prefs").upsert({
+    await (supabase as any).from("user_job_prefs").upsert({
       user_id: args.userId,
       target_roles: currentPrefs?.target_roles?.length ? currentPrefs.target_roles : inferred.targetRoles,
       target_countries: currentPrefs?.target_countries?.length ? currentPrefs.target_countries : inferred.targetCountries,

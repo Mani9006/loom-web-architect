@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- draft_applications is not yet in the generated client types */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
@@ -37,7 +38,7 @@ export default function Analytics() {
       if (!user) { navigate("/auth"); return; }
 
       const [packetsRes, resumesRes] = await Promise.all([
-        supabase.from("draft_applications").select("id,status,created_at,submitted_at").eq("user_id", user.id),
+        (supabase as any).from("draft_applications").select("id,status,created_at,submitted_at").eq("user_id", user.id),
         supabase.from("resumes").select("skills").eq("user_id", user.id).limit(1),
       ]);
 

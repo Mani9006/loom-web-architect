@@ -78,7 +78,7 @@ export default function SessionPage() {
     let hadInitialLoad = false;
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mc_sessions")
         .select("*")
         .eq("id", sessionId)

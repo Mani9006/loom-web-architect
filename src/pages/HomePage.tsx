@@ -7,6 +7,7 @@
  *
  * Data wiring is unchanged from the prior version.
  */
+/* eslint-disable @typescript-eslint/no-explicit-any -- draft_applications/job_evaluations are not yet in the generated client types */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, ArrowUpRight, CornerDownLeft } from "lucide-react";
@@ -107,13 +108,13 @@ export default function HomePage() {
         supabase.from("profiles").select("full_name, onboarding_completed").eq("user_id", user.id).maybeSingle(),
         supabase.from("tracked_jobs").select("status").eq("user_id", user.id),
         supabase.from("resumes").select("id").eq("user_id", user.id).limit(1),
-        supabase
+        (supabase as any)
           .from("draft_applications")
           .select("id,status,tailored_resume_id,updated_at,submitted_at,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
           .eq("user_id", user.id)
           .order("updated_at", { ascending: false })
           .limit(5),
-        supabase
+        (supabase as any)
           .from("job_evaluations")
           .select("id,score,fit_score,tier,summary,dimension_scores,scanned_job_id,scanned_jobs(title,location,apply_url,company:scan_companies(name))")
           .eq("user_id", user.id)
