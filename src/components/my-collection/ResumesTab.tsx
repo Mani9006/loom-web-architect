@@ -55,7 +55,7 @@ export default function ResumesTab({
 
   async function load() {
     setLoading(true);
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_tailored_resumes")
       .select("*")
       .eq("session_id", sessionId)
@@ -90,14 +90,14 @@ export default function ResumesTab({
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
-    const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
+    const { error } = await supabase.from("mc_tailored_resumes").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
       return;
     }
     // Unlink from any board card that pointed at this resume so "View
     // tailored resume" doesn't dead-end on a card that still thinks it has one.
-    await (supabase as any)
+    await supabase
       .from("mc_tracked_jobs")
       .update({ tailored_resume_id: null })
       .eq("tailored_resume_id", id);
@@ -106,7 +106,7 @@ export default function ResumesTab({
 
   async function commitRename() {
     if (!renaming || !renameValue.trim()) return;
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tailored_resumes")
       .update({ name: renameValue.trim() })
       .eq("id", renaming.id);
@@ -324,7 +324,7 @@ function CanvasEditor({
 
   async function save() {
     setSaving(true);
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tailored_resumes")
       .update({ name: name.trim(), cv_md: cv })
       .eq("id", resume.id);
