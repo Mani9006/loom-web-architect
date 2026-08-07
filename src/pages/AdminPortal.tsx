@@ -1095,7 +1095,7 @@ function TenantsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await (supabase
-      .from("enterprise_tenants" as any)
+      .from("enterprise_tenants")
       .select("*")
       .order("created_at", { ascending: false }) as any);
     if (error) toast({ title: "Error loading tenants", description: error.message, variant: "destructive" });
@@ -1111,7 +1111,7 @@ function TenantsTab() {
     e.preventDefault();
     if (!name.trim() || !slug.trim()) return;
     setCreating(true);
-    const { error } = await (supabase.from("enterprise_tenants" as any).insert({ name: name.trim(), slug: slug.trim() }) as any);
+    const { error } = await (supabase.from("enterprise_tenants").insert({ name: name.trim(), slug: slug.trim() }) as any);
     if (error) {
       toast({ title: "Failed to create tenant", description: error.message, variant: "destructive" });
     } else {
@@ -1206,7 +1206,7 @@ function MembersTab() {
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await (supabase
-      .from("enterprise_memberships" as any)
+      .from("enterprise_memberships")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(100) as any);
@@ -1303,7 +1303,7 @@ function SsoTab() {
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await (supabase
-      .from("sso_configurations" as any)
+      .from("sso_configurations")
       .select("*")
       .order("created_at", { ascending: false }) as any);
     if (error) toast({ title: "Error loading SSO configs", description: error.message, variant: "destructive" });
@@ -1363,7 +1363,7 @@ function AuditLogTab() {
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await (supabase
-      .from("audit_log_entries" as any)
+      .from("audit_log_entries")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(200) as any);
