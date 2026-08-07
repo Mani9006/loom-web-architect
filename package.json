@@ -127,5 +127,13 @@
     "vite": "^7.3.1",
     "vitest": "^3.2.4"
   },
-  "description": "AI-powered career platform for resumes, cover letters, interviews, job tracking, and application workflows."
+  "description": "AI-powered career platform for resumes, cover letters, interviews, job tracking, and application workflows.",
+  "overrides": {
+    "minimatch@9": {
+      "brace-expansion": "2.1.4"
+    },
+    "minimatch@10": {
+      "brace-expansion": "5.0.9"
+    }
+  }
 }
