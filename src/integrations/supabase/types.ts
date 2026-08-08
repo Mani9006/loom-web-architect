@@ -191,47 +191,100 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          blacklisted_companies: string[]
           created_at: string
+          desired_locations: string[]
+          desired_roles: string[]
+          education_level: string | null
           email: string | null
           full_name: string | null
           id: string
           job_preferences: Json | null
+          linkedin_url: string | null
           location: string | null
           onboarding_completed: boolean
           phone: string | null
+          preferred_work_type: string[]
+          primary_resume_id: string | null
+          profile_completeness: number
+          profile_setup_completed: boolean
+          resume_json: Json | null
+          salary_expectations: Json | null
+          seniority_level: string | null
+          skills: string[]
           target_role: string | null
           updated_at: string
           user_id: string
+          work_authorization: string | null
+          years_of_experience: number | null
         }
         Insert: {
           avatar_url?: string | null
+          blacklisted_companies?: string[]
           created_at?: string
+          desired_locations?: string[]
+          desired_roles?: string[]
+          education_level?: string | null
           email?: string | null
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
+          preferred_work_type?: string[]
+          primary_resume_id?: string | null
+          profile_completeness?: number
+          profile_setup_completed?: boolean
+          resume_json?: Json | null
+          salary_expectations?: Json | null
+          seniority_level?: string | null
+          skills?: string[]
           target_role?: string | null
           updated_at?: string
           user_id: string
+          work_authorization?: string | null
+          years_of_experience?: number | null
         }
         Update: {
           avatar_url?: string | null
+          blacklisted_companies?: string[]
           created_at?: string
+          desired_locations?: string[]
+          desired_roles?: string[]
+          education_level?: string | null
           email?: string | null
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
+          preferred_work_type?: string[]
+          primary_resume_id?: string | null
+          profile_completeness?: number
+          profile_setup_completed?: boolean
+          resume_json?: Json | null
+          salary_expectations?: Json | null
+          seniority_level?: string | null
+          skills?: string[]
           target_role?: string | null
           updated_at?: string
           user_id?: string
+          work_authorization?: string | null
+          years_of_experience?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_primary_resume_id_fkey"
+            columns: ["primary_resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       resumes: {
         Row: {
