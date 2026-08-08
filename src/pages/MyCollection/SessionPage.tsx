@@ -33,6 +33,8 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
@@ -75,59 +77,62 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      setLoadError(false);
+      const { data, error } = await (supabase as any)
         .from("mc_sessions")
         .select("*")
         .eq("id", sessionId)
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load, otherwise just keep showing what we already have.
       if (error) {
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          const safeError = toUserFacingError(error, {
-            operation: "load_application_workspace",
-            defaultMessage: "This application workspace could not be loaded.",
-          });
-          toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
-        }
+        console.error("[SessionPage] load failed:", error.message);
+        const safeError = toUserFacingError(error, {
+          operation: "load_application_workspace",
+          defaultMessage: "This application workspace could not be loaded.",
+        });
+        toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
+        setLoadError(true);
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
         return;
       }
-      hadInitialLoad = true;
       setSession(data as unknown as MCSession);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render, which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // Intentionally only re-run when sessionId or reloadKey changes.
+    // navigate/toast are unstable references that, if included, would cause
+    // this effect to re-fire on every render, which on tab focus produces a
+    // flash and can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, reloadKey]);
 
-  if (loading || !session) {
+  if (loading) {
     return (
       <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8 space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-10 w-full max-w-md" />
         <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
+  if (loadError || !session) {
+    return (
+      <div className="container max-w-7xl mx-auto py-16 px-4 md:px-8 text-center">
+        <p className="text-sm text-muted-foreground mb-4">This application workspace could not be loaded.</p>
+        <Button variant="outline" size="sm" onClick={() => setReloadKey((k) => k + 1)}>
+          Retry
+        </Button>
       </div>
     );
   }

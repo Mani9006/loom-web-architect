@@ -154,13 +154,13 @@ export async function hydrateApplicationProfileFromResume(args: {
   }, { onConflict: "user_id" });
   if (error) throw error;
 
-  const { data: currentPrefs, error: prefsLoadError } = await supabase.from("user_job_prefs")
+  const { data: currentPrefs, error: prefsLoadError } = await (supabase as any).from("user_job_prefs")
     .select("target_roles,target_countries,min_years_experience,max_years_experience")
     .eq("user_id", args.userId)
     .maybeSingle();
   if (!prefsLoadError) {
     const years = Number(inferred.yearsExperience) || 0;
-    await supabase.from("user_job_prefs").upsert({
+    await (supabase as any).from("user_job_prefs").upsert({
       user_id: args.userId,
       target_roles: currentPrefs?.target_roles?.length ? currentPrefs.target_roles : inferred.targetRoles,
       target_countries: currentPrefs?.target_countries?.length ? currentPrefs.target_countries : inferred.targetCountries,

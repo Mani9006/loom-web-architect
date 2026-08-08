@@ -31,6 +31,7 @@ const labels: Record<string, string> = {
   reject: "Not selected",
   offer: "Offer",
   other_recruiter: "Recruiter update",
+  verification: "Codes",
   irrelevant: "Other",
 };
 
@@ -38,6 +39,7 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   const { toast } = useToast();
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -52,6 +54,7 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   }, [sessionId]);
 
   useEffect(() => {
+    setLoadError(false);
     load()
       .catch((error) => {
         const safeError = toUserFacingError(error, {
@@ -59,6 +62,7 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
           defaultMessage: "Application messages could not be loaded.",
         });
         toast({ title: "Couldn't load inbox", description: safeError.message, variant: "destructive" });
+        setLoadError(true);
       })
       .finally(() => setLoading(false));
   }, [load, toast]);
@@ -86,7 +90,10 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function markRead(id: string, isRead: boolean) {
     setMessages((current) => current.map((message) => message.id === id ? { ...message, is_read: isRead } : message));
     const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
-    if (error) await load().catch(() => undefined);
+    if (error) {
+      toast({ title: "Couldn't update message", description: error.message, variant: "destructive" });
+      await load().catch(() => undefined);
+    }
   }
 
   async function markAllRead() {
@@ -102,6 +109,23 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function copyCode(code: string) {
     await navigator.clipboard.writeText(code);
     toast({ title: "Verification code copied" });
+  }
+
+  async function retryLoad() {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      await load();
+    } catch (error) {
+      const safeError = toUserFacingError(error, {
+        operation: "load_application_inbox",
+        defaultMessage: "Application messages could not be loaded.",
+      });
+      toast({ title: "Couldn't load inbox", description: safeError.message, variant: "destructive" });
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -142,6 +166,14 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
 
       {loading ? (
         <div className="space-y-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-32 w-full" />)}</div>
+      ) : loadError ? (
+        <Card className="flex min-h-56 flex-col items-center justify-center p-8 text-center">
+          <Inbox className="h-9 w-9 text-muted-foreground/50" />
+          <p className="mt-3 text-sm font-medium">Couldn't load application messages</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={retryLoad}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+          </Button>
+        </Card>
       ) : messages.length === 0 ? (
         <Card className="flex min-h-56 flex-col items-center justify-center p-8 text-center">
           <Inbox className="h-9 w-9 text-muted-foreground/50" />
