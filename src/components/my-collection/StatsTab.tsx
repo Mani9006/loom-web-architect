@@ -14,6 +14,11 @@ interface StatusCounts {
   resumes: number;
 }
 
+interface JobStatusRow {
+  status: string;
+  applied_at: string | null;
+}
+
 const EMPTY_COUNTS: StatusCounts = {
   total: 0,
   saved: 0,
@@ -37,7 +42,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         const [jobsResult, resumesResult] = await Promise.all([
           (supabase as any)
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
           (supabase as any)
@@ -51,13 +56,16 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
+        const rows: JobStatusRow[] = jobsResult.data ?? [];
         const tally = (s: string) => rows.filter((r) => r.status === s).length;
 
         setCounts({
           total: rows.length,
           saved: tally("saved"),
-          applied: tally("applied"),
+          // applied_at is set once, the first time a job reaches "applied", and
+          // is never cleared when it later advances to interview/offer/rejected —
+          // so it (not the current status) is the true "was applied to" signal.
+          applied: rows.filter((r) => r.applied_at !== null).length,
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),

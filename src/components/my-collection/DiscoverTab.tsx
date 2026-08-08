@@ -85,6 +85,13 @@ interface FoundJob {
   fit_reason?: string;
 }
 
+// Distinguishes two listings from the same company for the same title
+// posted in different locations (e.g. "Remote" vs "NYC") — company+title
+// alone collides and mixes up their Saved/Tailoring state.
+function dedupeKey(job: { company: string; title: string; location?: string }): string {
+  return `${job.company}::${job.title}::${job.location ?? ""}`;
+}
+
 interface ClarificationTurn {
   questions: string[];
   answers: string[];
@@ -503,7 +510,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(dedupeKey(job)));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -514,7 +521,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * master resume directly from session settings.
    */
   async function tailorFromDiscover(job: FoundJob) {
-    const key = `${job.company}::${job.title}`;
+    const key = dedupeKey(job);
     if (!job.summary || !job.summary.trim()) {
       toast({
         title: "AI didn't return a job description",
@@ -546,14 +553,21 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       }
       let trackedJobId: string | null = null;
       if (savedTitles.has(key)) {
-        // Already saved, find the existing row.
-        const { data: existing } = await (supabase as any)
+        // Already saved, find the existing row. Match on location too —
+        // company+title alone can match a different listing for the same
+        // role (e.g. the same title posted "Remote" and "NYC") and link
+        // the tailored resume to the wrong card.
+        let existingQuery = (supabase as any)
           .from("mc_tracked_jobs")
           .select("id")
           .eq("session_id", sessionId)
           .eq("company", job.company)
           .eq("job_title", job.title)
-          .is("deleted_at", null)
+          .is("deleted_at", null);
+        existingQuery = job.location
+          ? existingQuery.eq("location", job.location)
+          : existingQuery.is("location", null);
+        const { data: existing } = await existingQuery
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -638,15 +652,19 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailored.id })
         .eq("id", trackedJobId);
+
       if (linkErr) {
-
-        console.error("Couldn't link tailored resume to card:", linkErr.message);
+        toast({
+          title: "Resume saved, but couldn't link it to this card",
+          description: "Find it in the Resumes tab; refresh the board to retry the link.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Tailored resume ready",
+          description: `${job.company} · ${job.title}, see the Resumes tab.`,
+        });
       }
-
-      toast({
-        title: "Tailored resume ready",
-        description: `${job.company} · ${job.title}, see the Resumes tab.`,
-      });
     } catch (e) {
       // The user switched away mid-tailor (runOnLocalWorker was aborted on
       // unmount), not a real failure, so stay silent rather than toast.
@@ -654,8 +672,13 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Tailor failed", description: msg, variant: "destructive" });
     } finally {
-      setTailoringKey(null);
-      setTailoringStatus(null);
+      // Another job's tailor run may have started after this one and be
+      // mid-flight — only clear the shared indicator if it's still ours.
+      setTailoringKey((cur) => {
+        if (cur !== key) return cur;
+        setTailoringStatus(null);
+        return null;
+      });
     }
   }
 
@@ -796,7 +819,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     foundJobs.length === 0 ? null : (
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
-          const key = `${job.company}::${job.title}`;
+          const key = dedupeKey(job);
           const isSaved = savedTitles.has(key);
           return (
             <Card key={`${key}::${idx}`} className="p-4">

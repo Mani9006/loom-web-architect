@@ -143,6 +143,12 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     onClose();
   }
 
+  function handleClose() {
+    // Backdrop click / Esc / re-mount: close without wiping the draft, so
+    // an incidental dismissal doesn't destroy in-progress session setup.
+    onClose();
+  }
+
   async function createSession() {
     if (!name.trim()) {
       toast({ title: "Session needs a name" });
@@ -200,7 +206,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && handleCancel()}>
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>New Session</DialogTitle>
