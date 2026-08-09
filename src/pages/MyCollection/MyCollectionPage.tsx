@@ -80,7 +80,7 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "–" if this fails.
     }
   }
 
@@ -118,7 +118,12 @@ export default function MyCollectionPage() {
       .update({ status: "active" })
       .eq("id", id);
     if (error) {
-      toast({ title: "Reactivate failed", description: error.message, variant: "destructive" });
+      const description =
+        error.message === "active_session_limit_reached"
+          ? (error as { details?: string }).details ??
+            `You can have at most ${ACTIVE_LIMIT} active sessions. Archive one first.`
+          : error.message;
+      toast({ title: "Reactivate failed", description, variant: "destructive" });
     } else {
       await loadSessions();
     }
@@ -296,9 +301,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
