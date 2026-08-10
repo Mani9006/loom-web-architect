@@ -81,6 +81,10 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   }, []);
 
   async function tailorJob(job: TrackedJob) {
+    // Only one tailor pipeline can run at a time (`tailoring` is a single
+    // shared slot, not one per job) — block starting a second one rather
+    // than letting it clobber the first job's progress indicator.
+    if (tailoring) return;
     if (!job.jd_md || !job.jd_md.trim()) {
       toast({
         title: "No job description saved",
@@ -483,7 +487,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                     variant="default"
                     size="sm"
                     onClick={() => tailorJob(selected)}
-                    disabled={tailoring?.jobId === selected.id}
+                    disabled={tailoring !== null}
                   >
                     {tailoring?.jobId === selected.id ? (
                       <>

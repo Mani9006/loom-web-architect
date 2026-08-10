@@ -660,14 +660,12 @@ export type Database = {
       }
       mc_gmail_connections: {
         Row: {
-          access_token: string
           created_at: string
           enabled: boolean
           gmail_email: string
           history_id: string | null
           id: string
           last_polled_at: string | null
-          refresh_token: string
           scopes: string[]
           session_id: string
           token_expires_at: string
@@ -675,14 +673,12 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          access_token: string
           created_at?: string
           enabled?: boolean
           gmail_email: string
           history_id?: string | null
           id?: string
           last_polled_at?: string | null
-          refresh_token: string
           scopes: string[]
           session_id: string
           token_expires_at: string
@@ -690,14 +686,12 @@ export type Database = {
           user_id: string
         }
         Update: {
-          access_token?: string
           created_at?: string
           enabled?: boolean
           gmail_email?: string
           history_id?: string | null
           id?: string
           last_polled_at?: string | null
-          refresh_token?: string
           scopes?: string[]
           session_id?: string
           token_expires_at?: string
