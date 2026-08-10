@@ -156,6 +156,694 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_runs: {
+        Row: {
+          actions: Json
+          agent: string
+          completed_at: string | null
+          error_message: string | null
+          id: string
+          iterations: number
+          model: string
+          started_at: string
+          status: string
+          summary: string | null
+          tokens_in: number
+          tokens_out: number
+          user_id: string
+        }
+        Insert: {
+          actions?: Json
+          agent: string
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          iterations?: number
+          model?: string
+          started_at?: string
+          status?: string
+          summary?: string | null
+          tokens_in?: number
+          tokens_out?: number
+          user_id: string
+        }
+        Update: {
+          actions?: Json
+          agent?: string
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          iterations?: number
+          model?: string
+          started_at?: string
+          status?: string
+          summary?: string | null
+          tokens_in?: number
+          tokens_out?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      applypass_tasks: {
+        Row: {
+          attempt_count: number
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          heartbeat_at: string | null
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          payload: Json
+          result: Json | null
+          run_log: Json
+          started_at: string | null
+          status: string
+          task_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          payload?: Json
+          result?: Json | null
+          run_log?: Json
+          started_at?: string | null
+          status?: string
+          task_type?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          payload?: Json
+          result?: Json | null
+          run_log?: Json
+          started_at?: string | null
+          status?: string
+          task_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ats_scores: {
+        Row: {
+          created_at: string
+          dim_education: number
+          dim_experience: number
+          dim_format: number
+          dim_impact: number
+          dim_keywords: number
+          dim_skills: number
+          id: string
+          issues: Json
+          matched_keywords: string[]
+          missing_keywords: string[]
+          model: string
+          overall: number
+          resume_id: string | null
+          scanned_job_id: string | null
+          suggestions: Json
+          tokens_in: number
+          tokens_out: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          dim_education?: number
+          dim_experience?: number
+          dim_format?: number
+          dim_impact?: number
+          dim_keywords?: number
+          dim_skills?: number
+          id?: string
+          issues?: Json
+          matched_keywords?: string[]
+          missing_keywords?: string[]
+          model: string
+          overall: number
+          resume_id?: string | null
+          scanned_job_id?: string | null
+          suggestions?: Json
+          tokens_in?: number
+          tokens_out?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          dim_education?: number
+          dim_experience?: number
+          dim_format?: number
+          dim_impact?: number
+          dim_keywords?: number
+          dim_skills?: number
+          id?: string
+          issues?: Json
+          matched_keywords?: string[]
+          missing_keywords?: string[]
+          model?: string
+          overall?: number
+          resume_id?: string | null
+          scanned_job_id?: string | null
+          suggestions?: Json
+          tokens_in?: number
+          tokens_out?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ats_scores_resume_id_fkey"
+            columns: ["resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ats_scores_scanned_job_id_fkey"
+            columns: ["scanned_job_id"]
+            isOneToOne: false
+            referencedRelation: "scanned_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      draft_applications: {
+        Row: {
+          answers: Json
+          applypass_task_id: string | null
+          created_at: string
+          error_message: string | null
+          evaluation_id: string
+          id: string
+          status: string
+          submitted_at: string | null
+          tailored_cv_md: string | null
+          tailored_cv_pdf_url: string | null
+          tailored_resume_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          answers?: Json
+          applypass_task_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          evaluation_id: string
+          id?: string
+          status?: string
+          submitted_at?: string | null
+          tailored_cv_md?: string | null
+          tailored_cv_pdf_url?: string | null
+          tailored_resume_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          answers?: Json
+          applypass_task_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          evaluation_id?: string
+          id?: string
+          status?: string
+          submitted_at?: string | null
+          tailored_cv_md?: string | null
+          tailored_cv_pdf_url?: string | null
+          tailored_resume_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "draft_applications_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "job_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "draft_applications_tailored_resume_id_fkey"
+            columns: ["tailored_resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_evaluations: {
+        Row: {
+          archetype: string | null
+          dimension_scores: Json
+          dismissed_at: string | null
+          eligible: boolean
+          error_message: string | null
+          evaluated_at: string
+          fit_confidence: number | null
+          fit_score: number | null
+          gaps: string[] | null
+          hard_filters: string[]
+          id: string
+          keyword_matches: string[] | null
+          model: string
+          report_md: string | null
+          resume_id: string | null
+          scanned_job_id: string
+          score: number
+          score_version: string
+          star_stories: Json
+          summary: string | null
+          tier: string | null
+          tokens_in: number
+          tokens_out: number
+          user_id: string
+        }
+        Insert: {
+          archetype?: string | null
+          dimension_scores?: Json
+          dismissed_at?: string | null
+          eligible?: boolean
+          error_message?: string | null
+          evaluated_at?: string
+          fit_confidence?: number | null
+          fit_score?: number | null
+          gaps?: string[] | null
+          hard_filters?: string[]
+          id?: string
+          keyword_matches?: string[] | null
+          model?: string
+          report_md?: string | null
+          resume_id?: string | null
+          scanned_job_id: string
+          score: number
+          score_version?: string
+          star_stories?: Json
+          summary?: string | null
+          tier?: string | null
+          tokens_in?: number
+          tokens_out?: number
+          user_id: string
+        }
+        Update: {
+          archetype?: string | null
+          dimension_scores?: Json
+          dismissed_at?: string | null
+          eligible?: boolean
+          error_message?: string | null
+          evaluated_at?: string
+          fit_confidence?: number | null
+          fit_score?: number | null
+          gaps?: string[] | null
+          hard_filters?: string[]
+          id?: string
+          keyword_matches?: string[] | null
+          model?: string
+          report_md?: string | null
+          resume_id?: string | null
+          scanned_job_id?: string
+          score?: number
+          score_version?: string
+          star_stories?: Json
+          summary?: string | null
+          tier?: string | null
+          tokens_in?: number
+          tokens_out?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_evaluations_scanned_job_id_fkey"
+            columns: ["scanned_job_id"]
+            isOneToOne: false
+            referencedRelation: "scanned_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_evaluations_resume_id_fkey"
+            columns: ["resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          apply_url: string | null
+          company: string
+          created_at: string
+          date_posted: string | null
+          description: string | null
+          employer_logo: string | null
+          external_id: string | null
+          id: string
+          job_type: string | null
+          location: string | null
+          remote: boolean | null
+          salary_max: number | null
+          salary_min: number | null
+          source: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          apply_url?: string | null
+          company: string
+          created_at?: string
+          date_posted?: string | null
+          description?: string | null
+          employer_logo?: string | null
+          external_id?: string | null
+          id?: string
+          job_type?: string | null
+          location?: string | null
+          remote?: boolean | null
+          salary_max?: number | null
+          salary_min?: number | null
+          source?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          apply_url?: string | null
+          company?: string
+          created_at?: string
+          date_posted?: string | null
+          description?: string | null
+          employer_logo?: string | null
+          external_id?: string | null
+          id?: string
+          job_type?: string | null
+          location?: string | null
+          remote?: boolean | null
+          salary_max?: number | null
+          salary_min?: number | null
+          source?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      job_applications: {
+        Row: {
+          apply_url: string | null
+          applied_at: string
+          company: string
+          confirmation_email_id: string | null
+          created_at: string
+          id: string
+          job_id: string | null
+          notes: string | null
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          apply_url?: string | null
+          applied_at?: string
+          company: string
+          confirmation_email_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          apply_url?: string | null
+          applied_at?: string
+          company?: string
+          confirmation_email_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_applications_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_matches: {
+        Row: {
+          created_at: string | null
+          dismissed: boolean | null
+          id: string
+          job_id: string
+          liked: boolean | null
+          match_reasons: Json | null
+          match_score: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          dismissed?: boolean | null
+          id?: string
+          job_id: string
+          liked?: boolean | null
+          match_reasons?: Json | null
+          match_score?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          dismissed?: boolean | null
+          id?: string
+          job_id?: string
+          liked?: boolean | null
+          match_reasons?: Json | null
+          match_score?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_matches_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_gmail_connections: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          gmail_email: string
+          history_id: string | null
+          id: string
+          last_polled_at: string | null
+          scopes: string[]
+          session_id: string
+          token_expires_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          gmail_email: string
+          history_id?: string | null
+          id?: string
+          last_polled_at?: string | null
+          scopes: string[]
+          session_id: string
+          token_expires_at: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          gmail_email?: string
+          history_id?: string | null
+          id?: string
+          last_polled_at?: string | null
+          scopes?: string[]
+          session_id?: string
+          token_expires_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_gmail_connections_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          master_resume_id: string | null
+          name: string
+          notes: string | null
+          status: string
+          target_profile: Json
+          template_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          master_resume_id?: string | null
+          name: string
+          notes?: string | null
+          status?: string
+          target_profile?: Json
+          template_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          master_resume_id?: string | null
+          name?: string
+          notes?: string | null
+          status?: string
+          target_profile?: Json
+          template_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_sessions_master_resume_id_fkey"
+            columns: ["master_resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_tracked_jobs: {
+        Row: {
+          apply_url: string | null
+          applied_at: string | null
+          clicked_at: string | null
+          company: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          jd_md: string | null
+          job_title: string
+          location: string | null
+          notes: string | null
+          scanned_job_id: string | null
+          session_id: string
+          status: string
+          tailored_resume_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          apply_url?: string | null
+          applied_at?: string | null
+          clicked_at?: string | null
+          company: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          jd_md?: string | null
+          job_title: string
+          location?: string | null
+          notes?: string | null
+          scanned_job_id?: string | null
+          session_id: string
+          status?: string
+          tailored_resume_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          apply_url?: string | null
+          applied_at?: string | null
+          clicked_at?: string | null
+          company?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          jd_md?: string | null
+          job_title?: string
+          location?: string | null
+          notes?: string | null
+          scanned_job_id?: string | null
+          session_id?: string
+          status?: string
+          tailored_resume_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_tracked_jobs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_worker_heartbeats: {
+        Row: {
+          hostname: string | null
+          last_seen: string
+          user_id: string
+          version: string | null
+        }
+        Insert: {
+          hostname?: string | null
+          last_seen?: string
+          user_id: string
+          version?: string | null
+        }
+        Update: {
+          hostname?: string | null
+          last_seen?: string
+          user_id?: string
+          version?: string | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
@@ -196,12 +884,14 @@ export type Database = {
           full_name: string | null
           id: string
           job_preferences: Json | null
+          linkedin_url: string | null
           location: string | null
           onboarding_completed: boolean
           phone: string | null
           target_role: string | null
           updated_at: string
           user_id: string
+          years_of_experience: number | null
         }
         Insert: {
           avatar_url?: string | null
@@ -210,12 +900,14 @@ export type Database = {
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
           target_role?: string | null
           updated_at?: string
           user_id: string
+          years_of_experience?: number | null
         }
         Update: {
           avatar_url?: string | null
@@ -224,12 +916,14 @@ export type Database = {
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
           target_role?: string | null
           updated_at?: string
           user_id?: string
+          years_of_experience?: number | null
         }
         Relationships: []
       }
@@ -284,6 +978,167 @@ export type Database = {
         }
         Relationships: []
       }
+      saved_jobs: {
+        Row: {
+          apply_url: string | null
+          company: string
+          date_posted: string | null
+          description: string | null
+          id: string
+          job_title: string
+          job_type: string | null
+          location: string | null
+          remote: boolean | null
+          saved_at: string
+          salary: string | null
+          source: string | null
+          user_id: string
+        }
+        Insert: {
+          apply_url?: string | null
+          company: string
+          date_posted?: string | null
+          description?: string | null
+          id?: string
+          job_title: string
+          job_type?: string | null
+          location?: string | null
+          remote?: boolean | null
+          saved_at?: string
+          salary?: string | null
+          source?: string | null
+          user_id: string
+        }
+        Update: {
+          apply_url?: string | null
+          company?: string
+          date_posted?: string | null
+          description?: string | null
+          id?: string
+          job_title?: string
+          job_type?: string | null
+          location?: string | null
+          remote?: boolean | null
+          saved_at?: string
+          salary?: string | null
+          source?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      scan_companies: {
+        Row: {
+          api_identifier: string
+          api_type: string
+          careers_url: string | null
+          category: string | null
+          created_at: string
+          enabled: boolean
+          id: string
+          last_scan_count: number | null
+          last_scan_error: string | null
+          last_scanned_at: string | null
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          api_identifier: string
+          api_type: string
+          careers_url?: string | null
+          category?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_scan_count?: number | null
+          last_scan_error?: string | null
+          last_scanned_at?: string | null
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          api_identifier?: string
+          api_type?: string
+          careers_url?: string | null
+          category?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_scan_count?: number | null
+          last_scan_error?: string | null
+          last_scanned_at?: string | null
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      scanned_jobs: {
+        Row: {
+          apply_url: string
+          company_id: string
+          compensation_text: string | null
+          department: string | null
+          description_md: string | null
+          employment_type: string | null
+          external_id: string
+          first_seen_at: string
+          id: string
+          is_live: boolean
+          last_seen_at: string
+          location: string | null
+          posted_at: string | null
+          raw: Json | null
+          remote_policy: string | null
+          title: string
+        }
+        Insert: {
+          apply_url: string
+          company_id: string
+          compensation_text?: string | null
+          department?: string | null
+          description_md?: string | null
+          employment_type?: string | null
+          external_id: string
+          first_seen_at?: string
+          id?: string
+          is_live?: boolean
+          last_seen_at?: string
+          location?: string | null
+          posted_at?: string | null
+          raw?: Json | null
+          remote_policy?: string | null
+          title: string
+        }
+        Update: {
+          apply_url?: string
+          company_id?: string
+          compensation_text?: string | null
+          department?: string | null
+          description_md?: string | null
+          employment_type?: string | null
+          external_id?: string
+          first_seen_at?: string
+          id?: string
+          is_live?: boolean
+          last_seen_at?: string
+          location?: string | null
+          posted_at?: string | null
+          raw?: Json | null
+          remote_policy?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scanned_jobs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "scan_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tracked_jobs: {
         Row: {
           company: string
@@ -316,6 +1171,51 @@ export type Database = {
           title?: string
           updated_at?: string
           url?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_access_controls: {
+        Row: {
+          account_status: string
+          ai_features_enabled: boolean
+          blocked_reason: string | null
+          blocked_until: string | null
+          created_at: string
+          last_admin_action_at: string | null
+          last_admin_action_by: string | null
+          metadata: Json
+          purchase_state: string
+          subscription_plan: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_status?: string
+          ai_features_enabled?: boolean
+          blocked_reason?: string | null
+          blocked_until?: string | null
+          created_at?: string
+          last_admin_action_at?: string | null
+          last_admin_action_by?: string | null
+          metadata?: Json
+          purchase_state?: string
+          subscription_plan?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_status?: string
+          ai_features_enabled?: boolean
+          blocked_reason?: string | null
+          blocked_until?: string | null
+          created_at?: string
+          last_admin_action_at?: string | null
+          last_admin_action_by?: string | null
+          metadata?: Json
+          purchase_state?: string
+          subscription_plan?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -356,6 +1256,111 @@ export type Database = {
           storage_path?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      user_job_prefs: {
+        Row: {
+          agent_actions_today: number
+          agent_enabled: boolean
+          agent_max_actions_per_day: number
+          auto_apply_enabled: boolean
+          auto_apply_min_ats_score: number
+          auto_apply_min_fit_score: number
+          auto_apply_min_score: number
+          auto_apply_portals: string[]
+          comp_target_usd_max: number | null
+          comp_target_usd_min: number | null
+          created_at: string
+          daily_apply_cap: number
+          employment_types: string[]
+          excluded_companies: string[]
+          last_agent_run_at: string | null
+          locations: string[]
+          max_stretch_years: number
+          max_years_experience: number | null
+          min_years_experience: number | null
+          negative_keywords: string[]
+          remote_only: boolean
+          require_salary_disclosure: boolean
+          requires_sponsorship: boolean
+          review_mode: string
+          seniority_levels: string[]
+          tailoring_mode: string
+          target_countries: string[]
+          target_roles: string[]
+          updated_at: string
+          user_id: string
+          work_authorization: string | null
+          work_modes: string[]
+        }
+        Insert: {
+          agent_actions_today?: number
+          agent_enabled?: boolean
+          agent_max_actions_per_day?: number
+          auto_apply_enabled?: boolean
+          auto_apply_min_ats_score?: number
+          auto_apply_min_fit_score?: number
+          auto_apply_min_score?: number
+          auto_apply_portals?: string[]
+          comp_target_usd_max?: number | null
+          comp_target_usd_min?: number | null
+          created_at?: string
+          daily_apply_cap?: number
+          employment_types?: string[]
+          excluded_companies?: string[]
+          last_agent_run_at?: string | null
+          locations?: string[]
+          max_stretch_years?: number
+          max_years_experience?: number | null
+          min_years_experience?: number | null
+          negative_keywords?: string[]
+          remote_only?: boolean
+          require_salary_disclosure?: boolean
+          requires_sponsorship?: boolean
+          review_mode?: string
+          seniority_levels?: string[]
+          tailoring_mode?: string
+          target_countries?: string[]
+          target_roles?: string[]
+          updated_at?: string
+          user_id: string
+          work_authorization?: string | null
+          work_modes?: string[]
+        }
+        Update: {
+          agent_actions_today?: number
+          agent_enabled?: boolean
+          agent_max_actions_per_day?: number
+          auto_apply_enabled?: boolean
+          auto_apply_min_ats_score?: number
+          auto_apply_min_fit_score?: number
+          auto_apply_min_score?: number
+          auto_apply_portals?: string[]
+          comp_target_usd_max?: number | null
+          comp_target_usd_min?: number | null
+          created_at?: string
+          daily_apply_cap?: number
+          employment_types?: string[]
+          excluded_companies?: string[]
+          last_agent_run_at?: string | null
+          locations?: string[]
+          max_stretch_years?: number
+          max_years_experience?: number | null
+          min_years_experience?: number | null
+          negative_keywords?: string[]
+          remote_only?: boolean
+          require_salary_disclosure?: boolean
+          requires_sponsorship?: boolean
+          review_mode?: string
+          seniority_levels?: string[]
+          tailoring_mode?: string
+          target_countries?: string[]
+          target_roles?: string[]
+          updated_at?: string
+          user_id?: string
+          work_authorization?: string | null
+          work_modes?: string[]
         }
         Relationships: []
       }

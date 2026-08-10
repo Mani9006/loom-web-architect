@@ -48,16 +48,20 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Sync local form state with whichever job was opened.
+  // Sync local form state with whichever job was opened. Keyed on `open` too
+  // (not just `job`): this dialog stays mounted with the same job reference
+  // between closes, so re-opening it after a Cancel without touching another
+  // card in between would otherwise skip this effect and leave the discarded,
+  // unsaved edits in the fields.
   useEffect(() => {
-    if (!job) return;
+    if (!open || !job) return;
     setCompany(job.company ?? "");
     setJobTitle(job.job_title ?? "");
     setLocation(job.location ?? "");
     setApplyUrl(job.apply_url ?? "");
     setJdMd(job.jd_md ?? "");
     setNotes(job.notes ?? "");
-  }, [job]);
+  }, [open, job]);
 
   async function save() {
     if (!job) return;
