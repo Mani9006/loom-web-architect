@@ -830,7 +830,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
-                    disabled={tailoringKey === key}
+                    disabled={tailoringKey !== null}
                     className="h-7 text-[11px]"
                   >
                     {tailoringKey === key ? (
