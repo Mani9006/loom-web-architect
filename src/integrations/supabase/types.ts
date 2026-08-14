@@ -1298,12 +1298,16 @@ export type Database = {
           full_name: string | null
           id: string
           job_preferences: Json | null
+          linkedin_url: string | null
           location: string | null
           onboarding_completed: boolean
           phone: string | null
+          primary_resume_id: string | null
+          resume_json: Json | null
           target_role: string | null
           updated_at: string
           user_id: string
+          years_of_experience: number | null
         }
         Insert: {
           avatar_url?: string | null
@@ -1312,12 +1316,16 @@ export type Database = {
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
+          primary_resume_id?: string | null
+          resume_json?: Json | null
           target_role?: string | null
           updated_at?: string
           user_id: string
+          years_of_experience?: number | null
         }
         Update: {
           avatar_url?: string | null
@@ -1326,14 +1334,26 @@ export type Database = {
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
+          primary_resume_id?: string | null
+          resume_json?: Json | null
           target_role?: string | null
           updated_at?: string
           user_id?: string
+          years_of_experience?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_primary_resume_id_fkey"
+            columns: ["primary_resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       resumes: {
         Row: {
