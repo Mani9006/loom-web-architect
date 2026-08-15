@@ -236,7 +236,7 @@ export default function JobTracker() {
       setJobs(data || []);
 
       // Load saved job details (for the Saved Jobs view)
-      const { data: savedData } = await supabase
+      const { data: savedData } = await (supabase as any)
         .from("saved_jobs")
         .select("*")
         .eq("user_id", user.id)
@@ -246,7 +246,7 @@ export default function JobTracker() {
 
       // Keep preparation and submission states observable in the same workspace.
       // Older environments without the career-ops migration can still load the tracker.
-      const { data: draftData } = await supabase
+      const { data: draftData } = await (supabase as any)
         .from("draft_applications")
         .select(`id,status,tailored_resume_id,created_at,submitted_at,
           evaluation:job_evaluations(score,fit_score,
@@ -265,7 +265,7 @@ export default function JobTracker() {
         setAutomationCounts(next);
       }
 
-      const { data: heartbeat } = await supabase
+      const { data: heartbeat } = await (supabase as any)
         .from("mc_worker_heartbeats")
         .select("last_seen")
         .eq("user_id", user.id)
@@ -346,7 +346,7 @@ export default function JobTracker() {
   const deleteSavedJobDetail = async (savedJob: SavedJobDetail) => {
     // Remove from saved_jobs, bail out with an error toast instead of a
     // false "removed" success when the delete fails.
-    const { error } = await supabase.from("saved_jobs").delete().eq("id", savedJob.id);
+    const { error } = await (supabase as any).from("saved_jobs").delete().eq("id", savedJob.id);
     if (error) {
       toast({ title: "Error", description: "Failed to remove saved job", variant: "destructive" });
       return;
