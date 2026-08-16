@@ -273,7 +273,7 @@ export default function ApplicationReviewPage() {
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
-  return <button onClick={async () => { await navigator.clipboard.writeText(value); setCopied(true); window.setTimeout(() => setCopied(false), 1400); }} className="inline-flex h-7 items-center gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground">{copied ? <Check className="h-3.5 w-3.5" /> : <CopyIcon className="h-3.5 w-3.5" />}{copied ? "Copied" : "Copy"}</button>;
+  return <button onClick={async () => { try { await navigator.clipboard.writeText(value); setCopied(true); window.setTimeout(() => setCopied(false), 1400); } catch { toast.error("Couldn't copy, select and copy it manually."); } }} className="inline-flex h-7 items-center gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground">{copied ? <Check className="h-3.5 w-3.5" /> : <CopyIcon className="h-3.5 w-3.5" />}{copied ? "Copied" : "Copy"}</button>;
 }
 
 function Empty({ text }: { text: string }) { return <div className="mt-6 flex min-h-44 items-center justify-center border border-dashed border-rp-rule p-6 text-center text-sm text-muted-foreground">{text}</div>; }

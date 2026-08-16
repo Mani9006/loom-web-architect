@@ -541,7 +541,7 @@ export default function ResumeBuilder() {
   };
 
   // ── Copy resume as plain text ───────────────────────────────────────
-  const copyAsPlainText = () => {
+  const copyAsPlainText = async () => {
     const lines: string[] = [];
     if (data.header.name) lines.push(data.header.name);
     if (data.header.title) lines.push(data.header.title);
@@ -563,9 +563,13 @@ export default function ResumeBuilder() {
       lines.push("", "SKILLS");
       Object.entries(data.skills).forEach(([k, v]) => { if (v.length > 0) lines.push(`${getSkillCategoryLabel(k)}: ${v.join(", ")}`); });
     }
-    navigator.clipboard.writeText(lines.join("\n"));
-    setCopiedField("resume");
-    setTimeout(() => setCopiedField(null), 2000);
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopiedField("resume");
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      toast({ title: "Couldn't copy", description: "Select and copy the text manually.", variant: "destructive" });
+    }
   };
 
   // ── Data mutation helpers ──────────────────────────────────────────────
@@ -1170,7 +1174,7 @@ export default function ResumeBuilder() {
                                       </div>
                                     </div>
                                     <Input placeholder="Location" value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} className="bg-background h-7 text-xs" />
-                                    <Textarea placeholder={"Bullet points (one per line)\n- Designed ETL pipelines...\n- Led data migration..."} value={exp.bullets.join("\n")} onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split("\n").filter((b) => b.trim()))} className="bg-background text-xs min-h-[60px] resize-y" />
+                                    <Textarea placeholder={"Bullet points (one per line)\n- Designed ETL pipelines...\n- Led data migration..."} value={exp.bullets.join("\n")} onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split("\n"))} className="bg-background text-xs min-h-[60px] resize-y" />
                                   </div>
                                 )}
                               </Reorder.Item>
@@ -1384,7 +1388,7 @@ export default function ResumeBuilder() {
                                     <Input placeholder="Role" value={vol.role} onChange={(e) => updateVolunteer(vol.id, "role", e.target.value)} className="bg-background h-7 text-xs" />
                                   </div>
                                   <Input placeholder="Date range" value={vol.date} onChange={(e) => updateVolunteer(vol.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
-                                  <Textarea placeholder={"Key contributions (one per line)"} value={vol.bullets.join("\n")} onChange={(e) => updateVolunteer(vol.id, "bullets", e.target.value.split("\n").filter((b: string) => b.trim()))} className="bg-background text-xs min-h-[50px] resize-y" />
+                                  <Textarea placeholder={"Key contributions (one per line)"} value={vol.bullets.join("\n")} onChange={(e) => updateVolunteer(vol.id, "bullets", e.target.value.split("\n"))} className="bg-background text-xs min-h-[50px] resize-y" />
                                 </div>
                               )}
                             </div>
@@ -1457,7 +1461,7 @@ export default function ResumeBuilder() {
                                       <Input placeholder="Date" value={entry.date} onChange={(e) => updateCustomEntry(section.id, entry.id, "date", e.target.value)} className="bg-background h-7 text-xs" />
                                     </div>
                                     <Input placeholder="Link URL (e.g., https://...)" value={entry.url || ""} onChange={(e) => updateCustomEntry(section.id, entry.id, "url", e.target.value)} className="bg-background h-7 text-xs" />
-                                    <Textarea placeholder={"Details (one per line)"} value={entry.bullets.join("\n")} onChange={(e) => updateCustomEntry(section.id, entry.id, "bullets", e.target.value.split("\n").filter((b: string) => b.trim()))} className="bg-background text-xs min-h-[50px] resize-y" />
+                                    <Textarea placeholder={"Details (one per line)"} value={entry.bullets.join("\n")} onChange={(e) => updateCustomEntry(section.id, entry.id, "bullets", e.target.value.split("\n"))} className="bg-background text-xs min-h-[50px] resize-y" />
                                   </div>
                                 )}
                               </div>
