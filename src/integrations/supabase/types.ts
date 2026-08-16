@@ -587,6 +587,71 @@ export type Database = {
         }
         Relationships: []
       }
+      mc_ai_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          input: Json | null
+          kind: string
+          model: string
+          priority: number
+          prompt: string
+          result: string | null
+          result_json: Json | null
+          session_id: string | null
+          started_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json | null
+          kind: string
+          model?: string
+          priority?: number
+          prompt: string
+          result?: string | null
+          result_json?: Json | null
+          session_id?: string | null
+          started_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json | null
+          kind?: string
+          model?: string
+          priority?: number
+          prompt?: string
+          result?: string | null
+          result_json?: Json | null
+          session_id?: string | null
+          started_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_ai_jobs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mc_gmail_connections: {
         Row: {
           created_at: string
@@ -637,6 +702,93 @@ export type Database = {
           },
         ]
       }
+      mc_inbound_emails: {
+        Row: {
+          body_full: string | null
+          body_preview: string | null
+          classification: string | null
+          classification_confidence: number | null
+          classification_summary: string | null
+          from_email: string
+          id: string
+          is_read: boolean
+          message_id: string | null
+          next_action: string | null
+          parsed_at: string | null
+          raw: Json | null
+          received_at: string
+          session_id: string | null
+          subject: string | null
+          to_email: string | null
+          tracked_job_id: string | null
+          user_id: string
+          verification_code: string | null
+          verification_code_expires_at: string | null
+          verification_code_used_at: string | null
+        }
+        Insert: {
+          body_full?: string | null
+          body_preview?: string | null
+          classification?: string | null
+          classification_confidence?: number | null
+          classification_summary?: string | null
+          from_email: string
+          id?: string
+          is_read?: boolean
+          message_id?: string | null
+          next_action?: string | null
+          parsed_at?: string | null
+          raw?: Json | null
+          received_at?: string
+          session_id?: string | null
+          subject?: string | null
+          to_email?: string | null
+          tracked_job_id?: string | null
+          user_id: string
+          verification_code?: string | null
+          verification_code_expires_at?: string | null
+          verification_code_used_at?: string | null
+        }
+        Update: {
+          body_full?: string | null
+          body_preview?: string | null
+          classification?: string | null
+          classification_confidence?: number | null
+          classification_summary?: string | null
+          from_email?: string
+          id?: string
+          is_read?: boolean
+          message_id?: string | null
+          next_action?: string | null
+          parsed_at?: string | null
+          raw?: Json | null
+          received_at?: string
+          session_id?: string | null
+          subject?: string | null
+          to_email?: string | null
+          tracked_job_id?: string | null
+          user_id?: string
+          verification_code?: string | null
+          verification_code_expires_at?: string | null
+          verification_code_used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_inbound_emails_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_inbound_emails_tracked_job_id_fkey"
+            columns: ["tracked_job_id"]
+            isOneToOne: false
+            referencedRelation: "mc_tracked_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mc_sessions: {
         Row: {
           created_at: string
@@ -680,6 +832,103 @@ export type Database = {
             columns: ["master_resume_id"]
             isOneToOne: false
             referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_status_history: {
+        Row: {
+          created_at: string
+          email_id: string | null
+          id: string
+          source: string
+          status_from: string | null
+          status_to: string
+          tracked_job_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_id?: string | null
+          id?: string
+          source?: string
+          status_from?: string | null
+          status_to: string
+          tracked_job_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_id?: string | null
+          id?: string
+          source?: string
+          status_from?: string | null
+          status_to?: string
+          tracked_job_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_status_history_tracked_job_id_fkey"
+            columns: ["tracked_job_id"]
+            isOneToOne: false
+            referencedRelation: "mc_tracked_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_tailored_resumes: {
+        Row: {
+          ats_score: number | null
+          created_at: string
+          cv_md: string
+          docx_url: string | null
+          id: string
+          name: string
+          pdf_url: string | null
+          rendered_html: string | null
+          session_id: string
+          source_evaluation_id: string | null
+          source_job_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ats_score?: number | null
+          created_at?: string
+          cv_md: string
+          docx_url?: string | null
+          id?: string
+          name: string
+          pdf_url?: string | null
+          rendered_html?: string | null
+          session_id: string
+          source_evaluation_id?: string | null
+          source_job_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ats_score?: number | null
+          created_at?: string
+          cv_md?: string
+          docx_url?: string | null
+          id?: string
+          name?: string
+          pdf_url?: string | null
+          rendered_html?: string | null
+          session_id?: string
+          source_evaluation_id?: string | null
+          source_job_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_tailored_resumes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
             referencedColumns: ["id"]
           },
         ]
