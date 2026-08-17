@@ -75,9 +75,14 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
-    (async () => {
-      setLoading(true);
+    // A ref (not a local `let`) so it survives across the re-fetch on tab
+    // focus below, not just within a single call — otherwise "only bounce
+    // on the very first load" can never actually trigger, since every call
+    // would start from false again.
+    const hadInitialLoadRef = { current: false };
+
+    async function fetchSession() {
+      if (!hadInitialLoadRef.current) setLoading(true);
       const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
@@ -91,7 +96,7 @@ export default function SessionPage() {
       // first load, otherwise just keep showing what we already have.
       if (error) {
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!hadInitialLoadRef.current) {
           const safeError = toUserFacingError(error, {
             operation: "load_application_workspace",
             defaultMessage: "This application workspace could not be loaded.",
@@ -102,18 +107,28 @@ export default function SessionPage() {
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
+        if (!hadInitialLoadRef.current) {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
         return;
       }
-      hadInitialLoad = true;
+      hadInitialLoadRef.current = true;
       setSession(data as unknown as MCSession);
       setLoading(false);
-    })();
+    }
+
+    void fetchSession();
+    // Re-check on tab focus so a stale-but-loaded workspace picks up
+    // changes made elsewhere, without the full-page skeleton flash a
+    // straight re-run of this effect would cause.
+    function onVisible() {
+      if (document.visibilityState === "visible") void fetchSession();
+    }
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
     };
     // Intentionally only re-run when sessionId changes. navigate/toast are
     // unstable references that, if included, would cause this effect to
@@ -187,19 +202,25 @@ export default function SessionPage() {
         </TabsList>
 
         <TabsContent value="discover" className="mt-6">
-          <DiscoverTab sessionId={session.id} session={session} />
+          {/* Keyed by session: /my-collection/:sessionId reuses one SessionPage
+              element across sessions (React Router doesn't remount on param
+              change alone), so without a key, DiscoverTab's session-scoped
+              sessionStorage state (seeded once via useRef) would keep showing
+              a previous session's search results — and writes from that
+              stale state would land under the new session's storage key. */}
+          <DiscoverTab sessionId={session.id} session={session} key={session.id} />
         </TabsContent>
         <TabsContent value="resumes" className="mt-6">
-          <ResumesTab sessionId={session.id} focusResumeId={focusResumeId} />
+          <ResumesTab sessionId={session.id} focusResumeId={focusResumeId} key={session.id} />
         </TabsContent>
         <TabsContent value="board" className="mt-6">
-          <BoardTab sessionId={session.id} key={boardReloadKey} />
+          <BoardTab sessionId={session.id} key={`${session.id}-${boardReloadKey}`} />
         </TabsContent>
         <TabsContent value="inbox" className="mt-6">
-          <ApplicationInboxTab sessionId={session.id} />
+          <ApplicationInboxTab sessionId={session.id} key={session.id} />
         </TabsContent>
         <TabsContent value="stats" className="mt-6">
-          <StatsTab sessionId={session.id} />
+          <StatsTab sessionId={session.id} key={session.id} />
         </TabsContent>
       </Tabs>
 

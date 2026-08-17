@@ -19,8 +19,13 @@ import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus }
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
 
+// No path in this UI ever inserts a job with status "discovered" — jobs
+// found in the Discover tab are only written to mc_tracked_jobs once the
+// user explicitly saves them (status: "saved"), and mc-gmail-poll/
+// applypass only ever move existing rows forward. "discovered" is kept
+// as a valid TrackedStatus (it's still the DB column default) but has no
+// board column since nothing ever lands there.
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
-  { id: "discovered", label: "Discovered", tone: "bg-rp-paper text-slate-700" },
   { id: "saved", label: "Saved", tone: "bg-blue-50 text-blue-700" },
   { id: "applied", label: "Applied", tone: "bg-indigo-50 text-indigo-700" },
   { id: "viewed", label: "Viewed", tone: "bg-purple-50 text-purple-700" },
@@ -210,10 +215,22 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       if (insertErr || !tailoredRow) {
         throw new Error(insertErr?.message || "Couldn't save tailored resume");
       }
-      await (supabase as any)
+      const { error: linkErr } = await (supabase as any)
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailoredRow.id })
         .eq("id", job.id);
+      if (linkErr) {
+        // The resume itself saved fine — only the link from the board card
+        // to it failed, so don't claim success but don't discard the work
+        // either; it's still reachable from the Resumes tab.
+        console.error("BoardTab link tailored resume", linkErr);
+        toast({
+          title: "Tailored resume saved, but couldn't be linked to this card",
+          description: "Find it in the Resumes tab and link it manually.",
+          variant: "destructive",
+        });
+        return;
+      }
       setJobs((arr) =>
         arr.map((j) => (j.id === job.id ? { ...j, tailored_resume_id: tailoredRow.id } : j))
       );

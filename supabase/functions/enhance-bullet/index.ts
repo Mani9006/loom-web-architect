@@ -35,7 +35,7 @@ serve(async (req) => {
       });
     }
 
-    const { bullet, jobTitle, company } = await req.json();
+    const { bullet, jobTitle, company, mode, context } = await req.json();
 
     if (!bullet) {
       return new Response(JSON.stringify({ error: "Bullet text is required" }), {
@@ -44,17 +44,27 @@ serve(async (req) => {
       });
     }
 
+    const fullResume = typeof context?.full_resume === "string" ? context.full_resume.slice(0, 4000) : "";
+    const MODE_INSTRUCTIONS: Record<string, string> = {
+      tighten: `Rewrite the line to be as concise and punchy as possible without losing meaning. Cut filler words, redundant qualifiers, and weak phrasing. Keep it under 18 words per version.`,
+      keywords: `Rewrite the line to naturally weave in role-relevant skills, tools, and terminology${fullResume ? " that also appear elsewhere in the candidate's resume below" : ""}, so it reads well to both ATS keyword scanners and human recruiters. Do not keyword-stuff — every term must fit naturally.${fullResume ? `\n\nRest of resume for context:\n${fullResume}` : ""}`,
+      voice: `Rewrite the line so it sounds like a real person's authentic, confident voice rather than generic corporate resume-speak — natural phrasing, first-person energy implied (no "I"), still professional and concise.`,
+    };
+    const styleInstruction = (mode && MODE_INSTRUCTIONS[mode]) ||
+      `Generate exactly 3 improved versions using the STAR method (Situation, Task, Action, Result).
+Each version should:
+- Start with a strong action verb
+- Include quantifiable metrics where possible
+- Be concise (under 25 words)
+- Be ATS-optimized with relevant keywords`;
+
     const result = await chatFree(
       "lite",
       [
         {
           role: "system",
-          content: `You are an expert resume writer. Given a resume bullet point, generate exactly 3 improved versions using the STAR method (Situation, Task, Action, Result). 
-Each version should:
-- Start with a strong action verb
-- Include quantifiable metrics where possible
-- Be concise (under 25 words)
-- Be ATS-optimized with relevant keywords
+          content: `You are an expert resume writer. Given a resume bullet point, generate exactly 3 improved versions.
+${styleInstruction}
 
 Return ONLY a JSON object: {"suggestions": ["improved bullet 1", "improved bullet 2", "improved bullet 3"]}`,
         },

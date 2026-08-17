@@ -25,7 +25,11 @@ function resolveReturnTo(candidate: unknown, fallback: string): string {
     const trustedProtocol = parsed.protocol === "https:" ||
       ((parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") && parsed.protocol === "http:");
     if (!trustedHost || !trustedProtocol) return fallback;
-    return `${parsed.origin}/inbox`;
+    // Preserve the caller's actual path (e.g. a My Collection session's
+    // Inbox tab) instead of always bouncing to the standalone /inbox page —
+    // host/protocol are already validated above, so the path is safe to keep.
+    const path = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : "/inbox";
+    return `${parsed.origin}${path}${parsed.search}`;
   } catch {
     return fallback;
   }

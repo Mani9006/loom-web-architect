@@ -37,7 +37,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         const [jobsResult, resumesResult] = await Promise.all([
           (supabase as any)
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
           (supabase as any)
@@ -51,13 +51,19 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
+        const rows: { status: string; applied_at: string | null }[] = jobsResult.data ?? [];
         const tally = (s: string) => rows.filter((r) => r.status === s).length;
 
         setCounts({
           total: rows.length,
           saved: tally("saved"),
-          applied: tally("applied"),
+          // applied_at is set once a job first reaches "applied" and never
+          // cleared, so a job that has since moved on to interview/offer/
+          // rejected still counts as applied. Using `status === "applied"`
+          // here undercounts applied jobs and can push response rate past
+          // 100% (e.g. 1 job still "applied" + 2 that advanced to
+          // "interview" would show only 1 applied but 2 interviews).
+          applied: rows.filter((r) => r.applied_at !== null).length,
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
