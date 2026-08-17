@@ -64,7 +64,10 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
     setBusy(true);
     try {
       const { data, error } = await supabase.functions.invoke("mc-gmail-connect", {
-        body: { session_id: sessionId, return_to: `${window.location.origin}/inbox` },
+        body: {
+          session_id: sessionId,
+          return_to: `${window.location.origin}${window.location.pathname}${window.location.search}`,
+        },
       });
       if (error) throw error;
       if (!data?.auth_url) throw new Error("Inbox connection could not be started");
