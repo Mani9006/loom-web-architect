@@ -33,6 +33,8 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
@@ -78,6 +80,7 @@ export default function SessionPage() {
     let hadInitialLoad = false;
     (async () => {
       setLoading(true);
+      setLoadError(false);
       const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
@@ -99,6 +102,7 @@ export default function SessionPage() {
           toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
         }
         setLoading(false);
+        setLoadError(true);
         return;
       }
       if (!data) {
@@ -115,12 +119,25 @@ export default function SessionPage() {
     return () => {
       cancelled = true;
     };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render, which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // Intentionally only re-run when sessionId or retryKey changes.
+    // navigate/toast are unstable references that, if included, would cause
+    // this effect to re-fire on every render, which on tab focus produces a
+    // flash and can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, retryKey]);
+
+  if (loadError) {
+    return (
+      <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8">
+        <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+          <p className="text-sm text-muted-foreground">This application workspace could not be loaded.</p>
+          <Button size="sm" onClick={() => setRetryKey((k) => k + 1)}>
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
