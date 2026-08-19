@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect -- compatibility shim until mc_* database types are regenerated */
+/* eslint-disable react-hooks/set-state-in-effect -- form fields are intentionally re-hydrated synchronously whenever the dialog opens */
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -110,7 +110,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
       master_resume_id: resumeId || null,
       target_profile: targetProfile,
     };
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_sessions")
       .update(updates)
       .eq("id", session.id);
@@ -128,7 +128,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
       return;
     }
     setSaving(true);
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_sessions")
       .update({ status: "archived" })
       .eq("id", session.id);
