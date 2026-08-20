@@ -23,7 +23,14 @@ export const BOARD_COLUMNS: { id: TrackedStatus; label: string; tone: string }[]
   { id: "withdrawn", label: "Withdrawn", tone: "bg-slate-100 text-slate-600" },
 ];
 
-/** Statuses a card can only reach after an application was actually sent. */
+/**
+ * Statuses a card can only reach after an application was actually sent.
+ *
+ * "withdrawn" is deliberately absent: a card can be withdrawn before anything
+ * was ever sent ("no longer interested"), so treating it as proof of an
+ * application would inflate the Applied count. A card that really was applied
+ * to and then withdrawn still carries applied_at, so hasApplied() catches it.
+ */
 const POST_APPLY_STATUSES = new Set<string>([
   "applied",
   "viewed",
@@ -31,7 +38,6 @@ const POST_APPLY_STATUSES = new Set<string>([
   "take_home",
   "offer",
   "rejected",
-  "withdrawn",
 ]);
 
 /** Statuses that represent an employer response to an application. */

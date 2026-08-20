@@ -17,6 +17,13 @@ describe("hasApplied", () => {
     expect(hasApplied({ status: "discovered", applied_at: null })).toBe(false);
     expect(hasApplied({ status: "hold", applied_at: null })).toBe(false);
   });
+
+  it("treats withdrawn as an application only when one was actually sent", () => {
+    // Withdrawing can mean "no longer interested" on a card that was never
+    // applied to, so the status alone is not proof.
+    expect(hasApplied({ status: "withdrawn", applied_at: null })).toBe(false);
+    expect(hasApplied({ status: "withdrawn", applied_at: "2026-01-01T00:00:00Z" })).toBe(true);
+  });
 });
 
 describe("hasResponded", () => {
