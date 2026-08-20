@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect -- compatibility shim until mc_* database types are regenerated */
+/* eslint-disable react-hooks/set-state-in-effect -- the form is hydrated from the session prop when the dialog opens */
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {

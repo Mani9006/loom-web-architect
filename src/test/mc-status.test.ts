@@ -61,6 +61,25 @@ describe("summarizeJobs", () => {
     expect(totals.responseRate).toBeNull();
   });
 
+  it("reports a sane funnel where counting only status='applied' did not", () => {
+    // Regression: with 5 sent applications that had progressed past Applied,
+    // the old `status === 'applied'` denominator was 1 and the board reported
+    // a 300% response rate.
+    const totals = summarizeJobs([
+      { status: "applied", applied_at: "2026-01-01T00:00:00Z" },
+      { status: "interview", applied_at: "2026-01-01T00:00:00Z" },
+      { status: "offer", applied_at: "2026-01-01T00:00:00Z" },
+      { status: "rejected", applied_at: "2026-01-01T00:00:00Z" },
+      { status: "take_home", applied_at: "2026-01-01T00:00:00Z" },
+      { status: "saved", applied_at: null },
+      { status: "discovered", applied_at: null },
+    ]);
+    expect(totals.onBoard).toBe(7);
+    expect(totals.applied).toBe(5);
+    expect(totals.responseRate).toBe(60);
+    expect(totals.responseRate).toBeLessThanOrEqual(100);
+  });
+
   it("never reports a response rate above 100%", () => {
     const totals = summarizeJobs([
       { status: "interview", applied_at: "2026-01-01T00:00:00Z" },
