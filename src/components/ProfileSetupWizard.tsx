@@ -32,6 +32,15 @@ const STEPS = [
 
 const SENIORITY_LEVELS = ["Entry Level", "Mid Level", "Senior", "Lead", "Staff", "Principal", "Executive"];
 const WORK_TYPES = ["Remote", "Hybrid", "On-site"];
+
+/**
+ * The wizard shows display labels, but user_job_prefs.work_modes and the
+ * career-ops matchers compare against lowercase 'remote' | 'hybrid' | 'onsite'.
+ * Storing the label verbatim made every work-mode comparison miss.
+ */
+function normalizeWorkType(label: string): string {
+  return label.trim().toLowerCase().replace(/[\s-]/g, "");
+}
 const EDUCATION_LEVELS = ["High School", "Associate's", "Bachelor's", "Master's", "PhD", "Bootcamp", "Self-taught"];
 const WORK_AUTH_OPTIONS = ["US Citizen", "Green Card", "H1B Visa", "OPT/CPT", "L1 Visa", "TN Visa", "Other Visa", "No Authorization"];
 const COMMON_SKILLS = [
@@ -142,7 +151,7 @@ export function ProfileSetupWizard() {
     setSaving(true);
     try {
       const completeness = calcCompleteness();
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           full_name: profile.full_name,
@@ -162,7 +171,7 @@ export function ProfileSetupWizard() {
           seniority_level: profile.seniority_level,
           years_of_experience: profile.years_of_experience,
           skills: profile.skills,
-          preferred_work_type: profile.preferred_work_type,
+          preferred_work_type: profile.preferred_work_type.map(normalizeWorkType),
           desired_locations: profile.desired_locations,
           salary_expectations: { min: profile.salary_min, max: profile.salary_max, currency: "USD" },
           work_authorization: profile.work_authorization,
@@ -172,10 +181,19 @@ export function ProfileSetupWizard() {
         } as any)
         .eq("user_id", user.id);
 
+      // supabase-js resolves on a rejected write instead of throwing, so
+      // without this the catch below never runs and the user is told every
+      // step saved while nothing was persisted.
+      if (error) throw new Error(error.message);
+
       toast({ title: "Saved", description: `Step ${step + 1} saved successfully.` });
     } catch (err) {
       console.error("Save error:", err);
-      toast({ title: "Error", description: "Failed to save", variant: "destructive" });
+      toast({
+        title: "Couldn't save",
+        description: err instanceof Error ? err.message : "Failed to save",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -190,7 +208,7 @@ export function ProfileSetupWizard() {
     if (!user) return;
     setSaving(true);
     try {
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           profile_setup_completed: true,
@@ -198,6 +216,7 @@ export function ProfileSetupWizard() {
           onboarding_completed: true,
         } as any)
         .eq("user_id", user.id);
+      if (error) throw new Error(error.message);
 
       toast({ title: "Profile Complete!", description: "Your profile is ready. Let's find your perfect job!" });
       navigate("/job-search");

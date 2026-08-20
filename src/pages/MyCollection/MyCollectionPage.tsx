@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,19 +14,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
+import { summarizeJobs } from "@/lib/mc-status";
 
-interface MCSession {
-  id: string;
-  name: string;
-  status: "active" | "archived" | "deleted";
-  master_resume_id: string | null;
-  target_profile: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
+type MCSession = Database["public"]["Tables"]["mc_sessions"]["Row"];
 
 interface SessionStats {
-  discovered: number;
+  onBoard: number;
   applied: number;
   interviews: number;
 }
@@ -43,7 +37,7 @@ export default function MyCollectionPage() {
 
   async function loadSessions() {
     setLoading(true);
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_sessions")
       .select("*")
       .order("updated_at", { ascending: false });
@@ -61,26 +55,24 @@ export default function MyCollectionPage() {
   async function loadStats(sessionIds: string[]) {
     if (sessionIds.length === 0) return;
     try {
-      const { data } = await (supabase as any)
+      const { data } = await supabase
         .from("mc_tracked_jobs")
-        .select("session_id,status")
+        .select("session_id,status,applied_at")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
-      const rows: { session_id: string; status: string }[] = data ?? [];
+      const rows = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
-        const jobRows = rows.filter((r) => r.session_id === sid);
+        const totals = summarizeJobs(rows.filter((r) => r.session_id === sid));
         map[sid] = {
-          discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
-          interviews:
-            jobRows.filter((r) => r.status === "interview").length +
-            jobRows.filter((r) => r.status === "take_home").length,
+          onBoard: totals.onBoard,
+          applied: totals.applied,
+          interviews: totals.interviews,
         };
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, the cards fall back to a placeholder if this fails.
     }
   }
 
@@ -93,7 +85,7 @@ export default function MyCollectionPage() {
   const atCap = activeSessions.length >= ACTIVE_LIMIT;
 
   async function archiveSession(id: string) {
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_sessions")
       .update({ status: "archived" })
       .eq("id", id);
@@ -113,7 +105,7 @@ export default function MyCollectionPage() {
       });
       return;
     }
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_sessions")
       .update({ status: "active" })
       .eq("id", id);
@@ -126,7 +118,7 @@ export default function MyCollectionPage() {
 
   async function deleteSession(id: string) {
     if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
-    const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
+    const { error } = await supabase.from("mc_sessions").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {
@@ -296,9 +288,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.onBoard ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
