@@ -155,6 +155,28 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     });
   }, [sessionId, foundJobs, clarification, conversation, savedTitles, activeJobId, activeJobHistory]);
 
+  // Reconcile the "Saved" badges against the board itself. savedTitles is
+  // restored from sessionStorage, so without this a refresh (or a second
+  // device, or a card trashed from the Board tab) leaves the badges showing
+  // a saved state that no longer matches what's actually on the board.
+  useEffect(() => {
+    if (foundJobs.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("mc_tracked_jobs")
+        .select("company,job_title")
+        .eq("session_id", sessionId)
+        .is("deleted_at", null);
+      if (cancelled || error || !data) return;
+      const onBoard = new Set(data.map((r) => `${r.company}::${r.job_title}`));
+      setSavedTitles(new Set(foundJobs.map((j) => `${j.company}::${j.title}`).filter((k) => onBoard.has(k))));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, foundJobs]);
+
   // Auto-reattach to an in-flight search on mount. If the user clicked
   // "Find jobs with AI" and switched apps/tabs/refreshed before the worker
   // finished, this effect picks back up where they left off.
