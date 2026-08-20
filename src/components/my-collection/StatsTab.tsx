@@ -3,24 +3,19 @@ import { Card } from "@/components/ui/card";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { summarizeJobs, type SessionTotals } from "@/lib/mc-status";
 
-interface StatusCounts {
-  total: number;
-  saved: number;
-  applied: number;
-  interview: number;
-  offer: number;
-  rejected: number;
+interface StatusCounts extends SessionTotals {
   resumes: number;
 }
 
 const EMPTY_COUNTS: StatusCounts = {
-  total: 0,
-  saved: 0,
+  onBoard: 0,
   applied: 0,
-  interview: 0,
-  offer: 0,
+  interviews: 0,
+  offers: 0,
   rejected: 0,
+  responseRate: null,
   resumes: 0,
 };
 
@@ -35,12 +30,12 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
       setLoading(true);
       try {
         const [jobsResult, resumesResult] = await Promise.all([
-          (supabase as any)
+          supabase
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
-          (supabase as any)
+          supabase
             .from("mc_tailored_resumes")
             .select("*", { count: "exact", head: true })
             .eq("session_id", sessionId),
@@ -51,16 +46,8 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
-        const tally = (s: string) => rows.filter((r) => r.status === s).length;
-
         setCounts({
-          total: rows.length,
-          saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
-          offer: tally("offer"),
-          rejected: tally("rejected"),
+          ...summarizeJobs(jobsResult.data ?? []),
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -79,17 +66,12 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     };
   }, [sessionId]);
 
-  const responseRate =
-    counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
-      : null;
-
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="On the board"
-          value={loading ? "…" : counts.total}
+          value={loading ? "…" : counts.onBoard}
           icon={<Briefcase className="w-4 h-4" />}
         />
         <StatCard
@@ -99,7 +81,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
         <StatCard
           label="Interviews"
-          value={loading ? "…" : counts.interview}
+          value={loading ? "…" : counts.interviews}
           icon={<BarChart3 className="w-4 h-4" />}
         />
         <StatCard
@@ -113,7 +95,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <StatCard
             label="Offers"
-            value={counts.offer}
+            value={counts.offers}
             icon={<Star className="w-4 h-4 text-emerald-600" />}
           />
           <StatCard
@@ -121,10 +103,10 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
             value={counts.rejected}
             icon={<BarChart3 className="w-4 h-4 text-red-500" />}
           />
-          {responseRate !== null && (
+          {counts.responseRate !== null && (
             <StatCard
               label="Response rate"
-              value={`${responseRate}%`}
+              value={`${counts.responseRate}%`}
               icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
             />
           )}

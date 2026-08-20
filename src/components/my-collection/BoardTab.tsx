@@ -19,30 +19,7 @@ import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus }
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
 
-const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
-  { id: "discovered", label: "Discovered", tone: "bg-rp-paper text-slate-700" },
-  { id: "saved", label: "Saved", tone: "bg-blue-50 text-blue-700" },
-  { id: "applied", label: "Applied", tone: "bg-indigo-50 text-indigo-700" },
-  { id: "viewed", label: "Viewed", tone: "bg-purple-50 text-purple-700" },
-  { id: "interview", label: "Interview", tone: "bg-amber-50 text-amber-700" },
-  { id: "take_home", label: "Take-home", tone: "bg-orange-50 text-orange-700" },
-  { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
-  { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
-  { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
-  { id: "withdrawn", label: "Withdrawn", tone: "bg-slate-100 text-slate-600" },
-];
-
-type TrackedStatus =
-  | "discovered"
-  | "saved"
-  | "applied"
-  | "viewed"
-  | "interview"
-  | "take_home"
-  | "offer"
-  | "hold"
-  | "rejected"
-  | "withdrawn";
+import { BOARD_COLUMNS as COLUMNS, isPostApplyStatus, type TrackedStatus } from "@/lib/mc-status";
 
 interface TrackedJob {
   id: string;
@@ -99,7 +76,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     //   2. the user's most recently updated resume (fallback so users don't
     //      have to pre-configure anything)
     //   3. nothing, tell them to create one in Resume Builder
-    const { data: sessRow } = await (supabase as any)
+    const { data: sessRow } = await supabase
       .from("mc_sessions")
       .select("master_resume_id")
       .eq("id", sessionId)
@@ -112,7 +89,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     // summary, experience, education, ...), not a single content field, so we
     // SELECT * and stitch them with resumeRowToMarkdown.
     if (sessRow?.master_resume_id) {
-      const { data: res } = await (supabase as any)
+      const { data: res } = await supabase
         .from("resumes")
         .select("*")
         .eq("id", sessRow.master_resume_id)
@@ -122,7 +99,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
     // Tier 2: latest resume from the user's account.
     if (!masterMd) {
-      const { data: latest } = await (supabase as any)
+      const { data: latest } = await supabase
         .from("resumes")
         .select("*")
         .order("updated_at", { ascending: false })
@@ -196,7 +173,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         toast({ title: "Not signed in", description: "Sign in again to save the tailored resume.", variant: "destructive" });
         return;
       }
-      const { data: tailoredRow, error: insertErr } = await (supabase as any)
+      const { data: tailoredRow, error: insertErr } = await supabase
         .from("mc_tailored_resumes")
         .insert({
           user_id: freshUserData.user.id,
@@ -210,7 +187,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       if (insertErr || !tailoredRow) {
         throw new Error(insertErr?.message || "Couldn't save tailored resume");
       }
-      await (supabase as any)
+      await supabase
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailoredRow.id })
         .eq("id", job.id);
@@ -234,7 +211,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     setLoading(true);
     // Filter out soft-deleted cards (deleted_at IS NULL). The Trash dialog
     // surfaces deleted_at IS NOT NULL rows separately.
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_tracked_jobs")
       .select("*")
       .eq("session_id", sessionId)
@@ -251,19 +228,24 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   // Soft-delete with 5-second undo via toast action.
   async function trashJob(job: TrackedJob, e?: React.MouseEvent) {
     e?.stopPropagation();
-    // Optimistic remove from local state
+    // Optimistic remove from local state. Remember where the card was so a
+    // failed delete puts it back in place instead of jumping to the end.
+    const previousIndex = jobs.findIndex((j) => j.id === job.id);
     setJobs((arr) => arr.filter((j) => j.id !== job.id));
     setSelected((cur) => (cur && cur.id === job.id ? null : cur));
 
     const deletedAt = new Date().toISOString();
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tracked_jobs")
       .update({ deleted_at: deletedAt })
       .eq("id", job.id);
 
     if (error) {
-      // Roll back local state on failure
-      setJobs((arr) => [...arr, job]);
+      setJobs((arr) => {
+        const next = [...arr];
+        next.splice(previousIndex < 0 ? next.length : previousIndex, 0, job);
+        return next;
+      });
       toast({ title: "Couldn't move to trash", description: error.message, variant: "destructive" });
       return;
     }
@@ -276,7 +258,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         <ToastAction
           altText="Undo"
           onClick={async () => {
-            const { error: undoErr } = await (supabase as any)
+            const { error: undoErr } = await supabase
               .from("mc_tracked_jobs")
               .update({ deleted_at: null })
               .eq("id", job.id);
@@ -306,29 +288,35 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   async function moveTo(jobId: string, status: TrackedStatus) {
     const job = jobs.find((j) => j.id === jobId);
     if (!job || job.status === status) return;
-    const updates: Record<string, unknown> = { status };
-    if (status === "applied" && !job.applied_at) updates.applied_at = new Date().toISOString();
+    const updates: { status: TrackedStatus; applied_at?: string } = { status };
+    // Stamp applied_at on the first move into ANY post-application column, not
+    // just "Applied". Dragging straight from Saved to Interview still means the
+    // application was sent, and the stats count sent applications from here.
+    if (isPostApplyStatus(status) && !job.applied_at) {
+      updates.applied_at = new Date().toISOString();
+    }
 
     // Optimistic update: reflect the move immediately in the UI.
-    const previousStatus = job.status;
-    setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
-    setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...updates } as TrackedJob) : cur));
+    const previous = { status: job.status, applied_at: job.applied_at };
+    setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j)));
+    setSelected((cur) => (cur && cur.id === jobId ? { ...cur, ...updates } : cur));
 
-    const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
+    const { error } = await supabase.from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
-      // Roll back the optimistic update on failure.
-      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
-      setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, status: previousStatus } as TrackedJob) : cur));
+      // Roll back the whole optimistic patch, not just the status, or a failed
+      // move leaves applied_at set locally and inflates the stats.
+      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...previous } : j)));
+      setSelected((cur) => (cur && cur.id === jobId ? { ...cur, ...previous } : cur));
       toast({ title: "Move failed", description: error.message, variant: "destructive" });
       return;
     }
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      await (supabase as any).from("mc_status_history").insert({
+      await supabase.from("mc_status_history").insert({
         tracked_job_id: jobId,
         user_id: user.id,
-        status_from: previousStatus,
+        status_from: previous.status,
         status_to: status,
         source: "manual",
       });

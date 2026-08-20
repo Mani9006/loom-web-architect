@@ -149,7 +149,9 @@ export default function AutoApplyPage() {
           years_of_experience: (data as any).years_of_experience || 0,
           skills: (data as any).skills || [],
           education_level: (data as any).education_level || "",
-          preferred_work_type: (data as any).preferred_work_type || "any",
+          // Stored as text[] (the setup wizard and match-jobs both treat it as
+          // a list); this page edits a single choice, so read the first entry.
+          preferred_work_type: (data as any).preferred_work_type?.[0] || "any",
           desired_locations: (data as any).desired_locations || [],
           salary_expectations: (data as any).salary_expectations || {},
           work_authorization: (data as any).work_authorization || "us_citizen",
@@ -279,7 +281,10 @@ export default function AutoApplyPage() {
           years_of_experience: profile.years_of_experience as any,
           skills: profile.skills as any,
           education_level: profile.education_level as any,
-          preferred_work_type: profile.preferred_work_type as any,
+          preferred_work_type:
+            !profile.preferred_work_type || profile.preferred_work_type === "any"
+              ? []
+              : [profile.preferred_work_type],
           desired_locations: profile.desired_locations as any,
           salary_expectations: profile.salary_expectations as any,
           work_authorization: profile.work_authorization as any,
