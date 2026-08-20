@@ -138,7 +138,6 @@ export default function ResumesTab({
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
           No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
-          here.
         </p>
       </Card>
     );
@@ -228,14 +227,25 @@ export default function ResumesTab({
   );
 }
 
+/** Resume names are built from company + job title, which can contain
+ *  path separators and other characters browsers reject in a filename. */
+export function safeFileName(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, "-").trim() || "resume";
+}
+
 function downloadAsMarkdown(r: TailoredResume) {
   const blob = new Blob([r.cv_md], { type: "text/markdown" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  a.download = `${safeFileName(r.name)}.md`;
+  // Firefox only dispatches the download for an anchor that's in the document,
+  // and revoking synchronously after click() can cancel the download before it
+  // starts, so append first and revoke on the next tick.
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
@@ -291,7 +301,7 @@ async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToa
 
     const doc = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${r.name}.docx`);
+    saveAs(blob, `${safeFileName(r.name)}.docx`);
   } catch (e) {
     toast({
       title: "DOCX export failed",

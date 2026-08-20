@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- inbox columns are newer than the generated database client types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,7 +95,15 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
       .update({ is_read: true })
       .eq("session_id", sessionId)
       .eq("is_read", false);
-    if (!error) setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
+    if (error) {
+      const safeError = toUserFacingError(error, {
+        operation: "mark_application_messages_read",
+        defaultMessage: "Those messages could not be marked as read.",
+      });
+      toast({ title: "Couldn't mark all read", description: safeError.message, variant: "destructive" });
+      return;
+    }
+    setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
   }
 
   async function copyCode(code: string) {
