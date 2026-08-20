@@ -106,6 +106,9 @@ export default function SessionPage() {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
+        // Without this the skeleton renders forever if the navigate above
+        // doesn't unmount this route.
+        setLoading(false);
         return;
       }
       hadInitialLoad = true;

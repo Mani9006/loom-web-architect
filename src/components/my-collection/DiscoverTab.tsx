@@ -85,10 +85,13 @@ interface FoundJob {
   fit_reason?: string;
 }
 
-interface ClarificationTurn {
+// A type alias rather than an interface: interfaces have no implicit index
+// signature, so they aren't assignable to the generated Json type this gets
+// stored as in mc_ai_jobs.input.
+type ClarificationTurn = {
   questions: string[];
   answers: string[];
-}
+};
 
 interface Props {
   sessionId: string;
@@ -216,14 +219,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    */
   async function loadResumeMd(): Promise<string> {
     if (session.master_resume_id) {
-      const { data } = await (supabase as any)
+      const { data } = await supabase
         .from("resumes")
         .select("*")
         .eq("id", session.master_resume_id)
         .maybeSingle();
       if (data) return resumeRowToMarkdown(data);
     }
-    const { data: latest } = await (supabase as any)
+    const { data: latest } = await supabase
       .from("resumes")
       .select("*")
       .order("updated_at", { ascending: false })
@@ -483,12 +486,32 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
+    const key = `${job.company}::${job.title}`;
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       toast({ title: "Not signed in", variant: "destructive" });
       return;
     }
-    const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
+
+    // The board is the source of truth, not the local savedTitles set: that
+    // set lives in sessionStorage, so a refresh or a second device would
+    // otherwise let the same posting be added to the board twice.
+    const { data: existing } = await supabase
+      .from("mc_tracked_jobs")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("company", job.company)
+      .eq("job_title", job.title)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Already on the board", description: `${job.company} · ${job.title}` });
+      return;
+    }
+
+    const { error } = await supabase.from("mc_tracked_jobs").insert({
       user_id: userData.user.id,
       session_id: sessionId,
       scanned_job_id: null,
@@ -503,7 +526,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(key));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -547,7 +570,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       let trackedJobId: string | null = null;
       if (savedTitles.has(key)) {
         // Already saved, find the existing row.
-        const { data: existing } = await (supabase as any)
+        const { data: existing } = await supabase
           .from("mc_tracked_jobs")
           .select("id")
           .eq("session_id", sessionId)
@@ -560,7 +583,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         trackedJobId = existing?.id ?? null;
       }
       if (!trackedJobId) {
-        const { data: tracked, error: trackErr } = await (supabase as any)
+        const { data: tracked, error: trackErr } = await supabase
           .from("mc_tracked_jobs")
           .insert({
             user_id: userData.user.id,
@@ -619,7 +642,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       });
 
       // 3. Save tailored resume + link it to the tracked job.
-      const { data: tailored, error: insertErr } = await (supabase as any)
+      const { data: tailored, error: insertErr } = await supabase
         .from("mc_tailored_resumes")
         .insert({
           user_id: userData.user.id,
@@ -634,7 +657,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         throw new Error(insertErr?.message || "Couldn't save tailored resume");
       }
 
-      const { error: linkErr } = await (supabase as any)
+      const { error: linkErr } = await supabase
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailored.id })
         .eq("id", trackedJobId);

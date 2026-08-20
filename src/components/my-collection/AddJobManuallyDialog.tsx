@@ -126,7 +126,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       return;
     }
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_tracked_jobs")
       .insert({
         user_id: userData.user.id,
