@@ -328,7 +328,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       await (supabase as any).from("mc_status_history").insert({
         tracked_job_id: jobId,
         user_id: user.id,
-        status_from: previousStatus,
+        status_from: previousJob.status,
         status_to: status,
         source: "manual",
       });

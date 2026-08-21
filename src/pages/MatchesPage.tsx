@@ -164,7 +164,7 @@ export default function MatchesPage() {
       const personalized = (evalRes.data || []) as Evaluation[];
       const ids = personalized.map((evaluation) => evaluation.scanned_job_id);
       const jobsRes = ids.length > 0
-        ? await supabase
+        ? await (supabase as any)
           .from("scanned_jobs")
           .select("id,title,location,department,remote_policy,compensation_text,apply_url,posted_at,last_seen_at,company:scan_companies(id,name,slug,category)")
           .eq("is_live", true)
