@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,6 +33,7 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const hadInitialLoadRef = useRef(false);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
@@ -75,10 +76,10 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
+    hadInitialLoadRef.current = false;
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mc_sessions")
         .select("*")
         .eq("id", sessionId)
@@ -91,7 +92,7 @@ export default function SessionPage() {
       // first load, otherwise just keep showing what we already have.
       if (error) {
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!hadInitialLoadRef.current) {
           const safeError = toUserFacingError(error, {
             operation: "load_application_workspace",
             defaultMessage: "This application workspace could not be loaded.",
@@ -102,13 +103,13 @@ export default function SessionPage() {
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
+        if (!hadInitialLoadRef.current) {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
         return;
       }
-      hadInitialLoad = true;
+      hadInitialLoadRef.current = true;
       setSession(data as unknown as MCSession);
       setLoading(false);
     })();

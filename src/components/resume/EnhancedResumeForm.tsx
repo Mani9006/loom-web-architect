@@ -97,10 +97,9 @@ function parseAIResponse(content: string): Record<string, any> | null {
   // Attempt 1: Direct parse
   try {
     const result = JSON.parse(jsonString);
-    console.log("Direct parse successful");
     return result;
-  } catch (e1) {
-    console.log("Direct parse failed:", (e1 as Error).message);
+  } catch {
+    // Try the next parse strategy below.
   }
   
   // Attempt 2: Fix common JSON issues
@@ -111,10 +110,9 @@ function parseAIResponse(content: string): Record<string, any> | null {
       .replace(/:\s*false\s*([,}])/gi, ': false$1');
     
     const result = JSON.parse(fixed);
-    console.log("Fixed parse successful");
     return result;
-  } catch (e2) {
-    console.log("Fixed parse failed:", (e2 as Error).message);
+  } catch {
+    // Try the next parse strategy below.
   }
   
   // Attempt 3: More aggressive cleanup
@@ -125,14 +123,12 @@ function parseAIResponse(content: string): Record<string, any> | null {
     aggressive = aggressive.replace(/([^\\])\\([^"\\nrtbfu])/g, '$1\\\\$2');
     
     const result = JSON.parse(aggressive);
-    console.log("Aggressive parse successful");
     return result;
-  } catch (e3) {
-    console.log("Aggressive parse failed:", (e3 as Error).message);
+  } catch {
+    // Try the next parse strategy below.
   }
-  
+
   // Attempt 4: Extract key fields with regex
-  console.log("Attempting targeted field extraction...");
   try {
     const result: Record<string, any> = {
       header: { name: '', title: '', email: '', phone: '', location: '', linkedin: '' },
@@ -170,7 +166,7 @@ function parseAIResponse(content: string): Record<string, any> | null {
         try {
           return JSON.parse('[' + match[1] + ']');
         } catch {
-          console.log(`Failed to parse ${key} array`);
+          // Leave this field empty; targeted extraction is best-effort.
         }
       }
       return [];
@@ -186,7 +182,7 @@ function parseAIResponse(content: string): Record<string, any> | null {
       try {
         result.skills = JSON.parse(skillsMatch[1]);
       } catch {
-        console.log("Failed to parse skills object");
+        // Leave skills empty; targeted extraction is best-effort.
       }
     }
     
@@ -196,11 +192,6 @@ function parseAIResponse(content: string): Record<string, any> | null {
                     Object.keys(result.skills).length > 0;
     
     if (hasData) {
-      console.log("Targeted extraction successful:", {
-        name: result.header.name,
-        email: result.header.email,
-        experience: result.experience.length,
-      });
       return result;
     }
   } catch (e4) {
@@ -293,8 +284,6 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
           }
         }
       }
-
-      console.log("Full AI response received, length:", fullContent.length);
 
       // Parse the JSON from the response
       const parsedData = parseAIResponse(fullContent);

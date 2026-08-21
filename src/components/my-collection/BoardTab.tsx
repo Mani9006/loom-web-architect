@@ -310,15 +310,15 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     if (status === "applied" && !job.applied_at) updates.applied_at = new Date().toISOString();
 
     // Optimistic update: reflect the move immediately in the UI.
-    const previousStatus = job.status;
+    const previousJob = job;
     setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
     setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...updates } as TrackedJob) : cur));
 
     const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
-      // Roll back the optimistic update on failure.
-      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
-      setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, status: previousStatus } as TrackedJob) : cur));
+      // Roll back every field the optimistic update touched, not just status.
+      setJobs((arr) => arr.map((j) => (j.id === jobId ? previousJob : j)));
+      setSelected((cur) => (cur && cur.id === jobId ? previousJob : cur));
       toast({ title: "Move failed", description: error.message, variant: "destructive" });
       return;
     }
