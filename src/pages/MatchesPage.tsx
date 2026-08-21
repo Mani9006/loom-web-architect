@@ -142,19 +142,19 @@ export default function MatchesPage() {
 
     const readStoredMatches = async () => {
       const [evalRes, prefRes, draftsRes] = await Promise.all([
-        supabase
+        (supabase as any)
           .from("job_evaluations")
           .select("id,scanned_job_id,score,fit_score,fit_confidence,eligible,hard_filters,dimension_scores,score_version,tier,archetype,summary,keyword_matches,gaps,report_md,evaluated_at")
           .eq("user_id", user.id)
           .gte("fit_score", 50)
           .order("fit_score", { ascending: false })
           .limit(120),
-        supabase
+        (supabase as any)
           .from("user_job_prefs")
           .select("target_roles,negative_keywords,auto_apply_min_score,auto_apply_min_fit_score,daily_apply_cap,auto_apply_enabled")
           .eq("user_id", user.id)
           .maybeSingle(),
-        supabase
+        (supabase as any)
           .from("draft_applications")
           .select("id,evaluation_id,status")
           .eq("user_id", user.id),
