@@ -114,7 +114,7 @@ export default function Profile() {
       job_preferences: { ...jobPreferences, applypass: { ...oldApplypass, profile: applicationProfile } },
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" });
-    void supabase.from("user_job_prefs").upsert({
+    const prefsResult = await supabase.from("user_job_prefs").upsert({
       user_id: user.id,
       requires_sponsorship: profile.requires_sponsorship,
       work_authorization: profile.work_authorization || null,
@@ -122,6 +122,15 @@ export default function Profile() {
     setSaving(false);
     if (profileResult.error) {
       toast({ title: "Profile wasn't saved", description: "Your previous profile is unchanged. Try again.", variant: "destructive" });
+      return;
+    }
+    if (prefsResult.error) {
+      // user_job_prefs is the hard-filter gate career-fit scoring reads
+      // (sponsorship requirement, work authorization). A silent failure here
+      // would leave stale eligibility rules in force after the user believes
+      // they updated them, so this must not be reported as a clean save.
+      console.error("user_job_prefs save failed:", prefsResult.error);
+      toast({ title: "Profile partially saved", description: "Your contact and experience details saved, but sponsorship/work authorization did not. Try again.", variant: "destructive" });
       return;
     }
     toast({ title: "Application profile saved", description: "Future matching, tailoring, and forms will use these verified details." });

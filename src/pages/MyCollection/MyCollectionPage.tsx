@@ -63,16 +63,21 @@ export default function MyCollectionPage() {
     try {
       const { data } = await (supabase as any)
         .from("mc_tracked_jobs")
-        .select("session_id,status")
+        .select("session_id,status,applied_at")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
-      const rows: { session_id: string; status: string }[] = data ?? [];
+      const rows: { session_id: string; status: string; applied_at: string | null }[] = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
         const jobRows = rows.filter((r) => r.session_id === sid);
         map[sid] = {
           discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
+          // applied_at persists once a job is marked applied (BoardTab.moveTo
+          // sets it once and never clears it), so it stays true after the job
+          // advances to interview/offer/rejected. status === "applied" only
+          // counts jobs currently sitting in that column, which made this
+          // card's count fall as applications progressed.
+          applied: jobRows.filter((r) => r.applied_at).length,
           interviews:
             jobRows.filter((r) => r.status === "interview").length +
             jobRows.filter((r) => r.status === "take_home").length,
@@ -80,7 +85,7 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "—" if this fails.
     }
   }
 
@@ -296,9 +301,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">

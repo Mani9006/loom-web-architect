@@ -143,6 +143,15 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     onClose();
   }
 
+  // Dismissing the dialog without hitting Cancel (backdrop click, Escape)
+  // must NOT wipe the draft, that defeats the whole point of persisting it
+  // across interruptions (see the draft-persistence comment above). Only
+  // the explicit Cancel button clears it, mirroring AddJobManuallyDialog's
+  // handleClose/handleCancel split.
+  function handleDismiss() {
+    onClose();
+  }
+
   async function createSession() {
     if (!name.trim()) {
       toast({ title: "Session needs a name" });
@@ -200,7 +209,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && handleCancel()}>
+    <Dialog open={open} onOpenChange={(v) => !v && handleDismiss()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>New Session</DialogTitle>

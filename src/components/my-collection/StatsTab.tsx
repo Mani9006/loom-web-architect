@@ -37,7 +37,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         const [jobsResult, resumesResult] = await Promise.all([
           (supabase as any)
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
           (supabase as any)
@@ -51,13 +51,21 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
+        const rows: { status: string; applied_at: string | null }[] = jobsResult.data ?? [];
         const tally = (s: string) => rows.filter((r) => r.status === s).length;
+        // "Applied" must count every job that was EVER applied to, not just
+        // the ones currently sitting in the "applied" column. applied_at is
+        // set once (BoardTab.moveTo) and never cleared, so it survives the
+        // job moving on to interview/offer/rejected. Using status==="applied"
+        // here made the count (and the response-rate denominator below)
+        // shrink back toward zero as applications progressed, the opposite
+        // of what the stat is supposed to show.
+        const appliedCount = rows.filter((r) => r.applied_at).length;
 
         setCounts({
           total: rows.length,
           saved: tally("saved"),
-          applied: tally("applied"),
+          applied: appliedCount,
           interview: tally("interview") + tally("take_home"),
           offer: tally("offer"),
           rejected: tally("rejected"),
