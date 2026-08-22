@@ -94,7 +94,7 @@ export default function SettingsPage() {
         },
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
-    void supabase.from("user_job_prefs").upsert({
+    const prefsResult = await supabase.from("user_job_prefs").upsert({
         user_id: user.id,
         agent_enabled: hasAutoApply ? settings.agent_enabled : false,
         auto_apply_enabled: hasAutoApply ? settings.auto_apply_enabled : false,
@@ -106,6 +106,15 @@ export default function SettingsPage() {
     setSaving(false);
     if (profileResult.error) {
       toast({ title: "Settings weren't saved", description: "Your previous settings are unchanged. Try again.", variant: "destructive" });
+      return;
+    }
+    if (prefsResult.error) {
+      // user_job_prefs is what the auto-apply worker actually enforces
+      // (review mode, min fit score, daily cap). If this write fails, the
+      // policy the user just set (e.g. turning auto-apply off) never takes
+      // effect, so this must NOT be reported as a successful save.
+      console.error("user_job_prefs save failed:", prefsResult.error);
+      toast({ title: "Policy partially saved", description: "Your résumé/optimization settings saved, but the auto-apply policy (review mode, fit score, daily cap) did not. Try saving again.", variant: "destructive" });
       return;
     }
     toast({ title: "Settings saved", description: "New applications will follow this policy." });
