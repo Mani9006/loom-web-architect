@@ -210,10 +210,22 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       if (insertErr || !tailoredRow) {
         throw new Error(insertErr?.message || "Couldn't save tailored resume");
       }
-      await (supabase as any)
+      const { error: linkErr } = await (supabase as any)
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailoredRow.id })
         .eq("id", job.id);
+      // The resume itself saved fine even if this link update fails, don't
+      // reflect a link in the UI that doesn't exist in the DB, it would
+      // show a working "View tailored resume" button now and silently lose
+      // it on the next reload with no explanation.
+      if (linkErr) {
+        toast({
+          title: "Tailored resume saved, but not linked to this card",
+          description: "Find it in the Resumes tab and link it manually if needed.",
+          variant: "destructive",
+        });
+        return;
+      }
       setJobs((arr) =>
         arr.map((j) => (j.id === job.id ? { ...j, tailored_resume_id: tailoredRow.id } : j))
       );
