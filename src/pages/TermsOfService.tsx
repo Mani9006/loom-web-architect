@@ -15,7 +15,7 @@ export default function TermsOfService() {
       </LegalSection>
 
       <LegalSection title="2. What ResumePreps does">
-        <p>ResumePreps is an AI-assisted career platform. The service includes:</p>
+        <p>ResumePreps is a United States job-application desk. The service includes:</p>
         <LegalList
           items={[
             "Résumé builder and ATS checker, draft, parse, score, and export résumés, with job-description-aware keyword analysis.",

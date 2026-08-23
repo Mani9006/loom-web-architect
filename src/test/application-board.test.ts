@@ -62,10 +62,10 @@ describe("deriveBoardStatus", () => {
     expect(status.key).toBe("queued");
   });
 
-  it("maps submitted to Submitted inside the in-flight pipeline", () => {
+  it("maps submitted to Submitted as its own tab", () => {
     const status = deriveBoardStatus(draft({ status: "submitted", submitted_at: "2026-02-20T12:30:00Z" }), null);
     expect(status.key).toBe("submitted");
-    expect(status.tab).toBe("in_flight");
+    expect(status.tab).toBe("submitted");
   });
 
   it("maps a fresh ready packet to Needs you (review)", () => {
@@ -221,6 +221,16 @@ describe("tabCounts", () => {
       toBoardRow(draft({ id: "e", status: "failed", error_message: "timeout" }), new Map()),
       toBoardRow(draft({ id: "f", status: "skipped" }), new Map()),
     ];
-    expect(tabCounts(rows)).toEqual({ all: 6, in_flight: 3, needs_you: 1, failed: 1, skipped: 1 });
+    expect(tabCounts(rows)).toEqual({
+      all: 6,
+      submitted: 1,
+      in_flight: 2,
+      needs_you: 1,
+      failed: 1,
+      skipped: 1,
+      review_required: 1,
+      queued: 1,
+      expired: 0,
+    });
   });
 });

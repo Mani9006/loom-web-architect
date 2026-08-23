@@ -274,10 +274,15 @@ async function runAgent(userId: string, runId: string) {
     && !(cadence === "daily" && (handsOffQueuedToday ?? 0) > 0);
 
   if (remaining > 0) {
+    const { data: recipeRows } = await client.from("search_recipes").select("enabled,min_fit_score").eq("user_id", userId);
+    const activeFloors = ((recipeRows ?? []) as Array<{ enabled: boolean; min_fit_score: number }>)
+      .filter((recipe) => recipe.enabled)
+      .map((recipe) => Number(recipe.min_fit_score) || 82);
+    const recipeFloor = activeFloors.length > 0 ? Math.min(...activeFloors) : (prefs.auto_apply_min_fit_score ?? 82);
     const unprepared = await listUnpreparedEvaluations(
       client,
       userId,
-      prefs.auto_apply_min_fit_score ?? 82,
+      recipeFloor,
       Math.min(PREPARE_BUDGET, remaining),
     );
     alreadyPrepared = unprepared.alreadyPrepared;

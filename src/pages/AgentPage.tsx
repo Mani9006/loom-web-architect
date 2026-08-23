@@ -1,1342 +1,221 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { formatDistanceToNow } from "date-fns";
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  Bot,
-  BriefcaseBusiness,
-  CheckCircle2,
-  ChevronDown,
-  Clock3,
-  FileCheck2,
-  FileText,
-  History,
-  Lock,
-  Mail,
-  Play,
-  Radar,
-  RefreshCcw,
-  Send,
-  Settings2,
-  ShieldCheck,
-  Square,
-  X,
-} from "lucide-react";
-
 import { PageHeader } from "@/components/PageHeader";
-import ApplyProgressModal from "@/components/agent/ApplyProgressModal";
-import type { ApplyProgressJob } from "@/components/agent/apply-progress-core";
 import { CreditBalance } from "@/components/apply/CreditBalance";
+import { EmptyState, GhostButton, Panel, PrimaryButton } from "@/components/brand/ui";
 import { useSubscription } from "@/components/SubscriptionGate";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import { clampDailyApplyCap, creditPlanLabel, resolveCreditPlan } from "@/lib/apply-credits";
-import { cn } from "@/lib/utils";
-import { captureIncident } from "@/lib/incidents";
-import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
-import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
-import { selectAppliableNow, selectTopNow } from "@/lib/top-now";
-import { toast } from "sonner";
 import { useApplyCredits } from "@/hooks/use-apply-credits";
+import { clampDailyApplyCap, creditPlanLabel, resolveCreditPlan } from "@/lib/apply-credits";
+import { emptyRecipe, type SearchRecipe } from "@/lib/search-recipes";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
-type ReviewMode = "always" | "low_confidence" | "eligible_only";
-
-interface AgentControls {
+interface Prefs {
   agent_enabled: boolean;
   auto_apply_enabled: boolean;
-  review_mode: ReviewMode;
   auto_apply_min_fit_score: number;
-  auto_apply_min_ats_score: number;
-  tailoring_mode: "evidence_only" | "coverage_boost";
   daily_apply_cap: number;
   hands_off_cadence: "off" | "hourly" | "daily";
-  agent_max_actions_per_day: number;
-  agent_actions_today: number;
-  last_agent_run_at: string | null;
+  standing_instructions: string;
+  cover_letter_auto: boolean;
+  review_ats_pause: boolean;
+  tailoring_mode: "off" | "honest" | "aggressive";
 }
 
-interface MatchRow {
-  id: string;
-  fit_score: number | null;
-  score: number;
-  tier: string;
-  eligible: boolean;
-  summary: string | null;
-  evaluated_at: string;
-  scanned_job: {
-    id: string;
-    title: string;
-    location: string | null;
-    remote_policy: string | null;
-    apply_url: string;
-    company: { name: string } | null;
-  } | null;
-}
-
-interface AtsScore {
-  id: string;
-  overall: number;
-  dim_format: number;
-  dim_keywords: number;
-  dim_experience: number;
-  dim_skills: number;
-  dim_education: number;
-  dim_impact: number;
-  matched_keywords: string[];
-  missing_keywords: string[];
-  created_at: string;
-}
-
-interface ResumeSummary {
-  id: string;
-  title: string;
-  updated_at: string;
-  personal_info: unknown;
-  experience: unknown;
-}
-
-interface AgentRun {
-  id: string;
-  status: string;
-  summary: string | null;
-  started_at: string;
-  completed_at: string | null;
-}
-
-interface DraftStatusRow {
-  id: string;
-  evaluation_id: string | null;
-  status: string;
-  error_message: string | null;
-  updated_at: string;
-  submitted_at: string | null;
-  applypass_task_id: string | null;
-  evaluation: {
-    scanned_job: {
-      title: string;
-      company: { name: string } | null;
-    } | null;
-  } | null;
-}
-
-interface SubmitTaskRow {
-  id: string;
-  status: string;
-  error_message: string | null;
-  run_log: unknown;
-  updated_at: string;
-}
-
-interface WorkerHeartbeat {
-  last_seen: string;
-  hostname: string | null;
-  version: string | null;
-}
-
-interface GmailConnection {
-  gmail_email: string;
-  enabled: boolean;
-  last_polled_at: string | null;
-}
-
-interface LooseQueryResult {
-  data: unknown;
-  error: { message: string } | null;
-}
-
-interface LooseQuery {
-  select(columns: string): LooseQuery;
-  eq(column: string, value: string): LooseQuery;
-  in(column: string, values: string[]): LooseQuery;
-  order(column: string, options: { ascending: boolean }): LooseQuery;
-  limit(count: number): LooseQuery;
-  maybeSingle(): Promise<LooseQueryResult>;
-}
-
-// `ats_scores` is deployed by a newer migration than the generated database
-// types. Keep this single compatibility shim until the next type generation.
-const migratedTables = supabase as unknown as { from(table: string): LooseQuery };
-
-const DEFAULT_CONTROLS: AgentControls = {
+const defaults: Prefs = {
   agent_enabled: false,
   auto_apply_enabled: false,
-  review_mode: "always",
   auto_apply_min_fit_score: 82,
-  auto_apply_min_ats_score: 85,
-  tailoring_mode: "evidence_only",
-  daily_apply_cap: 40,
+  daily_apply_cap: 10,
   hands_off_cadence: "hourly",
-  agent_max_actions_per_day: 240,
-  agent_actions_today: 0,
-  last_agent_run_at: null,
+  standing_instructions: "",
+  cover_letter_auto: true,
+  review_ats_pause: true,
+  tailoring_mode: "honest",
 };
 
-const ATS_DIMENSIONS: Array<{ key: keyof AtsScore; label: string }> = [
-  { key: "dim_format", label: "Format" },
-  { key: "dim_keywords", label: "Keywords" },
-  { key: "dim_experience", label: "Experience" },
-  { key: "dim_skills", label: "Skills" },
-  { key: "dim_education", label: "Education" },
-  { key: "dim_impact", label: "Impact" },
-];
-
-function fitScore(match: MatchRow): number {
-  return Math.round(match.fit_score ?? match.score * 20);
-}
-
-function scoreTone(score: number): string {
-  if (score >= 85) return "text-emerald-600 dark:text-emerald-400";
-  if (score >= 70) return "text-amber-600 dark:text-amber-400";
-  return "text-rp-ink-2";
-}
-
-/** Fit % chip for the Top 5 strip, our own badge style, tone follows the score. */
-function fitChipClasses(score: number): string {
-  if (score >= 85) return "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-  if (score >= 70) return "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400";
-  return "border-rp-rule bg-rp-paper-2 text-rp-ink-2";
-}
-
-/** One short, plain-English reason a user can act on. */
-function shortReason(message: string | null | undefined, fallback: string): string {
-  if (!message) return fallback;
-  const first = message.split(/[.\n]/)[0]?.trim() ?? "";
-  if (!first) return fallback;
-  return first.length > 110 ? `${first.slice(0, 107)}…` : first;
-}
-
 export default function AgentPage() {
-  const navigate = useNavigate();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { plan, hasAutoApply } = useSubscription();
   const creditPlan = resolveCreditPlan(plan);
-  const dailyCapMax = Math.max(1, clampDailyApplyCap(999, creditPlan) || 1);
   const { snapshot: credits } = useApplyCredits();
-  const [controls, setControls] = useState<AgentControls>(DEFAULT_CONTROLS);
-  const [matches, setMatches] = useState<MatchRow[]>([]);
-  const [latestAts, setLatestAts] = useState<AtsScore | null>(null);
-  const [resume, setResume] = useState<ResumeSummary | null>(null);
-  const [drafts, setDrafts] = useState<DraftStatusRow[]>([]);
-  const [submitTasks, setSubmitTasks] = useState<SubmitTaskRow[]>([]);
-  const [lastRun, setLastRun] = useState<AgentRun | null>(null);
-  const [gmailConnection, setGmailConnection] = useState<GmailConnection | null>(null);
-  const [workerHeartbeat, setWorkerHeartbeat] = useState<WorkerHeartbeat | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [prefs, setPrefs] = useState(defaults);
+  const [recipes, setRecipes] = useState<SearchRecipe[]>([]);
+  const [runs, setRuns] = useState<Array<{ id: string; status: string; summary: string | null; started_at: string }>>([]);
   const [saving, setSaving] = useState(false);
-  const [controlBusy, setControlBusy] = useState(false);
-  const [batchPreparing, setBatchPreparing] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
-  const [preparingIds, setPreparingIds] = useState<string[]>([]);
-  const [matchSetup, setMatchSetup] = useState<"idle" | "building" | "complete" | "error">("idle");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [applyJobs, setApplyJobs] = useState<ApplyProgressJob[]>([]);
-  const [applyErrors, setApplyErrors] = useState<Record<string, string>>({});
-  const [applyModalOpen, setApplyModalOpen] = useState(false);
-  const automaticMatchAttempt = useRef(false);
-  const automaticProfilePromise = useRef<Promise<unknown> | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const loadWorkspace = useCallback(async (showSpinner = false) => {
+  const load = useCallback(async () => {
     if (!user) return;
-    if (showSpinner) setRefreshing(true);
-
-    const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, tasksRes, runsRes, gmailRes, workerRes] = await Promise.all([
-      supabase
-        .from("user_job_prefs")
-        .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,auto_apply_min_ats_score,tailoring_mode,daily_apply_cap,hands_off_cadence,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
-        .eq("user_id", user.id)
-        .maybeSingle(),
-      supabase
-        .from("job_evaluations")
-        .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
-        .eq("user_id", user.id)
-        .is("dismissed_at", null)
-        .eq("eligible", true)
-        .gte("fit_score", 50)
-        .order("fit_score", { ascending: false })
-        .limit(12),
-      migratedTables
-        .from("ats_scores")
-        .select("id,overall,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords,created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("resumes")
-        .select("id,title,updated_at,personal_info,experience")
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("draft_applications")
-        .select("id,evaluation_id,status,error_message,updated_at,submitted_at,applypass_task_id,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
-        .eq("user_id", user.id),
-      supabase
-        .from("applypass_tasks")
-        .select("id,status,error_message,run_log,updated_at,task_type")
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(30),
-      supabase
-        .from("agent_runs")
-        .select("id,status,summary,started_at,completed_at")
-        .eq("user_id", user.id)
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("mc_gmail_connections")
-        .select("gmail_email,enabled,last_polled_at")
-        .eq("user_id", user.id)
-        .eq("enabled", true)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("mc_worker_heartbeats")
-        .select("last_seen,hostname,version")
-        .eq("user_id", user.id)
-        .maybeSingle(),
+    const [prefRes, recipeRes, runRes] = await Promise.all([
+      supabase.from("user_job_prefs").select("agent_enabled,auto_apply_enabled,auto_apply_min_fit_score,daily_apply_cap,hands_off_cadence,standing_instructions,cover_letter_auto,review_ats_pause,tailoring_mode").eq("user_id", user.id).maybeSingle(),
+      (supabase.from("search_recipes" as never) as never as { select: (c: string) => { eq: (a: string, b: string) => { order: (c: string) => Promise<{ data: SearchRecipe[] | null }> } } }).select("id,name,enabled,target_roles,locations,min_fit_score,exclude_keywords,sort_order").eq("user_id", user.id).order("sort_order"),
+      supabase.from("agent_runs").select("id,status,summary,started_at").eq("user_id", user.id).order("started_at", { ascending: false }).limit(8),
     ]);
-
-    const loadError = [prefsRes, matchRes, atsRes, resumeRes, draftsRes, tasksRes, runsRes, gmailRes, workerRes]
-      .map((result) => result.error)
-      .find(Boolean);
-    if (loadError) {
-      void captureIncident(new Error(loadError.message), { source: "manual", operation: "agent_workspace_load" });
-      if (showSpinner) toast.error("Some Agent data could not be refreshed.");
-    }
-
-    if (prefsRes.data && !('error' in prefsRes.data)) {
-      const row = prefsRes.data as unknown as Partial<AgentControls>;
-      setControls({
-        ...DEFAULT_CONTROLS,
+    if (prefRes.data) {
+      const row = prefRes.data as Partial<Prefs> & { tailoring_mode?: string };
+      setPrefs({
+        ...defaults,
         ...row,
-        review_mode: ["always", "low_confidence", "eligible_only"].includes(String(row.review_mode))
-          ? row.review_mode as ReviewMode
-          : "always",
+        tailoring_mode: row.tailoring_mode === "coverage_boost" || row.tailoring_mode === "aggressive" ? "aggressive" : row.tailoring_mode === "off" || row.tailoring_mode === "evidence_only" ? (row.tailoring_mode === "off" ? "off" : "honest") : "honest",
         hands_off_cadence: row.hands_off_cadence === "off" || row.hands_off_cadence === "daily" ? row.hands_off_cadence : "hourly",
       });
     }
-    setMatches((matchRes.data || []) as unknown as MatchRow[]);
-    setLatestAts((atsRes.data as unknown as AtsScore | null) ?? null);
-    setResume((resumeRes.data as ResumeSummary | null) ?? null);
-    setDrafts((draftsRes.data || []) as unknown as DraftStatusRow[]);
-    const taskRows = ((tasksRes.data || []) as unknown as Array<SubmitTaskRow & { task_type?: string }>)
-      .filter((row) => !row.task_type || row.task_type === "career_ops_submit" || row.task_type === "apply_engine");
-    setSubmitTasks(taskRows);
-    setLastRun((runsRes.data as AgentRun | null) ?? null);
-    setGmailConnection((gmailRes.data as GmailConnection | null) ?? null);
-    setWorkerHeartbeat((workerRes.data as WorkerHeartbeat | null) ?? null);
-    setLoading(false);
-    setRefreshing(false);
+    setRecipes(recipeRes.data || []);
+    setRuns((runRes.data || []) as typeof runs);
   }, [user]);
 
-  useEffect(() => {
-    if (!user) return;
-    void loadWorkspace();
+  useEffect(() => { void load(); }, [load]);
 
-    const channel = supabase
-      .channel(`career-agent-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "job_evaluations", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
-      .on("postgres_changes", { event: "*", schema: "public", table: "ats_scores", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
-      .on("postgres_changes", { event: "*", schema: "public", table: "draft_applications", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
-      .on("postgres_changes", { event: "*", schema: "public", table: "applypass_tasks", filter: `user_id=eq.${user.id}` }, () => void loadWorkspace())
-      .subscribe();
+  const running = prefs.agent_enabled && hasAutoApply;
 
-    // Realtime may be unavailable in a preview project; this bounded fallback
-    // keeps an open workspace current without a background browser process.
-    const poll = window.setInterval(() => void loadWorkspace(), 30_000);
-    return () => {
-      window.clearInterval(poll);
-      void supabase.removeChannel(channel);
-    };
-  }, [loadWorkspace, user]);
-
-  useEffect(() => {
-    if (!user || loading || !resume || automaticProfilePromise.current) return;
-
-    automaticProfilePromise.current = hydrateApplicationProfileFromResume({
-      userId: user.id,
-      resumeId: resume.id,
-      resume: {
-        title: resume.title,
-        personal_info: resume.personal_info,
-        experience: resume.experience,
-      },
-      accountEmail: user.email,
-    }).catch((error) => {
-      void captureIncident(error, { source: "manual", operation: "application_profile_from_existing_resume" }, "warning");
-    });
-  }, [loading, resume, user]);
-
-  useEffect(() => {
-    if (!user || loading || !resume || matches.length > 0 || automaticMatchAttempt.current) return;
-    automaticMatchAttempt.current = true;
-    setMatchSetup("building");
-
-    void (async () => {
-      try {
-        if (automaticProfilePromise.current) await automaticProfilePromise.current;
-        const firstPass = await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
-        if (firstPass.error) throw firstPass.error;
-
-        // Paid accounts get one cached, low-cost evidence review when the
-        // deterministic pass finds nothing. It reviews the resume once, then
-        // the deterministic matcher reuses the result across jobs.
-        if (Number(firstPass.data?.evaluated || 0) === 0 && plan !== "free") {
-          const review = await supabase.functions.invoke("career-profile-review", { body: { resume_id: resume.id } });
-          if (!review.error) await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
-        }
-
-        const { data, error } = await supabase
-          .from("job_evaluations")
-          .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
-          .eq("user_id", user.id)
-          .is("dismissed_at", null)
-          .eq("eligible", true)
-          .gte("fit_score", 50)
-          .order("fit_score", { ascending: false })
-          .limit(12);
-        if (error) throw error;
-        setMatches((data || []) as unknown as MatchRow[]);
-        setMatchSetup("complete");
-      } catch (error) {
-        void captureIncident(error, { source: "manual", operation: "agent_automatic_match_setup" }, "warning");
-        setMatchSetup("error");
-      }
-    })();
-  }, [loading, matches.length, matchSetup, plan, resume, user]);
-
-  // Pipeline counters, single definition shared with the Applications page
-  // (JobTracker automationCounts): prepared = packets in status draft/ready,
-  // queued = status queued, etc. These reflect CURRENT draft_applications
-  // state; the "Last Agent run" summary instead counts only that run's new
-  // actions, so the two can legitimately differ (see agents-job-hunter).
-  const counts = useMemo(() => {
-    const value = { prepared: 0, queued: 0, submitted: 0, failed: 0, skipped: 0 };
-    for (const draft of drafts) {
-      const status = draft.status;
-      if (["draft", "ready"].includes(status)) value.prepared += 1;
-      else if (status === "queued") value.queued += 1;
-      else if (status === "submitted") value.submitted += 1;
-      else if (status === "failed") value.failed += 1;
-      else if (status === "skipped") value.skipped += 1;
-    }
-    return value;
-  }, [drafts]);
-
-  const draftsByEvaluation = useMemo(() => {
-    const map = new Map<string, DraftStatusRow>();
-    for (const draft of drafts) {
-      if (draft.evaluation_id && !map.has(draft.evaluation_id)) map.set(draft.evaluation_id, draft);
-    }
-    return map;
-  }, [drafts]);
-
-  const taskById = useMemo(() => new Map(submitTasks.map((task) => [task.id, task])), [submitTasks]);
-
-  // Top 5 right now: highest-fit eligible matches whose application isn't
-  // submitted yet, submitted ones graduate to the activity receipts below.
-  const topNow = useMemo(() => selectTopNow(matches, drafts), [matches, drafts]);
-
-  // Cards with no packet yet, the ones "Apply to all 5" still starts.
-  const applyAllTargets = useMemo(() => selectAppliableNow(topNow, drafts), [topNow, drafts]);
-
-  // Per-job plain status for the Top matches list:
-  // Matched → Tailoring resume → Ready → Applying → Applied / Needs you.
-  const matchStatus = useCallback((match: MatchRow) => {
-    const draft = draftsByEvaluation.get(match.id);
-    if (!draft) {
-      if (preparingIds.includes(match.id)) {
-        return {
-          key: "tailoring" as const,
-          label: "Tailoring resume…",
-          tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-          detail: "We're customizing your resume for this job right now.",
-          draftId: null as string | null,
-        };
-      }
-      return {
-        key: "matched" as const,
-        label: "Matched",
-        tone: "bg-rp-paper-2 text-rp-ink-2",
-        detail: "This job fits your resume, nothing for you to do yet.",
-        draftId: null as string | null,
-      };
-    }
-    if (draft.status === "queued") {
-      const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
-      const running = task?.status === "running";
-      return {
-        key: "applying" as const,
-        label: running ? "Sending" : "Queued",
-        tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-        detail: running ? "Cloud worker is on the employer's form." : "In the cloud queue.",
-        draftId: draft.id,
-      };
-    }
-    if (draft.status === "submitted") {
-      return {
-        key: "applied" as const,
-        label: "Applied ✅",
-        tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-        detail: draft.submitted_at
-          ? `Receipt confirmed ${formatDistanceToNow(new Date(draft.submitted_at), { addSuffix: true })}.`
-          : "Receipt confirmed.",
-        draftId: draft.id,
-      };
-    }
-    if (draft.status === "failed" || draft.status === "skipped") {
-      return {
-        key: "needs_you" as const,
-        label: "Needs you 🟠",
-        tone: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-        detail: shortReason(draft.error_message, "One answer is missing, open it to finish."),
-        draftId: draft.id,
-      };
-    }
-    return {
-      key: "ready" as const,
-      label: "Ready",
-      tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-      detail: "Resume tailored, review it and we'll apply.",
-      draftId: draft.id,
-    };
-  }, [draftsByEvaluation, preparingIds, taskById]);
-
-  // Receipts: one plain line per action, newest first.
-  const recentActivity = useMemo(() => {
-    return [...drafts]
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      .slice(0, 8)
-      .map((draft) => {
-        const title = draft.evaluation?.scanned_job?.title ?? "a job";
-        const company = draft.evaluation?.scanned_job?.company?.name;
-        const where = company ? `${title} at ${company}` : title;
-        const when = formatDistanceToNow(new Date(draft.updated_at), { addSuffix: true });
-        if (draft.status === "submitted") {
-          return { id: draft.id, kind: "applied" as const, sentence: `Applied to ${where}`, detail: "Receipt confirmed.", when, draftId: draft.id };
-        }
-        if (draft.status === "queued") {
-          const task = draft.applypass_task_id ? taskById.get(draft.applypass_task_id) : undefined;
-          const logs = Array.isArray(task?.run_log) ? task.run_log as Array<Record<string, unknown>> : [];
-          const lastMessage = [...logs].reverse().find((entry) => typeof entry?.message === "string")?.message;
-          const running = task?.status === "running";
-          return {
-            id: draft.id,
-            kind: "applying" as const,
-            sentence: `Sending ${where}`,
-            detail: running ? String(lastMessage ?? "Cloud worker is on the employer's form.") : "Queued — independent cloud job.",
-            when,
-            draftId: draft.id,
-          };
-        }
-        if (draft.status === "failed") {
-          return {
-            id: draft.id,
-            kind: "needs_you" as const,
-            sentence: `${where} needs you`,
-            detail: shortReason(draft.error_message ?? taskById.get(draft.applypass_task_id ?? "")?.error_message, "Something needs your input before we can finish."),
-            when,
-            draftId: draft.id,
-          };
-        }
-        if (draft.status === "skipped") {
-          return {
-            id: draft.id,
-            kind: "needs_you" as const,
-            sentence: `Skipped ${where}`,
-            detail: shortReason(draft.error_message, "We held this one back, open it to see why."),
-            when,
-            draftId: draft.id,
-          };
-        }
-        return { id: draft.id, kind: "ready" as const, sentence: `Resume tailored for ${where}`, detail: "Ready for your review.", when, draftId: draft.id };
-      });
-  }, [drafts, taskById]);
-
-  const workerOnline = workerHeartbeat
-    ? Date.now() - new Date(workerHeartbeat.last_seen).getTime() < 90_000
-    : false;
-
-  const setContinuousApply = async (action: "start" | "stop") => {
+  const toggle = async () => {
     if (!hasAutoApply) {
-      navigate("/pricing");
+      navigate("/plans");
       return;
     }
-    setControlBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("career-agent-control", {
-        body: {
-          action,
-          auto_apply_min_fit_score: controls.auto_apply_min_fit_score,
-          auto_apply_min_ats_score: controls.auto_apply_min_ats_score,
-          tailoring_mode: controls.tailoring_mode,
-          daily_apply_cap: controls.daily_apply_cap,
-          agent_max_actions_per_day: controls.agent_max_actions_per_day,
-        },
-      });
-      if (error) throw error;
-      setControls((current) => ({
-        ...current,
-        agent_enabled: action === "start",
-        auto_apply_enabled: action === "start",
-        review_mode: action === "start" ? "eligible_only" : current.review_mode,
-        hands_off_cadence: action === "start" && current.hands_off_cadence === "off" ? "hourly" : current.hands_off_cadence,
-      }));
-      await loadWorkspace();
-      if (action === "start") {
-        toast.success("Hands-off apply is on. The scheduler enqueues eligible roles up to your daily cap.");
-      } else {
-        toast.success(`${Number(data?.canceled || 0)} application${Number(data?.canceled || 0) === 1 ? " was" : "s were"} stopped before submission.`);
-      }
-    } catch (error) {
-      void captureIncident(error, { source: "manual", operation: `continuous_apply_${action}` });
-      const safeError = toUserFacingError(error, {
-        operation: `continuous_apply_${action}`,
-        defaultMessage: action === "start"
-          ? "Hands-off apply could not start. Your current settings are unchanged."
-          : "Hands-off apply could not be stopped. Try again immediately.",
-      });
-      toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
-    } finally {
-      setControlBusy(false);
-    }
-  };
-
-  const passMatch = async (match: MatchRow) => {
-    setMatches((current) => current.filter((item) => item.id !== match.id));
-    const { error } = await supabase.functions.invoke("career-agent-control", {
-      body: { action: "pass", evaluation_id: match.id },
-    });
+    setBusy(true);
+    const action = running ? "stop" : "start";
+    const { error } = await supabase.functions.invoke("career-agent-control", { body: { action, daily_apply_cap: prefs.daily_apply_cap } });
+    setBusy(false);
     if (error) {
-      await loadWorkspace();
-      toast.error("That job could not be removed from your feed.");
-    }
-  };
-
-  const saveControls = async () => {
-    if (!user) return;
-    if (!hasAutoApply) {
-      navigate("/pricing");
+      toast.error("Hands-off could not update.");
       return;
     }
+    setPrefs((current) => ({ ...current, agent_enabled: !running, auto_apply_enabled: !running }));
+    toast.success(running ? "Kill switch on. In-flight hands-off jobs cancel." : "Hands-off is on. Recipes share one daily cap.");
+  };
 
+  const save = async () => {
+    if (!user || !hasAutoApply) return;
     setSaving(true);
-    const normalized: AgentControls = {
-      ...controls,
-      auto_apply_enabled: controls.auto_apply_enabled,
-      review_mode: controls.review_mode === "eligible_only" ? "eligible_only" : "always",
-      auto_apply_min_fit_score: Math.min(100, Math.max(60, controls.auto_apply_min_fit_score)),
-      auto_apply_min_ats_score: Math.min(95, Math.max(70, controls.auto_apply_min_ats_score)),
-      tailoring_mode: controls.tailoring_mode === "coverage_boost" ? "coverage_boost" : "evidence_only",
-      daily_apply_cap: clampDailyApplyCap(controls.daily_apply_cap, creditPlan) || 1,
-      hands_off_cadence: controls.hands_off_cadence === "off" || controls.hands_off_cadence === "daily" ? controls.hands_off_cadence : "hourly",
-      agent_max_actions_per_day: Math.min(300, Math.max(30, controls.agent_max_actions_per_day)),
-    };
-    const { error } = await supabase.from("user_job_prefs").upsert({
+    await supabase.from("user_job_prefs").upsert({
       user_id: user.id,
-      agent_enabled: normalized.agent_enabled,
-      auto_apply_enabled: normalized.auto_apply_enabled,
-      review_mode: normalized.review_mode,
-      auto_apply_min_fit_score: normalized.auto_apply_min_fit_score,
-      auto_apply_min_ats_score: normalized.auto_apply_min_ats_score,
-      tailoring_mode: normalized.tailoring_mode,
-      daily_apply_cap: normalized.daily_apply_cap,
-      hands_off_cadence: normalized.hands_off_cadence,
-      agent_max_actions_per_day: normalized.agent_max_actions_per_day,
-      auto_apply_portals: ["greenhouse", "ashby", "lever", "workable", "workday"],
+      agent_enabled: prefs.agent_enabled,
+      auto_apply_enabled: prefs.auto_apply_enabled,
+      auto_apply_min_fit_score: prefs.auto_apply_min_fit_score,
+      daily_apply_cap: clampDailyApplyCap(prefs.daily_apply_cap, creditPlan) || 1,
+      hands_off_cadence: prefs.hands_off_cadence,
+      standing_instructions: prefs.standing_instructions,
+      cover_letter_auto: prefs.cover_letter_auto,
+      review_ats_pause: prefs.review_ats_pause,
+      tailoring_mode: prefs.tailoring_mode === "aggressive" ? "coverage_boost" : "evidence_only",
     }, { onConflict: "user_id" });
+    for (const recipe of recipes) {
+      await (supabase.from("search_recipes" as never) as never as { upsert: (v: unknown) => Promise<unknown> }).upsert({ ...recipe, user_id: user.id });
+    }
     setSaving(false);
-
-    if (error) {
-      void captureIncident(new Error(error.message), { source: "manual", operation: "agent_controls_save" });
-      const safeError = toUserFacingError(error, {
-        operation: "agent_controls_save",
-        defaultMessage: "Your existing settings are unchanged. Try saving again in a moment.",
-      });
-      toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
-      return;
-    }
-    setControls(normalized);
-    toast.success(normalized.agent_enabled ? "Settings saved" : "Auto-apply paused");
+    toast.success("Hands-off settings saved.");
   };
 
-  const prepareMatches = async (selectedMatches: MatchRow[]) => {
-    const selected = selectedMatches.filter((match) => fitScore(match) >= 50).slice(0, 5);
-    if (!selected.length) {
-      toast.error("No matches above 50% are ready to apply yet.");
-      return;
-    }
-
-    setBatchPreparing(true);
-    setPreparingIds(selected.map((match) => match.id));
-    setBatchProgress({ current: 0, total: selected.length });
-    setApplyErrors({});
-    setApplyJobs(selected.map((match) => ({
-      evaluationId: match.id,
-      title: match.scanned_job?.title ?? "Job match",
-      company: match.scanned_job?.company?.name ?? "Unknown company",
-    })));
-    setApplyModalOpen(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("apply-engine-enqueue", {
-        body: { evaluation_ids: selected.map((match) => match.id), intent: "user_selected" },
-      });
-      if (error) throw error;
-      const result = data as {
-        queued?: number;
-        needs_you?: number;
-        jobs?: Array<{ evaluation_id: string; status: string; reason: string }>;
-      };
-      for (const row of result.jobs ?? []) {
-        if (row.status === "error") {
-          setApplyErrors((current) => ({ ...current, [row.evaluation_id]: row.reason }));
-        }
-      }
-      toast.success(`${result.queued ?? 0} queued to the cloud worker · ${result.needs_you ?? 0} need you (packet ready, ATS not live)`);
-    } catch (error) {
-      void captureIncident(error, { source: "manual", operation: "agent_apply_selected" });
-      toast.error("Those applications could not be queued. Try again in a moment.");
-    } finally {
-      await loadWorkspace();
-      setBatchPreparing(false);
-      setBatchProgress(null);
-      setPreparingIds([]);
-    }
+  const addRecipe = () => {
+    setRecipes((current) => [...current, { id: crypto.randomUUID(), ...emptyRecipe(current.length + 1) }]);
   };
-
-  // "Apply to all 5", tailor (and queue, per review settings) every strip
-  // card that doesn't have a packet yet. prepareMatches re-filters and caps
-  // at 5, so the batch stays inside the existing pipeline limits.
-  const prepareTopMatches = async () => prepareMatches(applyAllTargets);
-
-  const planName = creditPlanLabel(plan);
-  const isRunning = controls.agent_enabled && hasAutoApply;
-
-  if (loading) {
-    return (
-      <div className="max-w-[1100px] mx-auto px-6 lg:px-10 py-10 space-y-5">
-        <div className="h-20 rounded-lg bg-rp-paper animate-pulse" />
-        <div className="h-40 rounded-lg bg-rp-paper animate-pulse" />
-        <div className="h-96 rounded-lg bg-rp-paper animate-pulse" />
-      </div>
-    );
-  }
 
   return (
-    <div className="max-w-[1100px] mx-auto px-6 lg:px-10 pt-10 pb-16">
+    <div>
       <PageHeader
         title="Hands-off apply"
-        status={`${planName.toLowerCase()} · ${isRunning ? "running" : "stopped"}`}
-        description="Scheduler enqueues eligible roles as independent cloud jobs. Kill switch stops in-flight hands-off submits. Apply selected on Job matches does not need this to be on."
+        status={`${creditPlanLabel(plan)} · ${running ? "running" : "stopped"}`}
+        description="Search recipes share one daily cap. Best matches first. Standing instructions are exclude-only. Review-before-submit pauses on ATSes that support it."
         action={<CreditBalance snapshot={credits} />}
       />
 
-      {/* HERO, the one master control: is it working for me right now? */}
-      <section className={cn(
-        "mt-7 border p-6 sm:p-8 transition-colors",
-        isRunning ? "border-emerald-500/40 bg-emerald-500/[0.06]" : "border-rp-rule bg-rp-paper",
-      )} aria-label="Hands-off apply control">
-        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="max-w-2xl">
-            <div className="flex items-center gap-2">
-              <span className={cn(
-                "h-2.5 w-2.5 rounded-full",
-                isRunning ? "bg-emerald-500 animate-pulse" : "bg-rp-ink-3",
-              )} />
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rp-ink-3">
-                {isRunning ? "Running" : "Stopped"}
-              </p>
-            </div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-rp-ink">
-              {isRunning ? "Hands-off apply is running" : "Start hands-off apply"}
-            </h2>
-            <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
-              {isRunning
-                ? `Cadence ${controls.hands_off_cadence}. Match floor ${controls.auto_apply_min_fit_score}%. Daily cap ${controls.daily_apply_cap}. Stop applying cancels in-flight hands-off jobs.`
-                : "Turn this on to let the scheduler enqueue jobs above your match floor, up to the daily cap, without clicking each one."}
-            </p>
-            {!hasAutoApply && (
-              <p className="mt-2 text-xs text-rp-ink-3">Hands-off scheduling is part of Autopilot. Apply selected on Job matches is available without it.</p>
-            )}
-          </div>
-          <Button
-            size="lg"
-            disabled={controlBusy}
-            onClick={() => void setContinuousApply(isRunning ? "stop" : "start")}
-            className={cn(
-              "min-w-[220px] shrink-0 text-base",
-              isRunning && "bg-red-600 text-white hover:bg-red-700",
-            )}
-          >
-            {isRunning ? <Square className="mr-2 h-4 w-4 fill-current" /> : <Play className="mr-2 h-4 w-4 fill-current" />}
-            {controlBusy ? "Updating…" : isRunning ? "Stop applying" : "Start applying"}
-          </Button>
-        </div>
-
-        <div className="mt-6 grid gap-4 border-t border-rp-rule pt-5 md:grid-cols-2 xl:grid-cols-[1fr_1fr_auto] xl:items-center">
+      <Panel className="mb-6 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-rp-ink">Credits this month</span>
-              <span className="tabular-nums text-rp-ink-2">{credits ? `${credits.consumed} / ${credits.granted}` : "—"}</span>
-            </div>
-            <Progress value={credits && credits.granted > 0 ? Math.min(100, (credits.consumed / credits.granted) * 100) : 0} className="mt-2 h-2" />
+            <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-rp-ink-3">{running ? "Running" : "Stopped"}</p>
+            <h2 className="mt-1 font-display text-[28px] italic">{running ? "Scheduler is enqueueing" : "Start the scheduler"}</h2>
+            <p className="mt-2 max-w-xl text-[14px] text-rp-ink-2">Cadence {prefs.hands_off_cadence}. Floor {prefs.auto_apply_min_fit_score}%. Cap {prefs.daily_apply_cap}/day. Apply on Job matches does not require this to be on.</p>
           </div>
-          <div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-rp-ink">Live submits today</span>
-              <span className="tabular-nums text-rp-ink-2">{credits ? `${credits.daily_used} / ${credits.daily_cap}` : "—"}</span>
-            </div>
-            <Progress value={credits && credits.daily_cap > 0 ? Math.min(100, (credits.daily_used / credits.daily_cap) * 100) : 0} className="mt-2 h-2" />
-          </div>
-          <div className="flex items-center gap-2 text-xs text-rp-ink-2 xl:justify-end">
-            <span className={cn("h-2 w-2 rounded-full", counts.queued === 0 || workerOnline ? "bg-emerald-500" : "bg-amber-500")} />
-            {counts.queued === 0
-              ? "Nothing in line, waiting for the next strong match"
-              : workerOnline ? "Applications are being submitted right now" : "In line safely, the apply helper will pick them up"}
-          </div>
+          <PrimaryButton onClick={() => void toggle()} disabled={busy} className={running ? "bg-rose-700" : undefined}>
+            {busy ? "Updating…" : running ? "Stop applying" : "Start applying"}
+          </PrimaryButton>
         </div>
-      </section>
+      </Panel>
 
-      {/* Glanceable counts */}
-      <section className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Auto-apply status at a glance">
-        {[
-          { label: "Matches found", value: matches.length, icon: Radar, note: plan === "free" ? "eligible, from your resume" : "eligible, checked every 10 minutes" },
-          { label: "Resume score", value: latestAts ? `${Math.round(latestAts.overall)}%` : ",", icon: FileCheck2, note: latestAts ? "from your last ATS check" : "no check yet" },
-          { label: "Ready for you", value: counts.prepared, icon: ShieldCheck, note: `${counts.queued} in line to apply` },
-          { label: "Applied", value: counts.submitted, icon: Send, note: counts.failed + counts.skipped > 0 ? `${counts.failed + counts.skipped} need your help` : "confirmed receipts" },
-        ].map((item) => (
-          <div key={item.label} className="bg-rp-canvas p-4 min-h-28">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel className="p-5">
+          <h3 className="font-display text-[22px] italic">Controls</h3>
+          <label className="mt-4 block text-[13px]">Daily cap
+            <input type="number" min={1} max={40} value={prefs.daily_apply_cap} onChange={(e) => setPrefs((c) => ({ ...c, daily_apply_cap: Number(e.target.value) }))} className="mt-1 h-10 w-full rounded-md border border-rp-ink/15 bg-rp-canvas px-3" />
+          </label>
+          <label className="mt-3 block text-[13px]">Minimum match quality
+            <input type="number" min={50} max={100} value={prefs.auto_apply_min_fit_score} onChange={(e) => setPrefs((c) => ({ ...c, auto_apply_min_fit_score: Number(e.target.value) }))} className="mt-1 h-10 w-full rounded-md border border-rp-ink/15 bg-rp-canvas px-3" />
+          </label>
+          <label className="mt-3 block text-[13px]">Cadence
+            <select value={prefs.hands_off_cadence} onChange={(e) => setPrefs((c) => ({ ...c, hands_off_cadence: e.target.value as Prefs["hands_off_cadence"] }))} className="mt-1 h-10 w-full rounded-md border border-rp-ink/15 bg-rp-canvas px-3">
+              <option value="hourly">Every few hours</option>
+              <option value="daily">Once a day</option>
+              <option value="off">Scheduler off</option>
+            </select>
+          </label>
+          <label className="mt-3 block text-[13px]">Resume optimization
+            <select value={prefs.tailoring_mode} onChange={(e) => setPrefs((c) => ({ ...c, tailoring_mode: e.target.value as Prefs["tailoring_mode"] }))} className="mt-1 h-10 w-full rounded-md border border-rp-ink/15 bg-rp-canvas px-3">
+              <option value="off">Off</option>
+              <option value="honest">Honest</option>
+              <option value="aggressive">Aggressive</option>
+            </select>
+          </label>
+          <label className="mt-4 flex items-center gap-2 text-[13px]">
+            <input type="checkbox" checked={prefs.cover_letter_auto} onChange={(e) => setPrefs((c) => ({ ...c, cover_letter_auto: e.target.checked }))} />
+            Write a cover letter when the form asks
+          </label>
+          <label className="mt-2 flex items-center gap-2 text-[13px]">
+            <input type="checkbox" checked={prefs.review_ats_pause} onChange={(e) => setPrefs((c) => ({ ...c, review_ats_pause: e.target.checked }))} />
+            Review-before-submit on ATSes that pause
+          </label>
+          <label className="mt-3 block text-[13px]">Standing instructions (exclude only)
+            <textarea value={prefs.standing_instructions} onChange={(e) => setPrefs((c) => ({ ...c, standing_instructions: e.target.value }))} placeholder="staffing agencies, crypto, companies named Acme" className="mt-1 min-h-24 w-full rounded-md border border-rp-ink/15 bg-rp-canvas px-3 py-2" />
+          </label>
+          <PrimaryButton className="mt-4" onClick={() => void save()} disabled={saving || !hasAutoApply}>{saving ? "Saving…" : "Save settings"}</PrimaryButton>
+        </Panel>
+
+        <div className="space-y-6">
+          <Panel className="p-5">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-rp-ink-3">{item.label}</p>
-              <item.icon className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
+              <h3 className="font-display text-[22px] italic">Search recipes</h3>
+              <GhostButton onClick={addRecipe}>Add recipe</GhostButton>
             </div>
-            <p className="mt-3 text-3xl font-semibold tracking-tight tabular-nums text-rp-ink">{item.value}</p>
-            <p className="mt-1 text-xs text-rp-ink-2">{item.note}</p>
-          </div>
-        ))}
-      </section>
-
-      {/* TOP 5 RIGHT NOW, five cards, one click to apply to all */}
-      <section className="mt-6 border border-rp-rule bg-rp-canvas" aria-label="Top 5 right now">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rp-rule p-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <Radar className="h-4 w-4 text-rp-accent" />
-              <h2 className="text-base font-semibold text-rp-ink">Top 5 right now</h2>
-              {plan !== "free" && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>}
-            </div>
-            <p className="mt-1 text-xs text-rp-ink-2">
-              We tailor per job in the cloud, then the worker submits on live ATS adapters. Unsupported ATS land in Needs you.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={prepareTopMatches} disabled={batchPreparing || applyAllTargets.length === 0}>
-              <Send className="mr-2 h-3.5 w-3.5" />
-              {batchProgress ? `Queuing ${batchProgress.current}/${batchProgress.total}…` : "Apply selected"}
-            </Button>
-            <button
-              onClick={() => void loadWorkspace(true)}
-              className="inline-flex items-center gap-2 px-2 text-xs font-medium text-rp-ink-2 hover:text-rp-ink"
-              disabled={refreshing || batchPreparing}
-            >
-              <RefreshCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> Refresh
-            </button>
-          </div>
-        </div>
-        {matches.length === 0 ? (
-          <div className="p-8 text-center">
-            {matchSetup === "building" ? <RefreshCcw className="mx-auto h-8 w-8 animate-spin text-rp-accent" /> : <BriefcaseBusiness className="mx-auto h-8 w-8 text-rp-ink-3" />}
-            <p className="mt-3 text-sm font-semibold text-rp-ink">
-              {!resume ? "Add your resume to get matches" : matchSetup === "building" ? "Finding jobs that fit your resume…" : matchSetup === "error" ? "The match refresh hit a snag" : "No strong matches right now"}
-            </p>
-            <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-rp-ink-2">
-              {!resume
-                ? "Upload it once, we'll pull out your experience and start finding jobs that fit."
-                : matchSetup === "building"
-                  ? "This takes a minute or two. You can leave this page while it finishes."
-                  : matchSetup === "error"
-                    ? "Your resume is safe, just try the refresh again."
-                    : "We check fresh jobs every hour and will show them here as soon as something fits you."}
-            </p>
-            <div className="mt-4 flex justify-center gap-2">
-              {!resume ? (
-                <Button size="sm" onClick={() => navigate("/resume-builder")}>Upload resume</Button>
-              ) : matchSetup === "error" ? (
-                <Button size="sm" onClick={() => { automaticMatchAttempt.current = false; setMatchSetup("idle"); void loadWorkspace(true); }}>Try again</Button>
-              ) : matchSetup !== "building" ? (
-                <Button size="sm" onClick={() => navigate("/career-ops/preferences")}>Broaden preferences</Button>
-              ) : null}
-            </div>
-          </div>
-        ) : topNow.length === 0 ? (
-          <div className="p-8 text-center">
-            <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
-            <p className="mt-3 text-sm font-semibold text-rp-ink">All top matches are in flight</p>
-            <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-rp-ink-2">
-              Every strong match already has an application going, watch it in Recent activity below. New matches land here as we find them.
-            </p>
-            <div className="mt-4 flex justify-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => navigate("/job-tracker")}>Track applications</Button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {topNow.map((match) => {
-              const score = fitScore(match);
-              const title = match.scanned_job?.title ?? "Job match";
-              const company = match.scanned_job?.company?.name ?? "Unknown company";
-              const status = matchStatus(match);
-              const why = match.summary?.trim() || "This job fits your resume, open Matches for the full breakdown.";
-              return (
-                <div key={match.id} className="flex flex-col border border-rp-rule bg-rp-paper p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tabular-nums", fitChipClasses(score))}>
-                      {score}% fit
-                    </span>
-                    {(status.key === "matched" || status.key === "tailoring") && (
-                      <button
-                        type="button"
-                        onClick={() => void passMatch(match)}
-                        disabled={batchPreparing}
-                        className="text-rp-ink-3 transition-colors hover:text-rp-ink disabled:opacity-50"
-                        aria-label={`Pass on ${title} at ${company}`}
-                        title="Pass, stop showing this job"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  <p className="mt-3 truncate text-sm font-semibold text-rp-ink" title={title}>{title}</p>
-                  <p className="mt-0.5 truncate text-xs text-rp-ink-2">{company}{match.scanned_job?.location ? ` · ${match.scanned_job.location}` : ""}</p>
-                  <p className="mt-2 line-clamp-2 min-h-8 text-xs leading-relaxed text-rp-ink-2">{why}</p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", status.tone)}>{status.label}</span>
-                    <span className="truncate text-[11px] text-rp-ink-3" title={status.detail}>{status.detail}</span>
-                  </div>
-                  <div className="mt-auto pt-3">
-                    {status.key === "matched" && (
-                      <Button size="sm" className="w-full" onClick={() => void prepareMatches([match])} disabled={batchPreparing}>
-                        <Send className="mr-1.5 h-3.5 w-3.5" /> Apply
-                      </Button>
-                    )}
-                    {status.key === "tailoring" && (
-                      <Button size="sm" className="w-full" disabled>
-                        <RefreshCcw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Tailoring…
-                      </Button>
-                    )}
-                    {status.key === "ready" && status.draftId && (
-                      <Button size="sm" className="w-full" onClick={() => navigate(`/applications/${status.draftId}`)}>Review & apply</Button>
-                    )}
-                    {(status.key === "applying" || status.key === "applied") && status.draftId && (
-                      <Button variant="outline" size="sm" className="w-full" onClick={() => navigate(`/applications/${status.draftId}`)}>
-                        {status.key === "applied" ? "View receipt" : "Watch it live"}
-                      </Button>
-                    )}
-                    {status.key === "needs_you" && status.draftId && (
-                      <Button size="sm" className="w-full" onClick={() => navigate(`/applications/${status.draftId}`)}>Fix it</Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <button onClick={() => navigate("/matches")} className="flex w-full items-center justify-between border-t border-rp-rule p-4 text-xs font-medium text-rp-ink hover:bg-rp-paper">
-          See all matches <ArrowUpRight className="h-3.5 w-3.5" />
-        </button>
-      </section>
-
-      {/* RECENT ACTIVITY, receipts for everything */}
-      <section className="mt-6 border border-rp-rule bg-rp-paper p-5 sm:p-6" aria-label="Recent activity">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <History className="h-4 w-4 text-rp-accent" />
-            <h2 className="text-base font-semibold text-rp-ink">Recent activity</h2>
-          </div>
-          <button onClick={() => navigate("/applications")} className="inline-flex items-center gap-1.5 text-xs font-medium text-rp-ink hover:text-rp-accent">
-            See all applications <ArrowUpRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <p className="mt-1 text-xs text-rp-ink-2">A receipt for everything we do for you, newest first.</p>
-        {recentActivity.length === 0 ? (
-          <p className="mt-5 border border-dashed border-rp-rule-2 bg-rp-canvas p-5 text-center text-xs leading-relaxed text-rp-ink-2">
-            Nothing here yet. Once auto-apply starts working, every match, tailored resume, and application shows up here with a time stamp.
-          </p>
-        ) : (
-          <ul className="mt-4 divide-y divide-rp-rule">
-            {recentActivity.map((item) => (
-              <li key={item.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                <div className="flex min-w-0 items-start gap-3">
-                  {item.kind === "applied" ? (
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                  ) : item.kind === "applying" ? (
-                    <Send className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                  ) : item.kind === "needs_you" ? (
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
-                  ) : (
-                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-rp-accent" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm text-rp-ink">
-                      {item.sentence} <span className="text-rp-ink-3">· {item.when}</span>
-                    </p>
-                    <p className={cn("mt-0.5 text-xs leading-relaxed", item.kind === "needs_you" ? "text-orange-600 dark:text-orange-400" : "text-rp-ink-2")}>{item.detail}</p>
-                  </div>
-                </div>
-                {item.kind === "needs_you" ? (
-                  <Button variant="outline" size="sm" className="shrink-0" onClick={() => navigate(`/applications/${item.draftId}`)}>Fix it</Button>
-                ) : item.kind === "ready" ? (
-                  <Button variant="outline" size="sm" className="shrink-0" onClick={() => navigate(`/applications/${item.draftId}`)}>Review</Button>
-                ) : null}
-              </li>
+            <p className="mt-1 text-[13px] text-rp-ink-2">They share the daily cap. Highest fit wins.</p>
+            {recipes.length === 0 ? (
+              <EmptyState title="No recipes yet" body="Add a primary search. Locations default to the United States." action={<GhostButton onClick={addRecipe}>Create primary search</GhostButton>} />
+            ) : recipes.map((recipe, index) => (
+              <div key={recipe.id} className="mt-4 rounded-md border border-rp-ink/10 p-3">
+                <input value={recipe.name} onChange={(e) => setRecipes((current) => current.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} className="h-9 w-full bg-transparent text-[14px] font-medium" />
+                <input value={recipe.target_roles.join(", ")} onChange={(e) => setRecipes((current) => current.map((item, i) => i === index ? { ...item, target_roles: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) } : item))} placeholder="Roles (comma separated)" className="mt-2 h-9 w-full rounded-md border border-rp-ink/10 px-2 text-[13px]" />
+                <input value={recipe.locations.join(", ")} onChange={(e) => setRecipes((current) => current.map((item, i) => i === index ? { ...item, locations: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) } : item))} placeholder="Locations (United States default)" className="mt-2 h-9 w-full rounded-md border border-rp-ink/10 px-2 text-[13px]" />
+                <input value={recipe.exclude_keywords.join(", ")} onChange={(e) => setRecipes((current) => current.map((item, i) => i === index ? { ...item, exclude_keywords: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) } : item))} placeholder="Exclude keywords" className="mt-2 h-9 w-full rounded-md border border-rp-ink/10 px-2 text-[13px]" />
+                <label className="mt-2 block text-[12px] text-rp-ink-2">
+                  Min match
+                  <input type="number" min={50} max={100} value={recipe.min_fit_score} onChange={(e) => setRecipes((current) => current.map((item, i) => i === index ? { ...item, min_fit_score: Number(e.target.value) } : item))} className="mt-1 h-9 w-full rounded-md border border-rp-ink/10 px-2 text-[13px]" />
+                </label>
+                <label className="mt-2 flex items-center gap-2 text-[12px]">
+                  <input type="checkbox" checked={recipe.enabled} onChange={(e) => setRecipes((current) => current.map((item, i) => i === index ? { ...item, enabled: e.target.checked } : item))} /> Enabled
+                </label>
+              </div>
             ))}
-          </ul>
-        )}
-      </section>
+          </Panel>
 
-      {/* RESUME CHECK (ATS) */}
-      <section className="mt-6 border border-rp-rule bg-rp-paper p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <FileCheck2 className="h-4 w-4 text-rp-accent" />
-              <h2 className="text-base font-semibold text-rp-ink">Resume check (ATS)</h2>
-            </div>
-            <p className="mt-1 text-xs text-rp-ink-2">ATS is the software employers use to screen resumes. We check every tailored resume before applying.</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => navigate("/ats-checker")}>Run a manual check</Button>
+          <Panel className="p-5">
+            <h3 className="font-display text-[22px] italic">Run history</h3>
+            {runs.length === 0 ? (
+              <p className="mt-3 text-[13px] text-rp-ink-2">No scheduler runs yet.</p>
+            ) : (
+              <ul className="mt-3 space-y-2 text-[13px]">
+                {runs.map((run) => (
+                  <li key={run.id} className="flex justify-between gap-3">
+                    <span>{run.summary || run.status}</span>
+                    <span className="font-mono text-[11px] text-rp-ink-3">{new Date(run.started_at).toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
         </div>
-        {latestAts ? (
-          <div className="mt-6 grid md:grid-cols-[150px_1fr] gap-6 items-center">
-            <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full border-[10px] border-rp-paper-2 bg-rp-canvas mx-auto">
-              <span className={cn("text-3xl font-semibold tabular-nums", scoreTone(latestAts.overall))}>{Math.round(latestAts.overall)}</span>
-              <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">ATS score</span>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
-              {ATS_DIMENSIONS.map((dimension) => {
-                const value = Number(latestAts[dimension.key] ?? 0);
-                return (
-                  <div key={dimension.key}>
-                    <div className="mb-1.5 flex items-center justify-between text-xs">
-                      <span className="text-rp-ink-2">{dimension.label}</span>
-                      <span className="font-medium tabular-nums text-rp-ink">{Math.round(value)}</span>
-                    </div>
-                    <Progress value={value} className="h-1.5" />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="mt-5 flex items-start gap-3 border border-dashed border-rp-rule-2 bg-rp-canvas p-5">
-            <AlertTriangle className="mt-0.5 h-4 w-4 text-rp-ink-2" />
-            <div>
-              <p className="text-sm font-semibold text-rp-ink">No resume check yet</p>
-              <p className="mt-1 text-xs text-rp-ink-2">Prepare an application and the tailored resume's score will appear here.</p>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* SETTINGS, everything advanced lives behind this one disclosure */}
-      <section className="mt-6 border border-rp-rule bg-rp-paper">
-        <button
-          type="button"
-          onClick={() => setSettingsOpen((open) => !open)}
-          aria-expanded={settingsOpen}
-          className="flex w-full items-center justify-between gap-3 p-5 text-left"
-        >
-          <span className="flex items-center gap-2">
-            <Settings2 className="h-4 w-4 text-rp-accent" />
-            <span className="text-base font-semibold text-rp-ink">Settings</span>
-            <span className="hidden sm:inline text-xs text-rp-ink-2">Thresholds, daily caps, tailoring, connected accounts</span>
-          </span>
-          <ChevronDown className={cn("h-4 w-4 shrink-0 text-rp-ink-2 transition-transform", settingsOpen && "rotate-180")} />
-        </button>
-
-        {settingsOpen && (
-          <div className="border-t border-rp-rule p-5 sm:p-6 space-y-6">
-            <div>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="max-w-2xl">
-                  <div className="flex items-center gap-2">
-                    <Bot className="h-5 w-5 text-rp-accent" />
-                    <h3 className="text-sm font-semibold text-rp-ink">Auto-apply settings</h3>
-                  </div>
-                  <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
-                    Choose how bold we should be. Defaults work well for most people, you can change them any time.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={!hasAutoApply}
-                  onClick={() => setControls((current) => ({ ...current, agent_enabled: !current.agent_enabled }))}
-                  className={cn(
-                    "relative h-8 w-14 shrink-0 overflow-hidden rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                    controls.agent_enabled && hasAutoApply ? "bg-rp-accent" : "bg-rp-paper-2",
-                  )}
-                  aria-label="Toggle auto-apply"
-                  aria-pressed={controls.agent_enabled}
-                >
-                  <span className={cn(
-                    "absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform duration-200 ease-out",
-                    controls.agent_enabled && hasAutoApply ? "translate-x-6" : "translate-x-0",
-                  )} />
-                </button>
-              </div>
-
-              {!hasAutoApply && (
-                <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-rp-rule bg-rp-canvas p-4">
-                  <div className="flex items-start gap-3">
-                    <Lock className="mt-0.5 h-4 w-4 text-rp-ink-2" />
-                    <div>
-                      <p className="text-sm font-semibold text-rp-ink">Hands-off settings are locked</p>
-                      <p className="text-xs text-rp-ink-2">You can still Apply selected on Job matches. Scheduling without per-job clicks needs Autopilot.</p>
-                    </div>
-                  </div>
-                  <Button size="sm" onClick={() => navigate("/pricing")}>See Autopilot</Button>
-                </div>
-              )}
-
-              <div className={cn("mt-6 space-y-6", !hasAutoApply && "opacity-50 pointer-events-none")}>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rp-ink-3">How should we apply?</p>
-                  <div className="mt-3 grid sm:grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setControls((current) => ({ ...current, review_mode: "always", auto_apply_enabled: true }))}
-                      className={cn(
-                        "border p-4 text-left transition-colors",
-                        controls.review_mode !== "eligible_only" ? "border-rp-accent bg-rp-accent/5" : "border-rp-rule hover:border-rp-rule-2",
-                      )}
-                    >
-                      <ShieldCheck className="h-4 w-4 text-rp-accent" />
-                      <p className="mt-3 text-sm font-semibold text-rp-ink">Ask me before each application</p>
-                      <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">We tailor the resume and answers; you approve each one before it's sent.</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setControls((current) => ({ ...current, review_mode: "eligible_only", auto_apply_enabled: true }))}
-                      className={cn(
-                        "border p-4 text-left transition-colors",
-                        controls.review_mode === "eligible_only" ? "border-rp-accent bg-rp-accent/5" : "border-rp-rule hover:border-rp-rule-2",
-                      )}
-                    >
-                      <Send className="h-4 w-4 text-rp-accent" />
-                      <p className="mt-3 text-sm font-semibold text-rp-ink">Apply to strong matches automatically</p>
-                      <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">We apply to jobs above your score thresholds. Anything missing or sensitive moves to “Needs you” instead of being guessed.</p>
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rp-ink-3">Hands-off cadence</p>
-                  <div className="mt-3 grid sm:grid-cols-3 gap-3">
-                    {([
-                      { value: "hourly" as const, title: "Hourly", body: "Enqueue eligible roles as the scanner finds them, up to the daily cap." },
-                      { value: "daily" as const, title: "Daily", body: "One scheduled batch per day. Further hunter runs score only." },
-                      { value: "off" as const, title: "Off", body: "Scheduler never auto-enqueues. Apply selected still works." },
-                    ]).map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setControls((current) => ({ ...current, hands_off_cadence: option.value }))}
-                        className={cn(
-                          "border p-4 text-left transition-colors",
-                          controls.hands_off_cadence === option.value ? "border-rp-accent bg-rp-accent/5" : "border-rp-rule hover:border-rp-rule-2",
-                        )}
-                      >
-                        <p className="text-sm font-semibold text-rp-ink">{option.title}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">{option.body}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-rp-rule pt-5">
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold text-rp-ink">Minimum fit score</span>
-                    <input
-                      type="number"
-                      min="60"
-                      max="100"
-                      value={controls.auto_apply_min_fit_score}
-                      onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_fit_score: Number(event.target.value) }))}
-                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                    />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">Only apply to jobs that fit you at least this well.</span>
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold text-rp-ink">Applications per day</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max={dailyCapMax}
-                      value={controls.daily_apply_cap}
-                      onChange={(event) => setControls((current) => ({ ...current, daily_apply_cap: Number(event.target.value) }))}
-                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                    />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">Hard cap for live submits in one day. {planName} max is {dailyCapMax}. Not 600/day.</span>
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold text-rp-ink">Checks per day</span>
-                    <input
-                      type="number"
-                      min="30"
-                      max="300"
-                      value={controls.agent_max_actions_per_day}
-                      onChange={(event) => setControls((current) => ({ ...current, agent_max_actions_per_day: Number(event.target.value) }))}
-                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                    />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">How much background work we may do daily.</span>
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold text-rp-ink">Minimum resume score</span>
-                    <input
-                      type="number"
-                      min="70"
-                      max="95"
-                      value={controls.auto_apply_min_ats_score}
-                      onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_ats_score: Number(event.target.value) }))}
-                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                    />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">The tailored resume must score at least this (default 85).</span>
-                  </label>
-                </div>
-
-                <div className="border-t border-rp-rule pt-5">
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold text-rp-ink">How we tailor your resume</span>
-                    <select
-                      value={controls.tailoring_mode}
-                      onChange={(event) => setControls((current) => ({ ...current, tailoring_mode: event.target.value === "coverage_boost" ? "coverage_boost" : "evidence_only" }))}
-                      className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
-                    >
-                      <option value="evidence_only">Strictly your real experience</option>
-                      <option value="coverage_boost">Highlight matching keywords from your real experience</option>
-                    </select>
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">Either way, we never invent skills, employers, dates, or results.</span>
-                  </label>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rp-rule pt-5">
-                  <p className="text-xs text-rp-ink-2">
-                    {controls.agent_actions_today}/{controls.agent_max_actions_per_day} checks used today · {credits ? `${credits.remaining} credits left` : "credits"} · 1 credit = 1 successful submit
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => navigate("/career-ops/preferences")}>
-                      <Settings2 className="mr-2 h-4 w-4" /> Job preferences
-                    </Button>
-                    <Button size="sm" onClick={saveControls} disabled={saving}>
-                      {saving ? "Saving…" : "Save settings"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4 border-t border-rp-rule pt-6">
-              <div className="border border-rp-rule bg-rp-canvas p-5">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-rp-accent" />
-                  <h3 className="text-sm font-semibold text-rp-ink">Your resume</h3>
-                </div>
-                {resume ? (
-                  <>
-                    <div className="mt-4 flex items-start gap-3">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-rp-ink">{resume.title || "Untitled resume"}</p>
-                        <p className="mt-1 text-xs text-rp-ink-2">Updated {formatDistanceToNow(new Date(resume.updated_at), { addSuffix: true })}</p>
-                      </div>
-                    </div>
-                    <Button className="mt-4 w-full" variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${resume.id}`)}>Review resume</Button>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">We need one resume before we can match jobs or tailor anything.</p>
-                    <Button className="mt-4 w-full" size="sm" onClick={() => navigate("/resume-builder")}>Import resume</Button>
-                  </>
-                )}
-              </div>
-
-              <div className="border border-rp-rule bg-rp-canvas p-5">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-rp-accent" />
-                  <h3 className="text-sm font-semibold text-rp-ink">Gmail for verification codes</h3>
-                </div>
-                {gmailConnection ? (
-                  <>
-                    <div className="mt-4 flex items-start gap-3">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-rp-ink">Inbox connected</p>
-                        <p className="mt-1 truncate text-xs text-rp-ink-2">{gmailConnection.gmail_email}</p>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">We can privately pick up a job portal's one-time code, use it once, and continue. We never see your password.</p>
-                    <Button className="mt-4 w-full" variant="outline" size="sm" onClick={() => navigate("/inbox")}>Open application inbox</Button>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">Connect Gmail once so employer verification codes don't slow your applications down.</p>
-                    <Button className="mt-4 w-full" size="sm" onClick={() => navigate("/inbox")}>Connect Gmail</Button>
-                  </>
-                )}
-              </div>
-
-              <div className="border border-rp-rule bg-rp-canvas p-5">
-                <div className="flex items-center gap-2">
-                  <Clock3 className="h-4 w-4 text-rp-accent" />
-                  <h3 className="text-sm font-semibold text-rp-ink">Last background run</h3>
-                </div>
-                {lastRun ? (
-                  <>
-                    <div className="mt-4 flex items-center justify-between gap-3">
-                      <span className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                        lastRun.status === "completed" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                      )}>{lastRun.status}</span>
-                      <span className="text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(lastRun.started_at), { addSuffix: true })}</span>
-                    </div>
-                    <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">{lastRun.summary || "No summary was recorded."}</p>
-                  </>
-                ) : (
-                  <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">No background runs yet. They start automatically once auto-apply is on.</p>
-                )}
-              </div>
-
-              <div className="border border-rp-rule bg-rp-canvas p-5">
-                <h3 className="text-sm font-semibold text-rp-ink">What we never do</h3>
-                <ul className="mt-4 space-y-3 text-xs text-rp-ink-2">
-                  <li className="flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-rp-accent" /> Your saved preferences always override our matching.</li>
-                  <li className="flex gap-2"><FileCheck2 className="h-4 w-4 shrink-0 text-rp-accent" /> We never invent facts or numbers on your resume.</li>
-                  <li className="flex gap-2"><Send className="h-4 w-4 shrink-0 text-rp-accent" /> Only an “Applied” receipt counts as sent.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <ApplyProgressModal
-        open={applyModalOpen}
-        jobs={applyJobs}
-        errors={applyErrors}
-        onClose={() => setApplyModalOpen(false)}
-        onOpenApplication={(draftId) => {
-          setApplyModalOpen(false);
-          navigate(`/applications/${draftId}`);
-        }}
-      />
+      </div>
     </div>
   );
 }

@@ -5,10 +5,9 @@ export default function PrivacyPolicy() {
     <LegalLayout title="Privacy Policy" subtitle="How ResumePreps collects, uses, and protects your data">
       <LegalSection title="1. Overview">
         <p>
-          ResumePreps ("ResumePreps", "we", "us") operates resumepreps.com, an AI-assisted career platform that helps
-          you build ATS-clean résumés, find company-direct job openings, prepare tailored application materials, submit
-          job applications under your direction, and track outcomes. This Privacy Policy explains what information we
-          collect, how we use it, who processes it on our behalf, and the rights you have over your data.
+          ResumePreps ("ResumePreps", "we", "us") operates resumepreps.com, a United States job-application desk that
+          scores matches, tailors packets from your real history, queues cloud applies, and stores immutable receipts.
+          This Privacy Policy explains what information we collect, how we use it, who processes it on our behalf, and the rights you have over your data.
         </p>
         <p>
           By creating an account or using the service, you agree to the practices described here. If you do not agree,

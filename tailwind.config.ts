@@ -16,38 +16,28 @@ export default {
 		extend: {
 			fontFamily: {
 				sans: [
-					'Inter',
+					'DM Sans',
 					'ui-sans-serif',
 					'system-ui',
-					'-apple-system',
-					'Segoe UI',
 					'sans-serif',
-					'Apple Color Emoji',
-					'Segoe UI Emoji'
 				],
 				serif: [
-					'Source Serif 4',
+					'Newsreader',
 					'ui-serif',
 					'Georgia',
-					'Cambria',
-					'Times New Roman',
 					'serif'
 				],
 				display: [
-					'Source Serif 4',
+					'Newsreader',
 					'ui-serif',
 					'Georgia',
 					'serif'
 				],
 				mono: [
-					'JetBrains Mono',
+					'IBM Plex Mono',
 					'ui-monospace',
 					'SFMono-Regular',
 					'Menlo',
-					'Monaco',
-					'Consolas',
-					'Liberation Mono',
-					'Courier New',
 					'monospace'
 				]
 			},

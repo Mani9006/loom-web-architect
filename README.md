@@ -1,6 +1,6 @@
-# ResumePrep
+# ResumePreps
 
-ResumePrep is an AI-powered career platform for building ATS-ready resumes, creating tailored cover letters, practicing interviews, tracking job applications, and managing career workflows from one workspace.
+ResumePreps is a United States job-application desk: matches, per-job tailoring, cloud apply, receipts, recruiter inbox, and hands-off scheduling. Submitted is only true with a portal receipt.
 
 ## What this project includes
 

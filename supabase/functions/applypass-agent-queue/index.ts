@@ -251,6 +251,20 @@ async function syncCareerDraft(
   }).eq("id", draftId).eq("user_id", userId);
   if (draftSyncError) console.error("[applypass-agent-queue] draft_applications complete-sync failed:", draftSyncError.message);
 
+  if (submitted) {
+    const title = asString(payload.job_title) || "Application";
+    const company = asString(payload.company_name) || "";
+    const url = asString(payload.apply_url) || null;
+    if (url) {
+      const { data: existingCard } = await serviceClient.from("tracked_jobs").select("id").eq("user_id", userId).eq("url", url).maybeSingle();
+      if (existingCard?.id) {
+        await serviceClient.from("tracked_jobs").update({ status: "Applied", updated_at: new Date().toISOString() }).eq("id", existingCard.id);
+      } else {
+        await serviceClient.from("tracked_jobs").insert({ user_id: userId, title, company, status: "Applied", url });
+      }
+    }
+  }
+
   if (submitted && trackedJobId) {
     await serviceClient.from("mc_tracked_jobs").update({
       status: "applied",

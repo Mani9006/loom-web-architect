@@ -1,45 +1,18 @@
-import { useLocation, useNavigate } from "react-router-dom";
-import { useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Sparkles, ArrowLeft } from "lucide-react";
+import { Link } from "react-router-dom";
+import { PublicFrame } from "@/components/brand/PublicFrame";
 
-const NotFound = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
-  }, [location.pathname]);
-
+export default function NotFound() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[hsl(var(--primary)/0.95)] text-primary-foreground relative overflow-hidden">
-      {/* Decorative elements */}
-      <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-white/5" />
-      <div className="absolute -bottom-48 -left-48 w-[500px] h-[500px] rounded-full bg-white/5" />
-
-      <div className="relative z-10 text-center space-y-6">
-        <div className="flex items-center justify-center gap-2.5 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <span className="text-xl font-bold">ResumePreps</span>
+    <PublicFrame>
+      <main className="mx-auto max-w-[640px] px-6 py-24">
+        <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-rp-accent-2">404</p>
+        <h1 className="mt-3 font-display text-[48px] italic">This page is not on the desk.</h1>
+        <p className="mt-4 text-[16px] text-rp-ink-2">The URL may have moved into Job matches, Applications, or Home.</p>
+        <div className="mt-8 flex gap-3">
+          <Link to="/" className="rounded-md bg-primary px-4 py-2.5 text-[13px] font-medium text-primary-foreground no-underline">Marketing</Link>
+          <Link to="/home" className="rounded-md border border-rp-ink/15 px-4 py-2.5 text-[13px] no-underline">Home</Link>
         </div>
-
-        <h1 className="text-3xl sm:text-4xl font-bold">This is not the page you were looking for (404)</h1>
-        <p className="text-primary-foreground/70 text-lg max-w-md mx-auto">
-          The page you are looking for doesn't exist or has been moved.{" "}
-        </p>
-        <Button
-          variant="link"
-          className="text-primary-foreground/90 hover:text-primary-foreground font-semibold gap-2"
-          onClick={() => navigate("/home")}
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Go back home
-        </Button>
-      </div>
-    </div>
+      </main>
+    </PublicFrame>
   );
-};
-
-export default NotFound;
+}

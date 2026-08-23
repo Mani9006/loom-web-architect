@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Activity, AlertTriangle, Check, Copy as CopyIcon, Download, ExternalLink, FileCheck2, FileText, Loader2, MessageSquareText, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, Check, Copy as CopyIcon, Download, ExternalLink, FileCheck2, FileText, Loader2, MessageSquareText, RefreshCw, Send } from "lucide-react";
+import { ResumeDiffTheater } from "@/components/apply/ResumeDiffTheater";
+import { parseMailbox } from "@/lib/apply-mailbox";
 
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -14,7 +16,7 @@ import { toast } from "sonner";
 import type { TailoringReport } from "../../supabase/functions/_shared/tailoring-report-core.ts";
 
 type DraftStatus = "draft" | "ready" | "queued" | "submitted" | "skipped" | "failed";
-type DetailTab = "form" | "resume" | "cover" | "activity";
+type DetailTab = "form" | "resume" | "cover" | "job" | "inbox";
 
 interface Answer { question: string; answer: string }
 interface Draft {
@@ -115,6 +117,9 @@ export default function ApplicationReviewPage() {
   const [report, setReport] = useState<TailoringReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [receipt, setReceipt] = useState<ApplicationReceipt | null>(null);
+  const [mailbox, setMailbox] = useState<string | null>(null);
+  const [sourceResume, setSourceResume] = useState("");
+  const [relatedMail, setRelatedMail] = useState<Array<{ id: string; subject: string; from_email: string; body_preview: string | null }>>([]);
 
   const loadReport = useCallback(async (draftId: string) => {
     setReportLoading(true);
@@ -167,6 +172,29 @@ export default function ApplicationReviewPage() {
       .limit(1)
       .maybeSingle()
       .then(({ data: receiptData }: { data: ApplicationReceipt | null }) => setReceipt(receiptData ?? null)));
+    requests.push((supabase as never as { rpc: (n: string) => Promise<{ data: unknown }> }).rpc("ensure_apply_mailbox")
+      .then(({ data }) => setMailbox(parseMailbox(data)?.address ?? null)));
+    requests.push((supabase as never as { from: (t: string) => { select: (c: string) => { eq: (a: string, b: string) => { order: (c: string, o: { ascending: boolean }) => { limit: (n: number) => Promise<{ data: Array<{ id: string; subject: string | null; from_email: string; body_preview: string | null }> | null }> } } } } }).from("mc_inbound_emails")
+      .select("id,subject,from_email,body_preview")
+      .eq("user_id", user.id)
+      .order("received_at", { ascending: false })
+      .limit(12)
+      .then(({ data }) => {
+        const company = nextDraft.evaluation.scanned_job.company.name.toLowerCase();
+        const title = nextDraft.evaluation.scanned_job.title.toLowerCase();
+        setRelatedMail((data || []).filter((row) => {
+          const hay = `${row.subject || ""} ${row.from_email} ${row.body_preview || ""}`.toLowerCase();
+          return hay.includes(company) || hay.includes(title);
+        }).map((row) => ({ id: row.id, subject: row.subject || "Application update", from_email: row.from_email, body_preview: row.body_preview })));
+      }));
+    if (nextDraft.tailored_resume_id) {
+      requests.push(supabase.from("resumes").select("summary,experience").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(1).maybeSingle()
+        .then(({ data }) => {
+          const experience = Array.isArray(data?.experience) ? data.experience as Array<Record<string, unknown>> : [];
+          const bullets = experience.flatMap((item) => Array.isArray(item.bullets) ? item.bullets.map(String) : []);
+          setSourceResume([String(data?.summary || ""), ...bullets].filter(Boolean).join("\n"));
+        }));
+    }
     await Promise.allSettled(requests);
     if (initial) setLoading(false);
   }, [id, navigate, user]);
@@ -193,16 +221,16 @@ export default function ApplicationReviewPage() {
   async function queueApplication() {
     if (!draft) return;
     setQueueing(true);
-    const { error } = await supabase.functions.invoke("career-ops-submit", { body: { draft_application_id: draft.id } });
+    const { error } = await supabase.functions.invoke("apply-engine-enqueue", { body: { draft_ids: [draft.id], evaluation_ids: [draft.evaluation_id], intent: "user_selected" } });
     setQueueing(false);
     if (error) {
       void captureIncident(error, { source: "manual", operation: "application_queue" });
       toast.error("Automatic submission is unavailable for this job or policy. Your packet remains ready and the employer link is still available.");
       return;
     }
-    toast.success("Submission queued. This page will update as each check completes.");
+    toast.success("In the cloud queue. A worker picks this up when free.");
     await load();
-    setTab("activity");
+    setTab("form");
   }
 
   async function refreshPacket() {
@@ -297,6 +325,7 @@ export default function ApplicationReviewPage() {
             <div><dt className="text-muted-foreground">ATS</dt><dd className="mt-0.5 font-medium">{receipt.ats || detectAtsFromUrl(job.apply_url).label}</dd></div>
             <div><dt className="text-muted-foreground">Recorded</dt><dd className="mt-0.5 font-medium">{new Date(receipt.created_at).toLocaleString()}</dd></div>
             <div className="sm:col-span-2"><dt className="text-muted-foreground">Evidence</dt><dd className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted-foreground">{JSON.stringify(receipt.evidence ?? {}, null, 2)}</dd></div>
+            <div><dt className="text-muted-foreground">Apply-from email</dt><dd className="mt-0.5 font-medium">{mailbox || "Assigned on Recruiter inbox"}</dd></div>
             {receipt.fields && Object.keys(receipt.fields).length > 0 && (
               <div className="sm:col-span-2"><dt className="text-muted-foreground">Fields filled</dt><dd className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted-foreground">{JSON.stringify(receipt.fields, null, 2)}</dd></div>
             )}
@@ -312,15 +341,17 @@ export default function ApplicationReviewPage() {
       {ats && <section className="mt-5 border border-rp-rule bg-rp-canvas p-5"><div className="grid gap-5 lg:grid-cols-[190px_1fr]"><div className="flex items-center gap-4"><div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-[7px] border-primary/20"><span className="text-xl font-bold">{Math.round(ats.overall)}%</span><span className="text-[9px] uppercase">ATS</span></div><div><p className="text-sm font-semibold">ATS résumé readiness</p><p className="mt-1 text-xs text-muted-foreground">A weighted check of this tailored résumé against this job. Different from career fit.</p>{keywordTotal > 0 && <p className="mt-2 text-[11px] text-muted-foreground">Keyword coverage: {keywordMatches}/{keywordTotal} terms matched ({Math.round(ats.dim_keywords)}%).</p>}</div></div><div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{dimensions.map((dimension) => { const value = Number(ats[dimension.key] || 0); const label = dimension.key === "dim_keywords" ? "Keyword coverage" : dimension.label; return <div key={dimension.key}><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{label}</span><span>{Math.round(value)}%</span></div><Progress value={value} className="h-1.5" /></div>; })}</div></div></section>}
 
       <div className="mt-6 flex flex-wrap gap-1 border-b border-rp-rule">{[
-        { id: "form" as const, label: "Submitted form", icon: FileCheck2 }, { id: "resume" as const, label: "Résumé", icon: FileText },
-        { id: "cover" as const, label: "Cover note", icon: MessageSquareText }, { id: "activity" as const, label: "Activity", icon: Activity },
+        { id: "form" as const, label: "Form receipt", icon: FileCheck2 }, { id: "resume" as const, label: "Optimized resume", icon: FileText },
+        { id: "cover" as const, label: "Cover", icon: MessageSquareText }, { id: "job" as const, label: "Job", icon: ExternalLink },
+        { id: "inbox" as const, label: "Related inbox", icon: MessageSquareText },
       ].map((item) => <button key={item.id} onClick={() => setTab(item.id)} className={cn("inline-flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-medium", tab === item.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}><item.icon className="h-3.5 w-3.5" />{item.label}</button>)}</div>
 
       <section className="min-h-80 border border-t-0 border-rp-rule bg-rp-paper p-5 sm:p-6">
         {tab === "form" && <div><div className="flex items-center justify-between"><div><h2 className="text-base font-semibold">Application answers</h2><p className="mt-1 text-xs text-muted-foreground">The exact reusable answers prepared for this employer.</p></div></div>{formAnswers.length ? <ol className="mt-6 divide-y divide-rp-rule">{formAnswers.map((answer, index) => <li key={`${answer.question}-${index}`} className="grid gap-2 py-4 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)_auto]"><p className="text-xs font-semibold">{answer.question}</p><p className="text-sm leading-relaxed text-muted-foreground">{answer.answer}</p><CopyButton value={answer.answer} /></li>)}</ol> : <Empty text="No additional employer questions were saved for this application." />}</div>}
-        {tab === "resume" && <div><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Tailored résumé</h2><p className="mt-1 text-xs text-muted-foreground">The text below is an audit preview. The application uses the generated, ATS-friendly PDF artifact.</p></div><div className="flex gap-2">{draft.tailored_resume_id && <Button variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}>Open editor</Button>}{draft.tailored_resume_id && <Button size="sm" onClick={() => void downloadPdf()} disabled={rendering}><Download className="mr-2 h-4 w-4" />{rendering ? "Rendering…" : "Download PDF"}</Button>}</div></div><div className="mt-6"><TailoringReportCard report={report} loading={reportLoading} /></div>{draft.tailored_cv_md ? <pre className="mt-6 max-h-[700px] overflow-y-auto whitespace-pre-wrap border border-rp-rule bg-background p-6 font-sans text-sm leading-relaxed">{draft.tailored_cv_md}</pre> : <Empty text="No tailored résumé was generated." />}</div>}
-        {tab === "cover" && <div><h2 className="text-base font-semibold">Cover note</h2><p className="mt-1 text-xs text-muted-foreground">Generated only when useful or requested by the employer.</p>{coverNote ? <div className="mt-6 border border-rp-rule bg-background p-6"><div className="flex justify-end"><CopyButton value={coverNote.answer} /></div><p className="whitespace-pre-wrap text-sm leading-relaxed">{coverNote.answer}</p></div> : <Empty text="No cover note is attached to this application." />}</div>}
-        {tab === "activity" && <div><h2 className="text-base font-semibold">Application activity</h2><p className="mt-1 text-xs text-muted-foreground">Preparation, queue attempts, worker checks, and outcome for this job.</p><div className="mt-6 space-y-3"><ActivityRow title="Packet prepared" date={draft.created_at} detail="Tailored résumé and application answers created." />{task && <ActivityRow title={`Submission ${task.status}`} date={task.completed_at || task.started_at || task.created_at} detail={`Attempt ${task.attempt_count} of ${task.max_attempts}${task.error_message ? ` · ${task.error_message}` : ""}`} />}{logs.map((entry, index) => <ActivityRow key={index} title={String(entry.step || entry.status || entry.event || `Worker event ${index + 1}`)} date={typeof entry.at === "string" ? entry.at : typeof entry.timestamp === "string" ? entry.timestamp : null} detail={String(entry.message || entry.detail || "Application check recorded.")} />)}{draft.submitted_at && <ActivityRow title="Submitted" date={draft.submitted_at} detail="Submission recorded successfully." />}{!task && !draft.submitted_at && <ActivityRow title="Awaiting your decision" date={draft.updated_at} detail="Review the packet, queue supported automation, or open the employer portal." />}</div></div>}
+        {tab === "resume" && <div><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Optimized resume</h2><p className="mt-1 text-xs text-muted-foreground">Before vs after. Lines rewrite from your source bullets — we do not invent employers or metrics.</p></div><div className="flex gap-2">{draft.tailored_resume_id && <Button variant="outline" size="sm" onClick={() => navigate(`/resume-builder/${draft.tailored_resume_id}`)}>Open editor</Button>}{draft.tailored_resume_id && <Button size="sm" onClick={() => void downloadPdf()} disabled={rendering}><Download className="mr-2 h-4 w-4" />{rendering ? "Rendering…" : "Download PDF"}</Button>}</div></div><div className="mt-6"><ResumeDiffTheater before={sourceResume} after={draft.tailored_cv_md || ""} status={draft.status} /></div><div className="mt-6"><TailoringReportCard report={report} loading={reportLoading} /></div></div>}
+        {tab === "cover" && <div><h2 className="text-base font-semibold">Cover</h2><p className="mt-1 text-xs text-muted-foreground">Generated only when useful or requested by the employer.</p>{coverNote ? <div className="mt-6 border border-rp-rule bg-background p-6"><div className="flex justify-end"><CopyButton value={coverNote.answer} /></div><p className="whitespace-pre-wrap text-sm leading-relaxed">{coverNote.answer}</p></div> : <Empty text="No cover note is attached to this application." />}</div>}
+        {tab === "job" && <div><h2 className="text-base font-semibold">Job</h2><p className="mt-2 text-sm">{job.title} · {job.company.name}</p><p className="mt-2 text-xs text-muted-foreground">{detectAtsFromUrl(job.apply_url).label}</p><p className="mt-2 text-xs text-muted-foreground">Apply-from: {mailbox || "Assigned on Recruiter inbox"}</p><Button className="mt-4" asChild><a href={job.apply_url} target="_blank" rel="noreferrer">Open posting</a></Button>{logs.length > 0 && <div className="mt-6 space-y-2">{logs.map((entry, index) => <ActivityRow key={index} title={String(entry.step || entry.status || `Event ${index + 1}`)} date={typeof entry.at === "string" ? entry.at : null} detail={String(entry.message || entry.detail || "")} />)}</div>}</div>}
+        {tab === "inbox" && <div><h2 className="text-base font-semibold">Related inbox</h2><p className="mt-1 text-xs text-muted-foreground">Mail that mentions this company or title, plus the apply-from address used on the form.</p><p className="mt-3 font-mono text-xs">{mailbox || "Mailbox assigns on first open of Recruiter inbox."}</p>{relatedMail.length === 0 ? <Empty text="No related recruiter mail yet for this posting." /> : <ul className="mt-6 divide-y divide-rp-rule">{relatedMail.map((row) => <li key={row.id} className="py-4"><p className="text-sm font-medium">{row.subject}</p><p className="mt-1 text-xs text-muted-foreground">{row.from_email}</p>{row.body_preview && <p className="mt-2 text-sm text-muted-foreground">{row.body_preview}</p>}</li>)}</ul>}</div>}
       </section>
       <p className="mt-4 text-xs text-muted-foreground">Only a receipt with submitted=true counts as applied. Queued/sending means the cloud worker is still running. Unsupported ATS stay in Needs you.</p>
     </div>

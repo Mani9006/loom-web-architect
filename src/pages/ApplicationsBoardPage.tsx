@@ -42,9 +42,13 @@ import {
 
 const TABS: Array<{ key: BoardTab; label: string }> = [
   { key: "all", label: "All" },
+  { key: "submitted", label: "Submitted" },
   { key: "in_flight", label: "In flight" },
   { key: "needs_you", label: "Needs you" },
+  { key: "review_required", label: "Review required" },
+  { key: "queued", label: "Queued" },
   { key: "failed", label: "Failed" },
+  { key: "expired", label: "Job expired" },
   { key: "skipped", label: "Skipped" },
 ];
 
@@ -209,7 +213,7 @@ export default function ApplicationsBoardPage() {
 
   if (loading) {
     return (
-      <div className="max-w-[1100px] mx-auto px-6 lg:px-10 py-10 space-y-5">
+      <div className="space-y-5">
         <div className="h-20 rounded-lg bg-rp-paper animate-pulse" />
         <div className="h-10 rounded-lg bg-rp-paper animate-pulse" />
         <div className="h-96 rounded-lg bg-rp-paper animate-pulse" />
@@ -218,11 +222,11 @@ export default function ApplicationsBoardPage() {
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto px-6 lg:px-10 pt-10 pb-16">
+    <div>
       <PageHeader
         title="Applications"
-        status={`queue · ${counts.all} total`}
-        description="Queued, sending, submitted, needs you, failed. Submitted only after a portal receipt — never a fake success."
+        status={`cloud queue · ${counts.all}`}
+        description="All, Submitted, In flight, Needs you, Failed, Skipped, Review required, Queued, Job expired. Submitted only after a portal receipt."
         action={<CreditBalance snapshot={credits} />}
       />
 
