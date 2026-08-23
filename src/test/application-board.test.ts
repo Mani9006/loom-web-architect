@@ -51,10 +51,10 @@ describe("deriveBoardStatus", () => {
     expect(status.tab).toBe("in_flight");
   });
 
-  it("maps queued with a running task to Applying", () => {
+  it("maps queued with a running task to Sending", () => {
     const status = deriveBoardStatus(draft({ status: "queued", applypass_task_id: "task-1" }), task({ status: "running" }));
     expect(status.key).toBe("applying");
-    expect(status.label).toBe("Applying");
+    expect(status.label).toBe("Sending");
   });
 
   it("maps queued with no task to Queued", () => {

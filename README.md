@@ -4,12 +4,41 @@ ResumePrep is an AI-powered career platform for building ATS-ready resumes, crea
 
 ## What this project includes
 
+- **Apply engine**: Cloud application queue. Detect ATS from a job URL, enqueue independent workers, tailor per job, submit only through live adapters (Greenhouse, Lever, Ashby, Workable, Workday). Unsupported ATS stay in Needs you with a tailored packet. Never fake submitted.
 - **Resume Builder**: Structured resume editing, templates, previews, exports, and ATS quality checks.
 - **AI Career Workspace**: Chat-driven support for resumes, cover letters, interviews, and job search workflows.
 - **Job Search & Tracking**: Saved jobs, application tracking, matching, analytics, and collection workflows.
-- **Auto Apply / ApplyPass**: Assisted application flows and browser-worker automation support.
 - **Admin & Control Center**: Owner-only operational views, executive brief generation, governance checks, and release monitoring.
 - **Supabase Backend**: Auth, PostgreSQL, RLS-backed data access, migrations, and Deno edge functions.
+
+## Apply engine (core product)
+
+ResumePreps is an apply engine. The dashboard sends job URLs and match IDs to the cloud. Playwright workers fill and submit. The browser tab never submits the ATS form.
+
+### Live vs stubbed adapters
+
+| Status | ATS |
+| --- | --- |
+| **Live submit** | greenhouse, lever, ashby, workable, workday |
+| **Detected only** (Needs you + tailored packet) | icims, smartrecruiters, jobvite, successfactors, oraclecloud, rippling, phenom, bamboohr, jazzhr, breezyhr, recruitee, teamtailor, pinpoint, polymer, dover, gem, brassring, dayforce, hireology, join, paylocity, ultipro, adp, zohorecruit |
+| **Account required** (never API-submittable) | indeed, naukri, linkedin |
+
+Workday is best-effort multi-page. Login walls, SSO, and CAPTCHA return Needs you. Detection of an ATS is not the same as ability to submit.
+
+### How to try it
+
+1. Open **Job matches**. Paste a Greenhouse / Lever / Ashby URL, or multi-select rows and hit **Apply selected**.
+2. Watch **Applications**: queued → sending → submitted or needs you. Open a row for the receipt.
+3. **Hands-off apply** (Autopilot): set cadence (hourly / daily / off), match floor, daily cap. Start applying. Stop applying is the kill switch for in-flight hands-off jobs. Apply selected does not require Autopilot.
+4. Run the worker: `npm run applypass:worker` with `APPLYPASS_AUTO_SUBMIT=true` only when you intend real submits.
+
+Job matches come from an hourly career-page scan of Greenhouse, Ashby, and Lever. This is not a 50k-watcher aggregator.
+
+### Edge functions
+
+- `POST ats-detect` `{ url }` → `{ ats, detected, submittable, mode, reason }`
+- `POST apply-engine-enqueue` `{ evaluation_ids?, apply_url?, intent: "user_selected" \| "hands_off" }` — fans out independent `applypass_tasks` (`task_type: apply_engine`)
+- `applypass-agent-queue` `ensure-packet` — tailor + PDF in the worker, skip browser when the ATS is not live
 
 ## Tech stack
 

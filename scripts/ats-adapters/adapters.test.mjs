@@ -19,7 +19,8 @@ import {
   requiredMissingFromFields,
 } from "./helpers.mjs";
 import { defineAdapter, submitRefusal } from "./contract.mjs";
-import { adapters, ashbyAdapter, genericAdapter, greenhouseAdapter, leverAdapter, pickAdapter, workableAdapter } from "./index.mjs";
+import { adapters, ashbyAdapter, genericAdapter, greenhouseAdapter, leverAdapter, pickAdapter, workdayAdapter, workableAdapter } from "./index.mjs";
+import { detectAts } from "./catalog.mjs";
 import { ashbyConsentLabel, ashbyStandardValueFor, isAshbyUrl } from "./ashby.mjs";
 import { isWorkableCustomField, isWorkableUrl, workableStandardValueFor } from "./workable.mjs";
 
@@ -52,11 +53,25 @@ test("detectAtsFromUrl rejects lookalike and unknown hosts", () => {
   assert.equal(detectAtsFromUrl("not a url"), null);
 });
 
+test("catalog detectAts classifies Workday and unsupported ATS without faking submit", () => {
+  const workday = detectAts("https://acme.wd1.myworkdayjobs.com/en-US/External/job/Role/JR-1");
+  assert.equal(workday.ats, "workday");
+  assert.equal(workday.submittable, true);
+  const icims = detectAts("https://careers-acme.icims.com/jobs/99/job");
+  assert.equal(icims.ats, "icims");
+  assert.equal(icims.submittable, false);
+  const indeed = detectAts("https://www.indeed.com/viewjob?jk=abc");
+  assert.equal(indeed.mode, "account_required");
+  assert.equal(indeed.submittable, false);
+});
+
 test("adapter detect() answers from URL alone (no page needed)", async () => {
   assert.equal(await greenhouseAdapter.detect("https://boards.greenhouse.io/acme/jobs/1", null), true);
   assert.equal(await leverAdapter.detect("https://jobs.lever.co/acme/role", null), true);
   assert.equal(await ashbyAdapter.detect("https://jobs.ashbyhq.com/openai/c59e2e83-59a6-45bc-82cd-665c6a8a5761", null), true);
   assert.equal(await workableAdapter.detect("https://apply.workable.com/sigmadefense/j/6FEAD09BCC/", null), true);
+  assert.equal(await workdayAdapter.detect("https://acme.wd5.myworkdayjobs.com/en-US/External/job/Role/JR-1", null), true);
+  assert.equal(await workdayAdapter.detect("https://jobs.lever.co/acme/role", null), false);
   assert.equal(await greenhouseAdapter.detect("https://jobs.lever.co/acme/role", null), false);
   assert.equal(await leverAdapter.detect("https://boards.greenhouse.io/acme/jobs/1", null), false);
   assert.equal(await ashbyAdapter.detect("https://jobs.lever.co/acme/role", null), false);
@@ -66,19 +81,20 @@ test("adapter detect() answers from URL alone (no page needed)", async () => {
   assert.equal(genericAdapter.detect("https://anything.example.com", null), true);
 });
 
-test("pickAdapter routes greenhouse, lever, ashby, workable, then generic", async () => {
+test("pickAdapter routes greenhouse, lever, ashby, workable, workday, then generic", async () => {
   assert.equal((await pickAdapter("https://boards.greenhouse.io/acme/jobs/1")).metadata.name, "greenhouse");
   assert.equal((await pickAdapter("https://jobs.lever.co/acme/role/apply")).metadata.name, "lever");
   assert.equal((await pickAdapter("https://jobs.ashbyhq.com/openai/c59e2e83-59a6-45bc-82cd-665c6a8a5761")).metadata.name, "ashby");
   assert.equal((await pickAdapter("https://jobs.ashbyhq.com/openai/uuid-here/application")).metadata.name, "ashby");
   assert.equal((await pickAdapter("https://apply.workable.com/sigmadefense/j/6FEAD09BCC/")).metadata.name, "workable");
   assert.equal((await pickAdapter("https://apply.workable.com/sigmadefense/j/6FEAD09BCC/apply/")).metadata.name, "workable");
+  assert.equal((await pickAdapter("https://acme.wd1.myworkdayjobs.com/en-US/External/job/Role/JR-1")).metadata.name, "workday");
   assert.equal((await pickAdapter("https://careers.example.com/apply")).metadata.name, "generic");
   assert.equal((await pickAdapter("garbage-not-a-url")).metadata.name, "generic");
 });
 
 test("registry order tries specific adapters before generic", () => {
-  assert.deepEqual(adapters.map((a) => a.metadata.name), ["greenhouse", "lever", "ashby", "workable", "generic"]);
+  assert.deepEqual(adapters.map((a) => a.metadata.name), ["greenhouse", "lever", "ashby", "workable", "workday", "generic"]);
 });
 
 // --- Workable URL + field resolution -----------------------------------------

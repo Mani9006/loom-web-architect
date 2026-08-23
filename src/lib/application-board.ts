@@ -3,11 +3,11 @@
  * (draft_applications + applypass_tasks) to the board's display taxonomy.
  *
  * Display taxonomy (owner-specified):
- *   Queued · Tailoring · Applying · Submitted · Needs you (reason) ·
+ *   Queued · Tailoring · Sending · Submitted · Needs you (reason) ·
  *   Couldn't apply (reason) · Job expired · Failed · Skipped
  *
  * Board tabs: All / In flight / Needs you / Failed / Skipped.
- *   - In flight  = the live pipeline: Tailoring, Queued, Applying, Submitted
+ *   - In flight  = the live pipeline: Tailoring, Queued, Sending, Submitted
  *     (Submitted stays here because the application is out with the employer
  *     awaiting their decision, the flight is not over until they respond.)
  *   - Needs you  = blocked on the user (review, employer verification, fix)
@@ -77,7 +77,7 @@ export interface BoardRow {
 const STATUS_LABELS: Record<BoardStatusKey, string> = {
   queued: "Queued",
   tailoring: "Tailoring",
-  applying: "Applying",
+  applying: "Sending",
   submitted: "Submitted",
   needs_you: "Needs you",
   cant_apply: "Couldn't apply",
@@ -152,7 +152,7 @@ export function deriveBoardStatus(draft: BoardDraft, task: BoardTask | null | un
 
     case "queued": {
       if (task?.status === "running") {
-        return makeStatus("applying", "We're on the employer's form right now.", "in_flight");
+        return makeStatus("applying", "Cloud worker is on the employer's form.", "in_flight");
       }
       return makeStatus("queued", "In line, submission starts shortly.", "in_flight");
     }

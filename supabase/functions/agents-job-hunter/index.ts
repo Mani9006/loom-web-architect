@@ -31,6 +31,8 @@ interface UserPrefs {
   daily_apply_cap: number;
   agent_max_actions_per_day: number;
   agent_actions_today: number;
+  agent_enabled?: boolean;
+  hands_off_cadence?: "off" | "hourly" | "daily";
 }
 
 interface AgentAction {
@@ -256,6 +258,21 @@ async function runAgent(userId: string, runId: string) {
     .gte("updated_at", dayStart.toISOString());
   let submissionsRemaining = Math.max(0, (prefs.daily_apply_cap ?? 10) - (queuedToday ?? 0));
 
+  const dayStartIso = dayStart.toISOString();
+  const { count: handsOffQueuedToday } = await client.from("applypass_tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("task_type", "apply_engine")
+    .contains("payload", { intent: "hands_off" })
+    .gte("created_at", dayStartIso);
+  const cadence = prefs.hands_off_cadence === "off" || prefs.hands_off_cadence === "daily"
+    ? prefs.hands_off_cadence
+    : "hourly";
+  const schedulerMayEnqueue = Boolean(prefs.auto_apply_enabled)
+    && Boolean(prefs.agent_enabled ?? true)
+    && cadence !== "off"
+    && !(cadence === "daily" && (handsOffQueuedToday ?? 0) > 0);
+
   if (remaining > 0) {
     const unprepared = await listUnpreparedEvaluations(
       client,
@@ -265,7 +282,38 @@ async function runAgent(userId: string, runId: string) {
     );
     alreadyPrepared = unprepared.alreadyPrepared;
     const evaluations = unprepared.evaluations;
-    for (const evaluation of evaluations) {
+    if (
+      evaluations.length > 0
+      && schedulerMayEnqueue
+      && prefs.review_mode === "eligible_only"
+    ) {
+      try {
+        const fanout = asRecord(await callEdgeFunction("apply-engine-enqueue", {
+          user_id: userId,
+          evaluation_ids: evaluations.map((evaluation) => evaluation.id),
+          intent: "hands_off",
+        }));
+        const batchCount = Number(fanout.count || evaluations.length);
+        prepared += batchCount;
+        queued += Number(fanout.queued || 0);
+        remaining = Math.max(0, remaining - batchCount);
+        actions.push({
+          tool: "queue_submit",
+          input: { evaluation_ids: evaluations.map((evaluation) => evaluation.id), intent: "hands_off" },
+          result: fanout,
+          ts: new Date().toISOString(),
+        });
+      } catch (error) {
+        actions.push({
+          tool: "queue_submit",
+          input: { evaluation_ids: evaluations.map((evaluation) => evaluation.id) },
+          result: { error: error instanceof Error ? error.message : String(error) },
+          ts: new Date().toISOString(),
+        });
+        failed += 1;
+      }
+    } else {
+      for (const evaluation of evaluations) {
       if (remaining <= 0) break;
       const input = { user_id: userId, evaluation_id: evaluation.id };
       try {
@@ -324,7 +372,7 @@ async function runAgent(userId: string, runId: string) {
           && prefs.review_mode === "eligible_only"
           && tailoredAtsScore >= (prefs.auto_apply_min_ats_score ?? 85)
           && typeof evaluation.portal === "string"
-          && ["greenhouse", "ashby", "lever", "workable"].includes(evaluation.portal)
+          && ["greenhouse", "ashby", "lever", "workable", "workday"].includes(evaluation.portal)
           && prefs.auto_apply_portals.includes(evaluation.portal);
         if (remaining > 0 && shouldAutoQueue && draftId) {
           try {
@@ -369,6 +417,7 @@ async function runAgent(userId: string, runId: string) {
         remaining -= 1;
       }
     }
+    }
   }
 
   // "Eligible only" must not depend on when a packet was tailored: ready
@@ -378,11 +427,11 @@ async function runAgent(userId: string, runId: string) {
   // idempotent, so overlap with the in-run leg above resolves to one task.
   if (remaining > 0
     && submissionsRemaining > 0
-    && prefs.auto_apply_enabled
+    && schedulerMayEnqueue
     && prefs.review_mode === "eligible_only") {
     const minFit = prefs.auto_apply_min_fit_score ?? 82;
     const minAts = prefs.auto_apply_min_ats_score ?? 85;
-    const supportedPortals = new Set(["greenhouse", "ashby", "lever", "workable"]);
+    const supportedPortals = new Set(["greenhouse", "ashby", "lever", "workable", "workday"]);
     const enabledPortals = new Set(prefs.auto_apply_portals ?? []);
     const { data: readyDrafts } = await client.from("draft_applications")
       .select("id,tailored_resume_id,error_message,evaluation:job_evaluations(fit_score,eligible,dismissed_at,scanned_jobs(id,company:scan_companies(api_type)))")

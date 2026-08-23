@@ -47,13 +47,13 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { label: "Home", icon: Home, path: "/home" },
   { label: "Job Search", icon: Search, path: "/job-search" },
-  { label: "Matches", icon: Sparkles, path: "/matches" },
+  { label: "Job matches", icon: Sparkles, path: "/matches" },
   { label: "Applications", icon: Columns3, path: "/applications" },
   { label: "My Collection", icon: FolderOpen, path: "/my-collection" },
   { label: "Inbox", icon: Inbox, path: "/inbox" },
-  { label: "Resume", icon: FileText, path: "/resume-builder" },
+  { label: "My resume", icon: FileText, path: "/resume-builder" },
   { label: "ATS Checker", icon: Gauge, path: "/ats-checker" },
-  { label: "Agent", icon: Bot, path: "/agent" },
+  { label: "Hands-off apply", icon: Bot, path: "/agent" },
   { label: "Profile", icon: UserIcon, path: "/profile" },
 ];
 
@@ -119,8 +119,8 @@ export default function AppLayout() {
   const visibleOwnerTools = hasAdminAccess ? ownerOnlyTools : [];
   const planLabel = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
   const primaryAction = hasAutoApply
-    ? { label: "Open Agent", path: "/agent" }
-    : { label: "Find jobs", path: "/job-search" };
+    ? { label: "Hands-off apply", path: "/agent" }
+    : { label: "Find jobs", path: "/matches" };
 
   const allNav = [...mainNav, ...visibleOwnerTools];
   const current = allNav.find((n) => isActive(n.path));

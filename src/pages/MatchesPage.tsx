@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { captureIncident } from "@/lib/incidents";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
+import { detectAtsFromUrl } from "@/lib/ats-detect";
 
 interface ScannedJob {
   id: string;
@@ -86,6 +87,17 @@ function safeMatchSummary(value: string | null): string | null {
     .replace(/\bblocked\b/gi, "held for review");
 }
 
+function AtsChip({ url }: { url: string }) {
+  const ats = detectAtsFromUrl(url);
+  if (ats.submittable) {
+    return <span className="text-[11px] font-medium text-rp-ink">{ats.label}</span>;
+  }
+  if (ats.mode === "account_required") {
+    return <span className="text-[11px] text-rp-ink-3">{ats.label} · your account</span>;
+  }
+  return <span className="text-[11px] text-rp-ink-3">{ats.label} · needs you</span>;
+}
+
 function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, operation: string): Promise<T> {
   return Promise.race([
     Promise.resolve(promise),
@@ -107,13 +119,14 @@ export default function MatchesPage() {
   const [matchSearch, setMatchSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [evaluating, setEvaluating] = useState<string | null>(null);
-  const [preparing, setPreparing] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { id: string; status: string }>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [applyJobs, setApplyJobs] = useState<ApplyProgressJob[]>([]);
   const [applyErrors, setApplyErrors] = useState<Record<string, string>>({});
   const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [pasteUrl, setPasteUrl] = useState("");
+  const [pasting, setPasting] = useState(false);
 
   const loadMatches = useCallback(async (announce = false) => {
     if (!user) return;
@@ -271,43 +284,6 @@ export default function MatchesPage() {
     return map;
   }, [jobs, evaluations]);
 
-  // Shared single-application preparation (tailor + ATS check). Returns the
-  // new draft id and ATS score when available; throws on failure.
-  const prepareOne = useCallback(async (evaluationId: string, scannedJobId: string): Promise<{ draftId: string; atsScore: number | null }> => {
-    const { data, error } = await supabase.functions.invoke("career-ops-tailor", {
-      body: { evaluation_id: evaluationId, allow_outside_preferences: true },
-    });
-    if (error) throw error;
-    const draft = (data as { draft: { id: string; status: string; tailored_resume_id?: string | null } }).draft;
-    setDrafts((prev) => ({ ...prev, [evaluationId]: { id: draft.id, status: draft.status } }));
-    if (!draft.tailored_resume_id) return { draftId: draft.id, atsScore: null };
-    const { data: atsData, error: atsError } = await supabase.functions.invoke("career-ops-ats", {
-      body: { resume_id: draft.tailored_resume_id, scanned_job_id: scannedJobId },
-    });
-    if (atsError) throw atsError;
-    return { draftId: draft.id, atsScore: Number(atsData?.ats?.overall ?? 0) };
-  }, []);
-
-  const prepareApplication = async (evaluationId: string, scannedJobId: string) => {
-    setPreparing(evaluationId);
-    try {
-      const { draftId, atsScore } = await prepareOne(evaluationId, scannedJobId);
-      toast.success(atsScore
-        ? `Application ready · resume scores ${Math.round(atsScore)} — take a look before we submit`
-        : "Application ready — take a look before we submit");
-      navigate(`/applications/${draftId}`);
-    } catch (e: unknown) {
-      void captureIncident(e, { source: "manual", operation: "match_prepare" });
-      const safeError = toUserFacingError(e, {
-        operation: "match_prepare",
-        defaultMessage: "This application could not be prepared. Try again in a moment.",
-      });
-      toast.error(withSupportReference(safeError));
-    } finally {
-      setPreparing(null);
-    }
-  };
-
   const toggleSelected = (evaluationId: string) => {
     setSelected((current) => {
       const next = new Set(current);
@@ -317,49 +293,63 @@ export default function MatchesPage() {
     });
   };
 
-  const prepareSelected = async () => {
-    const ids = [...selected];
+  const applySelected = async (evaluationIds?: string[]) => {
+    const ids = evaluationIds && evaluationIds.length > 0 ? evaluationIds : [...selected];
     if (ids.length === 0) return;
     setBatchProgress({ current: 0, total: ids.length });
-    // Live animation for small batches (the modal shows up to 5 parallel rows).
-    if (ids.length <= 5) {
-      setApplyErrors({});
-      setApplyJobs(ids.map((evaluationId) => {
-        const job = jobs.find((item) => item.id === jobIdByEvaluation.get(evaluationId));
-        return {
-          evaluationId,
-          title: job?.title ?? "Job match",
-          company: job?.company.name ?? "Unknown company",
-        };
-      }));
-      setApplyModalOpen(true);
-    }
-    let prepared = 0;
-    let failed = 0;
-    for (let index = 0; index < ids.length; index += 1) {
-      const evaluationId = ids[index];
-      setBatchProgress({ current: index + 1, total: ids.length });
-      const scannedJobId = jobIdByEvaluation.get(evaluationId);
-      if (!scannedJobId) {
-        failed += 1;
-        setApplyErrors((current) => ({ ...current, [evaluationId]: "This job is no longer available to prepare." }));
-        continue;
+    setApplyErrors({});
+    setApplyJobs(ids.map((evaluationId) => {
+      const job = jobs.find((item) => item.id === jobIdByEvaluation.get(evaluationId));
+      return {
+        evaluationId,
+        title: job?.title ?? "Job match",
+        company: job?.company.name ?? "Unknown company",
+      };
+    }));
+    setApplyModalOpen(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("apply-engine-enqueue", {
+        body: { evaluation_ids: ids, intent: "user_selected" },
+      });
+      if (error) throw error;
+      const result = data as { queued?: number; needs_you?: number; jobs?: Array<{ evaluation_id: string; status: string; reason: string; draft_id?: string }> };
+      for (const row of result.jobs ?? []) {
+        if (row.draft_id) setDrafts((prev) => ({ ...prev, [row.evaluation_id]: { id: row.draft_id as string, status: row.status === "queued" ? "queued" : "ready" } }));
+        if (row.status === "error") {
+          setApplyErrors((current) => ({ ...current, [row.evaluation_id]: row.reason }));
+        }
       }
-      try {
-        await prepareOne(evaluationId, scannedJobId);
-        prepared += 1;
-      } catch (error) {
-        failed += 1;
-        setApplyErrors((current) => ({ ...current, [evaluationId]: "Tailoring failed — try again in a moment." }));
-        void captureIncident(error, { source: "manual", operation: "match_batch_prepare" });
-      }
+      toast.success(`${result.queued ?? 0} queued to the cloud worker · ${result.needs_you ?? 0} need you (packet ready, ATS not live)`);
+      setSelected(new Set());
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: "apply_selected" });
+      toast.error("Those applications could not be queued. Try again in a moment.");
+    } finally {
+      setBatchProgress(null);
     }
-    setBatchProgress(null);
-    setSelected(new Set());
-    if (failed === 0) {
-      toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready — review them in Applications`);
-    } else {
-      toast.success(`${prepared} application${prepared === 1 ? "" : "s"} ready · ${failed} need${failed === 1 ? "s" : ""} another try`);
+  };
+
+  const pasteJobUrl = async () => {
+    const url = pasteUrl.trim();
+    if (!url) return;
+    const detection = detectAtsFromUrl(url);
+    setPasting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("apply-engine-enqueue", {
+        body: { apply_url: url, intent: "user_selected" },
+      });
+      if (error) throw error;
+      const row = (data as { jobs?: Array<{ status: string; reason: string }> }).jobs?.[0];
+      toast.success(detection.submittable
+        ? "Queued to the cloud worker. Watch Applications for sending → submitted."
+        : row?.reason || "Packet will be prepared. This ATS cannot be submitted automatically.");
+      setPasteUrl("");
+      await loadMatches(true);
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: "paste_job_url" });
+      toast.error("That job URL could not be added. Use a Greenhouse, Lever, Ashby, Workday, or other direct posting link.");
+    } finally {
+      setPasting(false);
     }
   };
 
@@ -385,8 +375,6 @@ export default function MatchesPage() {
     }
   };
 
-  const filtersActive = filter !== "recommended" || locationMode !== "all" || matchSearch.trim() !== "";
-
   if (loading) {
     return (
       <div className="px-6 lg:px-12 py-12 max-w-[1280px] mx-auto" role="status" aria-live="polite">
@@ -405,9 +393,9 @@ export default function MatchesPage() {
     <div className="min-h-full bg-rp-canvas text-rp-ink">
       <div className="max-w-[1280px] mx-auto px-8 lg:px-12 pt-12 pb-24">
         <PageHeader
-          title="Jobs that fit you."
-          status={`matches · ${stats.total} live`}
-          description="Fresh jobs matched to your résumé. Press Prepare application and we'll tailor your résumé for that job. You review it before anything is sent."
+          title="Job matches"
+          status={`apply engine · ${stats.total} live`}
+          description="Hourly Greenhouse, Ashby, and Lever career-page scan. Apply selected enqueues independent cloud jobs — detection is not the same as ability to submit."
         />
 
         {/* Ledger stat rail — three numerals, hairline dividers, refresh anchor */}
@@ -428,8 +416,27 @@ export default function MatchesPage() {
           </div>
         </div>
 
+        <div className="mt-8 flex flex-wrap items-center gap-2">
+          <input
+            value={pasteUrl}
+            onChange={(e) => setPasteUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void pasteJobUrl(); }}
+            placeholder="Paste a job URL — detector + cloud apply"
+            className="h-9 min-w-[280px] flex-1 rounded-md border border-rp-rule bg-rp-canvas px-3 text-[13px] text-rp-ink placeholder:text-rp-ink-3 focus:outline-none focus:border-rp-accent"
+            style={{ fontFamily: '"Epilogue", sans-serif' }}
+          />
+          <button
+            type="button"
+            onClick={() => void pasteJobUrl()}
+            disabled={pasting || !pasteUrl.trim()}
+            className="inline-flex h-9 items-center rounded-md bg-rp-ink px-4 text-[12.5px] font-medium text-rp-canvas disabled:opacity-50"
+          >
+            {pasting ? "Queuing…" : "Apply this URL"}
+          </button>
+        </div>
+
         {/* Filter row */}
-        <div className="mt-10 flex flex-wrap items-center gap-4 pb-4 border-b border-rp-rule">
+        <div className="mt-6 flex flex-wrap items-center gap-4 pb-4 border-b border-rp-rule">
           <div className="flex items-center gap-1.5">
             {(["recommended", "strong", "autopilot"] as const).map((k) => (
               <button
@@ -524,6 +531,7 @@ export default function MatchesPage() {
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 w-28">Fit</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Role</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Location</th>
+                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 hidden md:table-cell">ATS</th>
                 <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 hidden lg:table-cell">Seen</th>
                 <th className="text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-5 py-3">Action</th>
               </tr>
@@ -578,6 +586,7 @@ export default function MatchesPage() {
                     {job.location || "—"}
                     {job.remote_policy ? <div className="text-[11px] text-muted-foreground/80 mt-0.5">{job.remote_policy}</div> : null}
                   </td>
+                  <td className="px-3 py-4 hidden md:table-cell"><AtsChip url={job.apply_url} /></td>
                   <td className="px-3 py-4 text-[12px] text-muted-foreground hidden lg:table-cell">{relativeTime(job.last_seen_at)}</td>
                   <td className="px-5 py-4 text-right whitespace-nowrap">
                     {evaluation ? (
@@ -587,16 +596,18 @@ export default function MatchesPage() {
                             onClick={() => navigate(`/applications/${drafts[evaluation.id].id}`)}
                             className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
                           >
-                            Review application
+                            {["queued", "submitted"].includes(drafts[evaluation.id].status) ? "Watch" : "Review"}
                           </button>
                         ) : (
                           <button
-                            onClick={() => prepareApplication(evaluation.id, job.id)}
-                            disabled={preparing === evaluation.id || Boolean(batchProgress)}
-                            title={!evaluation.eligible ? "You can still prepare this application; we just won't auto-submit it." : undefined}
+                            onClick={() => void applySelected([evaluation.id])}
+                            disabled={Boolean(batchProgress)}
+                            title={detectAtsFromUrl(job.apply_url).submittable
+                              ? "Queue a cloud worker for this job"
+                              : "Packet will be tailored. This ATS is not live-submittable — it lands in Needs you."}
                             className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
                           >
-                            {preparing === evaluation.id ? "Preparing…" : "Prepare application"}
+                            Apply
                           </button>
                         )}
                         <button
@@ -626,7 +637,7 @@ export default function MatchesPage() {
 
       <div className="flex items-center justify-between text-[12px] text-muted-foreground mt-6">
         <p>
-          Jobs come straight from employer sites and refresh hourly · every match can be prepared manually
+          Live submit adapters: Greenhouse, Lever, Ashby, Workable, Workday. Other ATS → Needs you with a tailored packet. Never fake submitted.
         </p>
         <button
           onClick={() => navigate("/job-search")}
@@ -645,11 +656,11 @@ export default function MatchesPage() {
             </span>
             <button
               type="button"
-              onClick={() => void prepareSelected()}
+              onClick={() => void applySelected()}
               disabled={Boolean(batchProgress)}
               className="inline-flex h-9 items-center rounded-full bg-foreground px-4 text-[12.5px] font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
             >
-              {batchProgress ? `Preparing ${batchProgress.current}/${batchProgress.total}…` : `Prepare ${selected.size} application${selected.size === 1 ? "" : "s"}`}
+              {batchProgress ? `Queuing ${batchProgress.current}/${batchProgress.total}…` : `Apply selected (${selected.size})`}
             </button>
             <button
               type="button"

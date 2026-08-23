@@ -105,5 +105,9 @@ verify_jwt = false
 [functions.mc-gmail-poll]
 verify_jwt = false
 
-[functions.mc-render-resume]
+[functions.ats-detect]
 verify_jwt = false
+
+[functions.apply-engine-enqueue]
+verify_jwt = false
+

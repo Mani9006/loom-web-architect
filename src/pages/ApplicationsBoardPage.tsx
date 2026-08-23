@@ -182,8 +182,8 @@ export default function ApplicationsBoardPage() {
         return {
           icon: BriefcaseBusiness,
           title: "No applications yet",
-          body: "Once auto-apply starts working for you, every tailored resume, submission, and receipt shows up here.",
-          actionLabel: "Open auto-apply",
+          body: "Select jobs on Job matches and hit Apply selected. Each one becomes an independent cloud job with a receipt.",
+          actionLabel: "Open job matches",
         };
     }
   }, [tab]);
@@ -200,7 +200,7 @@ export default function ApplicationsBoardPage() {
       case "in_flight":
       case "all":
       default:
-        navigate("/agent");
+        navigate("/matches");
     }
   };
 
@@ -217,9 +217,9 @@ export default function ApplicationsBoardPage() {
   return (
     <div className="max-w-[1100px] mx-auto px-6 lg:px-10 pt-10 pb-16">
       <PageHeader
-        title="All applications."
-        status={`auto-apply · ${counts.all} total`}
-        description="Every application we're preparing, sending, or have sent for you, with a receipt for each step."
+        title="Applications"
+        status={`queue · ${counts.all} total`}
+        description="Queued, sending, submitted, needs you, failed. Submitted only after a portal receipt — never a fake success."
       />
 
       {/* Tabs with counts */}

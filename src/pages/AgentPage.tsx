@@ -49,6 +49,7 @@ interface AgentControls {
   auto_apply_min_ats_score: number;
   tailoring_mode: "evidence_only" | "coverage_boost";
   daily_apply_cap: number;
+  hands_off_cadence: "off" | "hourly" | "daily";
   agent_max_actions_per_day: number;
   agent_actions_today: number;
   last_agent_run_at: string | null;
@@ -146,6 +147,7 @@ interface LooseQueryResult {
 interface LooseQuery {
   select(columns: string): LooseQuery;
   eq(column: string, value: string): LooseQuery;
+  in(column: string, values: string[]): LooseQuery;
   order(column: string, options: { ascending: boolean }): LooseQuery;
   limit(count: number): LooseQuery;
   maybeSingle(): Promise<LooseQueryResult>;
@@ -163,6 +165,7 @@ const DEFAULT_CONTROLS: AgentControls = {
   auto_apply_min_ats_score: 85,
   tailoring_mode: "evidence_only",
   daily_apply_cap: 60,
+  hands_off_cadence: "hourly",
   agent_max_actions_per_day: 240,
   agent_actions_today: 0,
   last_agent_run_at: null,
@@ -237,7 +240,7 @@ export default function AgentPage() {
     const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, tasksRes, runsRes, gmailRes, workerRes] = await Promise.all([
       supabase
         .from("user_job_prefs")
-        .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,auto_apply_min_ats_score,tailoring_mode,daily_apply_cap,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
+        .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,auto_apply_min_ats_score,tailoring_mode,daily_apply_cap,hands_off_cadence,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
         .eq("user_id", user.id)
         .maybeSingle(),
       supabase
@@ -269,11 +272,10 @@ export default function AgentPage() {
         .eq("user_id", user.id),
       supabase
         .from("applypass_tasks")
-        .select("id,status,error_message,run_log,updated_at")
+        .select("id,status,error_message,run_log,updated_at,task_type")
         .eq("user_id", user.id)
-        .eq("task_type", "career_ops_submit")
         .order("updated_at", { ascending: false })
-        .limit(10),
+        .limit(30),
       supabase
         .from("agent_runs")
         .select("id,status,summary,started_at,completed_at")
@@ -312,13 +314,16 @@ export default function AgentPage() {
         review_mode: ["always", "low_confidence", "eligible_only"].includes(String(row.review_mode))
           ? row.review_mode as ReviewMode
           : "always",
+        hands_off_cadence: row.hands_off_cadence === "off" || row.hands_off_cadence === "daily" ? row.hands_off_cadence : "hourly",
       });
     }
     setMatches((matchRes.data || []) as unknown as MatchRow[]);
     setLatestAts((atsRes.data as unknown as AtsScore | null) ?? null);
     setResume((resumeRes.data as ResumeSummary | null) ?? null);
     setDrafts((draftsRes.data || []) as unknown as DraftStatusRow[]);
-    setSubmitTasks((tasksRes.data || []) as SubmitTaskRow[]);
+    const taskRows = ((tasksRes.data || []) as unknown as Array<SubmitTaskRow & { task_type?: string }>)
+      .filter((row) => !row.task_type || row.task_type === "career_ops_submit" || row.task_type === "apply_engine");
+    setSubmitTasks(taskRows);
     setLastRun((runsRes.data as AgentRun | null) ?? null);
     setGmailConnection((gmailRes.data as GmailConnection | null) ?? null);
     setWorkerHeartbeat((workerRes.data as WorkerHeartbeat | null) ?? null);
@@ -478,9 +483,9 @@ export default function AgentPage() {
       const running = task?.status === "running";
       return {
         key: "applying" as const,
-        label: running ? "Applying now" : "Queued",
+        label: running ? "Sending" : "Queued",
         tone: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-        detail: running ? "We're on the employer's form right now." : "In line, we start applying shortly.",
+        detail: running ? "Cloud worker is on the employer's form." : "In the cloud queue.",
         draftId: draft.id,
       };
     }
@@ -534,8 +539,8 @@ export default function AgentPage() {
           return {
             id: draft.id,
             kind: "applying" as const,
-            sentence: `Applying to ${where}`,
-            detail: running ? String(lastMessage ?? "On the employer's form right now.") : "In line, the apply helper will submit it for you.",
+            sentence: `Sending ${where}`,
+            detail: running ? String(lastMessage ?? "Cloud worker is on the employer's form.") : "Queued — independent cloud job.",
             when,
             draftId: draft.id,
           };
@@ -591,10 +596,11 @@ export default function AgentPage() {
         agent_enabled: action === "start",
         auto_apply_enabled: action === "start",
         review_mode: action === "start" ? "eligible_only" : current.review_mode,
+        hands_off_cadence: action === "start" && current.hands_off_cadence === "off" ? "hourly" : current.hands_off_cadence,
       }));
       await loadWorkspace();
       if (action === "start") {
-        toast.success("Auto-apply is on. We'll match, tailor, and apply for you in the background.");
+        toast.success("Hands-off apply is on. The scheduler enqueues eligible roles up to your daily cap.");
       } else {
         toast.success(`${Number(data?.canceled || 0)} application${Number(data?.canceled || 0) === 1 ? " was" : "s were"} stopped before submission.`);
       }
@@ -603,8 +609,8 @@ export default function AgentPage() {
       const safeError = toUserFacingError(error, {
         operation: `continuous_apply_${action}`,
         defaultMessage: action === "start"
-          ? "Auto-apply could not start. Your current settings are unchanged."
-          : "Auto-apply could not be stopped. Try again immediately.",
+          ? "Hands-off apply could not start. Your current settings are unchanged."
+          : "Hands-off apply could not be stopped. Try again immediately.",
       });
       toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
     } finally {
@@ -639,6 +645,7 @@ export default function AgentPage() {
       auto_apply_min_ats_score: Math.min(95, Math.max(70, controls.auto_apply_min_ats_score)),
       tailoring_mode: controls.tailoring_mode === "coverage_boost" ? "coverage_boost" : "evidence_only",
       daily_apply_cap: Math.min(75, Math.max(1, controls.daily_apply_cap)),
+      hands_off_cadence: controls.hands_off_cadence === "off" || controls.hands_off_cadence === "daily" ? controls.hands_off_cadence : "hourly",
       agent_max_actions_per_day: Math.min(300, Math.max(30, controls.agent_max_actions_per_day)),
     };
     const { error } = await supabase.from("user_job_prefs").upsert({
@@ -650,8 +657,9 @@ export default function AgentPage() {
       auto_apply_min_ats_score: normalized.auto_apply_min_ats_score,
       tailoring_mode: normalized.tailoring_mode,
       daily_apply_cap: normalized.daily_apply_cap,
+      hands_off_cadence: normalized.hands_off_cadence,
       agent_max_actions_per_day: normalized.agent_max_actions_per_day,
-      auto_apply_portals: ["greenhouse", "ashby", "lever"],
+      auto_apply_portals: ["greenhouse", "ashby", "lever", "workable", "workday"],
     }, { onConflict: "user_id" });
     setSaving(false);
 
@@ -669,13 +677,9 @@ export default function AgentPage() {
   };
 
   const prepareMatches = async (selectedMatches: MatchRow[]) => {
-    if (!hasAutoApply) {
-      navigate("/pricing");
-      return;
-    }
     const selected = selectedMatches.filter((match) => fitScore(match) >= 50).slice(0, 5);
     if (!selected.length) {
-      toast.error("No matches above 50% are ready to prepare yet.");
+      toast.error("No matches above 50% are ready to apply yet.");
       return;
     }
 
@@ -689,53 +693,31 @@ export default function AgentPage() {
       company: match.scanned_job?.company?.name ?? "Unknown company",
     })));
     setApplyModalOpen(true);
-    let prepared = 0;
-    let queued = 0;
-    let needsAttention = 0;
-
-    for (let index = 0; index < selected.length; index += 1) {
-      const match = selected[index];
-      setBatchProgress({ current: index + 1, total: selected.length });
-      try {
-        const { data: tailorData, error: tailorError } = await supabase.functions.invoke("career-ops-tailor", {
-          body: { evaluation_id: match.id, allow_outside_preferences: true },
-        });
-        if (tailorError || !tailorData?.draft?.id) throw tailorError ?? new Error("Application packet was not created");
-        prepared += 1;
-
-        if (tailorData.draft.tailored_resume_id && match.scanned_job?.id) {
-          const { error: atsError } = await supabase.functions.invoke("career-ops-ats", {
-            body: { resume_id: tailorData.draft.tailored_resume_id, scanned_job_id: match.scanned_job.id },
-          });
-          if (atsError) void captureIncident(atsError, { source: "manual", operation: "agent_batch_ats" }, "warning");
+    try {
+      const { data, error } = await supabase.functions.invoke("apply-engine-enqueue", {
+        body: { evaluation_ids: selected.map((match) => match.id), intent: "user_selected" },
+      });
+      if (error) throw error;
+      const result = data as {
+        queued?: number;
+        needs_you?: number;
+        jobs?: Array<{ evaluation_id: string; status: string; reason: string }>;
+      };
+      for (const row of result.jobs ?? []) {
+        if (row.status === "error") {
+          setApplyErrors((current) => ({ ...current, [row.evaluation_id]: row.reason }));
         }
-
-        const shouldQueue = controls.review_mode === "eligible_only" && fitScore(match) >= controls.auto_apply_min_fit_score;
-        if (shouldQueue) {
-          const { error: submitError } = await supabase.functions.invoke("career-ops-submit", {
-            body: { draft_application_id: tailorData.draft.id },
-          });
-          if (submitError) needsAttention += 1;
-          else queued += 1;
-        }
-      } catch (error) {
-        needsAttention += 1;
-        setApplyErrors((current) => ({
-          ...current,
-          [match.id]: shortReason(error instanceof Error ? error.message : null, "Tailoring failed, try again in a moment."),
-        }));
-        void captureIncident(error, { source: "manual", operation: "agent_batch_prepare" });
       }
+      toast.success(`${result.queued ?? 0} queued to the cloud worker · ${result.needs_you ?? 0} need you (packet ready, ATS not live)`);
+    } catch (error) {
+      void captureIncident(error, { source: "manual", operation: "agent_apply_selected" });
+      toast.error("Those applications could not be queued. Try again in a moment.");
+    } finally {
+      await loadWorkspace();
+      setBatchPreparing(false);
+      setBatchProgress(null);
+      setPreparingIds([]);
     }
-
-    await loadWorkspace();
-    setBatchPreparing(false);
-    setBatchProgress(null);
-    setPreparingIds([]);
-    const reviewReady = Math.max(0, prepared - queued);
-    // "prepared" counts packets built or refreshed in this batch; existing
-    // packets are reused, so the pipeline tiles may not grow by this amount.
-    toast.success(`${prepared} application${prepared === 1 ? "" : "s"} prepared · ${queued} in line to apply · ${reviewReady + needsAttention} to review`);
   };
 
   // "Apply to all 5", tailor (and queue, per review settings) every strip
@@ -759,16 +741,16 @@ export default function AgentPage() {
   return (
     <div className="max-w-[1100px] mx-auto px-6 lg:px-10 pt-10 pb-16">
       <PageHeader
-        title="Auto-apply."
+        title="Hands-off apply"
         status={`${planName.toLowerCase()} · ${isRunning ? "running" : "stopped"}`}
-        description="We find jobs that fit your resume, tailor it, and apply for you. You can watch everything here."
+        description="Scheduler enqueues eligible roles as independent cloud jobs. Kill switch stops in-flight hands-off submits. Apply selected on Job matches does not need this to be on."
       />
 
       {/* HERO, the one master control: is it working for me right now? */}
       <section className={cn(
         "mt-7 border p-6 sm:p-8 transition-colors",
         isRunning ? "border-emerald-500/40 bg-emerald-500/[0.06]" : "border-rp-rule bg-rp-paper",
-      )} aria-label="Auto-apply control">
+      )} aria-label="Hands-off apply control">
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="max-w-2xl">
             <div className="flex items-center gap-2">
@@ -781,15 +763,15 @@ export default function AgentPage() {
               </p>
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-rp-ink">
-              {isRunning ? "Applying to matched jobs for you" : "Start auto-applying"}
+              {isRunning ? "Hands-off apply is running" : "Start hands-off apply"}
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-rp-ink-2">
               {isRunning
-                ? "We're finding jobs that fit your resume, tailoring it for each one, and submitting applications. You can close this page, every step shows up below."
-                : "We find jobs that fit your resume, tailor it, and apply for you. You can watch everything here."}
+                ? `Cadence ${controls.hands_off_cadence}. Match floor ${controls.auto_apply_min_fit_score}%. Daily cap ${controls.daily_apply_cap}. Stop applying cancels in-flight hands-off jobs.`
+                : "Turn this on to let the scheduler enqueue jobs above your match floor, up to the daily cap, without clicking each one."}
             </p>
             {!hasAutoApply && (
-              <p className="mt-2 text-xs text-rp-ink-3">Auto-applying is part of the Autopilot plan, the button takes you to the options.</p>
+              <p className="mt-2 text-xs text-rp-ink-3">Hands-off scheduling is part of Autopilot. Apply selected on Job matches is available without it.</p>
             )}
           </div>
           <Button
@@ -802,7 +784,7 @@ export default function AgentPage() {
             )}
           >
             {isRunning ? <Square className="mr-2 h-4 w-4 fill-current" /> : <Play className="mr-2 h-4 w-4 fill-current" />}
-            {controlBusy ? "Updating…" : isRunning ? "Stop applying" : "Start auto-applying"}
+            {controlBusy ? "Updating…" : isRunning ? "Stop applying" : "Start applying"}
           </Button>
         </div>
 
@@ -859,14 +841,13 @@ export default function AgentPage() {
               {plan !== "free" && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>}
             </div>
             <p className="mt-1 text-xs text-rp-ink-2">
-              We tailor your resume for each job, then apply for you. Watch it happen below.
-              {controls.review_mode !== "eligible_only" && " You approve each one before it's sent."}
+              We tailor per job in the cloud, then the worker submits on live ATS adapters. Unsupported ATS land in Needs you.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={prepareTopMatches} disabled={batchPreparing || applyAllTargets.length === 0}>
               <Send className="mr-2 h-3.5 w-3.5" />
-              {batchProgress ? `Tailoring ${batchProgress.current}/${batchProgress.total}…` : controls.review_mode === "eligible_only" ? "Apply to all 5" : "Prepare all 5"}
+              {batchProgress ? `Queuing ${batchProgress.current}/${batchProgress.total}…` : "Apply selected"}
             </Button>
             <button
               onClick={() => void loadWorkspace(true)}
@@ -1124,8 +1105,8 @@ export default function AgentPage() {
                   <div className="flex items-start gap-3">
                     <Lock className="mt-0.5 h-4 w-4 text-rp-ink-2" />
                     <div>
-                      <p className="text-sm font-semibold text-rp-ink">Auto-apply settings are locked</p>
-                      <p className="text-xs text-rp-ink-2">Manual resume checks, job search, matches, and tracking remain available.</p>
+                      <p className="text-sm font-semibold text-rp-ink">Hands-off settings are locked</p>
+                      <p className="text-xs text-rp-ink-2">You can still Apply selected on Job matches. Scheduling without per-job clicks needs Autopilot.</p>
                     </div>
                   </div>
                   <Button size="sm" onClick={() => navigate("/pricing")}>See Autopilot</Button>
@@ -1160,6 +1141,30 @@ export default function AgentPage() {
                       <p className="mt-3 text-sm font-semibold text-rp-ink">Apply to strong matches automatically</p>
                       <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">We apply to jobs above your score thresholds. Anything missing or sensitive moves to “Needs you” instead of being guessed.</p>
                     </button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rp-ink-3">Hands-off cadence</p>
+                  <div className="mt-3 grid sm:grid-cols-3 gap-3">
+                    {([
+                      { value: "hourly" as const, title: "Hourly", body: "Enqueue eligible roles as the scanner finds them, up to the daily cap." },
+                      { value: "daily" as const, title: "Daily", body: "One scheduled batch per day. Further hunter runs score only." },
+                      { value: "off" as const, title: "Off", body: "Scheduler never auto-enqueues. Apply selected still works." },
+                    ]).map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setControls((current) => ({ ...current, hands_off_cadence: option.value }))}
+                        className={cn(
+                          "border p-4 text-left transition-colors",
+                          controls.hands_off_cadence === option.value ? "border-rp-accent bg-rp-accent/5" : "border-rp-rule hover:border-rp-rule-2",
+                        )}
+                      >
+                        <p className="text-sm font-semibold text-rp-ink">{option.title}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-rp-ink-2">{option.body}</p>
+                      </button>
+                    ))}
                   </div>
                 </div>
 

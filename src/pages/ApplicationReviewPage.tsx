@@ -8,6 +8,7 @@ import TailoringReportCard from "@/components/TailoringReportCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { captureIncident } from "@/lib/incidents";
+import { detectAtsFromUrl } from "@/lib/ats-detect";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { TailoringReport } from "../../supabase/functions/_shared/tailoring-report-core.ts";
@@ -63,6 +64,15 @@ interface TaskState {
   completed_at: string | null;
 }
 
+interface ApplicationReceipt {
+  id: string;
+  ats: string | null;
+  submitted: boolean;
+  fields: Record<string, unknown> | null;
+  evidence: Record<string, unknown> | null;
+  created_at: string;
+}
+
 const dimensions: Array<{ key: keyof AtsScore; label: string }> = [
   { key: "dim_format", label: "Format" }, { key: "dim_keywords", label: "Keywords" },
   { key: "dim_experience", label: "Experience" }, { key: "dim_skills", label: "Skills" },
@@ -79,7 +89,7 @@ function normalizeAnswers(value: unknown): Answer[] {
 }
 
 function statusLabel(status: DraftStatus): string {
-  return { draft: "Optimizing", ready: "Ready for review", queued: "Submission in progress", submitted: "Submitted", skipped: "Skipped", failed: "Needs attention" }[status];
+  return { draft: "Tailoring", ready: "Needs you", queued: "Sending", submitted: "Submitted", skipped: "Skipped", failed: "Failed" }[status];
 }
 
 function lifecycleIndex(status: DraftStatus): number {
@@ -104,6 +114,7 @@ export default function ApplicationReviewPage() {
   const [rendering, setRendering] = useState(false);
   const [report, setReport] = useState<TailoringReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [receipt, setReceipt] = useState<ApplicationReceipt | null>(null);
 
   const loadReport = useCallback(async (draftId: string) => {
     setReportLoading(true);
@@ -148,6 +159,14 @@ export default function ApplicationReviewPage() {
         .eq("id", nextDraft.applypass_task_id).eq("user_id", user.id).maybeSingle()
         .then(({ data: taskData }) => setTask(taskData as TaskState | null)));
     } else setTask(null);
+    requests.push((supabase as any).from("application_receipts")
+      .select("id,ats,submitted,fields,evidence,created_at")
+      .eq("user_id", user.id)
+      .eq("draft_application_id", nextDraft.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data: receiptData }: { data: ApplicationReceipt | null }) => setReceipt(receiptData ?? null)));
     await Promise.allSettled(requests);
     if (initial) setLoading(false);
   }, [id, navigate, user]);
@@ -206,10 +225,22 @@ export default function ApplicationReviewPage() {
     if (!draft) return;
     setMarking(true);
     const submittedAt = new Date().toISOString();
+    const detection = detectAtsFromUrl(draft.evaluation.scanned_job.apply_url);
     const { error } = await supabase.from("draft_applications").update({ status: "submitted", submitted_at: submittedAt }).eq("id", draft.id).eq("user_id", user!.id);
+    if (!error) {
+      await (supabase as any).from("application_receipts").insert({
+        user_id: user!.id,
+        draft_application_id: draft.id,
+        applypass_task_id: draft.applypass_task_id,
+        ats: detection.ats,
+        submitted: true,
+        fields: {},
+        evidence: { source: "user_attested", note: "Candidate confirmed they submitted on the employer site.", at: submittedAt },
+      });
+    }
     setMarking(false);
     if (error) toast.error("The status could not be saved.");
-    else { toast.success("Application marked submitted"); await load(); }
+    else { toast.success("Recorded as submitted by you — this is not a portal receipt."); await load(); }
   }
 
   async function downloadPdf() {
@@ -244,14 +275,39 @@ export default function ApplicationReviewPage() {
       <button onClick={() => navigate("/applications")} className="text-xs text-muted-foreground hover:text-foreground">← Applications</button>
       <header className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-medium text-muted-foreground">{job.company.name}</span><span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", draft.status === "submitted" ? "bg-emerald-500/10 text-emerald-600" : draft.status === "failed" || handoffRequired ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" : "bg-primary/10 text-primary")}>{handoffRequired ? "Verification required" : statusLabel(draft.status)}</span></div><h1 className="mt-2 text-3xl font-bold tracking-tight">{job.title}</h1>{draft.evaluation.summary && <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{draft.evaluation.summary}</p>}</div>
-        <div className="flex flex-wrap items-center gap-2"><div className="mr-2 text-center"><p className="text-2xl font-bold tabular-nums">{fit}%</p><p className="text-[10px] uppercase tracking-wide text-muted-foreground">career fit</p></div><Button asChild><a href={job.apply_url} target="_blank" rel="noreferrer noopener"><ExternalLink className="mr-2 h-4 w-4" />{handoffRequired ? "Finish verification" : "Employer portal"}</a></Button>{!(["submitted", "queued"] as DraftStatus[]).includes(draft.status) && <><Button variant="outline" onClick={refreshPacket} disabled={refreshing}><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />{refreshing ? "Refreshing…" : "Refresh packet"}</Button>{!handoffRequired && <Button variant="outline" onClick={queueApplication} disabled={queueing}><Send className="mr-2 h-4 w-4" />{queueing ? "Queueing…" : "Queue application"}</Button>}<Button variant="ghost" onClick={markSubmitted} disabled={marking}>{marking ? "Saving…" : handoffRequired ? "I finished, mark submitted" : "Mark submitted"}</Button></>}</div>
+        <div className="flex flex-wrap items-center gap-2"><div className="mr-2 text-center"><p className="text-2xl font-bold tabular-nums">{fit}%</p><p className="text-[10px] uppercase tracking-wide text-muted-foreground">career fit</p></div><Button asChild><a href={job.apply_url} target="_blank" rel="noreferrer noopener"><ExternalLink className="mr-2 h-4 w-4" />{handoffRequired ? "Finish verification" : "Employer portal"}</a></Button>{!(["submitted", "queued"] as DraftStatus[]).includes(draft.status) && <><Button variant="outline" onClick={refreshPacket} disabled={refreshing}><RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />{refreshing ? "Refreshing…" : "Refresh packet"}</Button>{!handoffRequired && <Button variant="outline" onClick={queueApplication} disabled={queueing}><Send className="mr-2 h-4 w-4" />{queueing ? "Queuing…" : "Queue to cloud worker"}</Button>}<Button variant="ghost" onClick={markSubmitted} disabled={marking}>{marking ? "Saving…" : "I submitted on the employer site"}</Button></>}</div>
       </header>
 
       <p className="mt-2 text-xs text-muted-foreground">Career fit is a deterministic match across role, demonstrated skills, experience/level, location, compensation, and authorization. It is separate from the ATS résumé-readiness score below.</p>
 
-      <section className="mt-7 border border-rp-rule bg-rp-paper p-5" aria-label="Application progress"><div className="grid grid-cols-4">{phases.map((phase, index) => <div key={phase} className="relative flex flex-col items-center text-center"><div className={cn("absolute left-0 right-0 top-3 h-px", index === 0 ? "left-1/2" : index === 3 ? "right-1/2" : "", index <= activePhase ? "bg-primary" : "bg-border")} /><span className={cn("relative z-10 flex h-6 w-6 items-center justify-center rounded-full border text-[10px]", index < activePhase || draft.status === "submitted" ? "border-primary bg-primary text-primary-foreground" : index === activePhase ? "border-primary bg-background text-primary" : "border-border bg-background text-muted-foreground")}>{index < activePhase || draft.status === "submitted" ? <Check className="h-3.5 w-3.5" /> : index + 1}</span><span className="mt-2 text-[11px] font-medium">{phase}</span></div>)}</div>{draft.status !== "submitted" && draft.error_message && <div className={cn("mt-4 flex gap-2 border p-3 text-xs", handoffRequired ? "border-amber-500/25 bg-amber-500/5 text-amber-800 dark:text-amber-200" : "border-rose-500/20 bg-rose-500/5 text-rose-700 dark:text-rose-300")}><AlertTriangle className="h-4 w-4 shrink-0" /><div><p className="font-semibold">{handoffRequired ? "One employer check remains" : "Submission needs attention"}</p><p className="mt-1">{draft.error_message || task?.error_message || "Your packet and employer link remain available."}</p></div></div>}</section>
+      <section className="mt-7 border border-rp-rule bg-rp-paper p-5" aria-label="Application progress"><div className="grid grid-cols-4">{phases.map((phase, index) => <div key={phase} className="relative flex flex-col items-center text-center"><div className={cn("absolute left-0 right-0 top-3 h-px", index === 0 ? "left-1/2" : index === 3 ? "right-1/2" : "", index <= activePhase ? "bg-primary" : "bg-border")} /><span className={cn("relative z-10 flex h-6 w-6 items-center justify-center rounded-full border text-[10px]", index < activePhase || draft.status === "submitted" ? "border-primary bg-primary text-primary-foreground" : index === activePhase ? "border-primary bg-background text-primary" : "border-border bg-background text-muted-foreground")}>{index < activePhase || draft.status === "submitted" ? <Check className="h-3.5 w-3.5" /> : index + 1}</span><span className="mt-2 text-[11px] font-medium">{phase}</span></div>)}</div>{draft.status !== "submitted" && draft.error_message && <div className={cn("mt-4 flex gap-2 border p-3 text-xs", handoffRequired ? "border-amber-500/25 bg-amber-500/5 text-amber-800 dark:text-amber-200" : "border-rose-500/20 bg-rose-500/5 text-rose-700 dark:text-rose-300")}><AlertTriangle className="h-4 w-4 shrink-0" /><div><p className="font-semibold">{handoffRequired ? "One employer check remains" : "Submission needs attention"}</p><p className="mt-1">{draft.error_message || task?.error_message || "Your packet and employer link remain available."}</p></div></div>}      </section>
 
-      {fitDimensions.length > 0 && <section className="mt-5 border border-rp-rule bg-rp-paper p-5" aria-label="Career fit calculation"><div className="flex items-start justify-between gap-3"><div><h2 className="text-sm font-semibold">Career fit calculation</h2><p className="mt-1 text-xs text-muted-foreground">The headline percentage is the weighted total of these evidence-backed dimensions. It is not keyword coverage.</p></div><span className="text-lg font-bold tabular-nums">{fit}%</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{fitDimensions.map((dimension) => { const rawWeight = Number(dimension.weight) || 0; const weight = rawWeight > 1 ? rawWeight : rawWeight * 100; return <div key={dimension.label}><div className="mb-1 flex justify-between text-xs"><span>{dimension.label}</span><span className="tabular-nums">{Math.round(Number(dimension.score) || 0)}% · {Math.round(weight)}% weight</span></div><Progress value={Math.max(0, Math.min(100, Number(dimension.score) || 0))} className="h-1.5" /></div>; })}</div></section>}
+      <section className="mt-5 border border-rp-rule bg-rp-paper p-5" aria-label="Application receipt">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Receipt</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Submitted is only true when the ATS confirmed it, or you attested that you finished on the employer site. Detection is not a submit.</p>
+          </div>
+          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", receipt?.submitted ? "bg-emerald-500/10 text-emerald-600" : "bg-rp-paper-2 text-rp-ink-2")}>
+            {receipt?.submitted ? "Confirmed" : "No portal receipt"}
+          </span>
+        </div>
+        {receipt ? (
+          <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+            <div><dt className="text-muted-foreground">ATS</dt><dd className="mt-0.5 font-medium">{receipt.ats || detectAtsFromUrl(job.apply_url).label}</dd></div>
+            <div><dt className="text-muted-foreground">Recorded</dt><dd className="mt-0.5 font-medium">{new Date(receipt.created_at).toLocaleString()}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-muted-foreground">Evidence</dt><dd className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted-foreground">{JSON.stringify(receipt.evidence ?? {}, null, 2)}</dd></div>
+            {receipt.fields && Object.keys(receipt.fields).length > 0 && (
+              <div className="sm:col-span-2"><dt className="text-muted-foreground">Fields filled</dt><dd className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted-foreground">{JSON.stringify(receipt.fields, null, 2)}</dd></div>
+            )}
+          </dl>
+        ) : (
+          <p className="mt-3 text-xs text-muted-foreground">No receipt yet. Cloud workers write one when the attempt finishes — including Needs you and failed, never a fake submitted.</p>
+        )}
+      </section>
+
+      {fitDimensions.length > 0 && <section className="mt-5 border border-rp-rule bg-rp-paper p-5" aria-label="Career fit calculation">
+<div className="flex items-start justify-between gap-3"><div><h2 className="text-sm font-semibold">Career fit calculation</h2><p className="mt-1 text-xs text-muted-foreground">The headline percentage is the weighted total of these evidence-backed dimensions. It is not keyword coverage.</p></div><span className="text-lg font-bold tabular-nums">{fit}%</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{fitDimensions.map((dimension) => { const rawWeight = Number(dimension.weight) || 0; const weight = rawWeight > 1 ? rawWeight : rawWeight * 100; return <div key={dimension.label}><div className="mb-1 flex justify-between text-xs"><span>{dimension.label}</span><span className="tabular-nums">{Math.round(Number(dimension.score) || 0)}% · {Math.round(weight)}% weight</span></div><Progress value={Math.max(0, Math.min(100, Number(dimension.score) || 0))} className="h-1.5" /></div>; })}</div></section>}
 
       {ats && <section className="mt-5 border border-rp-rule bg-rp-canvas p-5"><div className="grid gap-5 lg:grid-cols-[190px_1fr]"><div className="flex items-center gap-4"><div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-[7px] border-primary/20"><span className="text-xl font-bold">{Math.round(ats.overall)}%</span><span className="text-[9px] uppercase">ATS</span></div><div><p className="text-sm font-semibold">ATS résumé readiness</p><p className="mt-1 text-xs text-muted-foreground">A weighted check of this tailored résumé against this job. Different from career fit.</p>{keywordTotal > 0 && <p className="mt-2 text-[11px] text-muted-foreground">Keyword coverage: {keywordMatches}/{keywordTotal} terms matched ({Math.round(ats.dim_keywords)}%).</p>}</div></div><div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{dimensions.map((dimension) => { const value = Number(ats[dimension.key] || 0); const label = dimension.key === "dim_keywords" ? "Keyword coverage" : dimension.label; return <div key={dimension.key}><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{label}</span><span>{Math.round(value)}%</span></div><Progress value={value} className="h-1.5" /></div>; })}</div></div></section>}
 
@@ -266,7 +322,7 @@ export default function ApplicationReviewPage() {
         {tab === "cover" && <div><h2 className="text-base font-semibold">Cover note</h2><p className="mt-1 text-xs text-muted-foreground">Generated only when useful or requested by the employer.</p>{coverNote ? <div className="mt-6 border border-rp-rule bg-background p-6"><div className="flex justify-end"><CopyButton value={coverNote.answer} /></div><p className="whitespace-pre-wrap text-sm leading-relaxed">{coverNote.answer}</p></div> : <Empty text="No cover note is attached to this application." />}</div>}
         {tab === "activity" && <div><h2 className="text-base font-semibold">Application activity</h2><p className="mt-1 text-xs text-muted-foreground">Preparation, queue attempts, worker checks, and outcome for this job.</p><div className="mt-6 space-y-3"><ActivityRow title="Packet prepared" date={draft.created_at} detail="Tailored résumé and application answers created." />{task && <ActivityRow title={`Submission ${task.status}`} date={task.completed_at || task.started_at || task.created_at} detail={`Attempt ${task.attempt_count} of ${task.max_attempts}${task.error_message ? ` · ${task.error_message}` : ""}`} />}{logs.map((entry, index) => <ActivityRow key={index} title={String(entry.step || entry.status || entry.event || `Worker event ${index + 1}`)} date={typeof entry.at === "string" ? entry.at : typeof entry.timestamp === "string" ? entry.timestamp : null} detail={String(entry.message || entry.detail || "Application check recorded.")} />)}{draft.submitted_at && <ActivityRow title="Submitted" date={draft.submitted_at} detail="Submission recorded successfully." />}{!task && !draft.submitted_at && <ActivityRow title="Awaiting your decision" date={draft.updated_at} detail="Review the packet, queue supported automation, or open the employer portal." />}</div></div>}
       </section>
-      <p className="mt-4 text-xs text-muted-foreground">Only a Submitted outcome counts as applied. Queued means the worker is still checking and completing the application.</p>
+      <p className="mt-4 text-xs text-muted-foreground">Only a receipt with submitted=true counts as applied. Queued/sending means the cloud worker is still running. Unsupported ATS stay in Needs you.</p>
     </div>
   );
 }

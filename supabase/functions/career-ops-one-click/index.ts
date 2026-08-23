@@ -6,12 +6,12 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
-  corsHeaders,
-  getAuthedUser,
-  HttpError,
-  jsonResponse,
-  serviceClient,
-  withErrorHandler,
+    corsHeaders,
+    getAuthedUserOrService,
+    HttpError,
+    jsonResponse,
+    serviceClient,
+    withErrorHandler,
 } from "../_shared/guards.ts";
 
 interface IntakeBody {
@@ -29,8 +29,8 @@ serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
 
   return withErrorHandler(async () => {
-    const user = await getAuthedUser(req);
-    const body = await req.json().catch(() => ({})) as IntakeBody;
+    const body = await req.json().catch(() => ({})) as IntakeBody & { user_id?: string };
+    const user = await getAuthedUserOrService(req, body.user_id);
     const title = clean(body.title, 240);
     const companyName = clean(body.company, 180);
     const applyUrl = safeUrl(body.apply_url);
