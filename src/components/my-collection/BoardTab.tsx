@@ -15,9 +15,40 @@ import {
 } from "@/components/ui/sheet";
 import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
-import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
+import { enqueueJob, waitForJob, resumeRowToMarkdown, isJobCancelled, type JobStatus, type AIJob } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
+
+// Persists the in-flight "Tailor to job" AI job id so a tab switch mid-tailor
+// (Radix Tabs unmounts inactive content, aborting waitForJob) doesn't
+// silently discard a result the worker already ran, and was paid for, on the
+// user's Mac mini. Mirrors DiscoverTab's activeTailorJobId persistence.
+interface PersistedTailor {
+  aiJobId: string;
+  trackedJobId: string;
+  company: string;
+  title: string;
+}
+
+const tailorStateKey = (sid: string) => `mc:board-active-tailor:${sid}:v1`;
+
+function readPersistedTailor(sid: string): PersistedTailor | null {
+  try {
+    const raw = sessionStorage.getItem(tailorStateKey(sid));
+    return raw ? (JSON.parse(raw) as PersistedTailor) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedTailor(sid: string, p: PersistedTailor | null) {
+  try {
+    if (p) sessionStorage.setItem(tailorStateKey(sid), JSON.stringify(p));
+    else sessionStorage.removeItem(tailorStateKey(sid));
+  } catch {
+    // sessionStorage can throw in private mode, non-fatal
+  }
+}
 
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "discovered", label: "Discovered", tone: "bg-rp-paper text-slate-700" },
@@ -80,7 +111,113 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     return () => controller.abort();
   }, []);
 
+  /**
+   * Finishes a tailor run once its AI job has reached "done": saves the
+   * tailored resume and links it to the tracked job card. Shared by the
+   * direct tailorJob call and the reattach effect below, so a result picked
+   * up after a remount is saved exactly the same way as one that finished
+   * while the component stayed mounted.
+   */
+  async function finishTailor(
+    aiJob: AIJob,
+    meta: { trackedJobId: string; company: string; title: string },
+  ) {
+    // Re-check auth rather than reusing a check from before enqueueing,
+    // tailoring can take up to 6 minutes, long enough for the session to expire.
+    const { data: freshUserData } = await supabase.auth.getUser();
+    if (!freshUserData?.user) {
+      toast({ title: "Not signed in", description: "Sign in again to save the tailored resume.", variant: "destructive" });
+      return;
+    }
+    const { data: tailoredRow, error: insertErr } = await (supabase as any)
+      .from("mc_tailored_resumes")
+      .insert({
+        user_id: freshUserData.user.id,
+        session_id: sessionId,
+        source_job_id: null,
+        name: `${meta.company}, ${meta.title}`,
+        cv_md: aiJob.result ?? "",
+      })
+      .select("id")
+      .single();
+    if (insertErr || !tailoredRow) {
+      throw new Error(insertErr?.message || "Couldn't save tailored resume");
+    }
+    const { error: linkErr } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .update({ tailored_resume_id: tailoredRow.id })
+      .eq("id", meta.trackedJobId);
+    if (linkErr) {
+      // The tailored resume itself saved fine, only the card link failed.
+      // Don't apply the optimistic update below, an unlinked card would
+      // show a "View tailored resume" button that lies about DB state
+      // until the next reload quietly makes it disappear.
+      console.error("Couldn't link tailored resume to card:", linkErr.message);
+      toast({
+        title: "Tailored resume saved",
+        description: "Saved, but couldn't link it to this card. Find it in the Resumes tab.",
+      });
+      return;
+    }
+    setJobs((arr) =>
+      arr.map((j) => (j.id === meta.trackedJobId ? { ...j, tailored_resume_id: tailoredRow.id } : j))
+    );
+    setSelected((cur) => (cur && cur.id === meta.trackedJobId ? { ...cur, tailored_resume_id: tailoredRow.id } : cur));
+    toast({ title: "Tailored resume ready", description: "Open it in the Resumes tab." });
+  }
+
+  // Auto-reattach to an in-flight tailor run on mount. Without this,
+  // switching tabs mid-tailor silently discards the tailored resume even
+  // though the AI job keeps running (and was paid for) on the user's
+  // Mac mini worker.
+  const reattachedTailorRef = useRef(false);
+  useEffect(() => {
+    if (reattachedTailorRef.current) return;
+    reattachedTailorRef.current = true;
+    const persisted = readPersistedTailor(sessionId);
+    if (!persisted) return;
+
+    let cancelled = false;
+    (async () => {
+      setTailoring({ jobId: persisted.trackedJobId, status: "running" });
+      try {
+        const finished = await waitForJob(persisted.aiJobId, {
+          timeoutMs: 6 * 60 * 1000,
+          onProgress: (s) => {
+            if (!cancelled) setTailoring({ jobId: persisted.trackedJobId, status: s });
+          },
+          signal: abortRef.current?.signal,
+        });
+        if (cancelled) return;
+        await finishTailor(finished, {
+          trackedJobId: persisted.trackedJobId,
+          company: persisted.company,
+          title: persisted.title,
+        });
+        if (!cancelled) writePersistedTailor(sessionId, null);
+      } catch (e) {
+        if (cancelled) return;
+        // Still mid-flight (another unmount raced this one), keep it
+        // persisted so a later mount can pick it back up.
+        if (isJobCancelled(e)) return;
+        console.warn("[Board] couldn't reattach to previous tailor job:", e);
+        writePersistedTailor(sessionId, null);
+      } finally {
+        if (!cancelled) setTailoring(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Run once per mount with the persisted tailor state for this session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function tailorJob(job: TrackedJob) {
+    // Guard synchronously, before any await, so a double-click can't start
+    // two concurrent tailor runs (each enqueueing and paying for its own AI
+    // job) before the first render with the button disabled lands.
+    if (tailoring?.jobId === job.id) return;
     if (!job.jd_md || !job.jd_md.trim()) {
       toast({
         title: "No job description saved",
@@ -89,142 +226,124 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       });
       return;
     }
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) {
-      toast({ title: "Not signed in", variant: "destructive" });
-      return;
-    }
-    // Pull a base resume to feed into the tailor prompt. Three-tier lookup:
-    //   1. session's master_resume_id (if explicitly set)
-    //   2. the user's most recently updated resume (fallback so users don't
-    //      have to pre-configure anything)
-    //   3. nothing, tell them to create one in Resume Builder
-    const { data: sessRow } = await (supabase as any)
-      .from("mc_sessions")
-      .select("master_resume_id")
-      .eq("id", sessionId)
-      .maybeSingle();
-
-    let masterMd = "";
-
-    // Tier 1: session's pinned master resume.
-    // The Resume Builder stores resumes as separate JSON columns (personal_info,
-    // summary, experience, education, ...), not a single content field, so we
-    // SELECT * and stitch them with resumeRowToMarkdown.
-    if (sessRow?.master_resume_id) {
-      const { data: res } = await (supabase as any)
-        .from("resumes")
-        .select("*")
-        .eq("id", sessRow.master_resume_id)
-        .maybeSingle();
-      if (res) masterMd = resumeRowToMarkdown(res);
-    }
-
-    // Tier 2: latest resume from the user's account.
-    if (!masterMd) {
-      const { data: latest } = await (supabase as any)
-        .from("resumes")
-        .select("*")
-        .order("updated_at", { ascending: false })
-        .limit(1);
-      const row = (latest ?? [])[0];
-      if (row) {
-        masterMd = resumeRowToMarkdown(row);
-        if (masterMd) {
-          toast({
-            title: "Using your most recent resume",
-            description:
-              "Set a specific master resume in Settings to control which one the AI uses.",
-          });
-        }
-      }
-    }
-
-    // Tier 3: no resume at all.
-    if (!masterMd) {
-      toast({
-        title: "Create a resume first",
-        description:
-          "Job tailoring needs a source resume. Open Resume in the left nav, create one, then come back and click Tailor to job again.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const prompt = [
-      "You are an expert resume tailor. Rewrite the candidate's resume below to maximize fit for the target job, ATS-aligned.",
-      "STRICT RULES:",
-      "- Do NOT invent any companies, employers, dates, metrics, certifications, or skills the candidate doesn't have.",
-      "- Keep all original employment dates and titles unchanged.",
-      "- Pull keywords from the JD into the resume's bullet points only where the candidate's experience genuinely supports them.",
-      "- Output ONLY the tailored resume in markdown. No commentary before or after.",
-      "",
-      "──────── TARGET JOB ────────",
-      `Company: ${job.company}`,
-      `Title: ${job.job_title}`,
-      job.location ? `Location: ${job.location}` : "",
-      "",
-      "Job description:",
-      job.jd_md,
-      "",
-      "──────── CANDIDATE'S MASTER RESUME ────────",
-      masterMd,
-      "",
-      "Tailored resume in markdown:",
-    ]
-      .filter(Boolean)
-      .join("\n");
-
     setTailoring({ jobId: job.id, status: "queued" });
     try {
-      const { result, jobId: aiJobId } = await runOnLocalWorker({
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) {
+        toast({ title: "Not signed in", variant: "destructive" });
+        return;
+      }
+      // Pull a base resume to feed into the tailor prompt. Three-tier lookup:
+      //   1. session's master_resume_id (if explicitly set)
+      //   2. the user's most recently updated resume (fallback so users don't
+      //      have to pre-configure anything)
+      //   3. nothing, tell them to create one in Resume Builder
+      const { data: sessRow } = await (supabase as any)
+        .from("mc_sessions")
+        .select("master_resume_id")
+        .eq("id", sessionId)
+        .maybeSingle();
+
+      let masterMd = "";
+
+      // Tier 1: session's pinned master resume.
+      // The Resume Builder stores resumes as separate JSON columns (personal_info,
+      // summary, experience, education, ...), not a single content field, so we
+      // SELECT * and stitch them with resumeRowToMarkdown.
+      if (sessRow?.master_resume_id) {
+        const { data: res } = await (supabase as any)
+          .from("resumes")
+          .select("*")
+          .eq("id", sessRow.master_resume_id)
+          .maybeSingle();
+        if (res) masterMd = resumeRowToMarkdown(res);
+      }
+
+      // Tier 2: latest resume from the user's account.
+      if (!masterMd) {
+        const { data: latest } = await (supabase as any)
+          .from("resumes")
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .limit(1);
+        const row = (latest ?? [])[0];
+        if (row) {
+          masterMd = resumeRowToMarkdown(row);
+          if (masterMd) {
+            toast({
+              title: "Using your most recent resume",
+              description:
+                "Set a specific master resume in Settings to control which one the AI uses.",
+            });
+          }
+        }
+      }
+
+      // Tier 3: no resume at all.
+      if (!masterMd) {
+        toast({
+          title: "Create a resume first",
+          description:
+            "Job tailoring needs a source resume. Open Resume in the left nav, create one, then come back and click Tailor to job again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const prompt = [
+        "You are an expert resume tailor. Rewrite the candidate's resume below to maximize fit for the target job, ATS-aligned.",
+        "STRICT RULES:",
+        "- Do NOT invent any companies, employers, dates, metrics, certifications, or skills the candidate doesn't have.",
+        "- Keep all original employment dates and titles unchanged.",
+        "- Pull keywords from the JD into the resume's bullet points only where the candidate's experience genuinely supports them.",
+        "- Output ONLY the tailored resume in markdown. No commentary before or after.",
+        "",
+        "──────── TARGET JOB ────────",
+        `Company: ${job.company}`,
+        `Title: ${job.job_title}`,
+        job.location ? `Location: ${job.location}` : "",
+        "",
+        "Job description:",
+        job.jd_md,
+        "",
+        "──────── CANDIDATE'S MASTER RESUME ────────",
+        masterMd,
+        "",
+        "Tailored resume in markdown:",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      // Enqueue and persist the job id immediately (before waiting), so a
+      // tab switch mid-tailor can re-attach on next mount instead of
+      // silently losing a result the worker already paid to generate.
+      const meta = { trackedJobId: job.id, company: job.company, title: job.job_title };
+      const enq = await enqueueJob({
         kind: "tailor",
         sessionId,
         prompt,
         model: "sonnet-4-6",
         input: { tracked_job_id: job.id, company: job.company, job_title: job.job_title },
+      });
+      writePersistedTailor(sessionId, { aiJobId: enq.jobId, ...meta });
+
+      const finished = await waitForJob(enq.jobId, {
         timeoutMs: 6 * 60 * 1000,
         onProgress: (s) => setTailoring({ jobId: job.id, status: s }),
         signal: abortRef.current?.signal,
       });
-      void aiJobId;
 
-      // Re-check auth rather than reusing the check above, tailoring can
-      // take up to 6 minutes, long enough for the session to expire.
-      const { data: freshUserData } = await supabase.auth.getUser();
-      if (!freshUserData?.user) {
-        toast({ title: "Not signed in", description: "Sign in again to save the tailored resume.", variant: "destructive" });
-        return;
-      }
-      const { data: tailoredRow, error: insertErr } = await (supabase as any)
-        .from("mc_tailored_resumes")
-        .insert({
-          user_id: freshUserData.user.id,
-          session_id: sessionId,
-          source_job_id: null,
-          name: `${job.company}, ${job.job_title}`,
-          cv_md: result,
-        })
-        .select("id")
-        .single();
-      if (insertErr || !tailoredRow) {
-        throw new Error(insertErr?.message || "Couldn't save tailored resume");
-      }
-      await (supabase as any)
-        .from("mc_tracked_jobs")
-        .update({ tailored_resume_id: tailoredRow.id })
-        .eq("id", job.id);
-      setJobs((arr) =>
-        arr.map((j) => (j.id === job.id ? { ...j, tailored_resume_id: tailoredRow.id } : j))
-      );
-      setSelected((cur) => (cur && cur.id === job.id ? { ...cur, tailored_resume_id: tailoredRow.id } : cur));
-      toast({ title: "Tailored resume ready", description: "Open it in the Resumes tab." });
+      await finishTailor(finished, meta);
+      writePersistedTailor(sessionId, null);
     } catch (e) {
-      // The user switched away mid-tailor (runOnLocalWorker was aborted on
+      // The user switched away mid-tailor (waitForJob was aborted on
       // unmount), not a real failure, so stay silent rather than toast.
+      // The persisted tailor state stays in sessionStorage so the reattach
+      // effect can pick the result back up on the next mount.
       if (isJobCancelled(e)) return;
       const msg = (e as Error).message || String(e);
       toast({ title: "Tailoring failed", description: msg, variant: "destructive" });
+      writePersistedTailor(sessionId, null);
     } finally {
       setTailoring(null);
     }
