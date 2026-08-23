@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Moon, Sun } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,7 +11,7 @@ const LINKS = [
   { to: "/faq", label: "FAQ" },
 ];
 
-export function MarketingLayout() {
+export function MarketingLayout({ children }: { children?: ReactNode }) {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
@@ -58,7 +59,7 @@ export function MarketingLayout() {
           </div>
         </div>
       </header>
-      <Outlet />
+      {children ?? <Outlet />}
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-8 text-caption text-muted-foreground">
           <p>© {new Date().getFullYear()} ResumePreps</p>
