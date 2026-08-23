@@ -120,17 +120,16 @@ as $$
 declare
   next_balance integer;
 begin
-  insert into public.credit_ledger (user_id, delta, reason, draft_application_id)
-  values (p_user_id, -1, 'submit', p_draft_id)
-  on conflict do nothing;
-
-  if not found and exists (
+  if exists (
     select 1 from public.credit_ledger
     where draft_application_id = p_draft_id and reason = 'submit'
   ) then
     select balance into next_balance from public.credit_balances where user_id = p_user_id;
     return coalesce(next_balance, 0);
   end if;
+
+  insert into public.credit_ledger (user_id, delta, reason, draft_application_id)
+  values (p_user_id, -1, 'submit', p_draft_id);
 
   insert into public.credit_balances (user_id, balance, lifetime_granted, lifetime_spent)
   values (p_user_id, 24, 25, 1)
@@ -161,9 +160,16 @@ begin
     return coalesce(next_balance, 0);
   end if;
 
+  if exists (
+    select 1 from public.credit_ledger
+    where draft_application_id = p_draft_id and reason = 'refund'
+  ) then
+    select balance into next_balance from public.credit_balances where user_id = p_user_id;
+    return coalesce(next_balance, 0);
+  end if;
+
   insert into public.credit_ledger (user_id, delta, reason, draft_application_id)
-  values (p_user_id, 1, 'refund', p_draft_id)
-  on conflict do nothing;
+  values (p_user_id, 1, 'refund', p_draft_id);
 
   update public.credit_balances
     set balance = balance + 1,
