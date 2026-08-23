@@ -36,6 +36,7 @@ import { isOwnerEmail } from "@/lib/admin";
 import AnuChat from "@/components/AnuChat";
 import { useTheme } from "@/hooks/use-theme";
 import { useSubscription } from "@/components/SubscriptionGate";
+import { creditPlanLabel } from "@/lib/apply-credits";
 
 interface NavItem {
   label: string;
@@ -117,7 +118,7 @@ export default function AppLayout() {
   const showText = isMobile || sidebarOpen;
   const hasAdminAccess = isOwnerEmail(user.email) || isAdmin;
   const visibleOwnerTools = hasAdminAccess ? ownerOnlyTools : [];
-  const planLabel = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
+  const planLabel = creditPlanLabel(plan);
   const primaryAction = hasAutoApply
     ? { label: "Hands-off apply", path: "/agent" }
     : { label: "Find jobs", path: "/matches" };

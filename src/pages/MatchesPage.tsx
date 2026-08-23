@@ -4,8 +4,12 @@ import { motion } from "framer-motion";
 import { PageHeader } from "@/components/PageHeader";
 import ApplyProgressModal from "@/components/agent/ApplyProgressModal";
 import type { ApplyProgressJob } from "@/components/agent/apply-progress-core";
+import { CreditBalance } from "@/components/apply/CreditBalance";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useApplyCredits } from "@/hooks/use-apply-credits";
+import { uniqueEvaluationIds } from "@/lib/apply-engine";
+import { APPLY_ENGINE_BATCH_LIMIT } from "@/lib/apply-credits";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { captureIncident } from "@/lib/incidents";
@@ -110,6 +114,7 @@ function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, operation: s
 export default function MatchesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { snapshot: credits, refresh: refreshCredits } = useApplyCredits();
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState<ScannedJob[]>([]);
   const [evaluations, setEvaluations] = useState<Record<string, Evaluation>>({});
@@ -202,7 +207,7 @@ export default function MatchesPage() {
         negative_keywords: [],
         auto_apply_min_score: 4.5,
         auto_apply_min_fit_score: 82,
-        daily_apply_cap: 60,
+        daily_apply_cap: 10,
         auto_apply_enabled: false,
       });
       return orderedJobs.length;
@@ -294,8 +299,11 @@ export default function MatchesPage() {
   };
 
   const applySelected = async (evaluationIds?: string[]) => {
-    const ids = evaluationIds && evaluationIds.length > 0 ? evaluationIds : [...selected];
+    const ids = uniqueEvaluationIds(evaluationIds && evaluationIds.length > 0 ? evaluationIds : [...selected]);
     if (ids.length === 0) return;
+    if ((evaluationIds ?? [...selected]).length > APPLY_ENGINE_BATCH_LIMIT) {
+      toast.message(`Queuing the first ${APPLY_ENGINE_BATCH_LIMIT} jobs. Daily and credit caps still apply.`);
+    }
     setBatchProgress({ current: 0, total: ids.length });
     setApplyErrors({});
     setApplyJobs(ids.map((evaluationId) => {
@@ -312,15 +320,25 @@ export default function MatchesPage() {
         body: { evaluation_ids: ids, intent: "user_selected" },
       });
       if (error) throw error;
-      const result = data as { queued?: number; needs_you?: number; jobs?: Array<{ evaluation_id: string; status: string; reason: string; draft_id?: string }> };
+      const result = data as {
+        queued?: number;
+        needs_you?: number;
+        blocked?: number;
+        credits?: { remaining?: number };
+        jobs?: Array<{ evaluation_id: string; status: string; reason: string; draft_id?: string }>;
+      };
       for (const row of result.jobs ?? []) {
         if (row.draft_id) setDrafts((prev) => ({ ...prev, [row.evaluation_id]: { id: row.draft_id as string, status: row.status === "queued" ? "queued" : "ready" } }));
         if (row.status === "error") {
           setApplyErrors((current) => ({ ...current, [row.evaluation_id]: row.reason }));
         }
       }
-      toast.success(`${result.queued ?? 0} queued to the cloud worker · ${result.needs_you ?? 0} need you (packet ready, ATS not live)`);
+      const blocked = result.blocked ?? 0;
+      const blockedReason = result.jobs?.find((row) => row.status === "error")?.reason;
+      toast.success(`${result.queued ?? 0} queued · ${result.needs_you ?? 0} need you (ATS not live)${blocked ? ` · ${blocked} blocked` : ""}`);
+      if (blocked && blockedReason) toast.message(blockedReason);
       setSelected(new Set());
+      void refreshCredits();
     } catch (error) {
       void captureIncident(error, { source: "manual", operation: "apply_selected" });
       toast.error("Those applications could not be queued. Try again in a moment.");
@@ -345,6 +363,7 @@ export default function MatchesPage() {
         : row?.reason || "Packet will be prepared. This ATS cannot be submitted automatically.");
       setPasteUrl("");
       await loadMatches(true);
+      void refreshCredits();
     } catch (error) {
       void captureIncident(error, { source: "manual", operation: "paste_job_url" });
       toast.error("That job URL could not be added. Use a Greenhouse, Lever, Ashby, Workday, or other direct posting link.");
@@ -396,6 +415,7 @@ export default function MatchesPage() {
           title="Job matches"
           status={`apply engine · ${stats.total} live`}
           description="Hourly Greenhouse, Ashby, and Lever career-page scan. Apply selected enqueues independent cloud jobs — detection is not the same as ability to submit."
+          action={<CreditBalance snapshot={credits} />}
         />
 
         {/* Ledger stat rail — three numerals, hairline dividers, refresh anchor */}

@@ -71,13 +71,13 @@ export default function PricingPage() {
       <div className="max-w-[1280px] mx-auto px-8 lg:px-12 pt-12 pb-24">
         <PageHeader
           title="Choose your edition."
-          status="pricing · three tiers"
-          description="Choose how much of the job search you want ResumePreps to run for you. Cancel any time."
+          status="pricing · credit buckets"
+          description="1 successful portal submit = 1 credit. System-side failures do not consume credit. Promo codes discount the invoice, not the bucket."
         />
 
         {/* Three-column ledger, separated by hairline rules */}
         <section className="mt-4 border-y border-rp-rule">
-          <div className="grid grid-cols-1 lg:grid-cols-3 lg:divide-x lg:divide-rp-rule">
+          <div className="grid grid-cols-1 lg:grid-cols-4 lg:divide-x lg:divide-rp-rule">
             {BILLING_PLANS.map((plan, i) => {
               const isFeatured = plan.popular;
               const isCurrent = currentPlan === plan.id;
@@ -191,8 +191,7 @@ export default function PricingPage() {
 
         <footer className="mt-12 flex flex-wrap items-baseline justify-between gap-6 border-t border-rp-rule pt-6">
           <p className="text-rp-ink-3 max-w-2xl leading-relaxed" style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}>
-            Monthly limits are deliberate. They exist so every application stays worth reading, and so you never see a
-            surprise usage charge at the end of the month.
+            Monthly limits are credit buckets, not marketing volume. Starter is $19 / 30 credits / 10 live submits a day — not 500–600 applies/day. A 50% Stripe promo still deducts one credit per successful submit.
           </p>
           <a
             href="mailto:support@resumepreps.com"

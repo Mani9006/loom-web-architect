@@ -73,7 +73,7 @@ node --test scripts/ats-adapters/adapters.test.mjs
 
 ## Optional environment variables
 - `APPLYPASS_WORKER_ID` (default: `applypass-worker-<hostname>`)
-- `APPLYPASS_WORKER_CONCURRENCY` (default: `4`, maximum: `12`)
+- `APPLYPASS_WORKER_CONCURRENCY` (default: `16`, maximum: `20`)
 - `APPLYPASS_WORKER_POLL_MS` (default: `5000`)
 - `APPLYPASS_AUTO_SUBMIT` (`true` or `false`, default `false`)
 - `APPLYPASS_SCREENSHOT_DIR` (save screenshots for each processed job)

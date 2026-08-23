@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { CreditBalance } from "@/components/apply/CreditBalance";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -27,6 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { captureIncident } from "@/lib/incidents";
 import { cn } from "@/lib/utils";
+import { useApplyCredits } from "@/hooks/use-apply-credits";
 import {
   rowMatchesTab,
   tabCounts,
@@ -74,6 +76,7 @@ function relativeTime(iso: string): string {
 export default function ApplicationsBoardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { snapshot: credits } = useApplyCredits();
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -220,6 +223,7 @@ export default function ApplicationsBoardPage() {
         title="Applications"
         status={`queue · ${counts.all} total`}
         description="Queued, sending, submitted, needs you, failed. Submitted only after a portal receipt — never a fake success."
+        action={<CreditBalance snapshot={credits} />}
       />
 
       {/* Tabs with counts */}

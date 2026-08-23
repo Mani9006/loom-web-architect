@@ -154,6 +154,68 @@ async function syncCareerDraft(
     .maybeSingle();
   const previousStatus = asString(existingDraft?.status);
 
+  const taskId = asString(taskContext.id) || null;
+
+  const persistReceipt = async (input: {
+    submitted: boolean;
+    firstJob?: Record<string, unknown>;
+    errorMessage?: string;
+    refundIfConsumed?: boolean;
+  }) => {
+    const firstJob = input.firstJob || {};
+    const { data: inserted, error: receiptError } = await serviceClient.from("application_receipts").insert({
+      user_id: userId,
+      draft_application_id: draftId,
+      applypass_task_id: taskId,
+      ats: asString(payload.detected_ats) || asString(payload.portal) || null,
+      submitted: input.submitted === true,
+      fields: {
+        filledCount: firstJob.filledCount ?? null,
+        totalFields: firstJob.totalFields ?? null,
+        requiredMissing: firstJob.requiredMissing ?? [],
+        answers: payload.answers ?? payload.answerMemory ?? {},
+      },
+      evidence: {
+        adapter: firstJob.adapter ?? null,
+        status: firstJob.status ?? null,
+        receipt: firstJob.receipt ?? null,
+        handoffReason: firstJob.handoffReason ?? null,
+        error: firstJob.error ?? input.errorMessage ?? null,
+        durationMs: firstJob.durationMs ?? null,
+      },
+    }).select("id").maybeSingle();
+
+    let receiptId = asString(inserted?.id);
+    if ((!receiptId || receiptError) && taskId) {
+      const { data: existing } = await serviceClient
+        .from("application_receipts")
+        .select("id")
+        .eq("applypass_task_id", taskId)
+        .maybeSingle();
+      receiptId = asString(existing?.id);
+    }
+
+    if (input.submitted && receiptId && taskId) {
+      const { error: consumeError } = await serviceClient.rpc("consume_apply_credit", {
+        p_user_id: userId,
+        p_task_id: taskId,
+        p_draft_id: draftId,
+        p_receipt_id: receiptId,
+      });
+      if (consumeError) {
+        console.error("[applypass-agent-queue] consume_apply_credit failed:", consumeError.message);
+      }
+    } else if (input.refundIfConsumed && taskId) {
+      // No-op unless a prior attempt already consumed. System-side failures
+      // must not leave the user charged.
+      await serviceClient.rpc("refund_apply_credit", {
+        p_user_id: userId,
+        p_task_id: taskId,
+        p_reason: "system_failure",
+      });
+    }
+  };
+
   if (outcome === "fail") {
     // Supabase query errors resolve on `error`, they don't throw — capture and
     // surface the failure instead of swallowing it, or the draft silently
@@ -171,6 +233,7 @@ async function syncCareerDraft(
         errorMessage: errorMessage || "Worker execution failed",
       });
     }
+    await persistReceipt({ submitted: false, errorMessage, refundIfConsumed: true });
     return;
   }
 
@@ -209,26 +272,10 @@ async function syncCareerDraft(
   }
 
   const firstJob = jobs.length > 0 ? asRecord(jobs[0]) : {};
-  await serviceClient.from("application_receipts").insert({
-    user_id: userId,
-    draft_application_id: draftId,
-    applypass_task_id: asString(taskContext.id) || null,
-    ats: asString(payload.detected_ats) || asString(payload.portal) || null,
-    submitted: submitted === true,
-    fields: {
-      filledCount: firstJob.filledCount ?? null,
-      totalFields: firstJob.totalFields ?? null,
-      requiredMissing: firstJob.requiredMissing ?? [],
-      answers: payload.answers ?? payload.answerMemory ?? {},
-    },
-    evidence: {
-      adapter: firstJob.adapter ?? null,
-      status: firstJob.status ?? null,
-      receipt: firstJob.receipt ?? null,
-      handoffReason: firstJob.handoffReason ?? null,
-      error: firstJob.error ?? errorMessage ?? null,
-      durationMs: firstJob.durationMs ?? null,
-    },
+  await persistReceipt({
+    submitted,
+    firstJob,
+    errorMessage: typeof firstIssue === "string" ? firstIssue : errorMessage,
   });
 }
 

@@ -1,4 +1,4 @@
-export type BillingPlanId = "free" | "pro" | "autopilot";
+export type BillingPlanId = "free" | "starter" | "pro" | "autopilot";
 
 export interface BillingPlan {
   id: BillingPlanId;
@@ -12,8 +12,9 @@ export interface BillingPlan {
 }
 
 /**
- * Customer-facing launch catalog. Server-side checkout keeps its own validated
- * price map so a client can never choose the amount it is charged.
+ * Credit buckets for the apply engine. 1 credit = 1 successful portal submit.
+ * System-side failures do not consume credit. Stripe promotion codes discount
+ * the invoice, not the monthly bucket. These are not 500–600 applies/day.
  */
 export const BILLING_PLANS: BillingPlan[] = [
   {
@@ -21,28 +22,42 @@ export const BILLING_PLANS: BillingPlan[] = [
     name: "Free",
     price: 0,
     period: "forever",
-    description: "Build a trustworthy foundation before you scale applications.",
+    description: "Build the packet. Live cloud submits need a paid credit bucket.",
     features: [
       "1 source resume",
-      "Public job search and tracker",
-      "10 fit evaluations / month",
-      "3 tailored application packets / month",
-      "Manual portal apply",
+      "Job matches and tracker",
+      "Apply selected for detect-only ATS (Needs you, 0 credits)",
+      "0 live-submit credits",
     ],
     cta: "Start free",
+  },
+  {
+    id: "starter",
+    name: "Starter",
+    price: 19,
+    period: "/month",
+    description: "A small live-submit bucket. Not hundreds of applies per day.",
+    features: [
+      "30 apply credits / month (1 credit = 1 successful submit)",
+      "10 live submits / day",
+      "8 in-flight live jobs",
+      "Greenhouse, Lever, Ashby, Workable, Workday adapters",
+      "Failed system-side submits do not consume credit",
+    ],
+    cta: "Choose Starter",
   },
   {
     id: "pro",
     name: "Pro",
     price: 39,
     period: "/month",
-    description: "For a focused search with strong materials for every priority role.",
+    description: "More credits for a focused search. Same enqueue path, same receipts.",
     features: [
-      "Everything in Free",
-      "100 fit evaluations / month",
-      "30 tailored application packets / month",
-      "Resume versions, ATS checks, and answer memory",
-      "Cover letters, ATS evidence, and reusable answer memory",
+      "Everything in Starter",
+      "80 apply credits / month",
+      "20 live submits / day",
+      "12 in-flight live jobs",
+      "Multi-select Apply selected (up to 60 independent jobs)",
     ],
     cta: "Choose Pro",
     popular: true,
@@ -52,15 +67,14 @@ export const BILLING_PLANS: BillingPlan[] = [
     name: "Autopilot",
     price: 99,
     period: "/month",
-    description: "A continuous application service with explicit controls and verified receipts.",
+    description: "Hands-off scheduler uses the same enqueue path, with a kill switch.",
     features: [
       "Everything in Pro",
-      "Up to 400 supported application attempts / week",
-      "Up to 1,600 supported application attempts / month",
-      "Greenhouse, Ashby, and Lever guarded submission",
-      "Review before submit by default",
-      "Prepared, queued, submitted, failed, and skipped states",
-      "System failures refund application credits",
+      "250 apply credits / month",
+      "40 live submits / day",
+      "16 in-flight live jobs",
+      "Hourly or daily hands-off enqueue + kill switch",
+      "Influencer codes = Stripe 50% off; credits still deduct 1:1",
     ],
     cta: "Choose Autopilot",
   },

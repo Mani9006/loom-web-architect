@@ -1,4 +1,4 @@
-export type SubscriptionPlan = "free" | "pro" | "autopilot";
+export type SubscriptionPlan = "free" | "starter" | "pro" | "autopilot";
 export type SubscriptionStatus = "active" | "canceled" | "past_due" | "trialing";
 
 export interface AccountAccessRecord {
@@ -44,9 +44,11 @@ export function resolveSubscription(
     && hasPaidPlan
     && PAID_PURCHASE_STATES.has(purchaseState);
 
-  const paidPlan: SubscriptionPlan = rawPlan === "autopilot" || rawPlan === "premium"
-    ? "autopilot"
-    : "pro";
+  const paidPlan: SubscriptionPlan = rawPlan === "starter"
+    ? "starter"
+    : rawPlan === "autopilot" || rawPlan === "premium"
+      ? "autopilot"
+      : "pro";
 
   return {
     plan: isPremium ? paidPlan : "free",

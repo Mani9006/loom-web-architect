@@ -20,7 +20,9 @@ const WORKER_TOKEN = process.env.APPLYPASS_WORKER_TOKEN || process.env.WORKER_AU
 const WORKER_ID = process.env.APPLYPASS_WORKER_ID || `applypass-worker-${os.hostname()}`;
 const POLL_MS = Number(process.env.APPLYPASS_WORKER_POLL_MS || 5000);
 const IDLE_EXIT_MS = Number(process.env.APPLYPASS_IDLE_EXIT_MS || 120000);
-const CONFIGURED_CONCURRENCY = Math.min(12, Math.max(1, Number(process.env.APPLYPASS_WORKER_CONCURRENCY || 4)));
+// Process slots on this worker. Per-user and global running caps live in
+// apply_engine_limits (defaults 12 / user, 120 global) via claim_applypass_task.
+const CONFIGURED_CONCURRENCY = Math.min(20, Math.max(1, Number(process.env.APPLYPASS_WORKER_CONCURRENCY || 16)));
 const AUTO_SUBMIT = String(process.env.APPLYPASS_AUTO_SUBMIT || "false").toLowerCase() === "true";
 const SCREENSHOT_DIR = process.env.APPLYPASS_SCREENSHOT_DIR || "";
 

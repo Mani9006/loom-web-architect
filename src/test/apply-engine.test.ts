@@ -31,7 +31,7 @@ describe("apply engine planner", () => {
 
   it("dedupes evaluation ids and caps the batch", () => {
     expect(uniqueEvaluationIds(["a", "a", "b", 1, ""])).toEqual(["a", "b"]);
-    expect(uniqueEvaluationIds(Array.from({ length: 80 }, (_, i) => String(i)))).toHaveLength(50);
+    expect(uniqueEvaluationIds(Array.from({ length: 80 }, (_, i) => String(i)))).toHaveLength(60);
   });
 
   it("gates hands-off enqueue on kill switch, cadence, and daily batch", () => {

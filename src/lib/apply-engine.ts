@@ -3,6 +3,7 @@
  * Detection lives in ats-detect.ts. This module owns batch intent + row status.
  */
 
+import { APPLY_ENGINE_BATCH_LIMIT } from "@/lib/apply-credits";
 import { detectAtsFromUrl, type AtsDetection } from "@/lib/ats-detect";
 
 export type ApplyIntent = "user_selected" | "hands_off";
@@ -66,5 +67,5 @@ export function uniqueEvaluationIds(values: unknown): string[] {
     seen.add(id);
     ids.push(id);
   }
-  return ids.slice(0, 50);
+  return ids.slice(0, APPLY_ENGINE_BATCH_LIMIT);
 }

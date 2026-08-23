@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useSubscription } from "@/components/SubscriptionGate";
+import { clampDailyApplyCap, resolveCreditPlan } from "@/lib/apply-credits";
 
 interface Prefs {
   target_roles: string[];
@@ -56,7 +58,7 @@ const DEFAULT: Prefs = {
   auto_apply_enabled: false,
   auto_apply_min_score: 4.5,
   auto_apply_min_fit_score: 82,
-  daily_apply_cap: 60,
+  daily_apply_cap: 10,
   auto_apply_portals: ["greenhouse", "ashby", "lever"],
   agent_enabled: false,
   agent_max_actions_per_day: 240,
@@ -172,6 +174,9 @@ function ChoiceChips({ label, hint, values, choices, onChange }: {
 export default function CareerOpsPreferencesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { plan } = useSubscription();
+  const creditPlan = resolveCreditPlan(plan);
+  const dailyCapMax = Math.max(1, clampDailyApplyCap(999, creditPlan) || 1);
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -203,6 +208,7 @@ export default function CareerOpsPreferencesPage() {
     const normalized = {
       ...prefs,
       remote_only: prefs.work_modes.length === 1 && prefs.work_modes[0] === "remote",
+      daily_apply_cap: clampDailyApplyCap(prefs.daily_apply_cap, creditPlan) || 1,
     };
     const [prefsResult, profileResult] = await Promise.all([
       supabase.from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
@@ -498,7 +504,7 @@ export default function CareerOpsPreferencesPage() {
               aria-label="Daily submission cap"
               type="number"
               min="0"
-              max="75"
+              max={dailyCapMax}
               value={prefs.daily_apply_cap}
               onChange={(e) => setPrefs({ ...prefs, daily_apply_cap: Number(e.target.value) })}
               className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"

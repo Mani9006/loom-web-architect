@@ -612,7 +612,7 @@ export default function AutoApplyPage() {
                   </li>
                   <li className="flex items-center gap-2 text-sm text-rp-ink">
                     <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                    Up to 400 supported attempts per week and 1,600 per month
+                    250 apply credits / month · 40 live submits / day. 1 credit = 1 successful submit.
                   </li>
                   <li className="flex items-center gap-2 text-sm text-rp-ink">
                     <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />

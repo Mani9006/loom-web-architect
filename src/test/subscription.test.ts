@@ -11,6 +11,19 @@ describe("subscription entitlement resolution", () => {
     });
   });
 
+  it("recognizes an active Starter account", () => {
+    expect(resolveSubscription({
+      account_status: "active",
+      purchase_state: "active",
+      subscription_plan: "starter",
+    })).toEqual({
+      plan: "starter",
+      status: "active",
+      isPremium: true,
+      hasAutoApply: false,
+    });
+  });
+
   it("recognizes a manually granted Pro account", () => {
     expect(resolveSubscription({
       account_status: "active",

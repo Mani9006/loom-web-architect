@@ -27,17 +27,20 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import ApplyProgressModal from "@/components/agent/ApplyProgressModal";
 import type { ApplyProgressJob } from "@/components/agent/apply-progress-core";
+import { CreditBalance } from "@/components/apply/CreditBalance";
 import { useSubscription } from "@/components/SubscriptionGate";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { clampDailyApplyCap, creditPlanLabel, resolveCreditPlan } from "@/lib/apply-credits";
 import { cn } from "@/lib/utils";
 import { captureIncident } from "@/lib/incidents";
 import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { selectAppliableNow, selectTopNow } from "@/lib/top-now";
 import { toast } from "sonner";
+import { useApplyCredits } from "@/hooks/use-apply-credits";
 
 type ReviewMode = "always" | "low_confidence" | "eligible_only";
 
@@ -164,7 +167,7 @@ const DEFAULT_CONTROLS: AgentControls = {
   auto_apply_min_fit_score: 82,
   auto_apply_min_ats_score: 85,
   tailoring_mode: "evidence_only",
-  daily_apply_cap: 60,
+  daily_apply_cap: 40,
   hands_off_cadence: "hourly",
   agent_max_actions_per_day: 240,
   agent_actions_today: 0,
@@ -209,6 +212,9 @@ export default function AgentPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { plan, hasAutoApply } = useSubscription();
+  const creditPlan = resolveCreditPlan(plan);
+  const dailyCapMax = Math.max(1, clampDailyApplyCap(999, creditPlan) || 1);
+  const { snapshot: credits } = useApplyCredits();
   const [controls, setControls] = useState<AgentControls>(DEFAULT_CONTROLS);
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [latestAts, setLatestAts] = useState<AtsScore | null>(null);
@@ -425,20 +431,6 @@ export default function AgentPage() {
     return value;
   }, [drafts]);
 
-  const usage = useMemo(() => {
-    const now = new Date();
-    const weekStart = new Date(now);
-    const daysFromMonday = (weekStart.getUTCDay() + 6) % 7;
-    weekStart.setUTCDate(weekStart.getUTCDate() - daysFromMonday);
-    weekStart.setUTCHours(0, 0, 0, 0);
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const submitted = drafts.filter((draft) => draft.status === "submitted" && draft.submitted_at);
-    return {
-      weekly: submitted.filter((draft) => new Date(draft.submitted_at as string) >= weekStart).length,
-      monthly: submitted.filter((draft) => new Date(draft.submitted_at as string) >= monthStart).length,
-    };
-  }, [drafts]);
-
   const draftsByEvaluation = useMemo(() => {
     const map = new Map<string, DraftStatusRow>();
     for (const draft of drafts) {
@@ -644,7 +636,7 @@ export default function AgentPage() {
       auto_apply_min_fit_score: Math.min(100, Math.max(60, controls.auto_apply_min_fit_score)),
       auto_apply_min_ats_score: Math.min(95, Math.max(70, controls.auto_apply_min_ats_score)),
       tailoring_mode: controls.tailoring_mode === "coverage_boost" ? "coverage_boost" : "evidence_only",
-      daily_apply_cap: Math.min(75, Math.max(1, controls.daily_apply_cap)),
+      daily_apply_cap: clampDailyApplyCap(controls.daily_apply_cap, creditPlan) || 1,
       hands_off_cadence: controls.hands_off_cadence === "off" || controls.hands_off_cadence === "daily" ? controls.hands_off_cadence : "hourly",
       agent_max_actions_per_day: Math.min(300, Math.max(30, controls.agent_max_actions_per_day)),
     };
@@ -725,7 +717,7 @@ export default function AgentPage() {
   // at 5, so the batch stays inside the existing pipeline limits.
   const prepareTopMatches = async () => prepareMatches(applyAllTargets);
 
-  const planName = plan === "autopilot" ? "Autopilot" : plan === "pro" ? "Pro" : "Free";
+  const planName = creditPlanLabel(plan);
   const isRunning = controls.agent_enabled && hasAutoApply;
 
   if (loading) {
@@ -744,6 +736,7 @@ export default function AgentPage() {
         title="Hands-off apply"
         status={`${planName.toLowerCase()} · ${isRunning ? "running" : "stopped"}`}
         description="Scheduler enqueues eligible roles as independent cloud jobs. Kill switch stops in-flight hands-off submits. Apply selected on Job matches does not need this to be on."
+        action={<CreditBalance snapshot={credits} />}
       />
 
       {/* HERO, the one master control: is it working for me right now? */}
@@ -791,17 +784,17 @@ export default function AgentPage() {
         <div className="mt-6 grid gap-4 border-t border-rp-rule pt-5 md:grid-cols-2 xl:grid-cols-[1fr_1fr_auto] xl:items-center">
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-rp-ink">Applied this week</span>
-              <span className="tabular-nums text-rp-ink-2">{usage.weekly} / 400</span>
+              <span className="font-medium text-rp-ink">Credits this month</span>
+              <span className="tabular-nums text-rp-ink-2">{credits ? `${credits.consumed} / ${credits.granted}` : "—"}</span>
             </div>
-            <Progress value={Math.min(100, (usage.weekly / 400) * 100)} className="mt-2 h-2" />
+            <Progress value={credits && credits.granted > 0 ? Math.min(100, (credits.consumed / credits.granted) * 100) : 0} className="mt-2 h-2" />
           </div>
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-rp-ink">Applied this month</span>
-              <span className="tabular-nums text-rp-ink-2">{usage.monthly} / 1,600</span>
+              <span className="font-medium text-rp-ink">Live submits today</span>
+              <span className="tabular-nums text-rp-ink-2">{credits ? `${credits.daily_used} / ${credits.daily_cap}` : "—"}</span>
             </div>
-            <Progress value={Math.min(100, (usage.monthly / 1600) * 100)} className="mt-2 h-2" />
+            <Progress value={credits && credits.daily_cap > 0 ? Math.min(100, (credits.daily_used / credits.daily_cap) * 100) : 0} className="mt-2 h-2" />
           </div>
           <div className="flex items-center gap-2 text-xs text-rp-ink-2 xl:justify-end">
             <span className={cn("h-2 w-2 rounded-full", counts.queued === 0 || workerOnline ? "bg-emerald-500" : "bg-amber-500")} />
@@ -1186,12 +1179,12 @@ export default function AgentPage() {
                     <input
                       type="number"
                       min="1"
-                      max="75"
+                      max={dailyCapMax}
                       value={controls.daily_apply_cap}
                       onChange={(event) => setControls((current) => ({ ...current, daily_apply_cap: Number(event.target.value) }))}
                       className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
                     />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">The most we'll submit in one day.</span>
+                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">Hard cap for live submits in one day. {planName} max is {dailyCapMax}. Not 600/day.</span>
                   </label>
                   <label className="space-y-2">
                     <span className="text-xs font-semibold text-rp-ink">Checks per day</span>
@@ -1236,7 +1229,7 @@ export default function AgentPage() {
 
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rp-rule pt-5">
                   <p className="text-xs text-rp-ink-2">
-                    {controls.agent_actions_today}/{controls.agent_max_actions_per_day} checks used today · 400 weekly / 1,600 monthly application allowance
+                    {controls.agent_actions_today}/{controls.agent_max_actions_per_day} checks used today · {credits ? `${credits.remaining} credits left` : "credits"} · 1 credit = 1 successful submit
                   </p>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => navigate("/career-ops/preferences")}>

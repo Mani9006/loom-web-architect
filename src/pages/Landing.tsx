@@ -220,7 +220,7 @@ export default function Landing() {
             <p className="text-[12px] font-medium text-muted-foreground mb-2">Pricing</p>
             <h2 className="text-[32px] sm:text-[40px] font-bold tracking-tight text-foreground leading-[1.1]">Simple, transparent pricing.</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {BILLING_PLANS.map((plan, i) => (
               <motion.div key={plan.name} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} custom={i}
                 className={`rounded-xl p-6 flex flex-col ${plan.popular ? "bg-foreground text-background shadow-xl" : "bg-card border border-border"}`}>

@@ -14,6 +14,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { detectAtsFromUrl } from "../_shared/ats-detect.ts";
 import {
+  DEFAULT_ENGINE_LIMITS,
+  decideEnqueueSlot,
+  effectiveDailyCap,
+  engineIdempotencyKey,
+  remainingCredits as remainingFromParts,
+  resolveCreditPlan,
+} from "../_shared/apply-credits.ts";
+import {
   corsHeaders,
   getAuthedUserOrService,
   HttpError,
@@ -51,7 +59,7 @@ function asIds(value: unknown): string[] {
     seen.add(id);
     ids.push(id);
   }
-  return ids.slice(0, 50);
+  return ids.slice(0, DEFAULT_ENGINE_LIMITS.max_batch);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -194,19 +202,57 @@ serve(async (req) => {
       .in("id", evaluationIds);
     if (evalError) throw new HttpError(500, "Matches could not be loaded");
 
+    const [{ data: access }, { data: prefs }, snapshot] = await Promise.all([
+      db.from("user_access_controls").select("subscription_plan").eq("user_id", user.id).maybeSingle(),
+      db.from("user_job_prefs").select("daily_apply_cap").eq("user_id", user.id).maybeSingle(),
+      db.rpc("get_apply_credit_snapshot", { p_user_id: user.id }).then((res: { data: unknown; error: { message: string } | null }) => {
+        if (res.error) throw new HttpError(500, "Credit balance could not be loaded");
+        return asRecord(res.data);
+      }),
+    ]);
+
+    const plan = resolveCreditPlan(asString(access?.subscription_plan));
+    const limits = asRecord(snapshot.limits);
+    const dailyCap = effectiveDailyCap(plan, Number(prefs?.daily_apply_cap ?? snapshot.daily_cap ?? 0), Number(limits.per_user_daily_enqueue ?? DEFAULT_ENGINE_LIMITS.per_user_daily_enqueue));
+    const atsHourlyCap = Number(limits.per_ats_per_user_hourly ?? DEFAULT_ENGINE_LIMITS.per_ats_per_user_hourly);
+    let remaining = remainingFromParts(
+      Number(snapshot.granted ?? 0),
+      Number(snapshot.consumed ?? 0),
+      Number(snapshot.refunded ?? 0),
+      Number(snapshot.reserved ?? 0),
+    );
+    let dailyLiveUsed = Number(snapshot.daily_used ?? 0);
+
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data: recentLive } = await db.from("applypass_tasks")
+      .select("payload")
+      .eq("user_id", user.id)
+      .eq("task_type", "apply_engine")
+      .gte("created_at", hourAgo)
+      .neq("status", "canceled");
+    const atsHourlyUsed = new Map<string, number>();
+    for (const row of recentLive ?? []) {
+      const payload = asRecord((row as { payload?: unknown }).payload);
+      if (!payload.submittable) continue;
+      const ats = asString(payload.detected_ats) || "unknown";
+      atsHourlyUsed.set(ats, (atsHourlyUsed.get(ats) || 0) + 1);
+    }
+
     const byId = new Map((evaluations ?? []).map((row: Record<string, unknown>) => [String(row.id), row]));
     const rows: EngineRow[] = [];
+    let liveQueuedInBatch = 0;
 
     // Insert independent queue jobs without waiting for tailoring. Workers
-    // call ensure-packet, then submit or hand off.
-    await Promise.all(evaluationIds.map(async (evaluationId) => {
+    // call ensure-packet, then submit or hand off. Sequential so credit/rate
+    // slots are assigned without a race inside one fan-out.
+    for (const evaluationId of evaluationIds) {
       const evaluation = byId.get(evaluationId);
       if (!evaluation) {
         rows.push({
           evaluation_id: evaluationId, draft_id: null, task_id: null, apply_url: "",
           ats: null, submittable: false, status: "error", reason: "Match not found",
         });
-        return;
+        continue;
       }
       const job = asRecord(evaluation.scanned_job);
       const applyUrl = asString(job.apply_url);
@@ -233,11 +279,12 @@ serve(async (req) => {
             ats: detection.ats, submittable: detection.submittable, status: "error",
             reason: "Could not open an application packet",
           });
-          return;
+          continue;
         }
         draftId = created.id;
       }
 
+      const alreadySubmitted = existingDraft?.status === "submitted";
       const { data: active } = await db.from("applypass_tasks")
         .select("id,status")
         .eq("user_id", user.id)
@@ -246,21 +293,42 @@ serve(async (req) => {
         .in("status", ["pending", "running"])
         .maybeSingle();
 
+      const slot = decideEnqueueSlot({
+        submittable: detection.submittable,
+        alreadySubmitted,
+        alreadyQueued: Boolean(active?.id),
+        remainingCredits: remaining,
+        liveQueuedInBatch,
+        dailyLiveUsed,
+        dailyLiveCap: dailyCap,
+        atsHourlyUsed: atsHourlyUsed.get(detection.ats || "unknown") || 0,
+        atsHourlyCap,
+      });
+
       if (active?.id) {
-      await db.from("draft_applications").update({
-        status: "queued",
-        applypass_task_id: active.id,
-        detected_ats: detection.ats,
-        ats_submittable: detection.submittable,
-        error_message: detection.submittable ? null : detection.reason,
-      }).eq("id", draftId).eq("user_id", user.id);
+        await db.from("draft_applications").update({
+          status: "queued",
+          applypass_task_id: active.id,
+          detected_ats: detection.ats,
+          ats_submittable: detection.submittable,
+          error_message: detection.submittable ? null : detection.reason,
+        }).eq("id", draftId).eq("user_id", user.id);
         rows.push({
           evaluation_id: evaluationId, draft_id: draftId, task_id: active.id, apply_url: applyUrl,
           ats: detection.ats, submittable: detection.submittable,
           status: detection.submittable ? "queued" : "needs_you",
-          reason: "Already in the cloud queue",
+          reason: slot.detail,
         });
-        return;
+        continue;
+      }
+
+      if (!slot.ok) {
+        rows.push({
+          evaluation_id: evaluationId, draft_id: draftId, task_id: null, apply_url: applyUrl,
+          ats: detection.ats, submittable: detection.submittable, status: "error",
+          reason: slot.detail,
+        });
+        continue;
       }
 
       const payload = {
@@ -289,15 +357,18 @@ serve(async (req) => {
         user_id: user.id,
         task_type: "apply_engine",
         status: "pending",
+        idempotency_key: engineIdempotencyKey(evaluationId),
         payload,
       }).select("id,status").single();
       if (taskError || !task) {
+        const duplicate = /duplicate|unique/i.test(String(taskError?.message || ""));
         rows.push({
           evaluation_id: evaluationId, draft_id: draftId, task_id: null, apply_url: applyUrl,
-          ats: detection.ats, submittable: detection.submittable, status: "error",
-          reason: "Could not enqueue this application",
+          ats: detection.ats, submittable: detection.submittable,
+          status: duplicate ? "queued" : "error",
+          reason: duplicate ? "Already in the cloud queue" : "Could not enqueue this application",
         });
-        return;
+        continue;
       }
 
       await db.from("draft_applications").update({
@@ -308,6 +379,12 @@ serve(async (req) => {
         error_message: detection.submittable ? null : detection.reason,
       }).eq("id", draftId).eq("user_id", user.id);
 
+      if (slot.occupiesCredit) {
+        liveQueuedInBatch += 1;
+        const ats = detection.ats || "unknown";
+        atsHourlyUsed.set(ats, (atsHourlyUsed.get(ats) || 0) + 1);
+      }
+
       rows.push({
         evaluation_id: evaluationId,
         draft_id: draftId,
@@ -316,9 +393,17 @@ serve(async (req) => {
         ats: detection.ats,
         submittable: detection.submittable,
         status: detection.submittable ? "queued" : "needs_you",
-        reason: detection.reason,
+        reason: slot.detail,
       });
-    }));
+    }
+
+    const credits = {
+      plan,
+      remaining: Math.max(0, remaining - liveQueuedInBatch),
+      reserved: Number(snapshot.reserved ?? 0) + liveQueuedInBatch,
+      granted: Number(snapshot.granted ?? 0),
+      daily_remaining: Math.max(0, dailyCap - dailyLiveUsed - liveQueuedInBatch),
+    };
 
     return jsonResponse({
       ok: true,
@@ -326,6 +411,8 @@ serve(async (req) => {
       count: rows.length,
       queued: rows.filter((row) => row.status === "queued").length,
       needs_you: rows.filter((row) => row.status === "needs_you").length,
+      blocked: rows.filter((row) => row.status === "error").length,
+      credits,
       jobs: rows,
     });
   });
