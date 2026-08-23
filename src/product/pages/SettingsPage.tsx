@@ -5,6 +5,7 @@ import { useSubscription } from "@/components/SubscriptionGate";
 import { ApplicationProfileCard } from "@/components/settings/ApplicationProfileCard";
 import { useHandsOff } from "@/product/hooks/useHandsOff";
 import { useCredits } from "@/product/hooks/useCredits";
+import { PageHeader } from "@/product/components/PageHeader";
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
@@ -14,11 +15,8 @@ export default function SettingsPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="mx-auto max-w-[880px] px-4 py-6 space-y-6">
-      <header>
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Settings</p>
-        <h1 className="mt-1 text-[26px] font-semibold tracking-tight">Apply policy, vaults, and account</h1>
-      </header>
+    <div className="space-y-8">
+      <PageHeader kicker="Settings" title="Apply policy, vaults, and account" />
 
       <Card title="Apply settings">
         <label className="flex items-center justify-between text-[13px]">
@@ -87,7 +85,7 @@ export default function SettingsPage() {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-border bg-card p-4">
+    <section className="border-t border-border pt-6">
       <h2 className="text-[15px] font-semibold">{title}</h2>
       <div className="mt-3">{children}</div>
     </section>

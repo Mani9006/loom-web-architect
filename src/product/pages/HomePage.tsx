@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { FilterBar } from "@/product/components/FilterBar";
 import { MatchRing } from "@/product/components/MatchRing";
 import { StatusChip } from "@/product/components/StatusChip";
 import { EmptyState } from "@/product/components/EmptyState";
+import { PageHeader } from "@/product/components/PageHeader";
 import { PageSkeleton, TableSkeleton } from "@/product/components/Skeleton";
 import { useMatches } from "@/product/hooks/useMatches";
 import { useApplications } from "@/product/hooks/useApplications";
@@ -16,6 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { loading, jobs, evaluations, filterJobs, pass } = useMatches();
   const { rows, counts, tab, setTab, paged, page, setPage, pageCount, loading: appsLoading } = useApplications();
   const { applyEvaluation, busyId } = useApply();
@@ -23,15 +26,21 @@ export default function HomePage() {
 
   const top = useMemo(() => filterJobs(filters).slice(0, 5), [filterJobs, filters]);
 
+  useEffect(() => {
+    if (params.get("checkout") === "success") {
+      toast.success("Plan unlocked. Credits are on your ledger.");
+    }
+  }, [params]);
+
   if (loading && appsLoading) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-[1200px] px-4 py-6 space-y-8">
-      <header>
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Home</p>
-        <h1 className="mt-1 text-[26px] font-semibold tracking-tight">US matches, then receipts.</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">Signed in as {user?.email}. Filters stay US-only. Batch apply hits the visible top set only.</p>
-      </header>
+    <div className="space-y-12">
+      <PageHeader
+        kicker="Home"
+        title="US matches, then receipts."
+        subtitle={`Signed in as ${user?.email}. Filters stay US-only. Apply hits one role unless you confirm more.`}
+      />
 
       <FilterBar value={filters} onChange={setFilters} />
 
@@ -41,14 +50,14 @@ export default function HomePage() {
           <div className="flex gap-2">
             <button
               type="button"
-              className="h-8 rounded-md border border-border bg-card px-3 text-[12px] font-medium"
+              className="h-8 border border-border bg-background px-3 text-[12px] font-medium"
               disabled={!top.length || Boolean(busyId)}
               onClick={() => {
                 const first = top[0];
                 if (first && evaluations[first.id]) void applyEvaluation(evaluations[first.id].id, first.applyUrl);
               }}
             >
-              Apply visible top set
+              Apply first visible
             </button>
             <button type="button" className="h-8 text-[12px] text-primary" onClick={() => navigate("/matches")}>All matches</button>
           </div>
@@ -57,27 +66,24 @@ export default function HomePage() {
           <EmptyState
             title="No US matches yet"
             body="Upload a resume, then refresh Job matches. We only score United States roles."
-            action={<button type="button" className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => navigate("/resume")}>Open My resume</button>}
+            action={<button type="button" className="h-9 bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => navigate("/resume")}>Open My resume</button>}
           />
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="divide-y divide-border border-y border-border">
             {top.map((job) => {
               const evaluation = evaluations[job.id];
               return (
-                <article key={job.id} className="rounded-xl border border-border bg-card p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] text-muted-foreground">{job.company}</p>
-                      <h3 className="text-[14px] font-semibold leading-snug">{job.title}</h3>
-                      <p className="mt-1 text-[12px] text-muted-foreground">{workplaceLabel(job.workplace)} · {job.location || "United States"}</p>
-                    </div>
-                    <MatchRing score={evaluation?.score ?? 0} />
+                <article key={job.id} className="flex flex-wrap items-center gap-4 py-5">
+                  <MatchRing score={evaluation?.score ?? 0} />
+                  <div className="min-w-[220px] flex-1">
+                    <p className="text-[11px] text-muted-foreground">{job.company}</p>
+                    <h3 className="font-display text-xl leading-snug">{job.title}</h3>
+                    <p className="mt-1 text-[13px] text-muted-foreground">{workplaceLabel(job.workplace)} · {job.location || "United States"}</p>
                   </div>
-                  <p className="mt-3 line-clamp-2 text-[12px] text-muted-foreground">{evaluation?.summary || "Fit scored from your source resume. No invented history."}</p>
-                  <div className="mt-4 flex gap-2">
+                  <div className="flex gap-2">
                     <button
                       type="button"
-                      className="h-8 flex-1 rounded-md bg-primary text-[12px] font-medium text-primary-foreground disabled:opacity-50"
+                      className="h-9 bg-primary px-4 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
                       disabled={!evaluation || busyId === evaluation.id}
                       onClick={() => evaluation && void applyEvaluation(evaluation.id, job.applyUrl)}
                     >
@@ -85,7 +91,7 @@ export default function HomePage() {
                     </button>
                     <button
                       type="button"
-                      className="h-8 rounded-md border border-border px-3 text-[12px]"
+                      className="h-9 border border-border px-3 text-[12px]"
                       onClick={() => evaluation && void pass(evaluation.id)}
                     >
                       Pass
@@ -109,13 +115,13 @@ export default function HomePage() {
               key={item.id}
               type="button"
               onClick={() => setTab(item.id)}
-              className={`h-8 rounded-full px-3 text-[12px] ${tab === item.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+              className={`h-8 px-3 text-[12px] ${tab === item.id ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}
             >
               {item.label} <span className="tabular-nums">{counts[item.id]}</span>
             </button>
           ))}
         </div>
-        <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
+        <div className="mt-3 overflow-hidden border border-border">
           {appsLoading ? <div className="p-4"><TableSkeleton /></div> : (
             <table className="w-full text-left text-[13px]">
               <thead className="bg-muted/50 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
@@ -143,9 +149,9 @@ export default function HomePage() {
           )}
         </div>
         <div className="mt-3 flex items-center justify-end gap-2 text-[12px]">
-          <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="h-8 rounded-md border border-border px-2 disabled:opacity-40">Prev</button>
+          <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="h-8 border border-border px-2 disabled:opacity-40">Prev</button>
           <span className="tabular-nums text-muted-foreground">{page} / {pageCount}</span>
-          <button type="button" disabled={page >= pageCount} onClick={() => setPage(page + 1)} className="h-8 rounded-md border border-border px-2 disabled:opacity-40">Next</button>
+          <button type="button" disabled={page >= pageCount} onClick={() => setPage(page + 1)} className="h-8 border border-border px-2 disabled:opacity-40">Next</button>
         </div>
       </section>
     </div>

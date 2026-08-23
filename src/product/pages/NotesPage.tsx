@@ -2,6 +2,7 @@ import { useState } from "react";
 import { EmptyState } from "@/product/components/EmptyState";
 import { PageSkeleton } from "@/product/components/Skeleton";
 import { useNotes, type ResearchNote } from "@/product/hooks/usePeopleNotes";
+import { PageHeader } from "@/product/components/PageHeader";
 
 const blank = (): ResearchNote => ({ id: crypto.randomUUID(), title: "", body: "", company: "" });
 
@@ -12,20 +13,18 @@ export default function NotesPage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-[960px] px-4 py-6 space-y-5">
-      <header className="flex items-end justify-between">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Notes</p>
-          <h1 className="mt-1 text-[26px] font-semibold tracking-tight">Research lite</h1>
-        </div>
-        <button type="button" className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => setDraft(blank())}>New note</button>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        kicker="Notes"
+        title="Research next to the roles you apply to"
+        action={<button type="button" className="h-9 bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => setDraft(blank())}>New note</button>}
+      />
       {notes.length === 0 && !draft ? (
         <EmptyState title="No research notes" body="Capture company research next to the roles you are actually applying to." />
       ) : (
         <div className="space-y-3">
           {notes.map((note) => (
-            <article key={note.id} className="rounded-xl border border-border bg-card p-4">
+            <article key={note.id} className="border-b border-border py-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-[15px] font-semibold">{note.title}</h2>

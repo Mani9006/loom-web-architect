@@ -7,6 +7,7 @@ import { PageSkeleton } from "@/product/components/Skeleton";
 import { StatusChip } from "@/product/components/StatusChip";
 import { invokeFunction } from "@/product/lib/table";
 import { relativeTime } from "@/product/lib/format";
+import { PageHeader } from "@/product/components/PageHeader";
 
 export default function HandsOffPage() {
   const { state, setState, recipes, setRecipes, runs, resumes, loading, saving, persist } = useHandsOff();
@@ -40,13 +41,10 @@ export default function HandsOffPage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-[960px] px-4 py-6 space-y-6">
-      <header>
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Hands-off apply</p>
-        <h1 className="mt-1 text-[26px] font-semibold tracking-tight">One daily cap. Many recipes. No silent enable.</h1>
-      </header>
+    <div className="space-y-8">
+      <PageHeader kicker="Hands-off apply" title="One daily cap. Many recipes. No silent enable." />
 
-      <section className="flex items-center justify-between rounded-xl border border-border bg-card p-4">
+      <section className="flex items-center justify-between border border-border p-5">
         <div>
           <p className="text-[14px] font-semibold">Enable hands-off apply</p>
           <p className="text-[12px] text-muted-foreground">Requires an explicit confirm. US roles only. Submitted still needs a receipt.</p>
@@ -70,7 +68,7 @@ export default function HandsOffPage() {
       </section>
 
       {confirmEnable && !state.enabled && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+        <div className="border border-primary/40 bg-primary/5 p-5">
           <p className="text-[13px] font-medium">Confirm enable</p>
           <p className="mt-1 text-[12px] text-muted-foreground">This will start the hunter on a shared daily cap. Review-before-submit is {draft.reviewBeforeSubmit ? "on" : "off"}.</p>
           <button type="button" className="mt-3 h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => { setConfirmEnable(true); void save({ ...draft, enabled: true }, true); }}>
@@ -128,7 +126,7 @@ export default function HandsOffPage() {
         ))}
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-4">
+      <section className="border border-border p-5">
         <h2 className="text-[15px] font-semibold">AI tuner</h2>
         <p className="mt-1 text-[12px] text-muted-foreground">Preview first. Save only after you approve.</p>
         <div className="mt-3 flex gap-2">

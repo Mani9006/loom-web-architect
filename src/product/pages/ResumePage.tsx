@@ -5,6 +5,7 @@ import { ApplicationProfileCard } from "@/components/settings/ApplicationProfile
 import { EmptyState } from "@/product/components/EmptyState";
 import { PageSkeleton } from "@/product/components/Skeleton";
 import { db, invokeFunction } from "@/product/lib/table";
+import { PageHeader } from "@/product/components/PageHeader";
 
 type Tab = "profiles" | "editor" | "cover" | "details";
 
@@ -15,8 +16,8 @@ interface ResumeRow {
   updated_at: string;
 }
 
-const TEMPLATES = ["Atlas", "Ledger", "Signal", "Harbor"];
-const FONTS = ["IBM Plex Sans", "IBM Plex Mono", "Georgia"];
+const TEMPLATES = ["Nocturne", "Ledger", "Studio", "Harbor"];
+const FONTS = ["Instrument Sans", "DM Mono", "Source Serif 4"];
 const AUTH = ["US Citizen", "Green Card", "F-1", "H-1B", "EAD", "Need sponsorship"];
 
 export default function ResumePage() {
@@ -30,7 +31,7 @@ export default function ResumePage() {
     title: "Primary resume",
     summary: "",
     template: "Atlas",
-    font: "IBM Plex Sans",
+    font: "Instrument Sans",
     size: "10",
     align: "left",
     fitOnePage: true,
@@ -109,11 +110,8 @@ export default function ResumePage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-[1100px] px-4 py-6 space-y-5">
-      <header>
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">My resume</p>
-        <h1 className="mt-1 text-[26px] font-semibold tracking-tight">Profiles, templates, and US work auth</h1>
-      </header>
+    <div className="space-y-6">
+      <PageHeader kicker="My resume" title="Profiles, templates, and US work auth" />
 
       <div className="flex gap-1 rounded-lg bg-muted p-1">
         {([
@@ -135,7 +133,7 @@ export default function ResumePage() {
           {rows.length === 0 ? <EmptyState title="No resume profiles" body="Upload a PDF or DOCX. Parsing uses the existing document pipeline." /> : (
             <div className="grid gap-3 md:grid-cols-2">
               {rows.map((row) => (
-                <button key={row.id} type="button" onClick={() => { setActive(row.id); setTab("editor"); }} className={`rounded-xl border p-4 text-left ${active === row.id ? "border-primary" : "border-border bg-card"}`}>
+                <button key={row.id} type="button" onClick={() => { setActive(row.id); setTab("editor"); }} className={`border p-4 text-left ${active === row.id ? "border-primary" : "border-border bg-background"}`}>
                   <p className="text-[14px] font-semibold">{row.title || "Untitled"}</p>
                   <p className="text-[12px] text-muted-foreground">{row.template || "Atlas"}</p>
                 </button>
@@ -162,7 +160,7 @@ export default function ResumePage() {
             </div>
             <button type="button" className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => void saveEditor()}>Save profile</button>
           </div>
-          <aside className="space-y-3 rounded-xl border border-border bg-card p-4">
+          <aside className="space-y-3 border border-border p-4">
             <label className="block text-[12px]">Template
               <select className="mt-1 h-10 w-full rounded-md border border-input px-2" value={editor.template} onChange={(e) => setEditor({ ...editor, template: e.target.value })}>
                 {TEMPLATES.map((t) => <option key={t}>{t}</option>)}
@@ -201,7 +199,7 @@ export default function ResumePage() {
 
       {tab === "details" && (
         <div className="space-y-5">
-          <section className="rounded-xl border border-border bg-card p-4">
+          <section className="border border-border p-4">
             <h2 className="text-[15px] font-semibold">US work authorization defaults</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <select className="h-10 rounded-md border border-input px-3 text-[13px]" value={editor.auth} onChange={(e) => setEditor({ ...editor, auth: e.target.value })}>

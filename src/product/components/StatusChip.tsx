@@ -2,20 +2,20 @@ import { cn } from "@/lib/utils";
 import type { BoardStatusKey } from "@/lib/application-board";
 
 const TONES: Record<string, string> = {
-  queued: "bg-primary/10 text-primary border-primary/20",
-  tailoring: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20",
-  applying: "bg-primary/10 text-primary border-primary/20 animate-status-pulse",
-  submitted: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25",
-  needs_you: "bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/25",
-  cant_apply: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20",
-  expired: "bg-muted text-muted-foreground border-border",
-  failed: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20",
-  skipped: "bg-muted text-muted-foreground border-border",
-  interview: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20",
-  offer: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25",
-  ghosted: "bg-muted text-muted-foreground border-border",
-  rejected: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20",
-  applied: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25",
+  queued: "border-primary/40 text-primary",
+  tailoring: "border-border text-foreground",
+  applying: "border-primary/40 text-primary animate-status-pulse",
+  submitted: "border-primary text-primary",
+  needs_you: "border-border text-foreground",
+  cant_apply: "border-destructive/40 text-destructive",
+  expired: "border-border text-muted-foreground",
+  failed: "border-destructive/40 text-destructive",
+  skipped: "border-border text-muted-foreground",
+  interview: "border-primary/40 text-primary",
+  offer: "border-primary text-primary",
+  ghosted: "border-border text-muted-foreground",
+  rejected: "border-destructive/40 text-destructive",
+  applied: "border-primary/40 text-primary",
 };
 
 export function StatusChip({
@@ -30,8 +30,8 @@ export function StatusChip({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize",
-        TONES[status] || "bg-muted text-muted-foreground border-border",
+        "inline-flex items-center border px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.12em]",
+        TONES[status] || "border-border text-muted-foreground",
         className,
       )}
     >

@@ -9,6 +9,7 @@ import { useMatches, type ProductJob } from "@/product/hooks/useMatches";
 import { useApply } from "@/product/hooks/useApply";
 import { EMPTY_FILTERS, type MatchFilters } from "@/product/lib/filters";
 import { atsSupported, detectAts, relativeTime, workplaceLabel } from "@/product/lib/format";
+import { PageHeader } from "@/product/components/PageHeader";
 
 export default function MatchesPage() {
   const { loading, refreshing, jobs, evaluations, drafts, saved, refreshPipeline, pass, saveJob, filterJobs } = useMatches();
@@ -23,21 +24,21 @@ export default function MatchesPage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-[1100px] px-4 py-6 space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Job matches</p>
-          <h1 className="mt-1 text-[26px] font-semibold tracking-tight">Ranked US feed</h1>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => setUrlOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-[13px]">
-            <Link2 className="h-3.5 w-3.5" /> Add URL
-          </button>
-          <button type="button" onClick={() => void refreshPipeline()} className="h-9 rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground disabled:opacity-50" disabled={refreshing}>
-            {refreshing ? "Refreshing…" : "Refresh matches"}
-          </button>
-        </div>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        kicker="Job matches"
+        title="Ranked US feed"
+        action={
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setUrlOpen(true)} className="inline-flex h-9 items-center gap-1.5 border border-border bg-background px-3 text-[13px]">
+              <Link2 className="h-3.5 w-3.5" /> Add URL
+            </button>
+            <button type="button" onClick={() => void refreshPipeline()} className="h-9 bg-primary px-3 text-[13px] font-medium text-primary-foreground disabled:opacity-50" disabled={refreshing}>
+              {refreshing ? "Refreshing…" : "Refresh matches"}
+            </button>
+          </div>
+        }
+      />
 
       <FilterBar value={filters} onChange={setFilters} />
 
@@ -50,7 +51,7 @@ export default function MatchesPage() {
             const draft = evaluation ? drafts[evaluation.id] : undefined;
             const portal = detectAts(job.applyUrl);
             return (
-              <article key={job.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+              <article key={job.id} className="flex flex-wrap items-center gap-3 border-b border-border py-4">
                 <MatchRing score={evaluation?.score ?? 0} />
                 <div className="min-w-[220px] flex-1">
                   <p className="text-[11px] text-muted-foreground">{job.company} · {workplaceLabel(job.workplace)}</p>
@@ -60,13 +61,13 @@ export default function MatchesPage() {
                 <StatusChip status={atsSupported(portal) ? "queued" : "needs_you"} label={atsSupported(portal) ? portal : `${portal} · needs you`} />
                 {draft && <StatusChip status={draft.status} />}
                 <div className="flex flex-wrap gap-1.5">
-                  <button type="button" className={`h-8 rounded-md border px-2.5 text-[12px] ${saved.has(job.id) ? "border-primary text-primary" : "border-border"}`} onClick={() => void saveJob(job.id)}>
+                  <button type="button" className={`h-8 border px-2.5 text-[12px] ${saved.has(job.id) ? "border-primary text-primary" : "border-border"}`} onClick={() => void saveJob(job.id)}>
                     {saved.has(job.id) ? "Saved" : "Save"}
                   </button>
-                  <button type="button" className="h-8 rounded-md border border-border px-2.5 text-[12px]" onClick={() => setDrawer(job)}>Details</button>
+                  <button type="button" className="h-8 border border-border px-2.5 text-[12px]" onClick={() => setDrawer(job)}>Details</button>
                   <button
                     type="button"
-                    className="h-8 rounded-md bg-primary px-2.5 text-[12px] text-primary-foreground disabled:opacity-50"
+                    className="h-8 bg-primary px-2.5 text-[12px] text-primary-foreground disabled:opacity-50"
                     disabled={!evaluation || busyId === evaluation.id}
                     onClick={() => evaluation && void applyEvaluation(evaluation.id, job.applyUrl)}
                   >
@@ -120,7 +121,7 @@ export default function MatchesPage() {
       {urlOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setUrlOpen(false)}>
           <form
-            className="w-full max-w-md space-y-3 rounded-xl border border-border bg-card p-5"
+            className="w-full max-w-md space-y-3 border border-border bg-background p-5"
             onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => {
               e.preventDefault();

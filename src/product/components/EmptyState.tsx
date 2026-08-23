@@ -13,10 +13,10 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-xl border border-dashed border-border bg-card/60 px-6 py-12 text-center", className)}>
-      <h3 className="text-[15px] font-semibold tracking-tight">{title}</h3>
-      <p className="mt-2 mx-auto max-w-md text-[13px] text-muted-foreground leading-relaxed">{body}</p>
-      {action && <div className="mt-5">{action}</div>}
+    <div className={cn("border border-dashed border-border px-6 py-14", className)}>
+      <h3 className="font-display text-2xl">{title}</h3>
+      <p className="mt-3 max-w-md text-body text-muted-foreground">{body}</p>
+      {action && <div className="mt-6">{action}</div>}
     </div>
   );
 }

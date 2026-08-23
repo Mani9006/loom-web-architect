@@ -8,6 +8,7 @@ import { StatusChip } from "@/product/components/StatusChip";
 import { useInbox, type InboxCategory } from "@/product/hooks/useInbox";
 import { db } from "@/product/lib/table";
 import { relativeTime } from "@/product/lib/format";
+import { PageHeader } from "@/product/components/PageHeader";
 
 const CATS: Array<{ id: InboxCategory; label: string }> = [
   { id: "all", label: "All" },
@@ -29,16 +30,14 @@ export default function InboxPage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-[1100px] px-4 py-6 space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Recruiter inbox</p>
-          <h1 className="mt-1 text-[26px] font-semibold tracking-tight">Mail that belongs to the apply loop</h1>
-        </div>
-        <button type="button" className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => setCompose(true)}>Compose</button>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        kicker="Recruiter inbox"
+        title="Mail that belongs to the apply loop"
+        action={<button type="button" className="h-9 bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => setCompose(true)}>Compose</button>}
+      />
 
-      <section className="rounded-xl border border-border bg-card p-4">
+      <section className="border border-border p-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Dedicated apply-from address</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <code className="rounded-md bg-muted px-2 py-1 text-[13px]">{address}</code>
@@ -49,15 +48,15 @@ export default function InboxPage() {
         <p className="mt-2 text-[12px] text-muted-foreground">Use this on ATS forms. Incoming classification is verification, rejection, interview, assessment, reminder, offer, applied.</p>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4">
+      <section className="grid gap-px bg-border md:grid-cols-2">
+        <div className="bg-background p-5">
           <div className="flex items-center gap-2 text-[14px] font-semibold"><Mail className="h-4 w-4 text-primary" /> Gmail</div>
           <p className="mt-1 text-[12px] text-muted-foreground">{gmailConnected ? "Connected. We poll for recruiter mail and OTP codes." : "Connect Gmail to classify employer mail. Requires GOOGLE_CLIENT_ID / SECRET."}</p>
           <button type="button" className="mt-3 h-9 rounded-md border border-border px-3 text-[13px]" onClick={() => void connectGmail()}>
             {gmailConnected ? "Reconnect Gmail" : "Connect Gmail"}
           </button>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="bg-background p-5">
           <div className="text-[14px] font-semibold">Outlook</div>
           <p className="mt-1 text-[12px] text-muted-foreground">OAuth UI is ready. Set MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, and MICROSOFT_REDIRECT_URI to finish the handshake. No fake submit.</p>
           <button type="button" className="mt-3 h-9 rounded-md border border-border px-3 text-[13px]" onClick={() => toast.message("Outlook OAuth", { description: "Add Microsoft env vars on the edge functions, then this button starts the real consent screen." })}>
@@ -68,7 +67,7 @@ export default function InboxPage() {
 
       <div className="flex flex-wrap gap-1.5">
         {CATS.map((cat) => (
-          <button key={cat.id} type="button" onClick={() => setCategory(cat.id)} className={`h-8 rounded-full px-3 text-[12px] ${category === cat.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+          <button key={cat.id} type="button" onClick={() => setCategory(cat.id)} className={`h-8 px-3 text-[12px] ${category === cat.id ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}>
             {cat.label}
           </button>
         ))}
@@ -77,7 +76,7 @@ export default function InboxPage() {
       {threads.length === 0 ? (
         <EmptyState title="Inbox is quiet" body="When employers write, threads land here and can link back to an application." />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="overflow-hidden border border-border">
           {threads.map((thread) => (
             <button
               key={thread.id}

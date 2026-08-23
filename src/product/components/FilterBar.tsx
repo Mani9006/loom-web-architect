@@ -1,6 +1,6 @@
 import { EMPTY_FILTERS, type MatchFilters } from "@/product/lib/filters";
 
-const CHIP = "h-8 rounded-md border border-border bg-card px-2 text-[12px] text-foreground";
+const CHIP = "h-8 border border-border bg-background px-2 text-[12px] text-foreground";
 
 export function FilterBar({
   value,

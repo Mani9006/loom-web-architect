@@ -1,25 +1,31 @@
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
-export function Mark({ className, size = 22 }: { className?: string; size?: number }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center rounded-[5px] bg-primary text-primary-foreground font-semibold tracking-tight",
-        className,
+export function Mark({
+  href,
+  className,
+  compact = false,
+}: {
+  href?: string;
+  className?: string;
+  compact?: boolean;
+}) {
+  const inner = (
+    <span className={cn("inline-flex items-center gap-2.5 text-foreground no-underline", className)}>
+      <span className="inline-block h-[18px] w-[3px] bg-primary" aria-hidden />
+      {!compact && (
+        <span className="text-[13px] font-medium uppercase tracking-[0.18em]">ResumePreps</span>
       )}
-      style={{ width: size, height: size, fontSize: Math.max(10, size * 0.48) }}
-      aria-hidden
-    >
-      R
     </span>
+  );
+  if (!href) return inner;
+  return (
+    <Link to={href} className="no-underline">
+      {inner}
+    </Link>
   );
 }
 
-export function Wordmark({ compact = false }: { compact?: boolean }) {
-  return (
-    <span className="inline-flex items-center gap-2 no-underline text-foreground">
-      <Mark />
-      {!compact && <span className="text-[15px] font-semibold tracking-[-0.02em]">ResumePreps</span>}
-    </span>
-  );
+export function Wordmark({ compact = false }: { compact?: boolean; invert?: boolean }) {
+  return <Mark compact={compact} />;
 }

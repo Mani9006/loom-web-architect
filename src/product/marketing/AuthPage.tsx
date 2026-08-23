@@ -1,123 +1,102 @@
-import { useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { z } from "zod";
+import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { useTheme } from "@/hooks/use-theme";
-import { Wordmark } from "@/product/components/Mark";
-import { trackProductEvent } from "@/lib/product-analytics";
-import { sendWelcomeEmail } from "@/lib/email";
 import { Moon, Sun } from "lucide-react";
-
-const emailSchema = z.string().email("Enter a valid email");
-const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
-type Mode = "login" | "signup" | "forgot";
+import { Mark } from "@/product/components/Mark";
 
 export default function AuthPage() {
   const [params] = useSearchParams();
-  const [mode, setMode] = useState<Mode>((params.get("mode") as Mode) || "login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
-  const [resetSent, setResetSent] = useState(false);
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const [mode, setMode] = useState<"signin" | "signup">(params.get("mode") === "signup" ? "signup" : "signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    document.title = mode === "signup" ? "Create account · ResumePreps" : "Sign in · ResumePreps";
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session?.user) navigate("/home");
-      if (event === "PASSWORD_RECOVERY") navigate("/reset-password");
-    });
-    supabase.auth.getSession().then(({ data }) => { if (data.session?.user) navigate("/home"); });
-    return () => subscription.unsubscribe();
-  }, [navigate, mode]);
-
-  function validate() {
-    const next: typeof errors = {};
-    const emailResult = emailSchema.safeParse(email);
-    if (!emailResult.success) next.email = emailResult.error.errors[0].message;
-    if (mode !== "forgot") {
-      const passwordResult = passwordSchema.safeParse(password);
-      if (!passwordResult.success) next.password = passwordResult.error.errors[0].message;
-    }
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  }
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!validate()) return;
-    setLoading(true);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
     try {
-      if (mode === "forgot") {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
-        if (error) setErrors({ email: error.message });
-        else setResetSent(true);
-      } else if (mode === "login") {
+      if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) setErrors({ password: "Invalid email or password." });
-        else void trackProductEvent("auth_login_success", { provider: "email" });
+        if (error) throw error;
+        navigate("/home");
       } else {
-        const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/home`, data: { full_name: fullName } } });
-        if (error) setErrors({ email: error.message });
-        else {
-          void trackProductEvent("auth_signup_success", { provider: "email" });
-          void sendWelcomeEmail(email, fullName);
-        }
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        toast.success("Account created. Check email if confirmation is required.");
+        navigate("/home");
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Authentication failed");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  }
+  };
 
-  async function google() {
-    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/home` } });
-  }
+  const google = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/home` },
+    });
+    if (error) toast.error(error.message);
+  };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-background text-foreground">
-      <aside className="hidden lg:flex flex-col justify-between bg-[hsl(222_28%_7%)] p-10 text-[hsl(210_20%_94%)]">
-        <Wordmark />
-        <div>
-          <p className="text-[28px] font-semibold leading-tight tracking-[-0.03em]">US jobs. Real receipts. One credit per submit.</p>
-          <p className="mt-3 max-w-sm text-[14px] text-white/60">The signed-in desk and this auth screen share the same graphite system. No cream brochure, no leftover indigo 404.</p>
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
+        <Mark href="/" />
+        <button type="button" onClick={toggleTheme} className="border border-border p-2" aria-label="Toggle theme">
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+      </header>
+      <main className="mx-auto grid max-w-6xl gap-16 px-5 py-16 md:grid-cols-2 md:py-24">
+        <div className="max-w-md">
+          <p className="text-caption text-primary">{mode === "signin" ? "Welcome back" : "New account"}</p>
+          <h1 className="mt-4 font-display text-5xl">{mode === "signin" ? "Sign in" : "Start applying"}</h1>
+          <p className="mt-5 text-body text-muted-foreground">
+            Same company on both sides of the door. Your credits, applications, and inbox live on the other side.
+          </p>
         </div>
-        <p className="text-[12px] text-white/40">resumepreps.com</p>
-      </aside>
-      <div className="flex flex-col px-6 py-8">
-        <div className="flex items-center justify-between">
-          <Link to="/" className="lg:invisible"><Wordmark /></Link>
-          <button type="button" onClick={toggleTheme} className="h-9 w-9 rounded-md hover:bg-muted" aria-label="Toggle theme">
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        <form onSubmit={submit} className="max-w-md space-y-4 border-t border-border pt-8 md:border-l md:border-t-0 md:pl-12 md:pt-0">
+          <label className="block text-caption text-muted-foreground">
+            Email
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-2 w-full border border-border bg-background px-3 py-3 text-body outline-none"
+            />
+          </label>
+          <label className="block text-caption text-muted-foreground">
+            Password
+            <input
+              type="password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-2 w-full border border-border bg-background px-3 py-3 text-body outline-none"
+            />
+          </label>
+          <button type="submit" disabled={busy} className="w-full bg-primary py-3 text-caption text-primary-foreground">
+            {busy ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : mode === "signin" ? "Sign in" : "Create account"}
           </button>
-        </div>
-        <form onSubmit={onSubmit} className="mx-auto my-auto w-full max-w-sm space-y-3" role="form">
-          <h1 className="text-[24px] font-semibold tracking-tight">{mode === "signup" ? "Create account" : mode === "forgot" ? "Reset password" : "Sign in"}</h1>
-          {mode === "signup" && <input className="h-10 w-full rounded-md border border-input px-3 text-[13px]" placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} />}
-          <div>
-            <input className="h-10 w-full rounded-md border border-input px-3 text-[13px]" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            {errors.email && <p className="mt-1 text-[12px] text-rose-600">{errors.email}</p>}
-          </div>
-          {mode !== "forgot" && (
-            <div>
-              <input type="password" className="h-10 w-full rounded-md border border-input px-3 text-[13px]" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-              {errors.password && <p className="mt-1 text-[12px] text-rose-600">{errors.password}</p>}
-            </div>
-          )}
-          {resetSent && <p className="text-[13px] text-primary">Check your email for a reset link.</p>}
-          <button type="submit" disabled={loading} className="h-10 w-full rounded-md bg-primary text-[13px] font-medium text-primary-foreground">
-            {mode === "login" ? "Login" : mode === "signup" ? "Sign Up" : "Send reset"}
+          <button type="button" onClick={() => void google()} className="w-full border border-border py-3 text-caption">
+            Continue with Google
           </button>
-          <button type="button" onClick={() => void google()} className="h-10 w-full rounded-md border border-border text-[13px]">Continue with Google</button>
-          <div className="flex justify-between text-[12px]">
-            {mode !== "login" && <button type="button" onClick={() => setMode("login")}>Login</button>}
-            {mode !== "signup" && <button type="button" onClick={() => setMode("signup")}>Sign Up</button>}
-            {mode !== "forgot" && <button type="button" onClick={() => setMode("forgot")}>Forgot</button>}
+          <div className="flex items-center justify-between text-caption text-muted-foreground">
+            <button type="button" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
+              {mode === "signin" ? "Need an account?" : "Already have one?"}
+            </button>
+            <Link to="/reset-password">Forgot password</Link>
           </div>
         </form>
-      </div>
+      </main>
     </div>
   );
 }

@@ -101,7 +101,18 @@ serve(async (req: Request) => {
             updated_at: new Date().toISOString(),
           }, { onConflict: "user_id" });
 
-          console.log(`[StripeWebhook] Activated ${planType} for ${userId}`);
+          const grant = planType === "autopilot" ? 400 : 100;
+          const { error: creditError } = await supabase.rpc("grant_credits", {
+            p_user_id: userId,
+            p_delta: grant,
+            p_reason: "plan_grant",
+            p_metadata: { stripe_session_id: session.id, plan_type: planType },
+          });
+          if (creditError && creditError.code !== "23505") {
+            console.error("[StripeWebhook] Credit grant failed", creditError);
+          }
+
+          console.log(`[StripeWebhook] Activated ${planType} for ${userId} (+${grant} credits)`);
 
           // Send subscription confirmation email
           const email = session.customer_email || await getUserEmail(supabase, userId);

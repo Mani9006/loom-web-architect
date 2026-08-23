@@ -2,6 +2,7 @@ import { useState } from "react";
 import { EmptyState } from "@/product/components/EmptyState";
 import { PageSkeleton } from "@/product/components/Skeleton";
 import { usePeople, type Person } from "@/product/hooks/usePeopleNotes";
+import { PageHeader } from "@/product/components/PageHeader";
 
 const blank = (): Person => ({
   id: crypto.randomUUID(),
@@ -20,20 +21,18 @@ export default function PeoplePage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-[960px] px-4 py-6 space-y-5">
-      <header className="flex items-end justify-between">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">People</p>
-          <h1 className="mt-1 text-[26px] font-semibold tracking-tight">Networking lite</h1>
-        </div>
-        <button type="button" className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => setDraft(blank())}>Add person</button>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        kicker="People"
+        title="Hiring managers and peers"
+        action={<button type="button" className="h-9 bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => setDraft(blank())}>Add person</button>}
+      />
       {people.length === 0 && !draft ? (
         <EmptyState title="No people yet" body="Track hiring managers and peers from companies already in your pipeline." />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="divide-y divide-border border-y border-border">
           {people.map((person) => (
-            <article key={person.id} className="rounded-xl border border-border bg-card p-4">
+            <article key={person.id} className="py-5">
               <h2 className="text-[15px] font-semibold">{person.name}</h2>
               <p className="text-[12px] text-muted-foreground">{person.title} · {person.company}</p>
               <div className="mt-3 flex gap-2">

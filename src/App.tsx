@@ -37,12 +37,22 @@ const SettingsPage = lazy(() => import("./product/pages/SettingsPage"));
 const HowItWorksPage = lazy(() => import("./product/marketing/HowItWorksPage"));
 const PlansPage = lazy(() => import("./product/marketing/PlansPage"));
 const FaqPage = lazy(() => import("./product/marketing/FaqPage"));
+const StatusPage = lazy(() => import("./product/marketing/StatusPage"));
+const InvitePage = lazy(() => import("./product/marketing/InvitePage"));
 const NotFoundPage = lazy(() => import("./product/marketing/NotFoundPage"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
-const AdminPortal = lazy(() => import("./pages/AdminPortal"));
-const FeatureFlagsAdmin = lazy(() => import("./pages/FeatureFlagsAdmin"));
 const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
 const FeedbackPage = lazy(() => import("./pages/FeedbackPage"));
+const OperatorProtectedRoute = lazy(() => import("./components/OperatorProtectedRoute"));
+const AdminShell = lazy(() => import("./product/admin/AdminShell"));
+const AdminHome = lazy(() => import("./product/admin/AdminHome"));
+const TeamPage = lazy(() => import("./product/admin/TeamPage"));
+const AdminUsersPage = lazy(() => import("./product/admin/UsersPage"));
+const AdminErrorsPage = lazy(() => import("./product/admin/ErrorsPage"));
+const AdminHealthPage = lazy(() => import("./product/admin/HealthPage"));
+const AdminCodesPage = lazy(() => import("./product/admin/CodesPage"));
+const AdminFlagsPage = lazy(() => import("./product/admin/FlagsPage"));
+const AdminAuditPage = lazy(() => import("./product/admin/AuditPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -81,9 +91,23 @@ const App = () => (
                   <Route path="/how-it-works" element={<HowItWorksPage />} />
                   <Route path="/plans" element={<PlansPage />} />
                   <Route path="/faq" element={<FaqPage />} />
+                  <Route path="/status" element={<StatusPage />} />
+                  <Route path="/invite/:token" element={<InvitePage />} />
                   <Route path="/pricing" element={<Navigate to="/plans" replace />} />
 
                   <Route element={<ProtectedRoute />}>
+                    <Route element={<OperatorProtectedRoute />}>
+                      <Route element={<AdminShell />}>
+                        <Route path="/admin" element={<AdminHome />} />
+                        <Route path="/admin/team" element={<TeamPage />} />
+                        <Route path="/admin/users" element={<AdminUsersPage />} />
+                        <Route path="/admin/errors" element={<AdminErrorsPage />} />
+                        <Route path="/admin/health" element={<AdminHealthPage />} />
+                        <Route path="/admin/codes" element={<AdminCodesPage />} />
+                        <Route path="/admin/flags" element={<AdminFlagsPage />} />
+                        <Route path="/admin/audit" element={<AdminAuditPage />} />
+                      </Route>
+                    </Route>
                     <Route element={<ProductShell />}>
                       <Route path="/home" element={<HomePage />} />
                       <Route path="/matches" element={<MatchesPage />} />
@@ -92,19 +116,12 @@ const App = () => (
                       <Route path="/inbox" element={<InboxPage />} />
                       <Route path="/pipeline" element={<PipelinePage />} />
                       <Route path="/hands-off" element={<HandsOffPage />} />
+                      <Route path="/apply" element={<HandsOffPage />} />
                       <Route path="/resume" element={<ResumePage />} />
                       <Route path="/people" element={<PeoplePage />} />
                       <Route path="/notes" element={<NotesPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/feedback" element={<FeedbackPage />} />
-                      <Route
-                        path="/admin"
-                        element={<OwnerProtectedRoute><AdminPortal /></OwnerProtectedRoute>}
-                      />
-                      <Route
-                        path="/admin/flags"
-                        element={<OwnerProtectedRoute><FeatureFlagsAdmin /></OwnerProtectedRoute>}
-                      />
                       <Route
                         path="/control-center"
                         element={<OwnerProtectedRoute><ControlCenter /></OwnerProtectedRoute>}

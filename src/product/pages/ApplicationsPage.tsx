@@ -5,30 +5,28 @@ import { EmptyState } from "@/product/components/EmptyState";
 import { useApplications } from "@/product/hooks/useApplications";
 import { PRODUCT_APP_TABS } from "@/product/lib/application-tabs";
 import { relativeTime } from "@/product/lib/format";
+import { PageHeader } from "@/product/components/PageHeader";
 
 export default function ApplicationsPage() {
   const navigate = useNavigate();
   const { counts, tab, setTab, paged, page, setPage, pageCount, loading } = useApplications();
 
   return (
-    <div className="mx-auto max-w-[1200px] px-4 py-6 space-y-4">
-      <header>
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Applications</p>
-        <h1 className="mt-1 text-[26px] font-semibold tracking-tight">Every packet, with a status you can trust</h1>
-      </header>
+    <div className="space-y-6">
+      <PageHeader kicker="Applications" title="Every packet, with a status you can trust" />
       <div className="flex flex-wrap gap-1.5">
         {PRODUCT_APP_TABS.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => setTab(item.id)}
-            className={`h-8 rounded-full px-3 text-[12px] ${tab === item.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+            className={`h-8 px-3 text-[12px] ${tab === item.id ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}
           >
             {item.label} <span className="tabular-nums">{counts[item.id]}</span>
           </button>
         ))}
       </div>
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-hidden border border-border">
         {loading ? <div className="p-4"><TableSkeleton /></div> : paged.length === 0 ? (
           <EmptyState title="No applications in this tab" body="Apply from Home or Job matches. Submitted never appears without a worker receipt." />
         ) : (

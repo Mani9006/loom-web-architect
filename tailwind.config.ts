@@ -16,34 +16,28 @@ export default {
 		extend: {
 			fontFamily: {
 				sans: [
-					'IBM Plex Sans',
+					'Instrument Sans',
 					'ui-sans-serif',
 					'system-ui',
-					'-apple-system',
-					'Segoe UI',
 					'sans-serif'
 				],
 				serif: [
-					'IBM Plex Sans',
+					'Instrument Sans',
 					'ui-sans-serif',
 					'system-ui',
 					'sans-serif'
 				],
 				display: [
-					'IBM Plex Sans',
+					'Instrument Sans',
 					'ui-sans-serif',
 					'system-ui',
 					'sans-serif'
 				],
 				mono: [
-					'IBM Plex Mono',
+					'DM Mono',
 					'ui-monospace',
 					'SFMono-Regular',
 					'Menlo',
-					'Monaco',
-					'Consolas',
-					'Liberation Mono',
-					'Courier New',
 					'monospace'
 				]
 			},

@@ -1,8 +1,8 @@
-/* ResumePreps — Signal system.
- * Cool graphite + deep teal. IBM Plex only. No serif, no cream, no indigo.
- * Marketing and the signed-in app share these tokens.
+/* ResumePreps — Nocturne Electrum
+ * Near-black canvas, ivory type, one sharp electrum accent.
+ * Not teal, not indigo, not cream/serif, not IBM Plex.
  */
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=DM+Mono:wght@400;500&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -10,131 +10,129 @@
 
 @layer base {
   :root {
-    --background: 210 18% 96%;
-    --foreground: 222 40% 8%;
+    /* Stark gallery light — white, not cream paper */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 6%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 40% 8%;
+    --card-foreground: 0 0% 6%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 40% 8%;
+    --popover-foreground: 0 0% 6%;
 
-    --primary: 173 78% 27%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 42 78% 48%;
+    --primary-foreground: 0 0% 6%;
 
-    --secondary: 210 16% 92%;
-    --secondary-foreground: 222 30% 16%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
 
-    --muted: 210 14% 92%;
-    --muted-foreground: 215 12% 38%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 38%;
 
-    --accent: 173 40% 92%;
-    --accent-foreground: 173 78% 18%;
+    --accent: 42 70% 94%;
+    --accent-foreground: 36 70% 24%;
 
-    --destructive: 350 80% 48%;
+    --destructive: 4 78% 48%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 210 16% 86%;
-    --input: 210 16% 86%;
-    --ring: 173 78% 27%;
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 42 78% 48%;
 
-    --radius: 0.5rem;
+    --radius: 0px;
 
-    --sidebar-background: 210 20% 98%;
-    --sidebar-foreground: 222 20% 24%;
-    --sidebar-primary: 173 78% 27%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 173 40% 92%;
-    --sidebar-accent-foreground: 173 78% 18%;
-    --sidebar-border: 210 16% 86%;
-    --sidebar-ring: 173 78% 27%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 20%;
+    --sidebar-primary: 42 78% 48%;
+    --sidebar-primary-foreground: 0 0% 6%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 6%;
+    --sidebar-border: 0 0% 88%;
+    --sidebar-ring: 42 78% 48%;
 
     --shadow-glow: 0 0 0 0 transparent;
-    --shadow-subtle: 0 1px 2px 0 hsl(222 40% 8% / 0.05);
-    --shadow-card: 0 1px 2px 0 hsl(222 40% 8% / 0.05);
-    --shadow-card-hover: 0 8px 24px -12px hsl(222 40% 8% / 0.16);
-    --shadow-elevated: 0 16px 40px -20px hsl(222 40% 8% / 0.22);
+    --shadow-subtle: none;
+    --shadow-card: none;
+    --shadow-card-hover: none;
+    --shadow-elevated: 0 24px 60px -32px hsl(0 0% 0% / 0.28);
 
-    --rp-canvas: 210 18% 96%;
+    --rp-canvas: 0 0% 100%;
     --rp-paper: 0 0% 100%;
-    --rp-paper-2: 210 16% 92%;
-    --rp-ink: 222 40% 8%;
-    --rp-ink-2: 215 12% 38%;
-    --rp-ink-3: 215 10% 52%;
-    --rp-rule: 210 16% 86%;
-    --rp-rule-2: 210 14% 78%;
-    --rp-accent: 173 78% 27%;
-    --rp-accent-2: 173 78% 22%;
+    --rp-paper-2: 0 0% 96%;
+    --rp-ink: 0 0% 6%;
+    --rp-ink-2: 0 0% 38%;
+    --rp-ink-3: 0 0% 52%;
+    --rp-rule: 0 0% 88%;
+    --rp-rule-2: 0 0% 80%;
+    --rp-accent: 42 78% 48%;
+    --rp-accent-2: 38 80% 42%;
 
-    --chart-1: 173 78% 27%;
-    --chart-2: 210 18% 40%;
-    --chart-3: 28 80% 48%;
-    --chart-4: 350 80% 48%;
-    --chart-5: 222 40% 18%;
+    --chart-1: 42 78% 48%;
+    --chart-2: 0 0% 20%;
+    --chart-3: 4 78% 48%;
+    --chart-4: 210 12% 40%;
+    --chart-5: 0 0% 60%;
 
-    --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-    --font-display: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-    --font-serif: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-    --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-display: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-serif: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   }
 
   .dark {
-    --background: 222 28% 6%;
-    --foreground: 210 20% 94%;
+    --background: 0 0% 4%;
+    --foreground: 40 24% 94%;
 
-    --card: 222 24% 9%;
-    --card-foreground: 210 20% 94%;
+    --card: 0 0% 7%;
+    --card-foreground: 40 24% 94%;
 
-    --popover: 222 24% 9%;
-    --popover-foreground: 210 20% 94%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 40 24% 94%;
 
-    --primary: 173 62% 42%;
-    --primary-foreground: 222 28% 6%;
+    --primary: 42 78% 58%;
+    --primary-foreground: 0 0% 6%;
 
-    --secondary: 222 18% 14%;
-    --secondary-foreground: 210 16% 88%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 40 20% 90%;
 
-    --muted: 222 16% 13%;
-    --muted-foreground: 210 10% 64%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 40 8% 62%;
 
-    --accent: 173 30% 14%;
-    --accent-foreground: 173 60% 72%;
+    --accent: 42 30% 12%;
+    --accent-foreground: 42 78% 70%;
 
-    --destructive: 350 72% 52%;
+    --destructive: 4 72% 52%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 222 16% 16%;
-    --input: 222 16% 18%;
-    --ring: 173 62% 42%;
+    --border: 0 0% 14%;
+    --input: 0 0% 16%;
+    --ring: 42 78% 58%;
 
-    --sidebar-background: 222 28% 6%;
-    --sidebar-foreground: 210 10% 70%;
-    --sidebar-primary: 173 62% 42%;
-    --sidebar-primary-foreground: 222 28% 6%;
-    --sidebar-accent: 222 16% 13%;
-    --sidebar-accent-foreground: 210 20% 94%;
-    --sidebar-border: 222 16% 16%;
-    --sidebar-ring: 173 62% 42%;
+    --sidebar-background: 0 0% 4%;
+    --sidebar-foreground: 40 8% 70%;
+    --sidebar-primary: 42 78% 58%;
+    --sidebar-primary-foreground: 0 0% 6%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 40 24% 94%;
+    --sidebar-border: 0 0% 14%;
+    --sidebar-ring: 42 78% 58%;
 
-    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
-    --shadow-card: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
-    --shadow-card-hover: 0 8px 24px -12px hsl(0 0% 0% / 0.55);
-    --shadow-elevated: 0 16px 40px -20px hsl(0 0% 0% / 0.7);
+    --shadow-elevated: 0 24px 60px -28px hsl(0 0% 0% / 0.7);
 
-    --rp-canvas: 222 28% 6%;
-    --rp-paper: 222 24% 9%;
-    --rp-paper-2: 222 18% 14%;
-    --rp-ink: 210 20% 94%;
-    --rp-ink-2: 210 10% 64%;
-    --rp-ink-3: 210 8% 48%;
-    --rp-rule: 222 16% 16%;
-    --rp-rule-2: 222 14% 22%;
-    --rp-accent: 173 62% 42%;
-    --rp-accent-2: 173 62% 50%;
+    --rp-canvas: 0 0% 4%;
+    --rp-paper: 0 0% 7%;
+    --rp-paper-2: 0 0% 10%;
+    --rp-ink: 40 24% 94%;
+    --rp-ink-2: 40 8% 62%;
+    --rp-ink-3: 40 6% 46%;
+    --rp-rule: 0 0% 14%;
+    --rp-rule-2: 0 0% 20%;
+    --rp-accent: 42 78% 58%;
+    --rp-accent-2: 42 78% 68%;
   }
 
-  html { color-scheme: light; }
-  html.dark { color-scheme: dark; }
+  html { color-scheme: dark; }
+  html.light { color-scheme: light; }
 }
 
 @layer base {
@@ -142,9 +140,7 @@
 
   html {
     font-family: var(--font-sans);
-    font-feature-settings: "ss01", "cv11";
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
@@ -153,93 +149,66 @@
     font-family: var(--font-sans);
   }
 
-  #root { position: relative; min-height: 100vh; }
+  #root { min-height: 100vh; }
 
-  .font-display { font-family: var(--font-display) !important; letter-spacing: -0.02em; }
+  .font-display { font-family: var(--font-display) !important; letter-spacing: -0.03em; }
   .font-serif   { font-family: var(--font-sans) !important; }
   .font-mono    { font-family: var(--font-mono) !important; }
+
+  .text-caption {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .text-body { font-size: 15px; line-height: 1.65; }
+  .text-display {
+    font-size: clamp(2.75rem, 7vw, 5.25rem);
+    line-height: 0.94;
+    font-weight: 500;
+  }
+  .text-electrum { color: hsl(var(--rp-accent)); }
 }
 
 @layer utilities {
-  .surface-paper {
-    background: #ffffff;
-    color: #0b1220;
-  }
-
-  .text-accent-amber { color: hsl(28 80% 48%); }
-
-  .surface-card {
+  .panel {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    border-radius: 10px;
+    border-radius: 0;
   }
-
-  .glass-card {
+  .surface-paper { background: #ffffff; color: #111111; }
+  .text-accent-amber { color: hsl(var(--primary)); }
+  .surface-card, .glass-card, .feature-tile, .bento-card, .glass-surface {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    border-radius: 10px;
   }
-
   .liquid-nav {
-    background: hsl(var(--background) / 0.88);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: hsl(var(--background) / 0.86);
+    backdrop-filter: blur(18px);
     border-bottom: 1px solid hsl(var(--border));
   }
-
   .ink-panel {
-    background: hsl(var(--rp-accent));
+    background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
-    border-radius: 8px;
   }
-
-  .feature-tile {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 10px;
-  }
-
-  .glass-surface { @apply bg-card border border-border; }
-
-  .bento-card {
-    @apply rounded-[10px] border border-border bg-card p-6;
-  }
-
   .dropzone-dark {
-    background: hsl(var(--card));
-    border: 1.5px dashed hsl(var(--rp-rule-2));
-    border-radius: 8px;
+    border: 1px dashed hsl(var(--border));
   }
-  .dropzone-dark:hover,
-  .dropzone-dark.dragging {
-    border-color: hsl(var(--rp-accent));
-    background: hsl(var(--rp-accent) / 0.06);
-  }
-
   .terminal-cursor { display: none; }
-  .scanlines { position: relative; }
-  .terminal-frame {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 8px;
-    font-family: var(--font-mono);
-  }
-
-  .aurora { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
-  .orb { position: absolute; opacity: 0; pointer-events: none; }
+  .aurora, .orb { position: absolute; opacity: 0; pointer-events: none; }
   .mesh-bg { background-image: none; }
 
   @keyframes fade-in {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  .animate-fade-in { animation: fade-in 220ms ease-out forwards; }
+  .animate-fade-in { animation: fade-in 280ms ease-out forwards; }
 
   @keyframes slide-up {
-    from { opacity: 0; transform: translateY(10px); }
+    from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  .animate-slide-up { animation: slide-up 240ms ease-out forwards; }
+  .animate-slide-up { animation: slide-up 280ms ease-out forwards; }
 
   @keyframes pulse-dot {
     0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
@@ -253,39 +222,15 @@
     0% { opacity: 0; transform: translateY(8px); }
     20% { opacity: 1; transform: translateY(0); }
     80% { opacity: 1; }
-    100% { opacity: 0.4; }
+    100% { opacity: 0.45; }
   }
   .animate-tailor-swap { animation: tailor-swap 1.6s ease-in-out infinite; }
 
   @keyframes status-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--rp-accent) / 0.35); }
-    50% { box-shadow: 0 0 0 6px hsl(var(--rp-accent) / 0); }
+    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.35); }
+    50% { box-shadow: 0 0 0 7px hsl(var(--primary) / 0); }
   }
   .animate-status-pulse { animation: status-pulse 1.8s ease-out infinite; }
-
-  @keyframes ring-draw {
-    from { stroke-dashoffset: 126; }
-    to { stroke-dashoffset: var(--ring-offset, 0); }
-  }
-  .animate-ring-draw { animation: ring-draw 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-
-  @keyframes count-up {
-    from { opacity: 0; transform: scale(0.92); }
-    to { opacity: 1; transform: scale(1); }
-  }
-  .animate-count-up { animation: count-up 220ms ease-out forwards; }
-
-  @keyframes card-open {
-    0% { opacity: 0; transform: translateY(4px); }
-    100% { opacity: 1; transform: translateY(0); }
-  }
-  .animate-card-open { animation: card-open 180ms ease-out forwards; }
-
-  @keyframes line-in {
-    0% { opacity: 0; transform: translateX(-2px); }
-    100% { opacity: 1; transform: translateX(0); }
-  }
-  .animate-line-in { animation: line-in 160ms ease-out forwards; }
 
   @keyframes shimmer {
     0% { background-position: -400px 0; }
@@ -297,8 +242,6 @@
     animation: shimmer 1.4s ease-in-out infinite;
   }
 
-  .chat-input-glow { box-shadow: 0 0 0 3px hsl(var(--rp-accent) / 0.14); }
-  .animate-blob { animation: none; }
-  .animate-float { animation: none; }
-  .animate-scroll-logos { animation: none; }
+  .chat-input-glow { box-shadow: 0 0 0 3px hsl(var(--primary) / 0.18); }
+  .animate-blob, .animate-float, .animate-scroll-logos { animation: none; }
 }

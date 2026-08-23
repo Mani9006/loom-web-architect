@@ -9,6 +9,7 @@ import { PageSkeleton } from "@/product/components/Skeleton";
 import { csvEscape, downloadText, relativeTime } from "@/product/lib/format";
 import { db } from "@/product/lib/table";
 import type { BoardRow } from "@/lib/application-board";
+import { PageHeader } from "@/product/components/PageHeader";
 
 type Lane = "applied" | "ghosted" | "interviewing" | "rejected" | "offer";
 
@@ -52,23 +53,23 @@ export default function PipelinePage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-6 space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Pipeline</p>
-          <h1 className="mt-1 text-[26px] font-semibold tracking-tight">From applied to offer</h1>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" className="h-9 rounded-md border border-border px-3 text-[13px]" onClick={() => exportCsv(rows)}>Export CSV</button>
-          <label className="h-9 rounded-md border border-border px-3 text-[13px] leading-9">
-            Import CSV
-            <input type="file" accept=".csv" className="hidden" onChange={(e) => void importCsv(e.target.files?.[0], user?.id, reload)} />
-          </label>
-          <button type="button" className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => setManual(true)}>Add manual</button>
-        </div>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        kicker="Pipeline"
+        title="From applied to offer"
+        action={
+          <div className="flex gap-2">
+            <button type="button" className="h-9 border border-border px-3 text-[13px]" onClick={() => exportCsv(rows)}>Export CSV</button>
+            <label className="h-9 border border-border px-3 text-[13px] leading-9">
+              Import CSV
+              <input type="file" accept=".csv" className="hidden" onChange={(e) => void importCsv(e.target.files?.[0], user?.id, reload)} />
+            </label>
+            <button type="button" className="h-9 bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => setManual(true)}>Add manual</button>
+          </div>
+        }
+      />
 
-      <section className="rounded-xl border border-border bg-card p-4">
+      <section className="border border-border p-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Flow</p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {counts.map((lane, i) => (
