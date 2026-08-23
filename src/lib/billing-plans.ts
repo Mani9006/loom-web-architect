@@ -23,8 +23,8 @@ export const BILLING_PLANS: BillingPlan[] = [
     period: "forever",
     description: "Build a trustworthy foundation before you scale applications.",
     features: [
-      "1 source resume",
-      "Public job search and tracker",
+      "25 application credits to start",
+      "US job matches and tracker",
       "10 fit evaluations / month",
       "3 tailored application packets / month",
       "Manual portal apply",
@@ -39,6 +39,7 @@ export const BILLING_PLANS: BillingPlan[] = [
     description: "For a focused search with strong materials for every priority role.",
     features: [
       "Everything in Free",
+      "100 application credits / month",
       "100 fit evaluations / month",
       "30 tailored application packets / month",
       "Resume versions, ATS checks, and answer memory",
@@ -55,6 +56,7 @@ export const BILLING_PLANS: BillingPlan[] = [
     description: "A continuous application service with explicit controls and verified receipts.",
     features: [
       "Everything in Pro",
+      "400 application credits / month (1 successful submit = 1 credit)",
       "Up to 400 supported application attempts / week",
       "Up to 1,600 supported application attempts / month",
       "Greenhouse, Ashby, and Lever guarded submission",

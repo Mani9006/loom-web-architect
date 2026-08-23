@@ -107,3 +107,6 @@ verify_jwt = false
 
 [functions.mc-render-resume]
 verify_jwt = false
+
+[functions.ops-assistant]
+verify_jwt = false

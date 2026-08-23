@@ -16,31 +16,27 @@ export default {
 		extend: {
 			fontFamily: {
 				sans: [
-					'Inter',
+					'IBM Plex Sans',
 					'ui-sans-serif',
 					'system-ui',
 					'-apple-system',
 					'Segoe UI',
-					'sans-serif',
-					'Apple Color Emoji',
-					'Segoe UI Emoji'
+					'sans-serif'
 				],
 				serif: [
-					'Source Serif 4',
-					'ui-serif',
-					'Georgia',
-					'Cambria',
-					'Times New Roman',
-					'serif'
+					'IBM Plex Sans',
+					'ui-sans-serif',
+					'system-ui',
+					'sans-serif'
 				],
 				display: [
-					'Source Serif 4',
-					'ui-serif',
-					'Georgia',
-					'serif'
+					'IBM Plex Sans',
+					'ui-sans-serif',
+					'system-ui',
+					'sans-serif'
 				],
 				mono: [
-					'JetBrains Mono',
+					'IBM Plex Mono',
 					'ui-monospace',
 					'SFMono-Regular',
 					'Menlo',

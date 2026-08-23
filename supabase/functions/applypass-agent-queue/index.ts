@@ -4,6 +4,7 @@ import {
   enforceAutoApplyEntitlement,
   enforceMonthlyAutoApplyExecutionCap,
 } from "../_shared/guards.ts";
+import { consumeSubmitCredit, refundSubmitCredit } from "../_shared/credits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -165,6 +166,9 @@ async function syncCareerDraft(
       return;
     }
     if (previousStatus !== "failed") {
+      if (previousStatus === "submitted") {
+        await refundSubmitCredit(serviceClient, userId, draftId);
+      }
       await notifyApplyOutcome(serviceClient, taskContext, "failed", {
         errorMessage: errorMessage || "Worker execution failed",
       });
@@ -201,6 +205,7 @@ async function syncCareerDraft(
   }
 
   if (submitted && !draftSyncError && previousStatus !== "submitted") {
+    await consumeSubmitCredit(serviceClient, userId, draftId);
     await notifyApplyOutcome(serviceClient, taskContext, "submitted", {
       submittedAt: submittedAt || new Date().toISOString(),
     });
