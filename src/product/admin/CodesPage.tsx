@@ -41,7 +41,7 @@ export default function CodesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="Billing" title="Promo and referral" subtitle="These are first-party records. Stripe Checkout also has allow_promotion_codes enabled. Promo codes create invoices, never receipts." />
       <form onSubmit={create} className="rp-panel flex flex-wrap items-end gap-3 p-4">
         <Field label="Code">

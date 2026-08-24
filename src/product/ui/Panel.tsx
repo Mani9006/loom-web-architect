@@ -19,9 +19,9 @@ export function Panel({
   flush?: boolean;
 }) {
   return (
-    <section className={cn(flush ? "rp-panel-flush" : "rp-panel", className)}>
+    <section className={cn(flush ? "rp-panel-flush" : "rp-panel", "flex flex-col", className)}>
       {(title || action || kicker) && (
-        <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
           <div className="min-w-0">
             {kicker && <p className="rp-kicker">{kicker}</p>}
             {title && <h2 className={cn("truncate text-[13px] font-semibold tracking-tight", kicker && "mt-1")}>{title}</h2>}
@@ -29,7 +29,7 @@ export function Panel({
           {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
         </header>
       )}
-      <div className={cn(flush && !title ? "" : title ? "" : "p-4", bodyClassName)}>{children}</div>
+      <div className={cn("min-h-0 flex-1", flush && !title ? "" : title ? "" : "p-4", bodyClassName)}>{children}</div>
     </section>
   );
 }

@@ -52,12 +52,13 @@
     --sidebar-border: 0 0% 88%;
     --sidebar-ring: 42 78% 48%;
 
-    --shadow-xs: 0 1px 0 hsl(0 0% 0% / 0.04);
-    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.05), 0 0 0 1px hsl(var(--border));
-    --shadow-md: 0 8px 24px -12px hsl(0 0% 0% / 0.18), 0 0 0 1px hsl(var(--border));
-    --shadow-lg: 0 24px 48px -18px hsl(0 0% 0% / 0.28);
+    --shadow-xs: 0 1px 0 hsl(0 0% 100% / 0.65) inset, 0 0 0 1px hsl(var(--border));
+    --shadow-sm: 0 1px 0 hsl(0 0% 100% / 0.7) inset, 0 1px 2px hsl(0 0% 0% / 0.06), 0 0 0 1px hsl(var(--border));
+    --shadow-md: 0 1px 0 hsl(0 0% 100% / 0.75) inset, 0 10px 28px -14px hsl(0 0% 0% / 0.22), 0 0 0 1px hsl(var(--border));
+    --shadow-lg: 0 1px 0 hsl(0 0% 100% / 0.8) inset, 0 24px 48px -18px hsl(0 0% 0% / 0.28);
     --shadow-xl: 0 32px 64px -24px hsl(0 0% 0% / 0.36);
     --shadow-2xl: 0 40px 80px -28px hsl(0 0% 0% / 0.42);
+    --rp-well: 0 0% 96%;
     --shadow-glow: 0 0 0 0 transparent;
     --shadow-subtle: var(--shadow-xs);
     --shadow-card: var(--shadow-sm);
@@ -93,13 +94,13 @@
   }
 
   .dark {
-    --background: 0 0% 4%;
+    --background: 0 0% 3.5%;
     --foreground: 40 24% 94%;
 
-    --card: 0 0% 7%;
+    --card: 0 0% 8.5%;
     --card-foreground: 40 24% 94%;
 
-    --popover: 0 0% 7%;
+    --popover: 0 0% 9%;
     --popover-foreground: 40 24% 94%;
 
     --primary: 42 78% 58%;
@@ -108,8 +109,8 @@
     --secondary: 0 0% 10%;
     --secondary-foreground: 40 20% 90%;
 
-    --muted: 0 0% 10%;
-    --muted-foreground: 40 8% 62%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 40 8% 68%;
 
     --accent: 42 30% 12%;
     --accent-foreground: 42 78% 70%;
@@ -117,9 +118,10 @@
     --destructive: 4 72% 52%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 14%;
-    --input: 0 0% 16%;
+    --border: 0 0% 18%;
+    --input: 0 0% 20%;
     --ring: 42 78% 58%;
+    --rp-well: 0 0% 5%;
 
     --sidebar-background: 0 0% 5%;
     --sidebar-foreground: 40 8% 70%;
@@ -130,22 +132,22 @@
     --sidebar-border: 0 0% 14%;
     --sidebar-ring: 42 78% 58%;
 
-    --shadow-xs: 0 1px 0 hsl(0 0% 100% / 0.03);
-    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.45), 0 0 0 1px hsl(var(--border));
-    --shadow-md: 0 12px 32px -16px hsl(0 0% 0% / 0.7), 0 0 0 1px hsl(var(--border));
-    --shadow-lg: 0 28px 56px -20px hsl(0 0% 0% / 0.72);
-    --shadow-xl: 0 36px 72px -24px hsl(0 0% 0% / 0.78);
-    --shadow-2xl: 0 48px 96px -32px hsl(0 0% 0% / 0.82);
+    --shadow-xs: 0 1px 0 hsl(40 24% 100% / 0.045) inset, 0 0 0 1px hsl(var(--border));
+    --shadow-sm: 0 1px 0 hsl(40 24% 100% / 0.055) inset, 0 8px 20px -12px hsl(0 0% 0% / 0.72), 0 0 0 1px hsl(var(--border));
+    --shadow-md: 0 1px 0 hsl(40 24% 100% / 0.07) inset, 0 16px 40px -18px hsl(0 0% 0% / 0.78), 0 0 0 1px hsl(var(--border));
+    --shadow-lg: 0 1px 0 hsl(40 24% 100% / 0.08) inset, 0 28px 56px -20px hsl(0 0% 0% / 0.8);
+    --shadow-xl: 0 36px 72px -24px hsl(0 0% 0% / 0.82);
+    --shadow-2xl: 0 48px 96px -32px hsl(0 0% 0% / 0.86);
     --shadow-elevated: var(--shadow-lg);
 
-    --rp-canvas: 0 0% 4%;
-    --rp-paper: 0 0% 7%;
-    --rp-paper-2: 0 0% 10%;
+    --rp-canvas: 0 0% 3.5%;
+    --rp-paper: 0 0% 8.5%;
+    --rp-paper-2: 0 0% 12%;
     --rp-ink: 40 24% 94%;
-    --rp-ink-2: 40 8% 62%;
-    --rp-ink-3: 40 6% 46%;
-    --rp-rule: 0 0% 14%;
-    --rp-rule-2: 0 0% 20%;
+    --rp-ink-2: 40 8% 68%;
+    --rp-ink-3: 40 6% 50%;
+    --rp-rule: 0 0% 18%;
+    --rp-rule-2: 0 0% 24%;
     --rp-accent: 42 78% 58%;
     --rp-accent-2: 42 78% 68%;
   }
@@ -264,16 +266,16 @@
     width: 100%;
     max-width: var(--desk-max);
     margin-inline: auto;
-    padding: 20px 16px 96px;
+    padding: 12px 16px 88px;
   }
   @media (min-width: 640px) {
-    .rp-desk { padding: 24px 24px 40px; }
+    .rp-desk { padding: 16px 20px 24px; }
   }
   @media (min-width: 1920px) {
     .rp-desk {
       max-width: 1520px;
-      padding-inline: 32px;
-      padding-top: 28px;
+      padding-inline: 24px;
+      padding-top: 18px;
     }
   }
 
@@ -291,13 +293,26 @@
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius-panel);
-    box-shadow: var(--shadow-xs);
+    box-shadow: var(--shadow-sm);
   }
   .rp-panel-flush {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
+  }
+  .rp-well {
+    background: hsl(var(--rp-well));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-panel);
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 0.28);
+  }
+  .rp-raised {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--primary) / 0.45);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-md), 0 0 0 1px hsl(var(--primary) / 0.18);
   }
 
   .rp-btn {
@@ -352,27 +367,30 @@
   .rp-input, .rp-select, .rp-textarea {
     width: 100%;
     border: 1px solid hsl(var(--input));
-    background: hsl(var(--background));
+    background: hsl(var(--rp-well));
     color: hsl(var(--foreground));
     border-radius: var(--radius);
     font-size: 13px;
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 0.22);
     transition: border-color var(--duration) var(--ease-out), box-shadow var(--duration) var(--ease-out);
   }
-  .rp-input, .rp-select { height: 36px; padding: 0 10px; }
-  .rp-textarea { min-height: 96px; padding: 10px; resize: vertical; line-height: 1.5; }
-  .rp-input::placeholder, .rp-textarea::placeholder { color: hsl(var(--muted-foreground)); }
+  .rp-input, .rp-select { height: 38px; padding: 0 11px; }
+  .rp-textarea { min-height: 96px; padding: 10px 11px; resize: vertical; line-height: 1.5; }
+  .rp-input::placeholder, .rp-textarea::placeholder { color: hsl(var(--muted-foreground) / 0.7); }
   .rp-input:hover, .rp-select:hover, .rp-textarea:hover { border-color: hsl(var(--rp-rule-2)); }
   .rp-input:focus, .rp-select:focus, .rp-textarea:focus {
     outline: none;
     border-color: hsl(var(--ring));
-    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.22);
+    background: hsl(var(--card));
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 0.12), 0 0 0 3px hsl(var(--ring) / 0.22);
   }
 
   .rp-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .rp-field > span, .rp-field > label {
     font-size: 12px;
-    font-weight: 500;
-    color: hsl(var(--muted-foreground));
+    font-weight: 550;
+    letter-spacing: 0.01em;
+    color: hsl(var(--foreground) / 0.82);
   }
 
   .rp-table-wrap { overflow-x: auto; }

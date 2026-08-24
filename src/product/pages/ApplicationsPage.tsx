@@ -14,14 +14,14 @@ export default function ApplicationsPage() {
   const { counts, tab, setTab, paged, page, setPage, pageCount, loading } = useApplications();
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="Applications" title="Every packet, with a status you can trust" />
       <Segmented
         value={tab}
         onChange={setTab}
         options={PRODUCT_APP_TABS.map((item) => ({ id: item.id, label: item.label, count: counts[item.id] }))}
       />
-      <Panel flush>
+      <Panel flush className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
           columns={[
             { key: "role", header: "Role", cell: (row) => <span className="font-medium">{row.title}</span> },

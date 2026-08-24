@@ -15,7 +15,7 @@ export default function AuditPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="Audit" title="Privileged actions" subtitle="Every invite, credit grant, impersonation, replay, and flag write stores the actor user id." />
       <Panel flush>
         {(data || []).length === 0 ? (

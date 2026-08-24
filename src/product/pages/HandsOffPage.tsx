@@ -49,7 +49,7 @@ export default function HandsOffPage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="Hands-off apply" title="One daily cap. Many recipes. No silent enable." />
 
       <Panel>
@@ -87,7 +87,7 @@ export default function HandsOffPage() {
         </div>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
         <Panel title="Policy">
           <div className="grid gap-3 p-4 md:grid-cols-2">
             <Field label="Daily cap (shared)">
@@ -126,7 +126,7 @@ export default function HandsOffPage() {
           </div>
         </Panel>
 
-        <div className="space-y-5">
+        <div className="space-y-3">
           <Panel
             title="Search recipes"
             action={<button type="button" className="rp-btn rp-btn-ghost rp-btn-sm" onClick={() => setRecipes([...recipes, { id: crypto.randomUUID(), name: "New recipe", query: "", enabled: true }])}>Add recipe</button>}

@@ -36,7 +36,7 @@ export default function MatchesPage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader
         kicker="Job matches"
         title="Ranked US feed"
@@ -57,8 +57,8 @@ export default function MatchesPage() {
       {list.length === 0 ? (
         <EmptyState title="No live US matches" body="Refresh after you upload a resume. We drop anything that is not a United States role." />
       ) : (
-        <div className="grid overflow-hidden rounded-lg border border-border xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
-          <div className="max-h-[calc(100vh-16rem)] overflow-y-auto">
+        <div className="grid min-h-0 flex-1 overflow-hidden rounded-lg border border-border shadow-sm xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {list.map((job) => {
               const evaluation = evaluations[job.id];
               const draft = evaluation ? drafts[evaluation.id] : undefined;

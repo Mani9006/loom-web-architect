@@ -34,7 +34,7 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="Users" title="Look up an account" subtitle="Support can search, reset, and open a read-only snapshot. Billing grants credits." />
       <form onSubmit={search} className="flex gap-2">
         <input

@@ -13,7 +13,7 @@ export default function FlagsPage() {
   const allowed = can(session.member.role, "feature_flags");
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="Flags" title="Runtime switches" subtitle={`Environment ${env}. Local overrides stay in this browser. Permanent rollout uses VITE_ENABLE_*.`} />
       {!allowed && <p className="text-[13px] text-muted-foreground">Engineer and Viewer can inspect health, not flip flags.</p>}
       <Panel flush>

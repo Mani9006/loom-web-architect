@@ -78,9 +78,9 @@ export default function ApplicationDetailPage() {
   if (loading || !draft) return <PageSkeleton />;
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="space-y-5">
-        <header className="border-b border-border pb-5">
+    <div className="grid min-h-[calc(100vh-7rem)] gap-3 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+      <div className="space-y-3">
+        <header className="border-b border-border pb-3">
           <p className="rp-kicker">{company}</p>
           <h1 className="rp-page-title mt-1.5">{String(job.title || "Application")}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -55,7 +55,7 @@ export default function PipelinePage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader
         kicker="Pipeline"
         title="From applied to offer"
@@ -71,9 +71,8 @@ export default function PipelinePage() {
         }
       />
 
-      <section className="rp-panel p-4">
-        <p className="rp-kicker">Flow</p>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+      <section className="rp-panel px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           {counts.map((lane, i) => (
             <div key={lane.id} className="flex items-center gap-2">
               <div className="min-w-[96px] rounded-md border border-border bg-muted/40 px-3 py-2 text-center">
@@ -90,13 +89,13 @@ export default function PipelinePage() {
         </div>
       </section>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
         {LANES.map((lane) => (
-          <section key={lane.id} className="min-h-[280px] rounded-lg border border-border bg-card">
-            <p className="border-b border-border px-3 py-2.5 text-[12px] font-semibold">
+          <section key={lane.id} className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+            <p className="border-b border-border bg-[hsl(var(--rp-well))] px-3 py-2 text-[12px] font-semibold">
               {lane.label} <span className="tabular-nums text-muted-foreground">{grouped[lane.id].length}</span>
             </p>
-            <div className="space-y-2 p-2">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
               {grouped[lane.id].map((row) => (
                 <button key={row.draft.id} type="button" onClick={() => setOpen(row)} className="w-full rounded-md border border-border bg-background p-3 text-left hover:bg-muted/50">
                   <p className="text-[13px] font-medium">{row.title}</p>

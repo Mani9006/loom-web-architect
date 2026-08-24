@@ -22,7 +22,7 @@ export default function HealthPage() {
   const failed = ((health.data?.failed_tasks as Array<Record<string, unknown>>) || []);
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="Health" title="Worker, Stripe, mail, incidents" />
       <dl className="grid overflow-hidden rounded-lg border border-border sm:grid-cols-2 lg:grid-cols-4">
         {["supabase", "stripe", "email", "worker", "incidents_1h", "last_heartbeat", "global_auto_apply"].map((key, index) => (

@@ -36,6 +36,8 @@ describe("enterprise chrome", () => {
     expect(screen.getByText("Top matches")).toBeInTheDocument();
     expect(screen.getByText("Applications")).toBeInTheDocument();
     expect(screen.getByText(/worker receipt only/i)).toBeInTheDocument();
+    expect(screen.getByText(/what each status actually means/i)).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Portal" })).toBeInTheDocument();
   });
 
   it("keeps button hierarchy as primary, outline, ghost, destructive", () => {

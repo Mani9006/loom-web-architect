@@ -56,7 +56,7 @@ export default function TeamPage() {
   const actor = session.member.role;
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader
         kicker="Team"
         title="People who run the company"

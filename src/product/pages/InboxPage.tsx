@@ -36,55 +36,44 @@ export default function InboxPage() {
   const active = threads.find((thread) => thread.id === activeId) ?? threads[0] ?? null;
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader
         kicker="Recruiter inbox"
         title="Mail that belongs to the apply loop"
         action={<button type="button" className="rp-btn rp-btn-primary" onClick={() => setCompose(true)}>Compose</button>}
       />
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Apply-from address">
-          <div className="flex flex-wrap items-center gap-2 p-4">
-            <code className="rounded-md bg-muted px-2 py-1 font-mono text-[12px]">{address}</code>
-            <button type="button" className="rp-btn rp-btn-ghost rp-btn-sm" onClick={() => { void navigator.clipboard.writeText(address); toast.success("Copied"); }}>
-              <Copy /> Copy
-            </button>
-          </div>
-          <p className="border-t border-border px-4 py-3 text-[12px] text-muted-foreground">Use this on ATS forms. Incoming classification is verification, rejection, interview, assessment, reminder, offer, applied.</p>
-        </Panel>
-        <div className="grid gap-px overflow-hidden rounded-lg border border-border sm:grid-cols-2">
-          <div className="bg-card p-4">
-            <div className="flex items-center gap-2 text-[13px] font-semibold"><Mail className="h-4 w-4 text-primary" /> Gmail</div>
-            <p className="mt-1 text-[12px] text-muted-foreground">{gmailConnected ? "Connected. We poll for recruiter mail and OTP codes." : "Connect Gmail to classify employer mail."}</p>
-            <button type="button" className="rp-btn rp-btn-outline mt-3" onClick={() => void connectGmail()}>
-              {gmailConnected ? "Reconnect Gmail" : "Connect Gmail"}
-            </button>
-          </div>
-          <div className="bg-card p-4">
-            <div className="text-[13px] font-semibold">Outlook</div>
-            <p className="mt-1 text-[12px] text-muted-foreground">OAuth UI is ready. Microsoft env vars finish the handshake. No fake submit.</p>
-            <button type="button" className="rp-btn rp-btn-outline mt-3" onClick={() => toast.message("Outlook OAuth", { description: "Add Microsoft env vars on the edge functions, then this button starts the real consent screen." })}>
-              Connect Outlook
-            </button>
-          </div>
+      <div className="rp-panel flex flex-wrap items-center gap-2 px-3 py-2">
+        <span className="rp-kicker">Apply-from</span>
+        <code className="rounded-md bg-[hsl(var(--rp-well))] px-2 py-1 font-mono text-[12px]">{address}</code>
+        <button type="button" className="rp-btn rp-btn-ghost rp-btn-sm" onClick={() => { void navigator.clipboard.writeText(address); toast.success("Copied"); }}>
+          <Copy /> Copy
+        </button>
+        <p className="hidden text-[12px] text-muted-foreground xl:block">Use this on ATS forms. Threads classify as verification, rejection, interview, assessment, reminder, offer, applied.</p>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <button type="button" className="rp-btn rp-btn-outline rp-btn-sm" onClick={() => void connectGmail()}>
+            <Mail /> {gmailConnected ? "Reconnect Gmail" : "Connect Gmail"}
+          </button>
+          <button type="button" className="rp-btn rp-btn-outline rp-btn-sm" onClick={() => toast.message("Outlook OAuth", { description: "Add Microsoft env vars on the edge functions, then this button starts the real consent screen." })}>
+            Connect Outlook
+          </button>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border xl:grid xl:grid-cols-[200px_minmax(280px,340px)_minmax(0,1fr)]">
-        <nav className="flex gap-1 overflow-x-auto border-b border-border p-2 xl:block xl:overflow-visible xl:border-b-0 xl:border-r">
+      <div className="grid min-h-0 flex-1 overflow-hidden rounded-lg border border-border shadow-sm xl:grid-cols-[184px_minmax(260px,340px)_minmax(0,1fr)]">
+        <nav className="flex gap-1 overflow-x-auto border-b border-border bg-[hsl(var(--rp-well))] p-2 xl:block xl:overflow-y-auto xl:border-b-0 xl:border-r">
           {CATS.map((cat) => (
             <button
               key={cat.id}
               type="button"
               onClick={() => setCategory(cat.id)}
-              className={`flex min-h-9 shrink-0 items-center rounded-md px-3 text-[12.5px] ${category === cat.id ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted/50"}`}
+              className={`flex min-h-8 w-full shrink-0 items-center rounded-md px-3 text-[12.5px] ${category === cat.id ? "bg-card font-medium shadow-xs" : "text-muted-foreground hover:bg-card/60"}`}
             >
               {cat.label}
             </button>
           ))}
         </nav>
-        <div className="max-h-[min(70vh,720px)] overflow-y-auto xl:border-r xl:border-border">
+        <div className="min-h-[280px] overflow-y-auto xl:border-r xl:border-border">
           {threads.length === 0 ? (
             <div className="p-4"><EmptyState title="Inbox is quiet" body="When employers write, threads land here and can link back to an application." /></div>
           ) : (
@@ -93,7 +82,7 @@ export default function InboxPage() {
                 key={thread.id}
                 type="button"
                 onClick={() => { setActiveId(thread.id); void markRead(thread.id); }}
-                className={`flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left last:border-b-0 ${active?.id === thread.id ? "bg-muted/60" : ""} ${thread.read ? "opacity-70" : ""}`}
+                className={`flex w-full items-start gap-3 border-b border-border px-3 py-2.5 text-left last:border-b-0 ${active?.id === thread.id ? "bg-muted/60" : ""} ${thread.read ? "opacity-70" : ""}`}
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium">{thread.subject}</p>
@@ -104,7 +93,7 @@ export default function InboxPage() {
             ))
           )}
         </div>
-        <div className="hidden min-h-[360px] xl:block">
+        <div className="hidden min-h-0 overflow-y-auto bg-card xl:block">
           {active ? (
             <article className="p-5">
               <div className="flex items-start justify-between gap-3">

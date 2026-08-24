@@ -11,8 +11,8 @@ export function FilterBar({
   const set = <K extends keyof MatchFilters>(key: K, next: MatchFilters[K]) => onChange({ ...value, [key]: next });
 
   return (
-    <div className="rp-panel p-3">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
+    <div className="rp-panel p-2.5">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
         <Field label="Posted">
           <select className="rp-select" value={value.date} onChange={(e) => set("date", e.target.value as MatchFilters["date"])}>
             <option value="any">Any time</option>

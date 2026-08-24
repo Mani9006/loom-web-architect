@@ -25,7 +25,7 @@ export default function PeoplePage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader
         kicker="People"
         title="Hiring managers and peers"
@@ -34,7 +34,7 @@ export default function PeoplePage() {
       {people.length === 0 && !draft ? (
         <EmptyState title="No people yet" body="Track hiring managers and peers from companies already in your pipeline." />
       ) : (
-        <Panel flush>
+        <Panel flush className="min-h-0 flex-1">
           <DataTable
             columns={[
               { key: "name", header: "Name", cell: (row) => <span className="font-medium">{row.name}</span> },

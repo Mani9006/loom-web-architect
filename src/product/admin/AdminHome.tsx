@@ -22,13 +22,13 @@ export default function AdminHome() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader
         kicker="Company"
         title="ResumePreps operations"
         subtitle={`${session.org.used_seats} of ${session.org.seat_limit} seats. ${session.member.email} is ${session.member.role}.`}
       />
-      <section className="grid overflow-hidden rounded-lg border border-border md:grid-cols-3">
+      <section className="grid overflow-hidden rounded-lg border border-border shadow-sm md:grid-cols-3">
         {[
           ["Worker", health.data?.worker || "…"],
           ["Stripe", health.data?.stripe || "…"],

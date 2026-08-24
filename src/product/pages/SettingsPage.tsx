@@ -17,10 +17,10 @@ export default function SettingsPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="Settings" title="Apply policy, vaults, and account" />
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-2">
         <Panel title="Apply settings">
           <div className="space-y-3 p-4">
             <label className="flex items-center justify-between text-[13px]">

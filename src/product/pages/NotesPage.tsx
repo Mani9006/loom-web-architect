@@ -16,7 +16,7 @@ export default function NotesPage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader
         kicker="Notes"
         title="Research next to the roles you apply to"
@@ -25,7 +25,7 @@ export default function NotesPage() {
       {notes.length === 0 && !draft ? (
         <EmptyState title="No research notes" body="Capture company research next to the roles you are actually applying to." />
       ) : (
-        <Panel flush>
+        <Panel flush className="min-h-0 flex-1">
           {notes.map((note) => (
             <article key={note.id} className="rp-row items-start">
               <div className="min-w-0 flex-1">

@@ -39,7 +39,7 @@ export default function HomePage() {
   if (loading && appsLoading) return <PageSkeleton />;
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader
         kicker="Home"
         title="US matches, then receipts."
@@ -48,8 +48,9 @@ export default function HomePage() {
 
       <FilterBar value={filters} onChange={setFilters} />
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+      <div className="grid min-h-0 flex-1 items-stretch gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <Panel
+          className="flex h-full min-h-[480px] flex-col"
           title="Top matches"
           action={
             <>
@@ -83,7 +84,7 @@ export default function HomePage() {
               />
             </div>
           ) : (
-            <div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {top.map((job) => {
                 const evaluation = evaluations[job.id];
                 return (
@@ -117,6 +118,7 @@ export default function HomePage() {
         </Panel>
 
         <Panel
+          className="flex h-full min-h-[480px] flex-col"
           title="Applications"
           action={<span className="text-[12px] tabular-nums text-muted-foreground">{rows.length} total</span>}
         >

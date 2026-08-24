@@ -15,7 +15,7 @@ export default function ErrorsPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="Errors" title="First-party incident inbox" subtitle="Sourced from app_incidents. No Datadog required. SENTRY_DSN is optional." />
       <Panel flush>
         {(data || []).length === 0 ? (

@@ -120,7 +120,7 @@ export default function ResumePage() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
       <PageHeader kicker="My resume" title="Profiles, templates, and US work auth" />
 
       <Segmented
@@ -154,7 +154,7 @@ export default function ResumePage() {
       )}
 
       {tab === "editor" && (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
           <Panel title="Editor">
             <div className="space-y-3 p-4">
               <Field label="Title"><input className="rp-input" value={editor.title} onChange={(e) => setEditor({ ...editor, title: e.target.value })} /></Field>
