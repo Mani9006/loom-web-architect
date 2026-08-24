@@ -12,14 +12,16 @@ const FAQS = [
 export default function FaqPage() {
   return (
     <MarketingLayout>
-      <main className="mx-auto max-w-3xl px-5 py-20">
-        <p className="text-caption text-primary">Answers</p>
-        <h1 className="mt-4 font-display text-5xl">FAQ</h1>
-        <div className="mt-12 divide-y divide-border border-y border-border">
+      <main className="mx-auto max-w-[720px] px-5 py-16 3xl:py-20">
+        <p className="rp-kicker">Answers</p>
+        <h1 className="mt-3 font-display text-display-md">FAQ</h1>
+        <div className="mt-10 divide-y divide-border border-y border-border">
           {FAQS.map((item) => (
-            <details key={item.q} className="group py-6">
-              <summary className="cursor-pointer font-display text-xl">{item.q}</summary>
-              <p className="mt-3 text-body text-muted-foreground">{item.a}</p>
+            <details key={item.q} className="group py-5">
+              <summary className="cursor-pointer text-[16px] font-semibold tracking-tight marker:text-primary">
+                {item.q}
+              </summary>
+              <p className="mt-2.5 text-[14px] leading-relaxed text-muted-foreground">{item.a}</p>
             </details>
           ))}
         </div>

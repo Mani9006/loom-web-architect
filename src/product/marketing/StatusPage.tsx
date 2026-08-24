@@ -14,20 +14,22 @@ export default function StatusPage() {
 
   return (
     <MarketingLayout>
-      <main className="mx-auto max-w-3xl px-5 py-20">
-        <p className="text-caption text-primary">Status</p>
-        <h1 className="mt-4 font-display text-5xl">System status</h1>
-        <p className="mt-5 text-body text-muted-foreground">
+      <main className="mx-auto max-w-[720px] px-5 py-16 3xl:py-20">
+        <p className="rp-kicker">Status</p>
+        <h1 className="mt-3 font-display text-display-md">System status</h1>
+        <p className="mt-4 text-[15px] leading-7 text-muted-foreground">
           Public heartbeat for Supabase, Stripe configuration, mail, and the apply worker.
         </p>
-        <dl className="mt-12 divide-y divide-border border-y border-border">
-          {["supabase", "stripe", "email", "worker", "incidents_1h", "last_heartbeat"].map((key) => (
-            <div key={key} className="flex items-baseline justify-between py-5">
-              <dt className="text-caption text-muted-foreground">{key.replace(/_/g, " ")}</dt>
-              <dd className="font-display text-xl">{String(health.data?.[key] ?? (health.isError ? "unavailable" : "…"))}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className="rp-panel-flush mt-10">
+          <dl>
+            {["supabase", "stripe", "email", "worker", "incidents_1h", "last_heartbeat"].map((key, index) => (
+              <div key={key} className={`flex items-baseline justify-between px-4 py-4 ${index > 0 ? "border-t border-border" : ""}`}>
+                <dt className="text-[12px] uppercase tracking-[0.08em] text-muted-foreground">{key.replace(/_/g, " ")}</dt>
+                <dd className="font-mono text-[13px]">{String(health.data?.[key] ?? (health.isError ? "unavailable" : "…"))}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </main>
     </MarketingLayout>
   );

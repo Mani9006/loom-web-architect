@@ -3,6 +3,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { PageHeader } from "@/product/components/PageHeader";
 import { companyOps } from "@/product/lib/company-ops";
+import { EmptyState } from "@/product/components/EmptyState";
+import { Field } from "@/product/ui/Field";
+import { Panel } from "@/product/ui/Panel";
 
 type Code = {
   id: string;
@@ -38,34 +41,59 @@ export default function CodesPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <PageHeader kicker="Codes" title="Promo and referral" subtitle="These are first-party records. Stripe Checkout also has allow_promotion_codes enabled." />
-      <form onSubmit={create} className="flex flex-wrap gap-3">
-        <input required value={code} onChange={(event) => setCode(event.target.value)} placeholder="LAUNCH20" className="h-10 border border-border px-3 text-body uppercase" />
-        <select value={kind} onChange={(event) => setKind(event.target.value)} className="h-10 border border-border px-3">
-          <option value="promo">Promo</option>
-          <option value="referral">Referral</option>
-        </select>
-        <button type="submit" className="h-10 bg-primary px-4 text-caption text-primary-foreground">Create</button>
+    <div className="space-y-6">
+      <PageHeader kicker="Billing" title="Promo and referral" subtitle="These are first-party records. Stripe Checkout also has allow_promotion_codes enabled. Promo codes create invoices, never receipts." />
+      <form onSubmit={create} className="rp-panel flex flex-wrap items-end gap-3 p-4">
+        <Field label="Code">
+          <input required value={code} onChange={(event) => setCode(event.target.value)} placeholder="LAUNCH20" className="rp-input w-48 uppercase" />
+        </Field>
+        <Field label="Kind">
+          <select value={kind} onChange={(event) => setKind(event.target.value)} className="rp-select w-40">
+            <option value="promo">Promo</option>
+            <option value="referral">Referral</option>
+          </select>
+        </Field>
+        <button type="submit" className="rp-btn rp-btn-primary">Create</button>
       </form>
-      <ul className="divide-y divide-border border-y border-border">
-        {(list.data || []).map((row) => (
-          <li key={row.id} className="flex items-center justify-between py-3 text-[13px]">
-            <span className="font-mono">{row.code}</span>
-            <span>{row.kind} · {row.active ? "active" : "off"}</span>
-            <button
-              type="button"
-              className="text-caption"
-              onClick={() => {
-                void companyOps("toggle_code", { codeId: row.id, active: !row.active }).then(() => client.invalidateQueries({ queryKey: ["ops-team"] }));
-                void client.invalidateQueries({ queryKey: ["ops-codes"] });
-              }}
-            >
-              Toggle
-            </button>
-          </li>
-        ))}
-      </ul>
+      <Panel flush>
+        {(list.data || []).length === 0 ? (
+          <div className="p-4"><EmptyState title="No codes yet" body="Create a promo or referral code. Stripe still owns checkout." /></div>
+        ) : (
+          <div className="rp-table-wrap">
+            <table className="rp-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Kind</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {(list.data || []).map((row) => (
+                  <tr key={row.id}>
+                    <td className="font-mono">{row.code}</td>
+                    <td>{row.kind}</td>
+                    <td>{row.active ? "active" : "off"}</td>
+                    <td className="text-right">
+                      <button
+                        type="button"
+                        className="rp-btn rp-btn-ghost rp-btn-sm"
+                        onClick={() => {
+                          void companyOps("toggle_code", { codeId: row.id, active: !row.active }).then(() => client.invalidateQueries({ queryKey: ["ops-team"] }));
+                          void client.invalidateQueries({ queryKey: ["ops-codes"] });
+                        }}
+                      >
+                        Toggle
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }

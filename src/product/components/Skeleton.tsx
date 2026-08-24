@@ -6,18 +6,21 @@ export function Skeleton({ className }: { className?: string }) {
 
 export function PageSkeleton() {
   return (
-    <div className="mx-auto max-w-[1200px] px-5 py-6 space-y-5">
-      <div className="flex gap-2 flex-wrap">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Skeleton key={i} className="h-8 w-24" />
+    <div className="space-y-5">
+      <div className="space-y-2 border-b border-border pb-5">
+        <Skeleton className="h-3 w-16" />
+        <Skeleton className="h-7 w-64" />
+        <Skeleton className="h-4 w-96 max-w-full" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-16 w-full" />
         ))}
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-36 w-full" />
-        ))}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Skeleton className="h-72 w-full" />
+        <Skeleton className="h-72 w-full" />
       </div>
-      <Skeleton className="h-72 w-full" />
     </div>
   );
 }
@@ -25,9 +28,9 @@ export function PageSkeleton() {
 export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   return (
     <div className="space-y-2">
-      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-9 w-full" />
       {Array.from({ length: rows }).map((_, i) => (
-        <Skeleton key={i} className="h-12 w-full" />
+        <Skeleton key={i} className="h-11 w-full" />
       ))}
     </div>
   );

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 export function PageHeader({
   kicker,
@@ -12,13 +13,13 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <header className="flex flex-wrap items-end justify-between gap-4">
-      <div className="max-w-2xl">
-        <p className="text-caption text-primary">{kicker}</p>
-        <h1 className="mt-3 font-display text-4xl tracking-tight">{title}</h1>
-        {subtitle && <p className="mt-3 text-body text-muted-foreground">{subtitle}</p>}
+    <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
+      <div className="min-w-0 max-w-2xl">
+        <p className="rp-kicker">{kicker}</p>
+        <h1 className="rp-page-title mt-1.5">{title}</h1>
+        {subtitle && <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-muted-foreground">{subtitle}</p>}
       </div>
-      {action}
+      {action && <div className="flex shrink-0 flex-wrap items-center gap-2 pt-1">{action}</div>}
     </header>
   );
 }

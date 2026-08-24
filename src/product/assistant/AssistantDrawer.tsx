@@ -1,7 +1,8 @@
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Send, Sparkles, X } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { Drawer } from "@/product/ui/Overlay";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -26,36 +27,16 @@ export function AssistantDrawer({ open, onClose }: { open: boolean; onClose: () 
     onSuccess: (reply) => setMessages((prev) => [...prev, { role: "assistant", content: reply }]),
   });
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-foreground/20">
-      <aside className="flex h-full w-full max-w-md flex-col border-l border-border bg-background">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <h2 className="font-display text-xl">Assistant</h2>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close assistant">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex-1 space-y-4 overflow-y-auto p-5">
-          {messages.map((message, index) => (
-            <div
-              key={`${message.role}-${index}`}
-              className={`max-w-[90%] px-4 py-3 text-body ${
-                message.role === "assistant"
-                  ? "border border-border bg-card text-foreground"
-                  : "ml-auto bg-primary text-primary-foreground"
-              }`}
-            >
-              {message.content}
-            </div>
-          ))}
-        </div>
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Assistant"
+      subtitle="Confirms before applying. Never invents work history."
+      className="w-full max-w-md"
+      footer={
         <form
-          className="flex gap-2 border-t border-border p-4"
+          className="flex w-full gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             const text = input.trim();
@@ -69,13 +50,35 @@ export function AssistantDrawer({ open, onClose }: { open: boolean; onClose: () 
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder="Ask about matches, credits, or a failed apply"
-            className="flex-1 border border-border bg-background px-3 py-2 text-body outline-none"
+            className="rp-input"
           />
-          <button type="submit" className="bg-primary px-3 text-primary-foreground" disabled={send.isPending}>
+          <button type="submit" className="rp-btn rp-btn-primary" disabled={send.isPending} aria-label="Send">
             {send.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         </form>
-      </aside>
-    </div>
+      }
+    >
+      <div className="flex min-h-[52vh] flex-col gap-3">
+        {messages.map((message, index) => (
+          <div
+            key={`${message.role}-${index}`}
+            className={`max-w-[92%] rounded-md px-3.5 py-2.5 text-[13px] leading-relaxed ${
+              message.role === "assistant"
+                ? "border border-border bg-muted/40 text-foreground"
+                : "ml-auto bg-primary text-primary-foreground"
+            }`}
+          >
+            {message.content}
+          </div>
+        ))}
+        {send.isPending && (
+          <div className="flex items-center gap-1 text-muted-foreground">
+            <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-primary" />
+            <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-primary" />
+            <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-primary" />
+          </div>
+        )}
+      </div>
+    </Drawer>
   );
 }

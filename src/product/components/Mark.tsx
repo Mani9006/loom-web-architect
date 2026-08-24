@@ -12,9 +12,9 @@ export function Mark({
 }) {
   const inner = (
     <span className={cn("inline-flex items-center gap-2.5 text-foreground no-underline", className)}>
-      <span className="inline-block h-[18px] w-[3px] bg-primary" aria-hidden />
+      <span className="inline-block h-[15px] w-[3px] rounded-sm bg-primary" aria-hidden />
       {!compact && (
-        <span className="text-[13px] font-medium uppercase tracking-[0.18em]">ResumePreps</span>
+        <span className="text-[12.5px] font-semibold tracking-[0.12em] uppercase">ResumePreps</span>
       )}
     </span>
   );

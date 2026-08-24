@@ -78,12 +78,11 @@ export default function ApplicationDetailPage() {
   if (loading || !draft) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-[1200px] px-4 py-6">
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-        <div className="space-y-5">
-          <header>
-            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{company}</p>
-            <h1 className="mt-1 text-[24px] font-semibold tracking-tight">{String(job.title || "Application")}</h1>
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="space-y-5">
+        <header className="border-b border-border pb-5">
+          <p className="rp-kicker">{company}</p>
+          <h1 className="rp-page-title mt-1.5">{String(job.title || "Application")}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <StatusChip status={status} />
               <span className="text-[12px] text-muted-foreground">{relativeTime(String(draft.updated_at || ""))}</span>
@@ -98,9 +97,9 @@ export default function ApplicationDetailPage() {
             active={stage === "tailoring" || stage === "queued"}
           />
 
-          <div className="flex gap-1 rounded-lg bg-muted p-1">
+          <div className="rp-seg">
             {(["form", "resume", "cover", "job"] as DetailTab[]).map((item) => (
-              <button key={item} type="button" onClick={() => setTab(item)} className={`h-8 flex-1 rounded-md text-[12px] capitalize ${tab === item ? "bg-card shadow-sm" : "text-muted-foreground"}`}>
+              <button key={item} type="button" data-active={tab === item} onClick={() => setTab(item)}>
                 {item === "form" ? "Form receipt" : item === "resume" ? "Resume" : item === "cover" ? "Cover" : "Job"}
               </button>
             ))}
@@ -109,7 +108,7 @@ export default function ApplicationDetailPage() {
           {tab === "form" && (
             <div className="space-y-4">
               {Object.entries(grouped).map(([group, fields]) => (
-                <section key={group} className="rounded-xl border border-border bg-card p-4">
+                <section key={group} className="rp-panel p-4">
                   <h3 className="text-[12px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{group}</h3>
                   <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                     {fields.map((field) => (
@@ -129,26 +128,26 @@ export default function ApplicationDetailPage() {
             <div className="space-y-3">
               <div className="flex gap-2">
                 {draft.tailored_cv_pdf_url && (
-                  <a href={String(draft.tailored_cv_pdf_url)} className="inline-flex h-9 items-center gap-1 rounded-md border border-border px-3 text-[13px] no-underline">
-                    <Download className="h-3.5 w-3.5" /> Download tailored
+                  <a href={String(draft.tailored_cv_pdf_url)} className="rp-btn rp-btn-outline no-underline">
+                    <Download /> Download tailored
                   </a>
                 )}
               </div>
               <div className="grid gap-3 md:grid-cols-2">
-                <pre className="min-h-[240px] whitespace-pre-wrap rounded-xl border border-border bg-muted/40 p-4 text-[12px] leading-relaxed">Source locked. Tailoring cannot add employers, dates, or metrics.</pre>
-                <pre className="min-h-[240px] whitespace-pre-wrap rounded-xl border border-primary/20 bg-card p-4 text-[12px] leading-relaxed">{String(draft.tailored_cv_md || "Tailored resume will render here.")}</pre>
+                <pre className="min-h-[240px] whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-4 text-[12px] leading-relaxed">Source locked. Tailoring cannot add employers, dates, or metrics.</pre>
+                <pre className="min-h-[240px] whitespace-pre-wrap rounded-lg border border-primary/20 bg-card p-4 text-[12px] leading-relaxed">{String(draft.tailored_cv_md || "Tailored resume will render here.")}</pre>
               </div>
             </div>
           )}
 
           {tab === "cover" && (
             cover
-              ? <pre className="whitespace-pre-wrap rounded-xl border border-border bg-card p-4 text-[13px] leading-relaxed">{cover}</pre>
+              ? <pre className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-[13px] leading-relaxed">{cover}</pre>
               : <EmptyState title="No cover letter for this packet" body="Cover stays off unless you enable it in Hands-off apply or write one on My resume." />
           )}
 
           {tab === "job" && (
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rp-panel p-4">
               <a href={applyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[13px] text-primary">
                 <ExternalLink className="h-3.5 w-3.5" /> View original posting
               </a>
@@ -157,24 +156,24 @@ export default function ApplicationDetailPage() {
           )}
 
           {status === "failed" && (
-            <div className="flex flex-wrap gap-2 rounded-xl border border-rose-500/20 bg-rose-500/5 p-4">
+            <div className="flex flex-wrap gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-4">
               <p className="w-full text-[13px]">{String(draft.error_message || "Submission failed. This is not marked submitted.")}</p>
-              {draft.tailored_cv_pdf_url && <a href={String(draft.tailored_cv_pdf_url)} className="h-9 rounded-md border border-border px-3 text-[13px] leading-9 no-underline">Download resume</a>}
-              <button type="button" className="h-9 rounded-md border border-border px-3 text-[13px]" onClick={() => void skip(id!)}>Skip</button>
-              <button type="button" className="h-9 rounded-md border border-border px-3 text-[13px]" onClick={() => toast.message("Keep it in Needs you until you finish on the employer site. We will not fake submitted.")}>I've applied</button>
+              {draft.tailored_cv_pdf_url && <a href={String(draft.tailored_cv_pdf_url)} className="rp-btn rp-btn-outline no-underline">Download resume</a>}
+              <button type="button" className="rp-btn rp-btn-outline" onClick={() => void skip(id!)}>Skip</button>
+              <button type="button" className="rp-btn rp-btn-outline" onClick={() => toast.message("Keep it in Needs you until you finish on the employer site. We will not fake submitted.")}>I've applied</button>
             </div>
           )}
 
           {(status === "ready" || (!atsSupported(portal) && status !== "submitted")) && (
-            <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
+            <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
               <p className="text-[13px] font-medium">Needs you — complete this packet. We will not mark it submitted.</p>
               <button
                 type="button"
-                className="mt-3 inline-flex h-9 items-center rounded-md bg-primary px-3 text-[13px] text-primary-foreground disabled:opacity-50"
+                className="rp-btn rp-btn-primary mt-3"
                 disabled={busyId === id || !atsSupported(portal)}
                 onClick={() => id && void submitDraft(id)}
               >
-                {busyId === id && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+                {busyId === id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {atsSupported(portal) ? "Queue supported submit" : "Unsupported ATS"}
               </button>
             </div>
@@ -182,14 +181,13 @@ export default function ApplicationDetailPage() {
         </div>
 
         <aside className="space-y-4">
-          <section className="rounded-xl border border-border bg-card p-4">
+          <section className="rp-panel p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Apply-from email</p>
             <p className="mt-2 break-all font-mono text-[12px]">{address || applyFromAddress(user?.email, user?.id || "user")}</p>
             <p className="mt-2 text-[12px] text-muted-foreground">Employer mail should land here or in a connected inbox.</p>
           </section>
           <RelatedInbox company={company} />
         </aside>
-      </div>
     </div>
   );
 }
@@ -198,8 +196,8 @@ function RelatedInbox({ company }: { company: string }) {
   const { allThreads } = useInbox();
   const related = allThreads.filter((t) => t.subject.toLowerCase().includes(company.toLowerCase()) || t.from.toLowerCase().includes(company.toLowerCase())).slice(0, 4);
   return (
-    <section className="rounded-xl border border-border bg-card p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Related inbox</p>
+    <section className="rp-panel p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Related inbox</p>
       {related.length === 0 ? <p className="mt-2 text-[12px] text-muted-foreground">No recruiter mail linked yet.</p> : (
         <ul className="mt-2 space-y-2">
           {related.map((thread) => (

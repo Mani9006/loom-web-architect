@@ -1,34 +1,48 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Loader2, Moon, Sun } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useTheme } from "@/hooks/use-theme";
-import { Moon, Sun } from "lucide-react";
 import { Mark } from "@/product/components/Mark";
+import { Field } from "@/product/ui/Field";
+import { SkipLink } from "@/product/ui/SkipLink";
+
+type Mode = "signin" | "signup" | "forgot";
 
 export default function AuthPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const [mode, setMode] = useState<"signin" | "signup">(params.get("mode") === "signup" ? "signup" : "signin");
+  const initial: Mode = params.get("mode") === "signup" ? "signup" : params.get("mode") === "forgot" ? "forgot" : "signin";
+  const [mode, setMode] = useState<Mode>(initial);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const next = params.get("next") || "/home";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     try {
+      if (mode === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw error;
+        toast.success("Reset email sent if that account exists.");
+        setMode("signin");
+        return;
+      }
       if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        navigate("/home");
+        navigate(next);
       } else {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         toast.success("Account created. Check email if confirmation is required.");
-        navigate("/home");
+        navigate(next);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Authentication failed");
@@ -40,60 +54,82 @@ export default function AuthPage() {
   const google = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/home` },
+      options: { redirectTo: `${window.location.origin}${next}` },
     });
     if (error) toast.error(error.message);
   };
 
+  const copy =
+    mode === "signin"
+      ? { kicker: "Welcome back", title: "Sign in", body: "Same company on both sides of the door. Credits, applications, and inbox live on the other side." }
+      : mode === "signup"
+        ? { kicker: "New account", title: "Start applying", body: "US jobs only. Submitted still waits for a worker receipt." }
+        : { kicker: "Account recovery", title: "Forgot password", body: "We send a reset link to the email on the account. The new password is set on the next screen." };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
-        <Mark href="/" />
-        <button type="button" onClick={toggleTheme} className="border border-border p-2" aria-label="Toggle theme">
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </button>
-      </header>
-      <main className="mx-auto grid max-w-6xl gap-16 px-5 py-16 md:grid-cols-2 md:py-24">
-        <div className="max-w-md">
-          <p className="text-caption text-primary">{mode === "signin" ? "Welcome back" : "New account"}</p>
-          <h1 className="mt-4 font-display text-5xl">{mode === "signin" ? "Sign in" : "Start applying"}</h1>
-          <p className="mt-5 text-body text-muted-foreground">
-            Same company on both sides of the door. Your credits, applications, and inbox live on the other side.
-          </p>
+      <SkipLink href="#auth-form" />
+      <header className="border-b border-border">
+        <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-5">
+          <Mark href="/" />
+          <button type="button" onClick={toggleTheme} className="rp-btn rp-btn-ghost" aria-label="Toggle theme">
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
         </div>
-        <form onSubmit={submit} className="max-w-md space-y-4 border-t border-border pt-8 md:border-l md:border-t-0 md:pl-12 md:pt-0">
-          <label className="block text-caption text-muted-foreground">
-            Email
+      </header>
+      <main className="mx-auto grid max-w-[1440px] gap-12 px-5 py-16 lg:grid-cols-[minmax(0,1fr)_440px] lg:py-24">
+        <div className="max-w-lg">
+          <p className="rp-kicker">{copy.kicker}</p>
+          <h1 className="mt-3 font-display text-display-md">{copy.title}</h1>
+          <p className="mt-4 text-[15px] leading-7 text-muted-foreground">{copy.body}</p>
+        </div>
+        <form id="auth-form" onSubmit={submit} className="rp-panel space-y-4 p-6">
+          <Field label="Email" htmlFor="email">
             <input
+              id="email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="mt-2 w-full border border-border bg-background px-3 py-3 text-body outline-none"
+              className="rp-input"
             />
-          </label>
-          <label className="block text-caption text-muted-foreground">
-            Password
-            <input
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-2 w-full border border-border bg-background px-3 py-3 text-body outline-none"
-            />
-          </label>
-          <button type="submit" disabled={busy} className="w-full bg-primary py-3 text-caption text-primary-foreground">
-            {busy ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : mode === "signin" ? "Sign in" : "Create account"}
+          </Field>
+          {mode !== "forgot" && (
+            <Field label="Password" htmlFor="password">
+              <input
+                id="password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="rp-input"
+              />
+            </Field>
+          )}
+          <button type="submit" disabled={busy} className="rp-btn rp-btn-primary rp-btn-lg w-full">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}
           </button>
-          <button type="button" onClick={() => void google()} className="w-full border border-border py-3 text-caption">
-            Continue with Google
-          </button>
-          <div className="flex items-center justify-between text-caption text-muted-foreground">
-            <button type="button" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
-              {mode === "signin" ? "Need an account?" : "Already have one?"}
+          {mode !== "forgot" && (
+            <button type="button" onClick={() => void google()} className="rp-btn rp-btn-outline rp-btn-lg w-full">
+              Continue with Google
             </button>
-            <Link to="/reset-password">Forgot password</Link>
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[12px] text-muted-foreground">
+            <button type="button" className="hover:text-foreground" onClick={() => setMode(mode === "signup" ? "signin" : "signup")}>
+              {mode === "signup" ? "Already have one?" : "Need an account?"}
+            </button>
+            {mode === "signin" ? (
+              <button type="button" className="hover:text-foreground" onClick={() => setMode("forgot")}>
+                Forgot password
+              </button>
+            ) : (
+              <Link to="/reset-password" className="hover:text-foreground">
+                Have a reset link?
+              </Link>
+            )}
           </div>
         </form>
       </main>

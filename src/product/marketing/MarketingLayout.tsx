@@ -4,6 +4,7 @@ import { Moon, Sun } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/use-theme";
 import { Mark } from "@/product/components/Mark";
+import { SkipLink } from "@/product/ui/SkipLink";
 
 const LINKS = [
   { to: "/how-it-works", label: "How it works" },
@@ -17,8 +18,9 @@ export function MarketingLayout({ children }: { children?: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
+      <SkipLink />
+      <header className="sticky top-0 z-40 border-b border-border bg-background/88 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-5 3xl:max-w-[1520px]">
           <Mark href="/" />
           <nav className="hidden items-center gap-6 md:flex">
             {LINKS.map((link) => (
@@ -26,32 +28,32 @@ export function MarketingLayout({ children }: { children?: ReactNode }) {
                 key={link.to}
                 to={link.to}
                 className={({ isActive }) =>
-                  `text-caption ${isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`
+                  `text-[13px] font-medium ${isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`
                 }
               >
                 {link.label}
               </NavLink>
             ))}
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={toggleTheme}
-              className="border border-border p-2 text-muted-foreground"
+              className="rp-btn rp-btn-ghost"
               aria-label="Toggle theme"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
             {user ? (
-              <NavLink to="/home" className="bg-primary px-4 py-2 text-caption text-primary-foreground">
+              <NavLink to="/home" className="rp-btn rp-btn-primary no-underline">
                 Open desk
               </NavLink>
             ) : (
               <>
-                <NavLink to="/auth" className="hidden px-3 py-2 text-caption text-muted-foreground md:inline">
+                <NavLink to="/auth" className="rp-btn rp-btn-ghost hidden no-underline md:inline-flex">
                   Sign in
                 </NavLink>
-                <NavLink to="/auth?mode=signup" className="bg-primary px-4 py-2 text-caption text-primary-foreground">
+                <NavLink to="/auth?mode=signup" className="rp-btn rp-btn-primary no-underline">
                   Start
                 </NavLink>
               </>
@@ -59,11 +61,13 @@ export function MarketingLayout({ children }: { children?: ReactNode }) {
           </div>
         </div>
       </header>
-      {children ?? <Outlet />}
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-8 text-caption text-muted-foreground">
+      <div id="main">{children ?? <Outlet />}</div>
+      <footer className="border-t border-border" role="contentinfo">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-4 px-5 py-8 text-[12px] text-muted-foreground 3xl:max-w-[1520px]">
           <p>© {new Date().getFullYear()} ResumePreps</p>
           <div className="flex gap-5">
+            <NavLink to="/how-it-works" className="md:hidden">How it works</NavLink>
+            <NavLink to="/plans" className="md:hidden">Plans</NavLink>
             <NavLink to="/privacy">Privacy</NavLink>
             <NavLink to="/terms">Terms</NavLink>
             <NavLink to="/status">Status</NavLink>

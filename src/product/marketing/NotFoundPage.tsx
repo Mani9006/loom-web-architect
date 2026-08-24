@@ -1,23 +1,31 @@
 import { Link } from "react-router-dom";
 import { Mark } from "@/product/components/Mark";
+import { SkipLink } from "@/product/ui/SkipLink";
 
 export default function NotFoundPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-foreground">
-      <Mark href="/" />
-      <p className="mt-12 font-mono text-xs uppercase tracking-[0.2em] text-primary">404</p>
-      <h1 className="mt-4 font-display text-5xl">Not found</h1>
-      <p className="mt-4 max-w-sm text-center text-body text-muted-foreground">
-        This route is not part of ResumePreps. Same night canvas as Home — not a leftover splash.
-      </p>
-      <div className="mt-8 flex gap-4">
-        <Link to="/" className="border border-border px-4 py-2 text-caption no-underline">
-          Marketing
-        </Link>
-        <Link to="/home" className="bg-primary px-4 py-2 text-caption text-primary-foreground no-underline">
-          Home
-        </Link>
-      </div>
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
+      <SkipLink href="/" />
+      <header className="border-b border-border">
+        <div className="mx-auto flex h-14 max-w-[1440px] items-center px-5">
+          <Mark href="/" />
+        </div>
+      </header>
+      <main id="main" className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center px-5 py-20">
+        <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-primary">404</p>
+        <h1 className="mt-3 font-display text-display-md">Not found</h1>
+        <p className="mt-4 max-w-md text-[15px] leading-7 text-muted-foreground">
+          This route is not part of ResumePreps. Same night canvas as Home — not a leftover splash.
+        </p>
+        <div className="mt-8 flex gap-2">
+          <Link to="/" className="rp-btn rp-btn-outline no-underline">
+            Marketing
+          </Link>
+          <Link to="/home" className="rp-btn rp-btn-primary no-underline">
+            Home
+          </Link>
+        </div>
+      </main>
     </div>
   );
 }

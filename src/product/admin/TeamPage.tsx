@@ -56,7 +56,7 @@ export default function TeamPage() {
   const actor = session.member.role;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       <PageHeader
         kicker="Team"
         title="People who run the company"
@@ -65,59 +65,60 @@ export default function TeamPage() {
 
       {(actor === "owner" || actor === "admin") && (
         <form
-          className="flex flex-wrap items-end gap-3 border-t border-border pt-6"
+          className="rp-panel flex flex-wrap items-end gap-3 p-4"
           onSubmit={(event: FormEvent) => {
             event.preventDefault();
             invite.mutate();
           }}
         >
-          <label className="text-caption text-muted-foreground">
-            Email
+          <label className="rp-field">
+            <span>Email</span>
             <input
               required
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="mt-2 block h-10 w-64 border border-border bg-background px-3 text-body"
+              className="rp-input w-64"
             />
           </label>
-          <label className="text-caption text-muted-foreground">
-            Role
+          <label className="rp-field">
+            <span>Role</span>
             <select
               value={role}
               onChange={(event) => setRole(event.target.value as OperatorRole)}
-              className="mt-2 block h-10 border border-border bg-background px-3 text-body"
+              className="rp-select"
             >
               {OPERATOR_ROLES.filter((item) => canInviteRole(actor, item)).map((item) => (
                 <option key={item} value={item}>{ROLE_LABELS[item]}</option>
               ))}
             </select>
           </label>
-          <button type="submit" className="h-10 bg-primary px-4 text-caption text-primary-foreground" disabled={invite.isPending}>
+          <button type="submit" className="rp-btn rp-btn-primary" disabled={invite.isPending}>
             Invite
           </button>
         </form>
       )}
 
       <section>
-        <h2 className="font-display text-2xl">Members</h2>
-        <table className="mt-4 w-full text-left text-[13px]">
-          <thead className="text-caption text-muted-foreground">
+        <h2 className="text-[15px] font-semibold tracking-tight">Members</h2>
+        <div className="rp-panel-flush overflow-x-auto">
+        <table className="rp-table">
+          <thead>
             <tr>
-              <th className="py-2 font-medium">Email</th>
-              <th className="py-2 font-medium">Role</th>
-              <th className="py-2 font-medium" />
+              <th>Email</th>
+              <th>Role</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {(team.data?.members || []).map((member) => (
-              <tr key={member.id} className="border-t border-border">
-                <td className="py-3">{member.email || member.user_id}</td>
-                <td className="py-3">
+              <tr key={member.id}>
+                <td>{member.email || member.user_id}</td>
+                <td>
                   <select
                     value={member.role}
                     disabled={!canChangeRole(actor, member.role, member.role)}
-                    className="h-9 border border-border bg-background px-2"
+                    className="rp-select h-8 w-auto"
                     onChange={(event) => {
                       const next = event.target.value as OperatorRole;
                       void companyOps("change_role", { memberId: member.id, role: next }).then(({ error }) => {
@@ -134,11 +135,11 @@ export default function TeamPage() {
                     ))}
                   </select>
                 </td>
-                <td className="py-3 text-right">
+                <td className="text-right">
                   {canRevoke(actor, member.role) && member.user_id !== session.member.user_id && (
                     <button
                       type="button"
-                      className="text-caption text-destructive"
+                      className="rp-btn rp-btn-destructive rp-btn-sm"
                       onClick={() => {
                         void companyOps("revoke", { memberId: member.id }).then(({ error }) => {
                           if (error) toast.error(error.message);
@@ -157,10 +158,11 @@ export default function TeamPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
 
       <section>
-        <h2 className="font-display text-2xl">Open invites</h2>
+        <h2 className="text-[15px] font-semibold tracking-tight">Open invites</h2>
         {(team.data?.invites || []).length === 0 ? (
           <p className="mt-3 text-body text-muted-foreground">None pending.</p>
         ) : (
@@ -171,7 +173,7 @@ export default function TeamPage() {
                 <div className="flex gap-3">
                   <button
                     type="button"
-                    className="text-caption text-primary"
+                    className="rp-btn rp-btn-ghost rp-btn-sm"
                     onClick={() => {
                       const url = `${window.location.origin}/invite/${inviteRow.token}`;
                       void navigator.clipboard.writeText(url);
@@ -182,7 +184,7 @@ export default function TeamPage() {
                   </button>
                   <button
                     type="button"
-                    className="text-caption text-destructive"
+                    className="rp-btn rp-btn-destructive rp-btn-sm"
                     onClick={() => {
                       void companyOps("revoke", { inviteId: inviteRow.id }).then(({ error }) => {
                         if (error) toast.error(error.message);
@@ -200,23 +202,23 @@ export default function TeamPage() {
       </section>
 
       <section>
-        <h2 className="font-display text-2xl">Permission matrix</h2>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-[12px]">
+        <h2 className="text-[15px] font-semibold tracking-tight">Permission matrix</h2>
+        <div className="mt-4 overflow-x-auto rounded-lg border border-border">
+          <table className="rp-table">
             <thead>
-              <tr className="text-caption text-muted-foreground">
-                <th className="py-2 pr-4">Capability</th>
+              <tr>
+                <th>Capability</th>
                 {OPERATOR_ROLES.map((item) => (
-                  <th key={item} className="py-2 pr-4">{ROLE_LABELS[item]}</th>
+                  <th key={item}>{ROLE_LABELS[item]}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {OPERATOR_PERMISSIONS.map((perm) => (
-                <tr key={perm} className="border-t border-border">
-                  <td className="py-2 pr-4">{PERMISSION_LABELS[perm]}</td>
+                <tr key={perm}>
+                  <td>{PERMISSION_LABELS[perm]}</td>
                   {OPERATOR_ROLES.map((item) => (
-                    <td key={item} className="py-2 pr-4 text-muted-foreground">{can(item, perm) ? "Yes" : "—"}</td>
+                    <td key={item} className="text-muted-foreground">{can(item, perm) ? "Yes" : "—"}</td>
                   ))}
                 </tr>
               ))}

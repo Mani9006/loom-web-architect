@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { ExternalLink, Link2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ExternalLink, Link2 } from "lucide-react";
 import { FilterBar } from "@/product/components/FilterBar";
 import { MatchRing } from "@/product/components/MatchRing";
 import { EmptyState } from "@/product/components/EmptyState";
@@ -10,30 +10,42 @@ import { useApply } from "@/product/hooks/useApply";
 import { EMPTY_FILTERS, type MatchFilters } from "@/product/lib/filters";
 import { atsSupported, detectAts, relativeTime, workplaceLabel } from "@/product/lib/format";
 import { PageHeader } from "@/product/components/PageHeader";
+import { Drawer, Dialog } from "@/product/ui/Overlay";
+import { Field } from "@/product/ui/Field";
 
 export default function MatchesPage() {
-  const { loading, refreshing, jobs, evaluations, drafts, saved, refreshPipeline, pass, saveJob, filterJobs } = useMatches();
+  const { loading, refreshing, evaluations, drafts, saved, refreshPipeline, pass, saveJob, filterJobs } = useMatches();
   const { applyEvaluation, applyUrl, busyId } = useApply();
   const [filters, setFilters] = useState<MatchFilters>(EMPTY_FILTERS);
-  const [drawer, setDrawer] = useState<ProductJob | null>(null);
+  const [selected, setSelected] = useState<ProductJob | null>(null);
   const [urlOpen, setUrlOpen] = useState(false);
   const [urlForm, setUrlForm] = useState({ title: "", company: "", apply_url: "", description: "" });
 
+  const [isXl, setIsXl] = useState(false);
   const list = useMemo(() => filterJobs(filters), [filterJobs, filters]);
+  const active = selected && list.some((job) => job.id === selected.id) ? selected : list[0] ?? null;
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1280px)");
+    const update = () => setIsXl(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         kicker="Job matches"
         title="Ranked US feed"
         action={
           <div className="flex gap-2">
-            <button type="button" onClick={() => setUrlOpen(true)} className="inline-flex h-9 items-center gap-1.5 border border-border bg-background px-3 text-[13px]">
-              <Link2 className="h-3.5 w-3.5" /> Add URL
+            <button type="button" onClick={() => setUrlOpen(true)} className="rp-btn rp-btn-outline">
+              <Link2 /> Add URL
             </button>
-            <button type="button" onClick={() => void refreshPipeline()} className="h-9 bg-primary px-3 text-[13px] font-medium text-primary-foreground disabled:opacity-50" disabled={refreshing}>
+            <button type="button" onClick={() => void refreshPipeline()} className="rp-btn rp-btn-primary" disabled={refreshing}>
               {refreshing ? "Refreshing…" : "Refresh matches"}
             </button>
           </div>
@@ -45,102 +57,161 @@ export default function MatchesPage() {
       {list.length === 0 ? (
         <EmptyState title="No live US matches" body="Refresh after you upload a resume. We drop anything that is not a United States role." />
       ) : (
-        <div className="space-y-2">
-          {list.map((job) => {
-            const evaluation = evaluations[job.id];
-            const draft = evaluation ? drafts[evaluation.id] : undefined;
-            const portal = detectAts(job.applyUrl);
-            return (
-              <article key={job.id} className="flex flex-wrap items-center gap-3 border-b border-border py-4">
-                <MatchRing score={evaluation?.score ?? 0} />
-                <div className="min-w-[220px] flex-1">
-                  <p className="text-[11px] text-muted-foreground">{job.company} · {workplaceLabel(job.workplace)}</p>
-                  <h2 className="text-[14px] font-semibold">{job.title}</h2>
-                  <p className="text-[12px] text-muted-foreground">{job.location || "United States"} · {relativeTime(job.postedAt)}</p>
-                </div>
-                <StatusChip status={atsSupported(portal) ? "queued" : "needs_you"} label={atsSupported(portal) ? portal : `${portal} · needs you`} />
-                {draft && <StatusChip status={draft.status} />}
-                <div className="flex flex-wrap gap-1.5">
-                  <button type="button" className={`h-8 border px-2.5 text-[12px] ${saved.has(job.id) ? "border-primary text-primary" : "border-border"}`} onClick={() => void saveJob(job.id)}>
-                    {saved.has(job.id) ? "Saved" : "Save"}
-                  </button>
-                  <button type="button" className="h-8 border border-border px-2.5 text-[12px]" onClick={() => setDrawer(job)}>Details</button>
-                  <button
-                    type="button"
-                    className="h-8 bg-primary px-2.5 text-[12px] text-primary-foreground disabled:opacity-50"
-                    disabled={!evaluation || busyId === evaluation.id}
-                    onClick={() => evaluation && void applyEvaluation(evaluation.id, job.applyUrl)}
-                  >
-                    Apply
-                  </button>
-                </div>
-              </article>
-            );
-          })}
+        <div className="grid overflow-hidden rounded-lg border border-border xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+          <div className="max-h-[calc(100vh-16rem)] overflow-y-auto">
+            {list.map((job) => {
+              const evaluation = evaluations[job.id];
+              const draft = evaluation ? drafts[evaluation.id] : undefined;
+              const portal = detectAts(job.applyUrl);
+              const isActive = active?.id === job.id;
+              return (
+                <article
+                  key={job.id}
+                  className={`rp-row cursor-pointer ${isActive ? "bg-muted/60" : ""}`}
+                  onClick={() => setSelected(job)}
+                >
+                  <MatchRing score={evaluation?.score ?? 0} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] text-muted-foreground">{job.company} · {workplaceLabel(job.workplace)}</p>
+                    <h2 className="truncate text-[13.5px] font-semibold">{job.title}</h2>
+                    <p className="text-[12px] text-muted-foreground">{job.location || "United States"} · {relativeTime(job.postedAt)}</p>
+                  </div>
+                  <div className="hidden shrink-0 flex-col items-end gap-1.5 sm:flex">
+                    <StatusChip status={atsSupported(portal) ? "queued" : "needs_you"} label={atsSupported(portal) ? portal : `${portal} · needs you`} />
+                    {draft && <StatusChip status={draft.status} />}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          {active && (
+            <MatchDetail
+              job={active}
+              className="hidden border-l border-border xl:flex"
+              evaluationId={evaluations[active.id]?.id}
+              apply={() => evaluations[active.id] && void applyEvaluation(evaluations[active.id].id, active.applyUrl)}
+              pass={() => evaluations[active.id] && void pass(evaluations[active.id].id)}
+              save={() => void saveJob(active.id)}
+              saved={saved.has(active.id)}
+              busy={busyId === evaluations[active.id]?.id}
+            />
+          )}
         </div>
       )}
 
-      {drawer && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={() => setDrawer(null)}>
-          <aside className="h-full w-full max-w-lg overflow-y-auto border-l border-border bg-card p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[11px] text-muted-foreground">{drawer.company}</p>
-                <h2 className="text-[18px] font-semibold">{drawer.title}</h2>
-              </div>
-              <button type="button" onClick={() => setDrawer(null)} aria-label="Close"><X className="h-4 w-4" /></button>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-[12px] text-muted-foreground">
-              <span>{drawer.location || "United States"}</span>
-              <span>{workplaceLabel(drawer.workplace)}</span>
-              <span>{detectAts(drawer.applyUrl)}</span>
-              <span>{relativeTime(drawer.postedAt)}</span>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <a href={drawer.applyUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1 rounded-md border border-border px-3 text-[13px] no-underline">
-                <ExternalLink className="h-3.5 w-3.5" /> View original
-              </a>
-              <button type="button" className="h-9 rounded-md border border-border px-3 text-[13px]" onClick={() => evaluations[drawer.id] && void pass(evaluations[drawer.id].id)}>
+      <Drawer
+        open={Boolean(selected) && !isXl}
+        onClose={() => setSelected(null)}
+        title={selected?.title || "Match"}
+        subtitle={selected?.company}
+        footer={
+          selected && (
+            <>
+              <button type="button" className="rp-btn rp-btn-outline" onClick={() => evaluations[selected.id] && void pass(evaluations[selected.id].id)}>
                 Not interested
               </button>
               <button
                 type="button"
-                className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground"
-                onClick={() => evaluations[drawer.id] && void applyEvaluation(evaluations[drawer.id].id, drawer.applyUrl)}
+                className="rp-btn rp-btn-primary"
+                disabled={!evaluations[selected.id] || busyId === evaluations[selected.id]?.id}
+                onClick={() => evaluations[selected.id] && void applyEvaluation(evaluations[selected.id].id, selected.applyUrl)}
               >
                 Apply
               </button>
-            </div>
-            <div className="prose prose-sm mt-5 max-w-none text-[13px] text-foreground">
-              <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-muted-foreground">{drawer.description || "No job description cached yet."}</pre>
-            </div>
-          </aside>
-        </div>
-      )}
+            </>
+          )
+        }
+      >
+        {selected && <MatchBody job={selected} saved={saved.has(selected.id)} onSave={() => void saveJob(selected.id)} />}
+      </Drawer>
 
-      {urlOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setUrlOpen(false)}>
-          <form
-            className="w-full max-w-md space-y-3 border border-border bg-background p-5"
-            onClick={(e) => e.stopPropagation()}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void applyUrl(urlForm).then((id) => { if (id) setUrlOpen(false); });
-            }}
-          >
-            <h2 className="text-[16px] font-semibold">Add a job URL</h2>
-            <p className="text-[12px] text-muted-foreground">We fetch the JD and start apply if the ATS is supported. Otherwise the packet stays in Needs you.</p>
-            <input required className="h-10 w-full rounded-md border border-input bg-background px-3 text-[13px]" placeholder="https://boards.greenhouse.io/…" value={urlForm.apply_url} onChange={(e) => setUrlForm({ ...urlForm, apply_url: e.target.value })} />
-            <input className="h-10 w-full rounded-md border border-input bg-background px-3 text-[13px]" placeholder="Title" value={urlForm.title} onChange={(e) => setUrlForm({ ...urlForm, title: e.target.value })} />
-            <input className="h-10 w-full rounded-md border border-input bg-background px-3 text-[13px]" placeholder="Company" value={urlForm.company} onChange={(e) => setUrlForm({ ...urlForm, company: e.target.value })} />
-            <textarea className="min-h-[100px] w-full rounded-md border border-input bg-background p-3 text-[13px]" placeholder="Paste JD if the fetch needs a fallback" value={urlForm.description} onChange={(e) => setUrlForm({ ...urlForm, description: e.target.value })} />
-            <div className="flex justify-end gap-2">
-              <button type="button" className="h-9 px-3 text-[13px]" onClick={() => setUrlOpen(false)}>Cancel</button>
-              <button type="submit" className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" disabled={busyId === "url"}>Fetch + apply</button>
-            </div>
-          </form>
+      <Dialog
+        open={urlOpen}
+        onClose={() => setUrlOpen(false)}
+        title="Add a job URL"
+        subtitle="We fetch the JD and start apply if the ATS is supported. Otherwise the packet stays in Needs you."
+      >
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void applyUrl(urlForm).then((id) => { if (id) setUrlOpen(false); });
+          }}
+        >
+          <Field label="Apply URL">
+            <input required className="rp-input" placeholder="https://boards.greenhouse.io/…" value={urlForm.apply_url} onChange={(e) => setUrlForm({ ...urlForm, apply_url: e.target.value })} />
+          </Field>
+          <Field label="Title">
+            <input className="rp-input" value={urlForm.title} onChange={(e) => setUrlForm({ ...urlForm, title: e.target.value })} />
+          </Field>
+          <Field label="Company">
+            <input className="rp-input" value={urlForm.company} onChange={(e) => setUrlForm({ ...urlForm, company: e.target.value })} />
+          </Field>
+          <Field label="Job description fallback">
+            <textarea className="rp-textarea" value={urlForm.description} onChange={(e) => setUrlForm({ ...urlForm, description: e.target.value })} />
+          </Field>
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" className="rp-btn rp-btn-ghost" onClick={() => setUrlOpen(false)}>Cancel</button>
+            <button type="submit" className="rp-btn rp-btn-primary" disabled={busyId === "url"}>Fetch + apply</button>
+          </div>
+        </form>
+      </Dialog>
+    </div>
+  );
+}
+
+function MatchDetail({
+  job,
+  className,
+  apply,
+  pass,
+  save,
+  saved,
+  busy,
+}: {
+  job: ProductJob;
+  className?: string;
+  evaluationId?: string;
+  apply: () => void;
+  pass: () => void;
+  save: () => void;
+  saved: boolean;
+  busy: boolean;
+}) {
+  return (
+    <aside className={`flex min-h-[420px] flex-col bg-card ${className || ""}`}>
+      <div className="border-b border-border px-5 py-4">
+        <p className="text-[11px] text-muted-foreground">{job.company}</p>
+        <h2 className="mt-1 text-[16px] font-semibold tracking-tight">{job.title}</h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" className="rp-btn rp-btn-primary" disabled={busy} onClick={apply}>Apply</button>
+          <button type="button" className="rp-btn rp-btn-outline" onClick={pass}>Not interested</button>
+          <button type="button" className={`rp-btn ${saved ? "rp-btn-outline text-primary" : "rp-btn-ghost"}`} onClick={save}>
+            {saved ? "Saved" : "Save"}
+          </button>
         </div>
-      )}
+      </div>
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        <MatchBody job={job} saved={saved} onSave={save} />
+      </div>
+    </aside>
+  );
+}
+
+function MatchBody({ job, saved, onSave }: { job: ProductJob; saved: boolean; onSave: () => void }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 text-[12px] text-muted-foreground">
+        <span>{job.location || "United States"}</span>
+        <span>{workplaceLabel(job.workplace)}</span>
+        <span>{detectAts(job.applyUrl)}</span>
+        <span>{relativeTime(job.postedAt)}</span>
+      </div>
+      <a href={job.applyUrl} target="_blank" rel="noreferrer" className="rp-btn rp-btn-outline no-underline">
+        <ExternalLink /> View original
+      </a>
+      <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-muted-foreground">{job.description || "No job description cached yet."}</pre>
+      <button type="button" className="rp-btn rp-btn-ghost xl:hidden" onClick={onSave}>{saved ? "Saved" : "Save"}</button>
     </div>
   );
 }

@@ -6,6 +6,9 @@ import { EmptyState } from "@/product/components/EmptyState";
 import { PageSkeleton } from "@/product/components/Skeleton";
 import { db, invokeFunction } from "@/product/lib/table";
 import { PageHeader } from "@/product/components/PageHeader";
+import { Field } from "@/product/ui/Field";
+import { Segmented } from "@/product/ui/Segmented";
+import { Panel } from "@/product/ui/Panel";
 
 type Tab = "profiles" | "editor" | "cover" | "details";
 
@@ -107,33 +110,40 @@ export default function ResumePage() {
     await load();
   }
 
+  function move(index: number, dir: number) {
+    const next = [...editor.sections];
+    const swap = index + dir;
+    [next[index], next[swap]] = [next[swap], next[index]];
+    setEditor({ ...editor, sections: next });
+  }
+
   if (loading) return <PageSkeleton />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader kicker="My resume" title="Profiles, templates, and US work auth" />
 
-      <div className="flex gap-1 rounded-lg bg-muted p-1">
-        {([
-          ["profiles", "Profiles"],
-          ["editor", "Editor"],
-          ["cover", "Cover letter"],
-          ["details", "Profile details"],
-        ] as const).map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setTab(id)} className={`h-8 flex-1 rounded-md text-[12px] ${tab === id ? "bg-card shadow-sm" : "text-muted-foreground"}`}>{label}</button>
-        ))}
-      </div>
+      <Segmented
+        value={tab}
+        onChange={setTab}
+        options={[
+          { id: "profiles", label: "Profiles" },
+          { id: "editor", label: "Editor" },
+          { id: "cover", label: "Cover letter" },
+          { id: "details", label: "Profile details" },
+        ]}
+      />
 
       {tab === "profiles" && (
         <div className="space-y-3">
-          <label className="inline-flex h-9 cursor-pointer items-center rounded-md bg-primary px-3 text-[13px] text-primary-foreground">
+          <label className="rp-btn rp-btn-primary cursor-pointer">
             {uploading ? "Uploading…" : "Upload resume"}
             <input type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])} />
           </label>
           {rows.length === 0 ? <EmptyState title="No resume profiles" body="Upload a PDF or DOCX. Parsing uses the existing document pipeline." /> : (
             <div className="grid gap-3 md:grid-cols-2">
               {rows.map((row) => (
-                <button key={row.id} type="button" onClick={() => { setActive(row.id); setTab("editor"); }} className={`border p-4 text-left ${active === row.id ? "border-primary" : "border-border bg-background"}`}>
+                <button key={row.id} type="button" onClick={() => { setActive(row.id); setTab("editor"); }} className={`rounded-lg border p-4 text-left hover:bg-muted/40 ${active === row.id ? "border-primary bg-primary/5" : "border-border bg-card"}`}>
                   <p className="text-[14px] font-semibold">{row.title || "Untitled"}</p>
                   <p className="text-[12px] text-muted-foreground">{row.template || "Atlas"}</p>
                 </button>
@@ -144,84 +154,86 @@ export default function ResumePage() {
       )}
 
       {tab === "editor" && (
-        <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
-          <div className="space-y-3">
-            <input className="h-10 w-full rounded-md border border-input px-3 text-[13px]" value={editor.title} onChange={(e) => setEditor({ ...editor, title: e.target.value })} />
-            <textarea className="min-h-[200px] w-full rounded-md border border-input p-3 text-[13px]" value={editor.summary} onChange={(e) => setEditor({ ...editor, summary: e.target.value })} placeholder="Summary. Tailoring may rephrase this but will not invent employers or metrics." />
-            <div>
-              <p className="text-[12px] text-muted-foreground mb-2">Reorder sections</p>
-              {editor.sections.map((section, i) => (
-                <div key={section} className="mb-1 flex items-center gap-2">
-                  <span className="flex-1 rounded-md border border-border px-3 py-2 text-[13px] capitalize">{section}</span>
-                  <button type="button" className="text-[12px]" disabled={i === 0} onClick={() => move(i, -1)}>Up</button>
-                  <button type="button" className="text-[12px]" disabled={i === editor.sections.length - 1} onClick={() => move(i, 1)}>Down</button>
-                </div>
-              ))}
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <Panel title="Editor">
+            <div className="space-y-3 p-4">
+              <Field label="Title"><input className="rp-input" value={editor.title} onChange={(e) => setEditor({ ...editor, title: e.target.value })} /></Field>
+              <Field label="Summary"><textarea className="rp-textarea min-h-[200px]" value={editor.summary} onChange={(e) => setEditor({ ...editor, summary: e.target.value })} placeholder="Summary. Tailoring may rephrase this but will not invent employers or metrics." /></Field>
+              <div>
+                <p className="mb-2 text-[12px] text-muted-foreground">Reorder sections</p>
+                {editor.sections.map((section, i) => (
+                  <div key={section} className="mb-1 flex items-center gap-2">
+                    <span className="flex-1 rounded-md border border-border px-3 py-2 text-[13px] capitalize">{section}</span>
+                    <button type="button" className="rp-btn rp-btn-ghost rp-btn-sm" disabled={i === 0} onClick={() => move(i, -1)}>Up</button>
+                    <button type="button" className="rp-btn rp-btn-ghost rp-btn-sm" disabled={i === editor.sections.length - 1} onClick={() => move(i, 1)}>Down</button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="rp-btn rp-btn-primary" onClick={() => void saveEditor()}>Save profile</button>
             </div>
-            <button type="button" className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => void saveEditor()}>Save profile</button>
-          </div>
-          <aside className="space-y-3 border border-border p-4">
-            <label className="block text-[12px]">Template
-              <select className="mt-1 h-10 w-full rounded-md border border-input px-2" value={editor.template} onChange={(e) => setEditor({ ...editor, template: e.target.value })}>
-                {TEMPLATES.map((t) => <option key={t}>{t}</option>)}
-              </select>
-            </label>
-            <label className="block text-[12px]">Font
-              <select className="mt-1 h-10 w-full rounded-md border border-input px-2" value={editor.font} onChange={(e) => setEditor({ ...editor, font: e.target.value })}>
-                {FONTS.map((t) => <option key={t}>{t}</option>)}
-              </select>
-            </label>
-            <label className="block text-[12px]">Size
-              <select className="mt-1 h-10 w-full rounded-md border border-input px-2" value={editor.size} onChange={(e) => setEditor({ ...editor, size: e.target.value })}>
-                {["9", "10", "11", "12"].map((t) => <option key={t}>{t}</option>)}
-              </select>
-            </label>
-            <label className="block text-[12px]">Align
-              <select className="mt-1 h-10 w-full rounded-md border border-input px-2" value={editor.align} onChange={(e) => setEditor({ ...editor, align: e.target.value })}>
-                <option value="left">Left</option>
-                <option value="center">Center</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-[13px]">
-              <input type="checkbox" checked={editor.fitOnePage} onChange={(e) => setEditor({ ...editor, fitOnePage: e.target.checked })} />
-              Fit one page
-            </label>
-          </aside>
+          </Panel>
+          <Panel title="Chrome">
+            <div className="space-y-3 p-4">
+              <Field label="Template">
+                <select className="rp-select" value={editor.template} onChange={(e) => setEditor({ ...editor, template: e.target.value })}>
+                  {TEMPLATES.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </Field>
+              <Field label="Font">
+                <select className="rp-select" value={editor.font} onChange={(e) => setEditor({ ...editor, font: e.target.value })}>
+                  {FONTS.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </Field>
+              <Field label="Size">
+                <select className="rp-select" value={editor.size} onChange={(e) => setEditor({ ...editor, size: e.target.value })}>
+                  {["9", "10", "11", "12"].map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </Field>
+              <Field label="Align">
+                <select className="rp-select" value={editor.align} onChange={(e) => setEditor({ ...editor, align: e.target.value })}>
+                  <option value="left">Left</option>
+                  <option value="center">Center</option>
+                </select>
+              </Field>
+              <label className="flex items-center gap-2 text-[13px]">
+                <input type="checkbox" checked={editor.fitOnePage} onChange={(e) => setEditor({ ...editor, fitOnePage: e.target.checked })} />
+                Fit one page
+              </label>
+            </div>
+          </Panel>
         </div>
       )}
 
       {tab === "cover" && (
-        <div className="space-y-3">
-          <textarea className="min-h-[280px] w-full rounded-md border border-input p-3 text-[13px]" value={editor.cover} onChange={(e) => setEditor({ ...editor, cover: e.target.value })} placeholder="Optional standing cover letter. Leave empty for packets that should ship without one." />
-          <button type="button" className="h-9 rounded-md bg-primary px-3 text-[13px] text-primary-foreground" onClick={() => void saveEditor()}>Save cover</button>
-        </div>
+        <Panel title="Standing cover letter">
+          <div className="space-y-3 p-4">
+            <textarea className="rp-textarea min-h-[280px]" value={editor.cover} onChange={(e) => setEditor({ ...editor, cover: e.target.value })} placeholder="Optional standing cover letter. Leave empty for packets that should ship without one." />
+            <button type="button" className="rp-btn rp-btn-primary" onClick={() => void saveEditor()}>Save cover</button>
+          </div>
+        </Panel>
       )}
 
       {tab === "details" && (
         <div className="space-y-5">
-          <section className="border border-border p-4">
-            <h2 className="text-[15px] font-semibold">US work authorization defaults</h2>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <select className="h-10 rounded-md border border-input px-3 text-[13px]" value={editor.auth} onChange={(e) => setEditor({ ...editor, auth: e.target.value })}>
-                {AUTH.map((opt) => <option key={opt}>{opt}</option>)}
-              </select>
-              <select className="h-10 rounded-md border border-input px-3 text-[13px]" value={editor.sponsorship} onChange={(e) => setEditor({ ...editor, sponsorship: e.target.value })}>
-                <option value="no">No sponsorship needed</option>
-                <option value="yes">Need sponsorship</option>
-              </select>
+          <Panel title="US work authorization defaults">
+            <div className="grid gap-3 p-4 md:grid-cols-2">
+              <Field label="Authorization">
+                <select className="rp-select" value={editor.auth} onChange={(e) => setEditor({ ...editor, auth: e.target.value })}>
+                  {AUTH.map((opt) => <option key={opt}>{opt}</option>)}
+                </select>
+              </Field>
+              <Field label="Sponsorship">
+                <select className="rp-select" value={editor.sponsorship} onChange={(e) => setEditor({ ...editor, sponsorship: e.target.value })}>
+                  <option value="no">No sponsorship needed</option>
+                  <option value="yes">Need sponsorship</option>
+                </select>
+              </Field>
+              <button type="button" className="rp-btn rp-btn-outline" onClick={() => void saveEditor()}>Save auth defaults</button>
             </div>
-            <button type="button" className="mt-3 h-9 rounded-md border border-border px-3 text-[13px]" onClick={() => void saveEditor()}>Save auth defaults</button>
-          </section>
+          </Panel>
           <ApplicationProfileCard />
         </div>
       )}
     </div>
   );
-
-  function move(index: number, dir: number) {
-    const next = [...editor.sections];
-    const swap = index + dir;
-    [next[index], next[swap]] = [next[swap], next[index]];
-    setEditor({ ...editor, sections: next });
-  }
 }

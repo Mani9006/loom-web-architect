@@ -14,18 +14,20 @@ const STAGES = [
 export default function HowItWorksPage() {
   return (
     <MarketingLayout>
-      <main className="mx-auto max-w-6xl px-5 py-20">
-        <p className="text-caption text-primary">Sequence</p>
-        <h1 className="mt-4 font-display text-5xl">How it works</h1>
-        <p className="mt-5 max-w-xl text-body text-muted-foreground">
-          The pipeline is the product. Marketing, login, and the signed-in desk share one language.
-        </p>
-        <ol className="mt-16 divide-y divide-border border-y border-border">
+      <main className="mx-auto max-w-[1440px] px-5 py-16 3xl:max-w-[1520px] 3xl:py-20">
+        <div className="max-w-2xl">
+          <p className="rp-kicker">Sequence</p>
+          <h1 className="mt-3 font-display text-display-md">How it works</h1>
+          <p className="mt-4 text-[15px] leading-7 text-muted-foreground">
+            The pipeline is the product. Marketing, login, and the signed-in desk share one language.
+          </p>
+        </div>
+        <ol className="mt-12 divide-y divide-border border-y border-border">
           {STAGES.map((stage) => (
-            <li key={stage.t} className="grid gap-4 py-8 md:grid-cols-[80px_180px_1fr] md:items-baseline">
-              <span className="font-mono text-xs uppercase tracking-[0.2em] text-primary">{stage.n}</span>
-              <h2 className="font-display text-2xl">{stage.t}</h2>
-              <p className="text-body text-muted-foreground">{stage.d}</p>
+            <li key={stage.t} className="grid gap-2 py-7 sm:grid-cols-[72px_200px_minmax(0,1fr)] sm:items-baseline">
+              <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-primary">{stage.n}</span>
+              <h2 className="text-[18px] font-semibold tracking-tight">{stage.t}</h2>
+              <p className="max-w-2xl text-[14px] leading-relaxed text-muted-foreground">{stage.d}</p>
             </li>
           ))}
         </ol>
