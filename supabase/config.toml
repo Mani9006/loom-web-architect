@@ -105,5 +105,8 @@ verify_jwt = false
 [functions.mc-gmail-poll]
 verify_jwt = false
 
+[functions.mc-ai-worker]
+verify_jwt = false
+
 [functions.mc-render-resume]
 verify_jwt = false
