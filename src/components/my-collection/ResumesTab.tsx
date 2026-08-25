@@ -138,7 +138,6 @@ export default function ResumesTab({
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
           No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
-          here.
         </p>
       </Card>
     );

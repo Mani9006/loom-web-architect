@@ -183,9 +183,12 @@ export default function JobSearchPage() {
   const [savedJobKeys, setSavedJobKeys] = useState<Set<string>>(new Set());
   const [savingJobs, setSavingJobs] = useState<Set<string>>(new Set());
 
-  // Helper to make a unique key for a job
+  // Helper to make a unique key for a job. Deliberately excludes location:
+  // tracked_jobs (below) doesn't store one, so keying on it would make every
+  // job with a non-empty location look "unsaved" until the saved_jobs query
+  // resolved and happened to match the same location string.
   const jobKey = (job: SearchJob) =>
-    `${job.title}:::${job.company}:::${job.location}`.toLowerCase();
+    `${job.title}:::${job.company}`.toLowerCase();
 
   // Load user's saved jobs on mount (from tracked_jobs which powers the Applications page)
   useEffect(() => {
@@ -197,7 +200,7 @@ export default function JobSearchPage() {
       .then(({ data }) => {
         if (data) {
           const keys = new Set(
-            data.map((j: any) => `${j.title}:::${j.company}:::`.toLowerCase())
+            data.map((j: any) => `${j.title}:::${j.company}`.toLowerCase())
           );
           setSavedJobKeys(keys);
         }
@@ -211,7 +214,7 @@ export default function JobSearchPage() {
         if (data) {
           setSavedJobKeys((prev) => {
             const next = new Set(prev);
-            data.forEach((j: any) => next.add(`${j.job_title}:::${j.company}:::${j.location || ""}`.toLowerCase()));
+            data.forEach((j: any) => next.add(`${j.job_title}:::${j.company}`.toLowerCase()));
             return next;
           });
         }

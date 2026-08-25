@@ -211,7 +211,7 @@ export default function ResumeBuilderV2() {
     if (!user) throw new Error("Sign in before creating a tailored version.");
 
     const sourceTitle = resumeName.trim() || "Untitled resume";
-    const tailoredTitle = `${sourceTitle.replace(/\s+, tailored$/i, "")}, tailored`;
+    const tailoredTitle = `${sourceTitle.replace(/,\s*tailored$/i, "")}, tailored`;
     const tailoredExtras = {
       document_role: "tailored_draft",
       source_resume_id: resumeId ?? null,

@@ -160,7 +160,7 @@ export default function HomePage() {
             tier: String(m.tier ?? ""),
             summary: (m.summary as string | null) ?? null,
             title: sj.title,
-            company: sj.company?.name ?? ".",
+            company: sj.company?.name ?? "Company not listed",
             location: sj.location ?? "Location not listed",
             dimensions: Array.isArray(m.dimension_scores)
               ? (m.dimension_scores as Array<{ key: string; label: string; score: number }>)
