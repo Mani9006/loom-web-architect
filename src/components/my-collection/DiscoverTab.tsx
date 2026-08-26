@@ -619,10 +619,17 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       });
 
       // 3. Save tailored resume + link it to the tracked job.
+      // Re-check auth rather than reusing the check from step 1, tailoring
+      // can take up to 6 minutes, long enough for the session to expire.
+      const { data: freshUserData } = await supabase.auth.getUser();
+      if (!freshUserData?.user) {
+        toast({ title: "Not signed in", description: "Sign in again to save the tailored resume.", variant: "destructive" });
+        return;
+      }
       const { data: tailored, error: insertErr } = await (supabase as any)
         .from("mc_tailored_resumes")
         .insert({
-          user_id: userData.user.id,
+          user_id: freshUserData.user.id,
           session_id: sessionId,
           source_job_id: null,
           name: `${job.company}, ${job.title}`,
@@ -645,7 +652,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
       toast({
         title: "Tailored resume ready",
-        description: `${job.company} · ${job.title}, see the Resumes tab.`,
+        description: `${job.company} · ${job.title} — see the Resumes tab.`,
       });
     } catch (e) {
       // The user switched away mid-tailor (runOnLocalWorker was aborted on
