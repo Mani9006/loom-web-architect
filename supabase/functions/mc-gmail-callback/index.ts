@@ -21,6 +21,24 @@ function safeRedirect(baseUrl: string, path: string, params: Record<string, stri
   return Response.redirect(url.toString(), 302);
 }
 
+// Like safeRedirect, but `target` is a full return-to URL (already validated by
+// mc-gmail-connect's resolveReturnTo) that may carry its own path, e.g.
+// "https://app.example.com/my-collection/<id>?tab=inbox". Unlike safeRedirect,
+// this preserves that path instead of overwriting it with a hardcoded one, so
+// the user lands back on the specific session workspace they connected from
+// rather than the generic /inbox page (which may show a different session).
+function redirectToReturnTo(target: string, params: Record<string, string>): Response {
+  let url: URL;
+  try {
+    url = new URL(target);
+    if (!url.pathname || url.pathname === "/") url.pathname = "/inbox";
+  } catch {
+    url = new URL("/inbox", "https://www.resumepreps.com");
+  }
+  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+  return Response.redirect(url.toString(), 302);
+}
+
 serve(async (req) => {
   const appBaseUrl = Deno.env.get("APP_BASE_URL") || "https://resumepreps.com";
   const requestUrl = new URL(req.url);
@@ -141,9 +159,9 @@ serve(async (req) => {
       throw new Error("token_store_failed");
     }
 
-    return safeRedirect(redirectBase, "/inbox", { inbox: "connected" });
+    return redirectToReturnTo(redirectBase, { inbox: "connected" });
   } catch (error) {
     console.error("mc-gmail-callback", error);
-    return safeRedirect(redirectBase, "/inbox", { inbox: "connect_failed" });
+    return redirectToReturnTo(redirectBase, { inbox: "connect_failed" });
   }
 });

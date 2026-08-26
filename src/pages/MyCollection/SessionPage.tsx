@@ -72,6 +72,48 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // The Gmail OAuth callback (mc-gmail-callback) redirects back here with
+  // ?inbox=<result> once return_to preserves the session-specific path, so
+  // the user sees the outcome on the exact workspace they connected from
+  // instead of silently landing on it with no feedback.
+  useEffect(() => {
+    const connectionResult = searchParams.get("inbox");
+    if (!connectionResult) return;
+    const resultMessages: Record<string, { title: string; description: string; variant?: "destructive" }> = {
+      connected: {
+        title: "Gmail connected",
+        description: "Your application inbox is ready. We'll only surface job-related messages here.",
+      },
+      cancelled: {
+        title: "Gmail connection cancelled",
+        description: "No access was granted. You can connect Gmail whenever you're ready.",
+      },
+      connect_failed: {
+        title: "Gmail connection didn't finish",
+        description: "Google could not complete the connection. Please try Connect Gmail again.",
+        variant: "destructive",
+      },
+      unavailable: {
+        title: "Gmail connection unavailable",
+        description: "The inbox connection is not ready yet. Please try again shortly.",
+        variant: "destructive",
+      },
+      invalid_link: {
+        title: "Gmail connection expired",
+        description: "For your security, this connection link is no longer valid. Start again from this tab.",
+        variant: "destructive",
+      },
+    };
+    const message = resultMessages[connectionResult];
+    if (message) toast(message);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("inbox");
+      return next;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;

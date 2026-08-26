@@ -25,7 +25,7 @@ function resolveReturnTo(candidate: unknown, fallback: string): string {
     const trustedProtocol = parsed.protocol === "https:" ||
       ((parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") && parsed.protocol === "http:");
     if (!trustedHost || !trustedProtocol) return fallback;
-    return `${parsed.origin}/inbox`;
+    return `${parsed.origin}${parsed.pathname}${parsed.search}`;
   } catch {
     return fallback;
   }
