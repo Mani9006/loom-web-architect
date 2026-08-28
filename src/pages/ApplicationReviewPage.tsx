@@ -136,7 +136,7 @@ export default function ApplicationReviewPage() {
 
     const requests: PromiseLike<unknown>[] = [];
     if (nextDraft.tailored_resume_id) {
-      requests.push((supabase as any).from("ats_scores")
+      requests.push(supabase.from("ats_scores")
         .select("overall,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords")
         .eq("user_id", user.id).eq("resume_id", nextDraft.tailored_resume_id).eq("scanned_job_id", nextDraft.evaluation.scanned_job.id)
         .order("created_at", { ascending: false }).limit(1).maybeSingle()

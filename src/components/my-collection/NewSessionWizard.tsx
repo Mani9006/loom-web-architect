@@ -179,7 +179,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       visa_status: visa,
     };
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_sessions")
       .insert({
         user_id: userData.user.id,
