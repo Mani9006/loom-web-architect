@@ -215,7 +215,7 @@ export async function waitForJob(
 }
 
 async function fetchJob(jobId: string): Promise<AIJob | null> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("mc_ai_jobs")
     .select("*")
     .eq("id", jobId)
@@ -335,7 +335,7 @@ export async function isWorkerOnline(userId: string): Promise<{
   lastSeen: string | null;
   hostname: string | null;
 }> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("mc_worker_heartbeats")
     .select("last_seen,hostname")
     .eq("user_id", userId)

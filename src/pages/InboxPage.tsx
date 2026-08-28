@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- inbox verification fields are deployed ahead of generated client types */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
@@ -120,7 +119,7 @@ export default function InboxPage() {
   const load = useCallback(async () => {
     if (!user) return;
     const selectFields = "id,session_id,tracked_job_id,from_email,subject,body_preview,classification,classification_summary,next_action,verification_code,verification_code_expires_at,is_read,received_at";
-    let primaryQuery = (supabase as any).from("mc_inbound_emails")
+    let primaryQuery = supabase.from("mc_inbound_emails")
       .select(selectFields)
       .eq("user_id", user.id);
     // Display-layer filter only: polling/storage still ingest every email
@@ -133,7 +132,7 @@ export default function InboxPage() {
       supabase.from("mc_sessions").select("id").eq("user_id", user.id).eq("status", "active")
         .order("updated_at", { ascending: false }).limit(1).maybeSingle(),
       applicationOnly
-        ? (supabase as any).from("mc_inbound_emails").select("id", { count: "exact", head: true })
+        ? supabase.from("mc_inbound_emails").select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
           .or(`classification.is.null,classification.not.in.(${APPLICATION_CLASSIFICATIONS.join(",")})`)
         : Promise.resolve(null),
@@ -143,7 +142,7 @@ export default function InboxPage() {
     if (enhancedMessagesResult.error) {
       // During a staged rollout, older environments may not have code/read
       // metadata yet. Keep the inbox useful with the stable message fields.
-      let fallbackQuery = (supabase as any).from("mc_inbound_emails")
+      let fallbackQuery = supabase.from("mc_inbound_emails")
         .select("id,session_id,tracked_job_id,from_email,subject,body_preview,classification,classification_summary,next_action,received_at")
         .eq("user_id", user.id);
       if (applicationOnly) fallbackQuery = fallbackQuery.in("classification", [...APPLICATION_CLASSIFICATIONS]);
@@ -195,7 +194,7 @@ export default function InboxPage() {
       if (pollingRef.current) return;
       pollingRef.current = true;
       try {
-        const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+        const { error } = await supabase.functions.invoke("mc-gmail-poll", {});
         if (!error) await load();
       } finally {
         pollingRef.current = false;
@@ -238,7 +237,7 @@ export default function InboxPage() {
 
   async function refresh() {
     setRefreshing(true);
-    const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+    const { error } = await supabase.functions.invoke("mc-gmail-poll", {});
     if (!error) await load();
     setRefreshing(false);
     toast(error
@@ -248,7 +247,7 @@ export default function InboxPage() {
 
   async function markRead(id: string, isRead: boolean) {
     setMessages((current) => current.map((item) => item.id === id ? { ...item, is_read: isRead } : item));
-    const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
+    const { error } = await supabase.from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
     if (error) {
       await load();
       toast({ title: "Read state wasn't saved", description: "The message was restored to its previous state.", variant: "destructive" });
@@ -257,7 +256,7 @@ export default function InboxPage() {
 
   async function markAllRead() {
     if (!user || !unread || !supportsReadState) return;
-    const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: true }).eq("user_id", user.id).eq("is_read", false);
+    const { error } = await supabase.from("mc_inbound_emails").update({ is_read: true }).eq("user_id", user.id).eq("is_read", false);
     if (error) {
       toast({ title: "Couldn't mark all as read", description: "Try again in a moment.", variant: "destructive" });
       return;
