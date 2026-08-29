@@ -196,12 +196,14 @@ export type Database = {
           full_name: string | null
           id: string
           job_preferences: Json | null
+          linkedin_url: string | null
           location: string | null
           onboarding_completed: boolean
           phone: string | null
           target_role: string | null
           updated_at: string
           user_id: string
+          years_of_experience: number | null
         }
         Insert: {
           avatar_url?: string | null
@@ -210,12 +212,14 @@ export type Database = {
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
           target_role?: string | null
           updated_at?: string
           user_id: string
+          years_of_experience?: number | null
         }
         Update: {
           avatar_url?: string | null
@@ -224,12 +228,14 @@ export type Database = {
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
           target_role?: string | null
           updated_at?: string
           user_id?: string
+          years_of_experience?: number | null
         }
         Relationships: []
       }

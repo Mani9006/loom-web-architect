@@ -122,7 +122,7 @@ export default function ApplicationReviewPage() {
 
   const load = useCallback(async (initial = false) => {
     if (!user || !id) return;
-    const { data, error } = await supabase.from("draft_applications")
+    const { data, error } = await (supabase as any).from("draft_applications")
       .select(`id,evaluation_id,tailored_resume_id,tailored_cv_md,tailored_cv_pdf_url,answers,status,applypass_task_id,error_message,submitted_at,created_at,updated_at,
         evaluation:job_evaluations(score,fit_score,dimension_scores,tier,summary,scanned_job:scanned_jobs(id,title,apply_url,company:scan_companies(name)))`)
       .eq("id", id).eq("user_id", user.id).maybeSingle();
@@ -143,7 +143,7 @@ export default function ApplicationReviewPage() {
         .then(({ data: score }: { data: AtsScore | null }) => setAts(score)));
     }
     if (nextDraft.applypass_task_id) {
-      requests.push(supabase.from("applypass_tasks")
+      requests.push((supabase as any).from("applypass_tasks")
         .select("id,status,error_message,run_log,attempt_count,max_attempts,created_at,started_at,completed_at")
         .eq("id", nextDraft.applypass_task_id).eq("user_id", user.id).maybeSingle()
         .then(({ data: taskData }) => setTask(taskData as TaskState | null)));
@@ -206,7 +206,7 @@ export default function ApplicationReviewPage() {
     if (!draft) return;
     setMarking(true);
     const submittedAt = new Date().toISOString();
-    const { error } = await supabase.from("draft_applications").update({ status: "submitted", submitted_at: submittedAt }).eq("id", draft.id).eq("user_id", user!.id);
+    const { error } = await (supabase as any).from("draft_applications").update({ status: "submitted", submitted_at: submittedAt }).eq("id", draft.id).eq("user_id", user!.id);
     setMarking(false);
     if (error) toast.error("The status could not be saved.");
     else { toast.success("Application marked submitted"); await load(); }
