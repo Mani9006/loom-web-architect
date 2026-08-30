@@ -35,7 +35,7 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
     // health shape does). Selecting a missing column makes PostgREST return
     // 400; combined with the error handling below, that used to render a
     // healthy connection as "Not connected".
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("mc_gmail_connections")
       .select("id,gmail_email,enabled,last_polled_at,token_expires_at")
       .eq("session_id", sessionId)
@@ -44,7 +44,7 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
     if (error) {
       // A read failure (network blip, auth-token refresh race, transient
       // PostgREST error) is NOT proof of disconnection. Keep the last known
-      // connection state, keep auto-polling alive, and offer a retry ,
+      // connection state, keep auto-polling alive, and offer a retry —
       // never fall through to the "Connect Gmail" branch on an error.
       console.error("gmail connection load", error);
       setLoadError(true);
@@ -83,7 +83,7 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
     if (!conn) return;
     if (!confirm("Disconnect Gmail from this session? Auto-status updates from email will stop.")) return;
     setBusy(true);
-    const { error } = await supabase.from("mc_gmail_connections").delete().eq("id", conn.id);
+    const { error } = await (supabase as any).from("mc_gmail_connections").delete().eq("id", conn.id);
     setBusy(false);
     if (error) {
       toast({ title: "Couldn't disconnect inbox", description: "Try again in a moment.", variant: "destructive" });

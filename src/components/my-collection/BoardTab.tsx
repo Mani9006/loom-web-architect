@@ -210,14 +210,18 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       if (insertErr || !tailoredRow) {
         throw new Error(insertErr?.message || "Couldn't save tailored resume");
       }
-      await (supabase as any)
+      const { error: linkErr } = await (supabase as any)
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailoredRow.id })
         .eq("id", job.id);
-      setJobs((arr) =>
-        arr.map((j) => (j.id === job.id ? { ...j, tailored_resume_id: tailoredRow.id } : j))
-      );
-      setSelected((cur) => (cur && cur.id === job.id ? { ...cur, tailored_resume_id: tailoredRow.id } : cur));
+      if (linkErr) {
+        console.error("Couldn't link tailored resume to card:", linkErr.message);
+      } else {
+        setJobs((arr) =>
+          arr.map((j) => (j.id === job.id ? { ...j, tailored_resume_id: tailoredRow.id } : j))
+        );
+        setSelected((cur) => (cur && cur.id === job.id ? { ...cur, tailored_resume_id: tailoredRow.id } : cur));
+      }
       toast({ title: "Tailored resume ready", description: "Open it in the Resumes tab." });
     } catch (e) {
       // The user switched away mid-tailor (runOnLocalWorker was aborted on

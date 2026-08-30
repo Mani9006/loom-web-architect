@@ -187,6 +187,12 @@ async function syncCareerDraft(
   if (draftSyncError) console.error("[applypass-agent-queue] draft_applications complete-sync failed:", draftSyncError.message);
 
   if (submitted && trackedJobId) {
+    const { data: trackedJobBefore } = await serviceClient
+      .from("mc_tracked_jobs")
+      .select("status")
+      .eq("id", trackedJobId)
+      .eq("user_id", userId)
+      .maybeSingle();
     await serviceClient.from("mc_tracked_jobs").update({
       status: "applied",
       applied_at: new Date().toISOString(),
@@ -194,7 +200,7 @@ async function syncCareerDraft(
     await serviceClient.from("mc_status_history").insert({
       tracked_job_id: trackedJobId,
       user_id: userId,
-      status_from: "saved",
+      status_from: asString(trackedJobBefore?.status) || "saved",
       status_to: "applied",
       source: "auto_apply",
     });

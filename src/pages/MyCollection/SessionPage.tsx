@@ -78,7 +78,7 @@ export default function SessionPage() {
     let hadInitialLoad = false;
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mc_sessions")
         .select("*")
         .eq("id", sessionId)
@@ -187,19 +187,19 @@ export default function SessionPage() {
         </TabsList>
 
         <TabsContent value="discover" className="mt-6">
-          <DiscoverTab sessionId={session.id} session={session} />
+          <DiscoverTab key={session.id} sessionId={session.id} session={session} />
         </TabsContent>
         <TabsContent value="resumes" className="mt-6">
-          <ResumesTab sessionId={session.id} focusResumeId={focusResumeId} />
+          <ResumesTab key={session.id} sessionId={session.id} focusResumeId={focusResumeId} />
         </TabsContent>
         <TabsContent value="board" className="mt-6">
-          <BoardTab sessionId={session.id} key={boardReloadKey} />
+          <BoardTab sessionId={session.id} key={`${session.id}-${boardReloadKey}`} />
         </TabsContent>
         <TabsContent value="inbox" className="mt-6">
-          <ApplicationInboxTab sessionId={session.id} />
+          <ApplicationInboxTab key={session.id} sessionId={session.id} />
         </TabsContent>
         <TabsContent value="stats" className="mt-6">
-          <StatsTab sessionId={session.id} />
+          <StatsTab key={session.id} sessionId={session.id} />
         </TabsContent>
       </Tabs>
 
