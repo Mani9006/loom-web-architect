@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { ACTIVE_SESSION_LIMIT } from "@/lib/my-collection-constants";
 
 interface Resume {
   id: string;
@@ -160,6 +161,30 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       toast({
         title: "Couldn't create",
         description: "You're not signed in. Refresh and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // The "New Session" button is disabled once the caller sees the active
+    // cap reached, but the wizard can still be open from before that point
+    // (e.g. left open in a background tab while another session was created
+    // elsewhere), so re-check against the current count right before insert.
+    const { count: activeCount, error: countErr } = await (supabase as any)
+      .from("mc_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userData.user.id)
+      .eq("status", "active");
+    if (countErr) {
+      setSubmitting(false);
+      toast({ title: "Couldn't create", description: countErr.message, variant: "destructive" });
+      return;
+    }
+    if ((activeCount ?? 0) >= ACTIVE_SESSION_LIMIT) {
+      setSubmitting(false);
+      toast({
+        title: "Reached active session limit",
+        description: `You can have at most ${ACTIVE_SESSION_LIMIT} active sessions. Archive one first.`,
         variant: "destructive",
       });
       return;

@@ -325,13 +325,16 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      await (supabase as any).from("mc_status_history").insert({
+      const { error: historyError } = await (supabase as any).from("mc_status_history").insert({
         tracked_job_id: jobId,
         user_id: user.id,
         status_from: previousStatus,
         status_to: status,
         source: "manual",
       });
+      if (historyError) {
+        console.error("[BoardTab] failed to record status history:", historyError.message);
+      }
     }
   }
 

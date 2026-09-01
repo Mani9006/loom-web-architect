@@ -97,10 +97,17 @@ export default function ResumesTab({
     }
     // Unlink from any board card that pointed at this resume so "View
     // tailored resume" doesn't dead-end on a card that still thinks it has one.
-    await (supabase as any)
+    const { error: unlinkError } = await (supabase as any)
       .from("mc_tracked_jobs")
       .update({ tailored_resume_id: null })
       .eq("tailored_resume_id", id);
+    if (unlinkError) {
+      console.error("[ResumesTab] failed to unlink deleted resume from board cards:", unlinkError.message);
+      toast({
+        title: "Resume deleted",
+        description: "A board card may still reference the deleted resume. Refresh if you see a broken link.",
+      });
+    }
     load();
   }
 
