@@ -488,6 +488,25 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Not signed in", variant: "destructive" });
       return;
     }
+
+    // `savedTitles` is only an in-memory/sessionStorage hint (cleared on
+    // reset(), a new search, or a cleared tab), so it can't be trusted alone
+    // to prevent duplicate board cards. Check the DB directly before inserting.
+    const { data: existing } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("company", job.company)
+      .eq("job_title", job.title)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+      toast({ title: "Already on board", description: `${job.company} · ${job.title}` });
+      return;
+    }
+
     const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
       user_id: userData.user.id,
       session_id: sessionId,
