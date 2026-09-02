@@ -55,7 +55,7 @@ export default function ResumesTab({
 
   async function load() {
     setLoading(true);
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_tailored_resumes")
       .select("*")
       .eq("session_id", sessionId)
@@ -90,14 +90,14 @@ export default function ResumesTab({
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
-    const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
+    const { error } = await supabase.from("mc_tailored_resumes").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
       return;
     }
     // Unlink from any board card that pointed at this resume so "View
     // tailored resume" doesn't dead-end on a card that still thinks it has one.
-    await (supabase as any)
+    await supabase
       .from("mc_tracked_jobs")
       .update({ tailored_resume_id: null })
       .eq("tailored_resume_id", id);
@@ -106,7 +106,7 @@ export default function ResumesTab({
 
   async function commitRename() {
     if (!renaming || !renameValue.trim()) return;
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tailored_resumes")
       .update({ name: renameValue.trim() })
       .eq("id", renaming.id);
@@ -137,7 +137,7 @@ export default function ResumesTab({
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
+          No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one
           here.
         </p>
       </Card>
@@ -239,7 +239,7 @@ function downloadAsMarkdown(r: TailoredResume) {
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
+  const { data, error } = await supabase.functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "pdf" },
   });
   if (error || !data?.url) {
@@ -324,7 +324,7 @@ function CanvasEditor({
 
   async function save() {
     setSaving(true);
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tailored_resumes")
       .update({ name: name.trim(), cv_md: cv })
       .eq("id", resume.id);
@@ -342,7 +342,7 @@ function CanvasEditor({
     setAiBusy(true);
     setAiSuggestions([]);
     try {
-      const { data, error } = await (supabase as any).functions.invoke("enhance-bullet", {
+      const { data, error } = await supabase.functions.invoke("enhance-bullet", {
         body: { line: selectedLine, mode, context: { full_resume: cv } },
       });
       if (error) throw error;

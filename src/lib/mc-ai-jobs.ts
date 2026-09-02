@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export type JobKind =
   | "tailor"
@@ -107,12 +108,12 @@ export async function enqueueJob(args: EnqueueArgs): Promise<EnqueueResult> {
     // Haiku/Sonnet per the task-kind map (no Opus, ever).
     model: args.model ?? defaultModelFor(args.kind),
     prompt: args.prompt,
-    input: args.input ?? null,
+    input: (args.input ?? null) as Json,
     priority: args.priority ?? 5,
     status: "queued" as const,
   };
 
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("mc_ai_jobs")
     .insert(payload)
     .select("id")
@@ -215,7 +216,7 @@ export async function waitForJob(
 }
 
 async function fetchJob(jobId: string): Promise<AIJob | null> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("mc_ai_jobs")
     .select("*")
     .eq("id", jobId)
@@ -335,7 +336,7 @@ export async function isWorkerOnline(userId: string): Promise<{
   lastSeen: string | null;
   hostname: string | null;
 }> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("mc_worker_heartbeats")
     .select("last_seen,hostname")
     .eq("user_id", userId)
