@@ -166,22 +166,42 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
   const { data: trackedJobs } = await admin
     .from("mc_tracked_jobs")
     .select("id,company,job_title,status,apply_url")
-    .eq("session_id", connection.session_id);
+    .eq("session_id", connection.session_id)
+    .is("deleted_at", null);
 
   const sinceTs = connection.last_polled_at
     ? Math.floor(new Date(connection.last_polled_at).getTime() / 1000)
     : 0;
   const gmailQuery = sinceTs ? `after:${sinceTs}` : "newer_than:7d";
-  const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(gmailQuery)}&maxResults=25`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
-  );
-  if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
-  const list = await listResponse.json();
+
+  // Page through every result. Without this, any poll gap wide enough to
+  // accumulate more than one page of mail (e.g. the user was offline for a
+  // few days, or bulk-applied and got many ATS confirmations at once) would
+  // silently drop everything past page 1 — last_polled_at still advances to
+  // "now" below, so the skipped messages are never retried on a later poll.
+  // Capped at 10 pages (~2,500 messages) per connection per run as a safety
+  // ceiling against runaway API usage on a pathological inbox.
+  const messageRefs: { id: string }[] = [];
+  let pageToken: string | undefined;
+  let page = 0;
+  do {
+    const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    listUrl.searchParams.set("q", gmailQuery);
+    listUrl.searchParams.set("maxResults", "100");
+    if (pageToken) listUrl.searchParams.set("pageToken", pageToken);
+    const listResponse = await fetch(listUrl.toString(), {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
+    const list = await listResponse.json();
+    for (const messageRef of list.messages ?? []) messageRefs.push(messageRef);
+    pageToken = list.nextPageToken || undefined;
+    page += 1;
+  } while (pageToken && page < 10);
 
   let processed = 0;
   let statusUpdates = 0;
-  for (const messageRef of list.messages ?? []) {
+  for (const messageRef of messageRefs) {
     const { data: existing } = await admin
       .from("mc_inbound_emails")
       .select("id")
@@ -301,6 +321,12 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
         source: "email",
         email_id: emailRow?.id,
       });
+      // Keep the in-memory snapshot current: trackedJobs is loaded once per
+      // connection, so a second matching email later in this same poll batch
+      // would otherwise compare against the pre-update status, both mis-
+      // recording status_from in the history row and letting a lower-ranked
+      // classification slip past isForwardStatusMove's regression guard.
+      matched.status = newStatus;
       statusUpdates += 1;
       // Best-effort status-change alert. Fires only on an actual forward
       // transition, so the guards above already make it idempotent; a failed
