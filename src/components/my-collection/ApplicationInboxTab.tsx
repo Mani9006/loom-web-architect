@@ -100,8 +100,12 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   }
 
   async function copyCode(code: string) {
-    await navigator.clipboard.writeText(code);
-    toast({ title: "Verification code copied" });
+    try {
+      await navigator.clipboard.writeText(code);
+      toast({ title: "Verification code copied" });
+    } catch {
+      toast({ title: "Couldn't copy, try selecting and copying manually", variant: "destructive" });
+    }
   }
 
   return (
