@@ -177,10 +177,11 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
   // Page through every result. Without this, any poll gap wide enough to
   // accumulate more than one page of mail (e.g. the user was offline for a
   // few days, or bulk-applied and got many ATS confirmations at once) would
-  // silently drop everything past page 1 — last_polled_at still advances to
-  // "now" below, so the skipped messages are never retried on a later poll.
-  // Capped at 10 pages (~2,500 messages) per connection per run as a safety
-  // ceiling against runaway API usage on a pathological inbox.
+  // silently drop everything past page 1, since last_polled_at advances on
+  // every run and the skipped messages would never be retried. Capped at 10
+  // pages (~2,500 messages) per connection per run as a safety ceiling
+  // against runaway API usage on a pathological inbox; see truncatedByPageCap
+  // below for how a run that hits the cap avoids losing the remainder.
   const messageRefs: { id: string }[] = [];
   let pageToken: string | undefined;
   let page = 0;
@@ -198,6 +199,12 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     pageToken = list.nextPageToken || undefined;
     page += 1;
   } while (pageToken && page < 10);
+  // If the safety ceiling above cut the listing short, there's still more
+  // mail sitting past what we fetched. Leave last_polled_at where it was so
+  // the next poll re-covers this same window instead of silently losing the
+  // remainder — the message_id UNIQUE + existence check above make re-seeing
+  // already-processed messages in that window a no-op.
+  const truncatedByPageCap = Boolean(pageToken);
 
   let processed = 0;
   let statusUpdates = 0;
@@ -342,10 +349,12 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     }
   }
 
-  await admin
-    .from("mc_gmail_connections")
-    .update({ last_polled_at: new Date().toISOString() })
-    .eq("id", connection.id);
+  if (!truncatedByPageCap) {
+    await admin
+      .from("mc_gmail_connections")
+      .update({ last_polled_at: new Date().toISOString() })
+      .eq("id", connection.id);
+  }
   return { processed, statusUpdates };
 }
 
