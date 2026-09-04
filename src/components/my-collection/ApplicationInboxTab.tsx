@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- inbox columns are newer than the generated database client types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +40,7 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_inbound_emails")
       .select("id,from_email,subject,body_preview,classification,classification_summary,next_action,verification_code,verification_code_expires_at,is_read,received_at")
       .eq("session_id", sessionId)
@@ -68,7 +67,7 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function refresh() {
     setRefreshing(true);
     try {
-      const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+      const { error } = await supabase.functions.invoke("mc-gmail-poll", {});
       if (error) throw error;
       await load();
       toast({ title: "Inbox is up to date" });
@@ -85,13 +84,13 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
 
   async function markRead(id: string, isRead: boolean) {
     setMessages((current) => current.map((message) => message.id === id ? { ...message, is_read: isRead } : message));
-    const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
+    const { error } = await supabase.from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
     if (error) await load().catch(() => undefined);
   }
 
   async function markAllRead() {
     if (!unread) return;
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_inbound_emails")
       .update({ is_read: true })
       .eq("session_id", sessionId)
