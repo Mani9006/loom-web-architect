@@ -65,7 +65,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<TrackedJob | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
+  // Keyed by job id so tailoring more than one job at once doesn't have the
+  // finish of one clear the in-progress indicator of another.
+  const [tailoring, setTailoring] = useState<Map<string, JobStatus>>(new Map());
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
 
@@ -175,7 +177,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       .filter(Boolean)
       .join("\n");
 
-    setTailoring({ jobId: job.id, status: "queued" });
+    setTailoring((m) => new Map(m).set(job.id, "queued"));
     try {
       const { result, jobId: aiJobId } = await runOnLocalWorker({
         kind: "tailor",
@@ -184,7 +186,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
         model: "sonnet-4-6",
         input: { tracked_job_id: job.id, company: job.company, job_title: job.job_title },
         timeoutMs: 6 * 60 * 1000,
-        onProgress: (s) => setTailoring({ jobId: job.id, status: s }),
+        onProgress: (s) => setTailoring((m) => new Map(m).set(job.id, s)),
         signal: abortRef.current?.signal,
       });
       void aiJobId;
@@ -226,7 +228,11 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       const msg = (e as Error).message || String(e);
       toast({ title: "Tailoring failed", description: msg, variant: "destructive" });
     } finally {
-      setTailoring(null);
+      setTailoring((m) => {
+        const next = new Map(m);
+        next.delete(job.id);
+        return next;
+      });
     }
   }
 
@@ -483,14 +489,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                     variant="default"
                     size="sm"
                     onClick={() => tailorJob(selected)}
-                    disabled={tailoring?.jobId === selected.id}
+                    disabled={tailoring.has(selected.id)}
                   >
-                    {tailoring?.jobId === selected.id ? (
+                    {tailoring.has(selected.id) ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                        {tailoring.status === "queued" && "Queued…"}
-                        {tailoring.status === "running" && "Tailoring…"}
-                        {tailoring.status === "done" && "Saving…"}
+                        {tailoring.get(selected.id) === "queued" && "Queued…"}
+                        {tailoring.get(selected.id) === "running" && "Tailoring…"}
+                        {tailoring.get(selected.id) === "done" && "Saving…"}
                       </>
                     ) : (
                       <>

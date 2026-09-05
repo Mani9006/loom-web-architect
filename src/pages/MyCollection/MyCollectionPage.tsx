@@ -147,7 +147,7 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+        <Button onClick={() => setWizardOpen(true)} disabled={loading || atCap} className="shrink-0">
           <Plus className="w-4 h-4 mr-1" /> New Session
         </Button>
       </div>
@@ -296,9 +296,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">

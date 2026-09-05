@@ -125,8 +125,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [activeJobHistory, setActiveJobHistory] = useState<ClarificationTurn[]>(
     initial.current?.activeJobHistory ?? [],
   );
-  const [tailoringKey, setTailoringKey] = useState<string | null>(null);
-  const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
+  // Keyed by job key so tailoring more than one job at once doesn't have the
+  // finish of one clear the in-progress indicator of another.
+  const [tailoring, setTailoring] = useState<Map<string, JobStatus>>(new Map());
   const [addOpen, setAddOpen] = useState(false);
 
   // Ties every waitForJob/runOnLocalWorker call below to this component
@@ -534,8 +535,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       return;
     }
 
-    setTailoringKey(key);
-    setTailoringStatus("queued");
+    setTailoring((m) => new Map(m).set(key, "queued"));
 
     try {
       // 1. Save the discovered job to mc_tracked_jobs so we can link the tailored resume.
@@ -614,7 +614,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         model: "sonnet-4-6",
         input: { tracked_job_id: trackedJobId, company: job.company, job_title: job.title },
         timeoutMs: 6 * 60 * 1000,
-        onProgress: (s) => setTailoringStatus(s),
+        onProgress: (s) => setTailoring((m) => new Map(m).set(key, s)),
         signal: abortRef.current?.signal,
       });
 
@@ -654,8 +654,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Tailor failed", description: msg, variant: "destructive" });
     } finally {
-      setTailoringKey(null);
-      setTailoringStatus(null);
+      setTailoring((m) => {
+        const next = new Map(m);
+        next.delete(key);
+        return next;
+      });
     }
   }
 
@@ -830,16 +833,15 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
-                    disabled={tailoringKey === key}
+                    disabled={tailoring.has(key)}
                     className="h-7 text-[11px]"
                   >
-                    {tailoringKey === key ? (
+                    {tailoring.has(key) ? (
                       <>
                         <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        {tailoringStatus === "queued" && "Queued…"}
-                        {tailoringStatus === "running" && "Tailoring…"}
-                        {tailoringStatus === "done" && "Saving…"}
-                        {!tailoringStatus && "Working…"}
+                        {tailoring.get(key) === "queued" && "Queued…"}
+                        {tailoring.get(key) === "running" && "Tailoring…"}
+                        {tailoring.get(key) === "done" && "Saving…"}
                       </>
                     ) : (
                       <>
@@ -851,7 +853,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || tailoring.has(key)}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
