@@ -191,7 +191,10 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       .single();
     setSubmitting(false);
     if (error || !data) {
-      toast({ title: "Couldn't create", description: error?.message, variant: "destructive" });
+      const description = error?.message?.includes("active limit reached")
+        ? "You already have 5 active sessions. Archive one first."
+        : error?.message;
+      toast({ title: "Couldn't create", description, variant: "destructive" });
       return;
     }
     toast({ title: "Session created" });

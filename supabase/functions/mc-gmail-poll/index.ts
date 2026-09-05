@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { decryptSecret, encryptSecret } from "../_shared/oauth-crypto.ts";
 import { classifyGmailPollFailure } from "../_shared/gmail-poll-failure.ts";
+import { isForwardStatusMove } from "../_shared/status-forward.ts";
 import { chatFree } from "../_shared/llm.ts";
 import {
   applicationSenderDomain,
@@ -27,21 +28,6 @@ const STATUS_MAP: Record<string, string> = {
 // moves are intentionally excluded — a mail per ATS acknowledgement is too
 // noisy.
 const NOTIFY_STATUSES = new Set(["interview", "take_home", "offer", "rejected"]);
-
-// Funnel order for auto-applied (source="email") status moves only — manual
-// board drags are unrestricted. Without this, a later, lower-signal email
-// (e.g. a duplicate ATS "application received" confirmation arriving after
-// an interview invite) would silently regress a job's kanban status, since
-// the classifier has no memory of what's already been recorded.
-// rejected/offer share the top rank because they're terminal outcomes that
-// should always be recorded once seen, never re-opened by an older signal.
-const STATUS_RANK: Record<string, number> = {
-  discovered: 0, saved: 1, applied: 2, viewed: 3, interview: 4, take_home: 5, offer: 6, rejected: 6,
-};
-function isForwardStatusMove(from: string, to: string): boolean {
-  if (to === "rejected" || to === "offer") return true;
-  return (STATUS_RANK[to] ?? 0) > (STATUS_RANK[from] ?? -1);
-}
 
 type Classification = keyof typeof STATUS_MAP | "verification" | "other_recruiter" | "irrelevant";
 interface ClassifiedEmail {

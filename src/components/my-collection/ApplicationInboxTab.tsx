@@ -68,8 +68,21 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function refresh() {
     setRefreshing(true);
     try {
-      const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+      const { data, error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
       if (error) throw error;
+      const failureCodes = Array.isArray(data?.failure_codes) ? data.failure_codes.map(String) : [];
+      if (failureCodes.includes("INBOX_RECONNECT_REQUIRED")) {
+        await load();
+        toast({
+          title: "Reconnect Gmail",
+          description: "Your previous read-only Gmail permission can no longer be used. Connect it again to continue application verification.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (Number(data?.failed || 0) > 0) {
+        throw new Error("Inbox check did not complete");
+      }
       await load();
       toast({ title: "Inbox is up to date" });
     } catch (error) {
@@ -86,7 +99,10 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function markRead(id: string, isRead: boolean) {
     setMessages((current) => current.map((message) => message.id === id ? { ...message, is_read: isRead } : message));
     const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
-    if (error) await load().catch(() => undefined);
+    if (error) {
+      await load().catch(() => undefined);
+      toast({ title: "Couldn't update message", description: error.message, variant: "destructive" });
+    }
   }
 
   async function markAllRead() {
@@ -96,7 +112,11 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
       .update({ is_read: true })
       .eq("session_id", sessionId)
       .eq("is_read", false);
-    if (!error) setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
+    if (!error) {
+      setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
+    } else {
+      toast({ title: "Couldn't mark all as read", description: error.message, variant: "destructive" });
+    }
   }
 
   async function copyCode(code: string) {
