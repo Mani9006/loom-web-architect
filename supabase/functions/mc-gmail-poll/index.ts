@@ -166,22 +166,39 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
   const { data: trackedJobs } = await admin
     .from("mc_tracked_jobs")
     .select("id,company,job_title,status,apply_url")
-    .eq("session_id", connection.session_id);
+    .eq("session_id", connection.session_id)
+    .is("deleted_at", null);
 
   const sinceTs = connection.last_polled_at
     ? Math.floor(new Date(connection.last_polled_at).getTime() / 1000)
     : 0;
   const gmailQuery = sinceTs ? `after:${sinceTs}` : "newer_than:7d";
-  const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(gmailQuery)}&maxResults=25`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
-  );
-  if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
-  const list = await listResponse.json();
+
+  // Drain every page in the polled window, not just the first 25. Without
+  // this, an inbox with >25 matching messages in the window (easy on the
+  // very first catch-up poll, which spans 7 days) silently loses everything
+  // past page 1: last_polled_at still advances to now() below, so those
+  // messages are never seen on this or any future poll. Capped at 8 pages
+  // (~200 messages) as a safety bound against an unbounded loop.
+  const allMessageRefs: { id: string }[] = [];
+  let pageToken: string | undefined;
+  let page = 0;
+  do {
+    const pageUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    pageUrl.searchParams.set("q", gmailQuery);
+    pageUrl.searchParams.set("maxResults", "25");
+    if (pageToken) pageUrl.searchParams.set("pageToken", pageToken);
+    const listResponse = await fetch(pageUrl, { headers: { authorization: `Bearer ${accessToken}` } });
+    if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
+    const list = await listResponse.json();
+    allMessageRefs.push(...(list.messages ?? []));
+    pageToken = list.nextPageToken;
+    page += 1;
+  } while (pageToken && page < 8);
 
   let processed = 0;
   let statusUpdates = 0;
-  for (const messageRef of list.messages ?? []) {
+  for (const messageRef of allMessageRefs) {
     const { data: existing } = await admin
       .from("mc_inbound_emails")
       .select("id")
@@ -301,6 +318,13 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
         source: "email",
         email_id: emailRow?.id,
       });
+      // Keep the in-memory snapshot current so a later message in this same
+      // poll run (Gmail returns newest-first, so an older, lower-signal
+      // email can be processed after a newer one) compares isForwardStatusMove
+      // against the status we just wrote, not the stale pre-poll value —
+      // otherwise an older "application received" processed after a newer
+      // "interview invite" would silently regress interview back to viewed.
+      matched.status = newStatus;
       statusUpdates += 1;
       // Best-effort status-change alert. Fires only on an actual forward
       // transition, so the guards above already make it idempotent; a failed
