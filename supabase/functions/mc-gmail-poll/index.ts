@@ -166,22 +166,49 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
   const { data: trackedJobs } = await admin
     .from("mc_tracked_jobs")
     .select("id,company,job_title,status,apply_url")
-    .eq("session_id", connection.session_id);
+    .eq("session_id", connection.session_id)
+    .is("deleted_at", null);
 
   const sinceTs = connection.last_polled_at
     ? Math.floor(new Date(connection.last_polled_at).getTime() / 1000)
     : 0;
   const gmailQuery = sinceTs ? `after:${sinceTs}` : "newer_than:7d";
-  const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(gmailQuery)}&maxResults=25`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
-  );
-  if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
-  const list = await listResponse.json();
+
+  // Page through every result. Without this, any poll gap wide enough to
+  // accumulate more than one page of mail (e.g. the user was offline for a
+  // few days, or bulk-applied and got many ATS confirmations at once) would
+  // silently drop everything past page 1, since last_polled_at advances on
+  // every run and the skipped messages would never be retried. Capped at 10
+  // pages (~2,500 messages) per connection per run as a safety ceiling
+  // against runaway API usage on a pathological inbox; see truncatedByPageCap
+  // below for how a run that hits the cap avoids losing the remainder.
+  const messageRefs: { id: string }[] = [];
+  let pageToken: string | undefined;
+  let page = 0;
+  do {
+    const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    listUrl.searchParams.set("q", gmailQuery);
+    listUrl.searchParams.set("maxResults", "100");
+    if (pageToken) listUrl.searchParams.set("pageToken", pageToken);
+    const listResponse = await fetch(listUrl.toString(), {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
+    const list = await listResponse.json();
+    for (const messageRef of list.messages ?? []) messageRefs.push(messageRef);
+    pageToken = list.nextPageToken || undefined;
+    page += 1;
+  } while (pageToken && page < 10);
+  // If the safety ceiling above cut the listing short, there's still more
+  // mail sitting past what we fetched. Leave last_polled_at where it was so
+  // the next poll re-covers this same window instead of silently losing the
+  // remainder — the message_id UNIQUE + existence check above make re-seeing
+  // already-processed messages in that window a no-op.
+  const truncatedByPageCap = Boolean(pageToken);
 
   let processed = 0;
   let statusUpdates = 0;
-  for (const messageRef of list.messages ?? []) {
+  for (const messageRef of messageRefs) {
     const { data: existing } = await admin
       .from("mc_inbound_emails")
       .select("id")
@@ -301,6 +328,12 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
         source: "email",
         email_id: emailRow?.id,
       });
+      // Keep the in-memory snapshot current: trackedJobs is loaded once per
+      // connection, so a second matching email later in this same poll batch
+      // would otherwise compare against the pre-update status, both mis-
+      // recording status_from in the history row and letting a lower-ranked
+      // classification slip past isForwardStatusMove's regression guard.
+      matched.status = newStatus;
       statusUpdates += 1;
       // Best-effort status-change alert. Fires only on an actual forward
       // transition, so the guards above already make it idempotent; a failed
@@ -316,10 +349,12 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     }
   }
 
-  await admin
-    .from("mc_gmail_connections")
-    .update({ last_polled_at: new Date().toISOString() })
-    .eq("id", connection.id);
+  if (!truncatedByPageCap) {
+    await admin
+      .from("mc_gmail_connections")
+      .update({ last_polled_at: new Date().toISOString() })
+      .eq("id", connection.id);
+  }
   return { processed, statusUpdates };
 }
 
