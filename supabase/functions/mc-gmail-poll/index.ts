@@ -174,31 +174,41 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     : 0;
   const gmailQuery = sinceTs ? `after:${sinceTs}` : "newer_than:7d";
 
-  // Drain every page in the polled window, not just the first 25. Without
-  // this, an inbox with >25 matching messages in the window (easy on the
-  // very first catch-up poll, which spans 7 days) silently loses everything
-  // past page 1: last_polled_at still advances to now() below, so those
-  // messages are never seen on this or any future poll. Capped at 8 pages
-  // (~200 messages) as a safety bound against an unbounded loop.
-  const allMessageRefs: { id: string }[] = [];
+  // Page through every result. Without this, any poll gap wide enough to
+  // accumulate more than one page of mail (e.g. the user was offline for a
+  // few days, or bulk-applied and got many ATS confirmations at once) would
+  // silently drop everything past page 1, since last_polled_at advances on
+  // every run and the skipped messages would never be retried. Capped at 10
+  // pages (~2,500 messages) per connection per run as a safety ceiling
+  // against runaway API usage on a pathological inbox; see truncatedByPageCap
+  // below for how a run that hits the cap avoids losing the remainder.
+  const messageRefs: { id: string }[] = [];
   let pageToken: string | undefined;
   let page = 0;
   do {
-    const pageUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    pageUrl.searchParams.set("q", gmailQuery);
-    pageUrl.searchParams.set("maxResults", "25");
-    if (pageToken) pageUrl.searchParams.set("pageToken", pageToken);
-    const listResponse = await fetch(pageUrl, { headers: { authorization: `Bearer ${accessToken}` } });
+    const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    listUrl.searchParams.set("q", gmailQuery);
+    listUrl.searchParams.set("maxResults", "100");
+    if (pageToken) listUrl.searchParams.set("pageToken", pageToken);
+    const listResponse = await fetch(listUrl.toString(), {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
     if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
     const list = await listResponse.json();
-    allMessageRefs.push(...(list.messages ?? []));
-    pageToken = list.nextPageToken;
+    for (const messageRef of list.messages ?? []) messageRefs.push(messageRef);
+    pageToken = list.nextPageToken || undefined;
     page += 1;
-  } while (pageToken && page < 8);
+  } while (pageToken && page < 10);
+  // If the safety ceiling above cut the listing short, there's still more
+  // mail sitting past what we fetched. Leave last_polled_at where it was so
+  // the next poll re-covers this same window instead of silently losing the
+  // remainder — the message_id UNIQUE + existence check above make re-seeing
+  // already-processed messages in that window a no-op.
+  const truncatedByPageCap = Boolean(pageToken);
 
   let processed = 0;
   let statusUpdates = 0;
-  for (const messageRef of allMessageRefs) {
+  for (const messageRef of messageRefs) {
     const { data: existing } = await admin
       .from("mc_inbound_emails")
       .select("id")
@@ -318,12 +328,11 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
         source: "email",
         email_id: emailRow?.id,
       });
-      // Keep the in-memory snapshot current so a later message in this same
-      // poll run (Gmail returns newest-first, so an older, lower-signal
-      // email can be processed after a newer one) compares isForwardStatusMove
-      // against the status we just wrote, not the stale pre-poll value —
-      // otherwise an older "application received" processed after a newer
-      // "interview invite" would silently regress interview back to viewed.
+      // Keep the in-memory snapshot current: trackedJobs is loaded once per
+      // connection, so a second matching email later in this same poll batch
+      // would otherwise compare against the pre-update status, both mis-
+      // recording status_from in the history row and letting a lower-ranked
+      // classification slip past isForwardStatusMove's regression guard.
       matched.status = newStatus;
       statusUpdates += 1;
       // Best-effort status-change alert. Fires only on an actual forward
@@ -340,10 +349,12 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     }
   }
 
-  await admin
-    .from("mc_gmail_connections")
-    .update({ last_polled_at: new Date().toISOString() })
-    .eq("id", connection.id);
+  if (!truncatedByPageCap) {
+    await admin
+      .from("mc_gmail_connections")
+      .update({ last_polled_at: new Date().toISOString() })
+      .eq("id", connection.id);
+  }
   return { processed, statusUpdates };
 }
 
