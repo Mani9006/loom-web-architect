@@ -138,23 +138,6 @@ interface GmailConnection {
   last_polled_at: string | null;
 }
 
-interface LooseQueryResult {
-  data: unknown;
-  error: { message: string } | null;
-}
-
-interface LooseQuery {
-  select(columns: string): LooseQuery;
-  eq(column: string, value: string): LooseQuery;
-  order(column: string, options: { ascending: boolean }): LooseQuery;
-  limit(count: number): LooseQuery;
-  maybeSingle(): Promise<LooseQueryResult>;
-}
-
-// `ats_scores` is deployed by a newer migration than the generated database
-// types. Keep this single compatibility shim until the next type generation.
-const migratedTables = supabase as unknown as { from(table: string): LooseQuery };
-
 const DEFAULT_CONTROLS: AgentControls = {
   agent_enabled: false,
   auto_apply_enabled: false,
@@ -249,7 +232,7 @@ export default function AgentPage() {
         .gte("fit_score", 50)
         .order("fit_score", { ascending: false })
         .limit(12),
-      migratedTables
+      supabase
         .from("ats_scores")
         .select("id,overall,dim_format,dim_keywords,dim_experience,dim_skills,dim_education,dim_impact,matched_keywords,missing_keywords,created_at")
         .eq("user_id", user.id)
