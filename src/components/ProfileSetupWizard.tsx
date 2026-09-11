@@ -142,7 +142,7 @@ export function ProfileSetupWizard() {
     setSaving(true);
     try {
       const completeness = calcCompleteness();
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           full_name: profile.full_name,
@@ -172,6 +172,8 @@ export function ProfileSetupWizard() {
         } as any)
         .eq("user_id", user.id);
 
+      if (error) throw error;
+
       toast({ title: "Saved", description: `Step ${step + 1} saved successfully.` });
     } catch (err) {
       console.error("Save error:", err);
@@ -190,7 +192,7 @@ export function ProfileSetupWizard() {
     if (!user) return;
     setSaving(true);
     try {
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           profile_setup_completed: true,
@@ -198,6 +200,8 @@ export function ProfileSetupWizard() {
           onboarding_completed: true,
         } as any)
         .eq("user_id", user.id);
+
+      if (error) throw error;
 
       toast({ title: "Profile Complete!", description: "Your profile is ready. Let's find your perfect job!" });
       navigate("/job-search");

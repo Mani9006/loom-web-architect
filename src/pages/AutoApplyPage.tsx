@@ -149,7 +149,12 @@ export default function AutoApplyPage() {
           years_of_experience: (data as any).years_of_experience || 0,
           skills: (data as any).skills || [],
           education_level: (data as any).education_level || "",
-          preferred_work_type: (data as any).preferred_work_type || "any",
+          // Stored as a text[] (matches ProfileSetupWizard and the match-jobs
+          // matching backend); this page's UI only offers a single choice, so
+          // take the first element back out.
+          preferred_work_type: Array.isArray((data as any).preferred_work_type)
+            ? (data as any).preferred_work_type[0] || "any"
+            : (data as any).preferred_work_type || "any",
           desired_locations: (data as any).desired_locations || [],
           salary_expectations: (data as any).salary_expectations || {},
           work_authorization: (data as any).work_authorization || "us_citizen",
@@ -279,7 +284,8 @@ export default function AutoApplyPage() {
           years_of_experience: profile.years_of_experience as any,
           skills: profile.skills as any,
           education_level: profile.education_level as any,
-          preferred_work_type: profile.preferred_work_type as any,
+          // Column is text[]; wrap this page's single-choice value.
+          preferred_work_type: (profile.preferred_work_type ? [profile.preferred_work_type] : []) as any,
           desired_locations: profile.desired_locations as any,
           salary_expectations: profile.salary_expectations as any,
           work_authorization: profile.work_authorization as any,
