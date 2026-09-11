@@ -187,8 +187,14 @@ async function handler(req: Request): Promise<Response> {
     const { data: signed, error: signedError } = await svc.storage.from("documents").createSignedUrl(path, 3600);
     if (signedError || !signed?.signedUrl) throw new HttpError(500, "resume artifact could not be opened");
 
-    const column = table === "resumes" ? { tailored_cv_pdf_url: signed.signedUrl } : { pdf_url: signed.signedUrl };
-    await svc.from(table).update(column).eq("id", resumeId).eq("user_id", user.id);
+    // Only mc_tailored_resumes has a column to cache the rendered PDF URL on
+    // (pdf_url). The base resumes table has no equivalent column — writing
+    // tailored_cv_pdf_url there (that column lives on draft_applications,
+    // a different table this function never looks up) silently failed with
+    // an "unknown column" error every time, so skip caching in that case.
+    if (table === "mc_tailored_resumes") {
+      await svc.from(table).update({ pdf_url: signed.signedUrl }).eq("id", resumeId).eq("user_id", user.id);
+    }
     return jsonResponse({ ok: true, format: "pdf", url: signed.signedUrl, storage_path: path });
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;

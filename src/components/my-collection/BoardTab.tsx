@@ -13,7 +13,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, BookOpen } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -59,6 +59,14 @@ interface TrackedJob {
   updated_at: string;
 }
 
+function slugifyCompany(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export default function BoardTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
   const [jobs, setJobs] = useState<TrackedJob[]>([]);
@@ -68,6 +76,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [research, setResearch] = useState<
+    Record<string, { loading: boolean; md: string | null; cached: boolean; error: string | null }>
+  >({});
 
   // Ties the tailor pipeline's waitForJob subscription to this component
   // instance's lifetime, so switching away from the Board tab mid-tailor
@@ -227,6 +238,39 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       toast({ title: "Tailoring failed", description: msg, variant: "destructive" });
     } finally {
       setTailoring(null);
+    }
+  }
+
+  async function researchCompany(job: TrackedJob) {
+    const slug = slugifyCompany(job.company);
+    if (!slug) return;
+    setResearch((cur) => ({
+      ...cur,
+      [job.id]: { loading: true, md: cur[job.id]?.md ?? null, cached: false, error: null },
+    }));
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("mc-research-company", {
+        body: {
+          session_id: sessionId,
+          company_slug: slug,
+          company_name: job.company,
+          job_title: job.job_title,
+        },
+      });
+      if (error || !data?.research?.research_md) {
+        throw new Error(error?.message || "Couldn't research this company");
+      }
+      setResearch((cur) => ({
+        ...cur,
+        [job.id]: { loading: false, md: data.research.research_md, cached: !!data.cached, error: null },
+      }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setResearch((cur) => ({
+        ...cur,
+        [job.id]: { loading: false, md: cur[job.id]?.md ?? null, cached: false, error: msg },
+      }));
+      toast({ title: "Company research failed", description: msg, variant: "destructive" });
     }
   }
 
@@ -498,7 +542,38 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       </>
                     )}
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => researchCompany(selected)}
+                    disabled={research[selected.id]?.loading}
+                  >
+                    {research[selected.id]?.loading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Researching…
+                      </>
+                    ) : (
+                      <>
+                        <BookOpen className="w-3.5 h-3.5 mr-1" />
+                        {research[selected.id]?.md ? "Refresh company research" : "Research company"}
+                      </>
+                    )}
+                  </Button>
                 </div>
+
+                {research[selected.id]?.md && (
+                  <div>
+                    <h4 className="font-medium text-sm mb-2 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5" /> Company research
+                      {research[selected.id]?.cached && (
+                        <span className="text-[10px] font-normal text-muted-foreground">(cached)</span>
+                      )}
+                    </h4>
+                    <div className="bg-muted rounded p-3 text-xs whitespace-pre-wrap max-h-96 overflow-y-auto">
+                      {research[selected.id]?.md}
+                    </div>
+                  </div>
+                )}
 
                 {selected.tailored_resume_id && (
                   <Button asChild variant="outline" size="sm">
