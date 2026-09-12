@@ -380,6 +380,623 @@ export type Database = {
         }
         Relationships: []
       }
+      mc_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          master_resume_id: string | null
+          name: string
+          notes: string | null
+          status: string
+          target_profile: Json
+          template_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          master_resume_id?: string | null
+          name: string
+          notes?: string | null
+          status?: string
+          target_profile?: Json
+          template_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          master_resume_id?: string | null
+          name?: string
+          notes?: string | null
+          status?: string
+          target_profile?: Json
+          template_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_sessions_master_resume_id_fkey"
+            columns: ["master_resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_evaluations: {
+        Row: {
+          archetype: string | null
+          created_at: string
+          gaps: Json | null
+          id: string
+          keyword_matches: Json | null
+          model: string
+          report_md: string | null
+          scanned_job_id: string
+          score: number | null
+          session_id: string
+          star_stories: Json | null
+          summary: string | null
+          tier: string | null
+          tokens_in: number | null
+          tokens_out: number | null
+          user_id: string
+        }
+        Insert: {
+          archetype?: string | null
+          created_at?: string
+          gaps?: Json | null
+          id?: string
+          keyword_matches?: Json | null
+          model?: string
+          report_md?: string | null
+          scanned_job_id: string
+          score?: number | null
+          session_id: string
+          star_stories?: Json | null
+          summary?: string | null
+          tier?: string | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id: string
+        }
+        Update: {
+          archetype?: string | null
+          created_at?: string
+          gaps?: Json | null
+          id?: string
+          keyword_matches?: Json | null
+          model?: string
+          report_md?: string | null
+          scanned_job_id?: string
+          score?: number | null
+          session_id?: string
+          star_stories?: Json | null
+          summary?: string | null
+          tier?: string | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_evaluations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_tailored_resumes: {
+        Row: {
+          ats_score: number | null
+          created_at: string
+          cv_md: string
+          docx_url: string | null
+          id: string
+          name: string
+          pdf_url: string | null
+          rendered_html: string | null
+          session_id: string
+          source_evaluation_id: string | null
+          source_job_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ats_score?: number | null
+          created_at?: string
+          cv_md: string
+          docx_url?: string | null
+          id?: string
+          name: string
+          pdf_url?: string | null
+          rendered_html?: string | null
+          session_id: string
+          source_evaluation_id?: string | null
+          source_job_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ats_score?: number | null
+          created_at?: string
+          cv_md?: string
+          docx_url?: string | null
+          id?: string
+          name?: string
+          pdf_url?: string | null
+          rendered_html?: string | null
+          session_id?: string
+          source_evaluation_id?: string | null
+          source_job_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_tailored_resumes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_tailored_resumes_source_evaluation_id_fkey"
+            columns: ["source_evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "mc_evaluations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_tracked_jobs: {
+        Row: {
+          apply_url: string | null
+          applied_at: string | null
+          clicked_at: string | null
+          company: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          jd_md: string | null
+          job_title: string
+          location: string | null
+          notes: string | null
+          scanned_job_id: string | null
+          session_id: string
+          status: string
+          tailored_resume_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          apply_url?: string | null
+          applied_at?: string | null
+          clicked_at?: string | null
+          company: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          jd_md?: string | null
+          job_title: string
+          location?: string | null
+          notes?: string | null
+          scanned_job_id?: string | null
+          session_id: string
+          status?: string
+          tailored_resume_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          apply_url?: string | null
+          applied_at?: string | null
+          clicked_at?: string | null
+          company?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          jd_md?: string | null
+          job_title?: string
+          location?: string | null
+          notes?: string | null
+          scanned_job_id?: string | null
+          session_id?: string
+          status?: string
+          tailored_resume_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_tracked_jobs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_tracked_jobs_tailored_resume_id_fkey"
+            columns: ["tailored_resume_id"]
+            isOneToOne: false
+            referencedRelation: "mc_tailored_resumes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_status_history: {
+        Row: {
+          created_at: string
+          email_id: string | null
+          id: string
+          source: string
+          status_from: string | null
+          status_to: string
+          tracked_job_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_id?: string | null
+          id?: string
+          source?: string
+          status_from?: string | null
+          status_to: string
+          tracked_job_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_id?: string | null
+          id?: string
+          source?: string
+          status_from?: string | null
+          status_to?: string
+          tracked_job_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_status_history_tracked_job_id_fkey"
+            columns: ["tracked_job_id"]
+            isOneToOne: false
+            referencedRelation: "mc_tracked_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_inbound_emails: {
+        Row: {
+          body_full: string | null
+          body_preview: string | null
+          classification: string | null
+          classification_confidence: number | null
+          classification_summary: string | null
+          from_email: string
+          id: string
+          is_read: boolean
+          message_id: string | null
+          next_action: string | null
+          parsed_at: string | null
+          raw: Json | null
+          received_at: string
+          session_id: string | null
+          subject: string | null
+          to_email: string | null
+          tracked_job_id: string | null
+          user_id: string
+          verification_code: string | null
+          verification_code_expires_at: string | null
+          verification_code_used_at: string | null
+        }
+        Insert: {
+          body_full?: string | null
+          body_preview?: string | null
+          classification?: string | null
+          classification_confidence?: number | null
+          classification_summary?: string | null
+          from_email: string
+          id?: string
+          is_read?: boolean
+          message_id?: string | null
+          next_action?: string | null
+          parsed_at?: string | null
+          raw?: Json | null
+          received_at?: string
+          session_id?: string | null
+          subject?: string | null
+          to_email?: string | null
+          tracked_job_id?: string | null
+          user_id: string
+          verification_code?: string | null
+          verification_code_expires_at?: string | null
+          verification_code_used_at?: string | null
+        }
+        Update: {
+          body_full?: string | null
+          body_preview?: string | null
+          classification?: string | null
+          classification_confidence?: number | null
+          classification_summary?: string | null
+          from_email?: string
+          id?: string
+          is_read?: boolean
+          message_id?: string | null
+          next_action?: string | null
+          parsed_at?: string | null
+          raw?: Json | null
+          received_at?: string
+          session_id?: string | null
+          subject?: string | null
+          to_email?: string | null
+          tracked_job_id?: string | null
+          user_id?: string
+          verification_code?: string | null
+          verification_code_expires_at?: string | null
+          verification_code_used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_inbound_emails_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_inbound_emails_tracked_job_id_fkey"
+            columns: ["tracked_job_id"]
+            isOneToOne: false
+            referencedRelation: "mc_tracked_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_ai_usage: {
+        Row: {
+          cents_estimated: number
+          count: number
+          created_at: string
+          day: string
+          id: string
+          kind: string
+          model: string
+          session_id: string
+          tokens_in: number
+          tokens_out: number
+          user_id: string
+        }
+        Insert: {
+          cents_estimated?: number
+          count?: number
+          created_at?: string
+          day?: string
+          id?: string
+          kind: string
+          model: string
+          session_id: string
+          tokens_in?: number
+          tokens_out?: number
+          user_id: string
+        }
+        Update: {
+          cents_estimated?: number
+          count?: number
+          created_at?: string
+          day?: string
+          id?: string
+          kind?: string
+          model?: string
+          session_id?: string
+          tokens_in?: number
+          tokens_out?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_ai_usage_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_gmail_connections: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          gmail_email: string
+          history_id: string | null
+          id: string
+          last_polled_at: string | null
+          scopes: string[]
+          session_id: string
+          token_expires_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          gmail_email: string
+          history_id?: string | null
+          id?: string
+          last_polled_at?: string | null
+          scopes: string[]
+          session_id: string
+          token_expires_at: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          gmail_email?: string
+          history_id?: string | null
+          id?: string
+          last_polled_at?: string | null
+          scopes?: string[]
+          session_id?: string
+          token_expires_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_gmail_connections_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_company_research: {
+        Row: {
+          company_name: string
+          company_slug: string
+          created_at: string
+          expires_at: string
+          id: string
+          model: string
+          research_md: string
+          session_id: string
+          source_urls: Json | null
+          tokens_in: number | null
+          tokens_out: number | null
+          user_id: string
+        }
+        Insert: {
+          company_name: string
+          company_slug: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          model?: string
+          research_md: string
+          session_id: string
+          source_urls?: Json | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id: string
+        }
+        Update: {
+          company_name?: string
+          company_slug?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          model?: string
+          research_md?: string
+          session_id?: string
+          source_urls?: Json | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_company_research_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_ai_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          input: Json | null
+          kind: string
+          model: string
+          priority: number
+          prompt: string
+          result: string | null
+          result_json: Json | null
+          session_id: string | null
+          started_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json | null
+          kind: string
+          model?: string
+          priority?: number
+          prompt: string
+          result?: string | null
+          result_json?: Json | null
+          session_id?: string | null
+          started_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json | null
+          kind?: string
+          model?: string
+          priority?: number
+          prompt?: string
+          result?: string | null
+          result_json?: Json | null
+          session_id?: string | null
+          started_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_ai_jobs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mc_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_worker_heartbeats: {
+        Row: {
+          hostname: string | null
+          last_seen: string
+          user_id: string
+          version: string | null
+        }
+        Insert: {
+          hostname?: string | null
+          last_seen?: string
+          user_id: string
+          version?: string | null
+        }
+        Update: {
+          hostname?: string | null
+          last_seen?: string
+          user_id?: string
+          version?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

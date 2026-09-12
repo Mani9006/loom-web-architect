@@ -216,14 +216,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    */
   async function loadResumeMd(): Promise<string> {
     if (session.master_resume_id) {
-      const { data } = await (supabase as any)
+      const { data } = await supabase
         .from("resumes")
         .select("*")
         .eq("id", session.master_resume_id)
         .maybeSingle();
       if (data) return resumeRowToMarkdown(data);
     }
-    const { data: latest } = await (supabase as any)
+    const { data: latest } = await supabase
       .from("resumes")
       .select("*")
       .order("updated_at", { ascending: false })
@@ -488,7 +488,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Not signed in", variant: "destructive" });
       return;
     }
-    const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
+    const { error } = await supabase.from("mc_tracked_jobs").insert({
       user_id: userData.user.id,
       session_id: sessionId,
       scanned_job_id: null,
@@ -547,7 +547,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       let trackedJobId: string | null = null;
       if (savedTitles.has(key)) {
         // Already saved, find the existing row.
-        const { data: existing } = await (supabase as any)
+        const { data: existing } = await supabase
           .from("mc_tracked_jobs")
           .select("id")
           .eq("session_id", sessionId)
@@ -560,7 +560,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         trackedJobId = existing?.id ?? null;
       }
       if (!trackedJobId) {
-        const { data: tracked, error: trackErr } = await (supabase as any)
+        const { data: tracked, error: trackErr } = await supabase
           .from("mc_tracked_jobs")
           .insert({
             user_id: userData.user.id,
@@ -619,7 +619,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       });
 
       // 3. Save tailored resume + link it to the tracked job.
-      const { data: tailored, error: insertErr } = await (supabase as any)
+      const { data: tailored, error: insertErr } = await supabase
         .from("mc_tailored_resumes")
         .insert({
           user_id: userData.user.id,
@@ -634,7 +634,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         throw new Error(insertErr?.message || "Couldn't save tailored resume");
       }
 
-      const { error: linkErr } = await (supabase as any)
+      const { error: linkErr } = await supabase
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailored.id })
         .eq("id", trackedJobId);

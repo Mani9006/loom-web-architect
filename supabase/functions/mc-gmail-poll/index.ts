@@ -16,7 +16,7 @@ const corsHeaders = {
 };
 
 const STATUS_MAP: Record<string, string> = {
-  confirmation: "viewed",
+  confirmation: "applied",
   interview_invite: "interview",
   take_home: "take_home",
   reject: "rejected",
@@ -88,13 +88,19 @@ serve(async (req) => {
   }
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let query = admin.from("mc_gmail_connections").select("*").eq("enabled", true);
+  let query = admin.from("mc_gmail_connections").select("*, mc_sessions(status)").eq("enabled", true);
   if (userId) query = query.eq("user_id", userId);
-  const { data: connections, error } = await query;
+  const { data: connectionsRaw, error } = await query;
   if (error) {
     console.error("mc-gmail-poll load", error);
     return json({ error: "Inbox could not be checked", code: "INBOX_CHECK_FAILED" }, 500);
   }
+  // Archiving a session should pause its inbox polling too — otherwise a
+  // workspace the user closed keeps auto-moving kanban statuses and sending
+  // status-change emails from mail matched to it.
+  const connections = (connectionsRaw ?? []).filter(
+    (c: any) => c.mc_sessions?.status === "active",
+  );
 
   let processed = 0;
   let statusUpdates = 0;
@@ -284,7 +290,11 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     ) {
       const { error: statusUpdateError } = await admin
         .from("mc_tracked_jobs")
-        .update({ status: newStatus })
+        .update(
+          newStatus === "applied"
+            ? { status: newStatus, applied_at: new Date().toISOString() }
+            : { status: newStatus },
+        )
         .eq("id", matched.id);
       if (statusUpdateError) {
         // The status never changed in the DB, so skip the history row and the
