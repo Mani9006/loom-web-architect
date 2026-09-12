@@ -78,7 +78,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       jd_md: jdMd.trim() || null,
       notes: notes.trim() || null,
     };
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tracked_jobs")
       .update(updates)
       .eq("id", job.id);
@@ -100,7 +100,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
     // Soft-delete (deleted_at) so this goes through the same Trash/restore
     // flow as the board's inline trash button, instead of silently bypassing
     // it with a hard delete the Trash dialog can never recover.
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tracked_jobs")
       .update({ deleted_at: new Date().toISOString() })
       .eq("id", job.id);

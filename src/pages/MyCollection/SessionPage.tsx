@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
+import { AlertCircle, ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
@@ -72,55 +73,77 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false;
-    let hadInitialLoad = false;
-    (async () => {
+  const loadSession = useCallback(
+    async (id: string, signal: { cancelled: boolean }) => {
       setLoading(true);
       const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
-        .eq("id", sessionId)
+        .eq("id", id)
         .maybeSingle();
-      if (cancelled) return;
+      if (signal.cancelled) return;
 
       // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load, otherwise just keep showing what we already have.
+      // (e.g. Supabase token refresh on tab focus, network blip) once we
+      // already have a session loaded — just keep showing what we have and
+      // surface a retryable error state instead of navigating away.
       if (error) {
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          const safeError = toUserFacingError(error, {
-            operation: "load_application_workspace",
-            defaultMessage: "This application workspace could not be loaded.",
-          });
-          toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
-        }
+        const safeError = toUserFacingError(error, {
+          operation: "load_application_workspace",
+          defaultMessage: "This application workspace could not be loaded.",
+        });
+        setLoadError(safeError.message);
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
         return;
       }
-      hadInitialLoad = true;
+      setLoadError(null);
       setSession(data as unknown as MCSession);
       setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render, which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    },
+    // toast/navigate are stable enough here in practice, but kept out of the
+    // deps deliberately: including them would redefine this callback (and
+    // thus re-fire the effect below) on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+    [],
+  );
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const signal = { cancelled: false };
+    void loadSession(sessionId, signal);
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [sessionId, loadSession]);
+
+  if (loadError && !session) {
+    return (
+      <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8">
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
+          <AlertCircle className="w-8 h-8 text-destructive" />
+          <p className="text-sm font-medium">Couldn't load this workspace</p>
+          <p className="text-xs text-muted-foreground max-w-sm">{loadError}</p>
+          <div className="flex gap-2 mt-2">
+            <Button
+              size="sm"
+              onClick={() => sessionId && void loadSession(sessionId, { cancelled: false })}
+            >
+              Retry
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/my-collection">Back to My Collection</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (

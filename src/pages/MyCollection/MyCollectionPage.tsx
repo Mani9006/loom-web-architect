@@ -43,14 +43,14 @@ export default function MyCollectionPage() {
 
   async function loadSessions() {
     setLoading(true);
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_sessions")
       .select("*")
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
     } else {
-      const rows: MCSession[] = data ?? [];
+      const rows = (data ?? []) as unknown as MCSession[];
       setSessions(rows);
       // Load per-session job counts in parallel, non-blocking.
       void loadStats(rows.map((s) => s.id));
@@ -61,7 +61,7 @@ export default function MyCollectionPage() {
   async function loadStats(sessionIds: string[]) {
     if (sessionIds.length === 0) return;
     try {
-      const { data } = await (supabase as any)
+      const { data } = await supabase
         .from("mc_tracked_jobs")
         .select("session_id,status")
         .in("session_id", sessionIds)
@@ -80,7 +80,7 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "–" if this fails.
     }
   }
 
@@ -93,7 +93,7 @@ export default function MyCollectionPage() {
   const atCap = activeSessions.length >= ACTIVE_LIMIT;
 
   async function archiveSession(id: string) {
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_sessions")
       .update({ status: "archived" })
       .eq("id", id);
@@ -113,7 +113,7 @@ export default function MyCollectionPage() {
       });
       return;
     }
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_sessions")
       .update({ status: "active" })
       .eq("id", id);
@@ -126,7 +126,7 @@ export default function MyCollectionPage() {
 
   async function deleteSession(id: string) {
     if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
-    const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
+    const { error } = await supabase.from("mc_sessions").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {
@@ -296,9 +296,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
