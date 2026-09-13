@@ -89,10 +89,14 @@ export default function CoverLettersPage() {
     }
   };
 
-  const copyResult = () => {
-    navigator.clipboard.writeText(result);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyResult = async () => {
+    try {
+      await navigator.clipboard.writeText(result);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({ title: "Couldn't copy", description: "Select and copy the text manually.", variant: "destructive" });
+    }
   };
 
   return (

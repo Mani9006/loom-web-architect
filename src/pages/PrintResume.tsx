@@ -3,23 +3,41 @@ import { ResumeJSON, getSkillCategoryLabel } from "@/types/resume";
 
 export default function PrintResume() {
   const [data, setData] = useState<ResumeJSON | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     // Get resume data from localStorage (passed from main app)
     const storedData = localStorage.getItem("printResumeData");
     if (storedData) {
-      setData(JSON.parse(storedData));
+      try {
+        setData(JSON.parse(storedData));
+      } catch {
+        setLoadError(true);
+      }
       // Clean up after reading
       localStorage.removeItem("printResumeData");
+    } else {
+      setLoadError(true);
     }
+  }, []);
 
-    // Auto-trigger print dialog after a short delay
+  useEffect(() => {
+    if (!data) return;
+    // Auto-trigger print dialog after a short delay, once data is ready.
     const timer = setTimeout(() => {
       window.print();
     }, 500);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [data]);
+
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>This resume couldn't be loaded for printing. Close this tab and try again.</p>
+      </div>
+    );
+  }
 
   if (!data) {
     return (
