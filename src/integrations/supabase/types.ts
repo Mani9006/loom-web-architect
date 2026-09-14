@@ -196,12 +196,14 @@ export type Database = {
           full_name: string | null
           id: string
           job_preferences: Json | null
+          linkedin_url: string | null
           location: string | null
           onboarding_completed: boolean
           phone: string | null
           target_role: string | null
           updated_at: string
           user_id: string
+          years_of_experience: number | null
         }
         Insert: {
           avatar_url?: string | null
@@ -210,12 +212,14 @@ export type Database = {
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
           target_role?: string | null
           updated_at?: string
           user_id: string
+          years_of_experience?: number | null
         }
         Update: {
           avatar_url?: string | null
@@ -224,12 +228,14 @@ export type Database = {
           full_name?: string | null
           id?: string
           job_preferences?: Json | null
+          linkedin_url?: string | null
           location?: string | null
           onboarding_completed?: boolean
           phone?: string | null
           target_role?: string | null
           updated_at?: string
           user_id?: string
+          years_of_experience?: number | null
         }
         Relationships: []
       }
@@ -379,6 +385,18 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      // Fallback for tables added by newer migrations (e.g. the mc_* My
+      // Collection tables, scanned_jobs, saved_jobs, job_evaluations,
+      // draft_applications, user_job_prefs, ...) whose generated types
+      // haven't been regenerated into this file yet. Keeps `.from("known_table")`
+      // fully typed above while still letting `.from("some_other_table")`
+      // compile instead of hard-failing type-check across the app.
+      [key: string]: {
+        Row: Record<string, any>
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: any[]
       }
     }
     Views: {

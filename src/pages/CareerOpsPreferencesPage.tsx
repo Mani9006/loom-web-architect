@@ -189,10 +189,10 @@ export default function CareerOpsPreferencesPage() {
       ]);
       if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as unknown as Prefs) });
       setConfirmedExperienceYears(typeof profileRes.data?.years_of_experience === "number" ? profileRes.data.years_of_experience : null);
-      setRuns((runsRes.data || []).map((run) => ({
+      setRuns((runsRes.data || []).map((run: Record<string, unknown>) => ({
         ...run,
         actions: Array.isArray(run.actions) ? run.actions as unknown as AgentRun["actions"] : [],
-      })));
+      })) as unknown as AgentRun[]);
       setLoading(false);
     })();
   }, [user]);
@@ -206,7 +206,7 @@ export default function CareerOpsPreferencesPage() {
     };
     const [prefsResult, profileResult] = await Promise.all([
       supabase.from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
-      supabase.from("profiles").update({ years_of_experience: confirmedExperienceYears } as never).eq("user_id", user.id),
+      supabase.from("profiles").update({ years_of_experience: confirmedExperienceYears }).eq("user_id", user.id),
     ]);
     setSaving(false);
     if (prefsResult.error || profileResult.error) toast.error("Your matching settings could not be saved. Try again in a moment.");
