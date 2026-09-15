@@ -45,18 +45,23 @@ jobs:
         run: npm run test
         env:
           # The Supabase client throws at import time if these are unset, and
-          # several unit tests import it transitively, so the test step needs
-          # the same staging values the Build step below uses.
-          VITE_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
-          VITE_SUPABASE_PROJECT_ID: ${{ secrets.STAGING_SUPABASE_PROJECT_REF }}
+          # several unit tests import it transitively (none of the unit tests
+          # make real network calls), so a placeholder is fine here — fall
+          # back to one whenever the staging secrets aren't configured for
+          # this run, rather than letting an unrelated secrets gap fail
+          # every PR's test step.
+          VITE_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          VITE_SUPABASE_PROJECT_ID: ${{ secrets.STAGING_SUPABASE_PROJECT_REF || 'placeholder' }}
 
       - name: Build
         run: npm run build
         env:
           # Use staging env at build time so we exercise the same code paths
-          # production builds will use.
+          # production builds will use. Same placeholder fallback as Test —
+          # the build never calls out to Supabase, it only needs non-empty
+          # values so the client module doesn't throw at import time.
           VITE_ENV: staging
-          VITE_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
-          VITE_SUPABASE_PROJECT_ID: ${{ secrets.STAGING_SUPABASE_PROJECT_REF }}
+          VITE_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          VITE_SUPABASE_PROJECT_ID: ${{ secrets.STAGING_SUPABASE_PROJECT_REF || 'placeholder' }}
