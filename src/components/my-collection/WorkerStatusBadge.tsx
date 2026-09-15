@@ -43,7 +43,7 @@ export default function WorkerStatusBadge() {
   const dotColor = state.online ? "bg-emerald-500" : "bg-zinc-400";
   const label = state.online ? "AI ready" : "AI offline";
   const description = state.online
-    ? "AI features are available. Tailoring jobs typically takes 5–15 seconds."
+    ? "AI features are available. Job searches and resume tailoring typically take 30 seconds to a few minutes."
     : "AI features are temporarily unavailable. Try again in a few minutes.";
 
   return (
