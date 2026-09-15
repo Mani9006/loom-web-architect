@@ -43,6 +43,13 @@ jobs:
 
       - name: Test
         run: npm run test
+        env:
+          # The Supabase client throws at import time if these are unset, and
+          # several unit tests import it transitively, so the test step needs
+          # the same staging values the Build step below uses.
+          VITE_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_PROJECT_ID: ${{ secrets.STAGING_SUPABASE_PROJECT_REF }}
 
       - name: Build
         run: npm run build
