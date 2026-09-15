@@ -13,7 +13,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -68,6 +68,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [research, setResearch] = useState<string | null>(null);
+  const [researchLoading, setResearchLoading] = useState(false);
 
   // Ties the tailor pipeline's waitForJob subscription to this component
   // instance's lifetime, so switching away from the Board tab mid-tailor
@@ -227,6 +229,38 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       toast({ title: "Tailoring failed", description: msg, variant: "destructive" });
     } finally {
       setTailoring(null);
+    }
+  }
+
+  function slugifyCompany(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "company";
+  }
+
+  async function researchCompany(job: TrackedJob) {
+    setResearchLoading(true);
+    setResearch(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("mc-research-company", {
+        body: {
+          session_id: sessionId,
+          company_slug: slugifyCompany(job.company),
+          company_name: job.company,
+          job_title: job.job_title,
+        },
+      });
+      if (error) throw error;
+      const md = data?.research?.research_md;
+      if (!md) throw new Error("No research returned");
+      setResearch(md);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast({ title: "Couldn't research company", description: msg, variant: "destructive" });
+    } finally {
+      setResearchLoading(false);
     }
   }
 
@@ -404,7 +438,10 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       draggable
                       onDragStart={() => setDraggedId(job.id)}
                       onDragEnd={() => setDraggedId(null)}
-                      onClick={() => setSelected(job)}
+                      onClick={() => {
+                        setSelected(job);
+                        setResearch(null);
+                      }}
                       className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
                     >
                       <button
@@ -498,6 +535,19 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       </>
                     )}
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => researchCompany(selected)}
+                    disabled={researchLoading}
+                  >
+                    {researchLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Search className="w-3.5 h-3.5 mr-1" />
+                    )}
+                    Research company
+                  </Button>
                 </div>
 
                 {selected.tailored_resume_id && (
@@ -506,6 +556,15 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       <FileText className="w-3.5 h-3.5 mr-1" /> View tailored resume
                     </Link>
                   </Button>
+                )}
+
+                {research && (
+                  <div>
+                    <h4 className="font-medium text-sm mb-2">Company research</h4>
+                    <div className="bg-muted rounded p-3 text-xs whitespace-pre-wrap max-h-96 overflow-y-auto">
+                      {research}
+                    </div>
+                  </div>
                 )}
 
                 {selected.jd_md && (

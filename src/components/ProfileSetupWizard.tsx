@@ -98,24 +98,25 @@ export function ProfileSetupWizard() {
       .maybeSingle();
 
     if (data) {
+      const salary = (data.salary_expectations ?? {}) as { min?: number; max?: number };
       setProfile((p) => ({
         ...p,
         full_name: data.full_name || "",
         email: data.email || "",
-        phone: (data as any).phone || "",
-        location: (data as any).location || "",
-        linkedin_url: (data as any).linkedin_url || "",
-        desired_roles: (data as any).desired_roles || [],
-        seniority_level: (data as any).seniority_level || "",
-        years_of_experience: (data as any).years_of_experience || 0,
-        skills: (data as any).skills || [],
-        preferred_work_type: (data as any).preferred_work_type || [],
-        desired_locations: (data as any).desired_locations || [],
-        salary_min: (data as any).salary_expectations?.min || 0,
-        salary_max: (data as any).salary_expectations?.max || 0,
-        work_authorization: (data as any).work_authorization || "",
-        education_level: (data as any).education_level || "",
-        blacklisted_companies: (data as any).blacklisted_companies || [],
+        phone: data.phone || "",
+        location: data.location || "",
+        linkedin_url: data.linkedin_url || "",
+        desired_roles: data.desired_roles || [],
+        seniority_level: data.seniority_level || "",
+        years_of_experience: data.years_of_experience || 0,
+        skills: data.skills || [],
+        preferred_work_type: data.preferred_work_type || [],
+        desired_locations: data.desired_locations || [],
+        salary_min: salary.min || 0,
+        salary_max: salary.max || 0,
+        work_authorization: data.work_authorization || "",
+        education_level: data.education_level || "",
+        blacklisted_companies: data.blacklisted_companies || [],
       }));
     }
   };
@@ -142,7 +143,7 @@ export function ProfileSetupWizard() {
     setSaving(true);
     try {
       const completeness = calcCompleteness();
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           full_name: profile.full_name,
@@ -169,9 +170,10 @@ export function ProfileSetupWizard() {
           education_level: profile.education_level,
           blacklisted_companies: profile.blacklisted_companies,
           profile_completeness: completeness,
-        } as any)
+        })
         .eq("user_id", user.id);
 
+      if (error) throw error;
       toast({ title: "Saved", description: `Step ${step + 1} saved successfully.` });
     } catch (err) {
       console.error("Save error:", err);
