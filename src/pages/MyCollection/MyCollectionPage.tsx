@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
+import { MC_ACTIVE_SESSION_LIMIT } from "@/lib/mc-constants";
 
 interface MCSession {
   id: string;
@@ -30,7 +31,7 @@ interface SessionStats {
   interviews: number;
 }
 
-const ACTIVE_LIMIT = 5;
+const ACTIVE_LIMIT = MC_ACTIVE_SESSION_LIMIT;
 
 export default function MyCollectionPage() {
   const [sessions, setSessions] = useState<MCSession[]>([]);
@@ -80,7 +81,7 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "–" if this fails.
     }
   }
 
@@ -296,9 +297,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
