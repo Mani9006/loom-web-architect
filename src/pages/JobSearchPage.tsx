@@ -56,7 +56,7 @@ interface SearchJob {
  */
 async function fetchDirectFeedJobs(q: string): Promise<SearchJob[]> {
   const terms = q.trim().split(/\s+/).filter(Boolean).slice(0, 3);
-  let request = supabase
+  let request = (supabase as any)
     .from("scanned_jobs")
     .select("id,title,location,description_md,apply_url,compensation_text,employment_type,remote_policy,posted_at,company:scan_companies(name)")
     .eq("is_live", true);
@@ -203,7 +203,7 @@ export default function JobSearchPage() {
         }
       });
     // Also load from saved_jobs for full-detail match
-    supabase
+    (supabase as any)
       .from("saved_jobs")
       .select("job_title, company, location")
       .eq("user_id", user.id)
@@ -241,7 +241,7 @@ export default function JobSearchPage() {
             .eq("title", job.title)
             .eq("company", job.company)
             .eq("status", "Saved"),
-          supabase
+          (supabase as any)
             .from("saved_jobs")
             .delete()
             .eq("user_id", user.id)
@@ -264,7 +264,7 @@ export default function JobSearchPage() {
             status: "Saved",
             url: job.apply_url || null,
           }),
-          supabase.from("saved_jobs").insert({
+          (supabase as any).from("saved_jobs").insert({
             user_id: user.id,
             job_title: job.title,
             company: job.company,
@@ -617,7 +617,7 @@ export default function JobSearchPage() {
     setMatchLoading(true);
     setMatchLoadAttempted(true);
     try {
-      const fetchEvaluations = () => supabase
+      const fetchEvaluations = () => (supabase as any)
           .from("job_evaluations")
           .select(`
           id,
@@ -714,7 +714,7 @@ export default function JobSearchPage() {
   const prepareMatchedApplication = useCallback(async (job: MatchedJob) => {
     setPreparingMatch(job.match_id);
     try {
-      const { data: existing } = await supabase
+      const { data: existing } = await (supabase as any)
         .from("draft_applications")
         .select("id,tailored_resume_id")
         .eq("user_id", user?.id ?? "")
