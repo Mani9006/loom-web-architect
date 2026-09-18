@@ -35,12 +35,12 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
       setLoading(true);
       try {
         const [jobsResult, resumesResult] = await Promise.all([
-          (supabase as any)
+          supabase
             .from("mc_tracked_jobs")
             .select("status")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
-          (supabase as any)
+          supabase
             .from("mc_tailored_resumes")
             .select("*", { count: "exact", head: true })
             .eq("session_id", sessionId),
