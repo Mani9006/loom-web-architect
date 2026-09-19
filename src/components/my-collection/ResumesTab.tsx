@@ -342,8 +342,13 @@ function CanvasEditor({
     setAiBusy(true);
     setAiSuggestions([]);
     try {
+      // resume.name follows the "{company}, {job title}" convention set when
+      // a tailored resume is created (see BoardTab/DiscoverTab tailorJob), so
+      // best-effort split it for extra prompt context; falls back gracefully
+      // if the user renamed it to something else.
+      const [company, jobTitle] = resume.name.split(/,\s*/, 2);
       const { data, error } = await (supabase as any).functions.invoke("enhance-bullet", {
-        body: { line: selectedLine, mode, context: { full_resume: cv } },
+        body: { bullet: selectedLine, mode, jobTitle: jobTitle || undefined, company: jobTitle ? company : undefined },
       });
       if (error) throw error;
       setAiSuggestions(data?.suggestions ?? []);
