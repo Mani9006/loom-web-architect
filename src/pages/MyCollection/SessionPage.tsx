@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox, RotateCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,8 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
@@ -72,12 +74,19 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Tracks whether this sessionId has ever loaded successfully, so a later
+  // transient failure (token refresh on tab focus, network blip) can fall
+  // back to a toast instead of tearing down the workspace that's already
+  // on screen. Reset whenever sessionId changes.
+  const hasLoadedRef = useRef(false);
+
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
+    hasLoadedRef.current = false;
+    setLoading(true);
+    setLoadError(null);
     (async () => {
-      setLoading(true);
       const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
@@ -85,44 +94,69 @@ export default function SessionPage() {
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load, otherwise just keep showing what we already have.
       if (error) {
         console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
+        if (!hasLoadedRef.current) {
+          // First load failed outright: show a retryable error state
+          // instead of leaving the user stuck on the skeleton forever.
           const safeError = toUserFacingError(error, {
             operation: "load_application_workspace",
             defaultMessage: "This application workspace could not be loaded.",
           });
-          toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
+          setLoadError(safeError.message);
+        } else {
+          toast({ title: "Couldn't refresh workspace", description: error.message, variant: "destructive" });
         }
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
         return;
       }
-      hadInitialLoad = true;
+      hasLoadedRef.current = true;
       setSession(data as unknown as MCSession);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render, which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // navigate/toast are unstable references that, if included, would cause
+    // this effect to re-fire on every render, which on tab focus produces a
+    // flash and can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, reloadKey]);
 
-  if (loading || !session) {
+  if (loading) {
+    return (
+      <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8 space-y-4">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-10 w-full max-w-md" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
+  if (loadError && !session) {
+    return (
+      <div className="container max-w-2xl mx-auto py-16 px-4 text-center">
+        <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setReloadKey((k) => k + 1)}>
+            <RotateCw className="w-3.5 h-3.5 mr-1" /> Retry
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/my-collection">
+              <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to My Collection
+            </Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
     return (
       <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8 space-y-4">
         <Skeleton className="h-8 w-64" />

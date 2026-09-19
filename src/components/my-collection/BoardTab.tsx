@@ -210,10 +210,18 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       if (insertErr || !tailoredRow) {
         throw new Error(insertErr?.message || "Couldn't save tailored resume");
       }
-      await (supabase as any)
+      const { error: linkErr } = await (supabase as any)
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailoredRow.id })
         .eq("id", job.id);
+      if (linkErr) {
+        toast({
+          title: "Resume tailored, but couldn't link it to the card",
+          description: "Open it from the Resumes tab instead. " + linkErr.message,
+          variant: "destructive",
+        });
+        return;
+      }
       setJobs((arr) =>
         arr.map((j) => (j.id === job.id ? { ...j, tailored_resume_id: tailoredRow.id } : j))
       );
