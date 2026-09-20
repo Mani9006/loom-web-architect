@@ -187,7 +187,11 @@ export default function SessionPage() {
         </TabsList>
 
         <TabsContent value="discover" className="mt-6">
-          <DiscoverTab sessionId={session.id} session={session} />
+          {/* Keyed on session.id: DiscoverTab caches search state in a ref set
+              only on mount, so it must fully remount on session switches
+              (e.g. browser back/forward between two session URLs) instead of
+              leaking the previous session's results/conversation. */}
+          <DiscoverTab key={session.id} sessionId={session.id} session={session} />
         </TabsContent>
         <TabsContent value="resumes" className="mt-6">
           <ResumesTab sessionId={session.id} focusResumeId={focusResumeId} />
