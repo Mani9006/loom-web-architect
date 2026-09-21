@@ -86,7 +86,14 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function markRead(id: string, isRead: boolean) {
     setMessages((current) => current.map((message) => message.id === id ? { ...message, is_read: isRead } : message));
     const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
-    if (error) await load().catch(() => undefined);
+    if (error) {
+      setMessages((current) => current.map((message) => message.id === id ? { ...message, is_read: !isRead } : message));
+      const safeError = toUserFacingError(error, {
+        operation: "update_application_inbox_message",
+        defaultMessage: "Couldn't update this message.",
+      });
+      toast({ title: "Couldn't update message", description: safeError.message, variant: "destructive" });
+    }
   }
 
   async function markAllRead() {
@@ -96,7 +103,15 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
       .update({ is_read: true })
       .eq("session_id", sessionId)
       .eq("is_read", false);
-    if (!error) setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
+    if (!error) {
+      setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
+    } else {
+      const safeError = toUserFacingError(error, {
+        operation: "mark_all_application_inbox_read",
+        defaultMessage: "Couldn't mark messages as read.",
+      });
+      toast({ title: "Couldn't mark all read", description: safeError.message, variant: "destructive" });
+    }
   }
 
   async function copyCode(code: string) {
