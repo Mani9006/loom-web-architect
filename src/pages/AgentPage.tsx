@@ -235,12 +235,12 @@ export default function AgentPage() {
     if (showSpinner) setRefreshing(true);
 
     const [prefsRes, matchRes, atsRes, resumeRes, draftsRes, tasksRes, runsRes, gmailRes, workerRes] = await Promise.all([
-      supabase
+      (supabase as any)
         .from("user_job_prefs")
         .select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,auto_apply_min_ats_score,tailoring_mode,daily_apply_cap,agent_max_actions_per_day,agent_actions_today,last_agent_run_at")
         .eq("user_id", user.id)
         .maybeSingle(),
-      supabase
+      (supabase as any)
         .from("job_evaluations")
         .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
         .eq("user_id", user.id)
@@ -263,25 +263,25 @@ export default function AgentPage() {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase
+      (supabase as any)
         .from("draft_applications")
         .select("id,evaluation_id,status,error_message,updated_at,submitted_at,applypass_task_id,evaluation:job_evaluations(scanned_job:scanned_jobs(title,company:scan_companies(name)))")
         .eq("user_id", user.id),
-      supabase
+      (supabase as any)
         .from("applypass_tasks")
         .select("id,status,error_message,run_log,updated_at")
         .eq("user_id", user.id)
         .eq("task_type", "career_ops_submit")
         .order("updated_at", { ascending: false })
         .limit(10),
-      supabase
+      (supabase as any)
         .from("agent_runs")
         .select("id,status,summary,started_at,completed_at")
         .eq("user_id", user.id)
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase
+      (supabase as any)
         .from("mc_gmail_connections")
         .select("gmail_email,enabled,last_polled_at")
         .eq("user_id", user.id)
