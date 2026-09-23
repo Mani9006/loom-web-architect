@@ -289,7 +289,7 @@ export default function AgentPage() {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase
+      (supabase as any)
         .from("mc_worker_heartbeats")
         .select("last_seen,hostname,version")
         .eq("user_id", user.id)
@@ -383,7 +383,7 @@ export default function AgentPage() {
           if (!review.error) await supabase.functions.invoke("career-ops-bootstrap", { body: {} });
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from("job_evaluations")
           .select("id,fit_score,score,tier,eligible,summary,evaluated_at,scanned_job:scanned_jobs(id,title,location,remote_policy,apply_url,company:scan_companies(name))")
           .eq("user_id", user.id)
@@ -641,7 +641,7 @@ export default function AgentPage() {
       daily_apply_cap: Math.min(75, Math.max(1, controls.daily_apply_cap)),
       agent_max_actions_per_day: Math.min(300, Math.max(30, controls.agent_max_actions_per_day)),
     };
-    const { error } = await supabase.from("user_job_prefs").upsert({
+    const { error } = await (supabase as any).from("user_job_prefs").upsert({
       user_id: user.id,
       agent_enabled: normalized.agent_enabled,
       auto_apply_enabled: normalized.auto_apply_enabled,
