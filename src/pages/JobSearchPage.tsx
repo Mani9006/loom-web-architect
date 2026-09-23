@@ -714,7 +714,7 @@ export default function JobSearchPage() {
   const prepareMatchedApplication = useCallback(async (job: MatchedJob) => {
     setPreparingMatch(job.match_id);
     try {
-      const { data: existing } = await supabase
+      const { data: existing } = await (supabase as any)
         .from("draft_applications")
         .select("id,tailored_resume_id")
         .eq("user_id", user?.id ?? "")
