@@ -130,7 +130,7 @@ export default function InboxPage() {
     primaryQuery = primaryQuery.order("received_at", { ascending: false }).limit(250);
     const [enhancedMessagesResult, sessionResult, hiddenResult] = await Promise.all([
       primaryQuery,
-      supabase.from("mc_sessions").select("id").eq("user_id", user.id).eq("status", "active")
+      (supabase as any).from("mc_sessions").select("id").eq("user_id", user.id).eq("status", "active")
         .order("updated_at", { ascending: false }).limit(1).maybeSingle(),
       applicationOnly
         ? (supabase as any).from("mc_inbound_emails").select("id", { count: "exact", head: true })
