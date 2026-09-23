@@ -162,14 +162,14 @@ export default function InboxPage() {
       .map((row) => row.tracked_job_id)
       .filter((id): id is string => Boolean(id))));
     if (trackedIds.length > 0) {
-      const { data: jobRows } = await supabase.from("mc_tracked_jobs").select("id,job_title,company").in("id", trackedIds);
+      const { data: jobRows } = await (supabase as any).from("mc_tracked_jobs").select("id,job_title,company").in("id", trackedIds);
       setJobLabels(Object.fromEntries((jobRows || []).map((job) => [job.id, { job_title: job.job_title, company: job.company }])));
     } else setJobLabels({});
     let activeSessionId = sessionResult.data?.id || null;
     if (!activeSessionId && !sessionResult.error && !automaticWorkspaceAttempt.current) {
       automaticWorkspaceAttempt.current = true;
       setCreating(true);
-      const { data: created } = await supabase.from("mc_sessions")
+      const { data: created } = await (supabase as any).from("mc_sessions")
         .insert({ user_id: user.id, name: "Application Agent" })
         .select("id")
         .single();
@@ -227,7 +227,7 @@ export default function InboxPage() {
   async function createWorkspace() {
     if (!user) return;
     setCreating(true);
-    const { data, error } = await supabase.from("mc_sessions").insert({ user_id: user.id, name: "Application inbox" }).select("id").single();
+    const { data, error } = await (supabase as any).from("mc_sessions").insert({ user_id: user.id, name: "Application inbox" }).select("id").single();
     setCreating(false);
     if (error) {
       toast({ title: "Workspace wasn't created", description: "Try again in a moment.", variant: "destructive" });
