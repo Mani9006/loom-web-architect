@@ -94,7 +94,7 @@ export default function SettingsPage() {
         },
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
-    void supabase.from("user_job_prefs").upsert({
+    void (supabase as any).from("user_job_prefs").upsert({
         user_id: user.id,
         agent_enabled: hasAutoApply ? settings.agent_enabled : false,
         auto_apply_enabled: hasAutoApply ? settings.auto_apply_enabled : false,
