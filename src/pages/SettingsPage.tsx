@@ -49,7 +49,7 @@ export default function SettingsPage() {
   const load = useCallback(async () => {
     if (!user) return;
     const [prefsResult, profileResult] = await Promise.all([
-      supabase.from("user_job_prefs").select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,daily_apply_cap").eq("user_id", user.id).maybeSingle(),
+      (supabase as any).from("user_job_prefs").select("agent_enabled,auto_apply_enabled,review_mode,auto_apply_min_fit_score,daily_apply_cap").eq("user_id", user.id).maybeSingle(),
       supabase.from("profiles").select("job_preferences").eq("user_id", user.id).maybeSingle(),
     ]);
     const jobPreferences = (profileResult.data?.job_preferences || {}) as Record<string, unknown>;
