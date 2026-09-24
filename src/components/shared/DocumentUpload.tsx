@@ -157,7 +157,7 @@ export function DocumentUpload({
       } catch (fetchError) {
         clearTimeout(fetchTimeout);
         if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
-          throw new Error("Document processing timed out. Please try a smaller file or paste your resume text directly.");
+          throw new Error("Document processing timed out. Please try a smaller file or paste your resume text directly.", { cause: fetchError });
         }
         throw fetchError;
       }
@@ -294,7 +294,6 @@ export function DocumentUpload({
 
       if (uploadedPath) {
         const failedPath = uploadedPath;
-        uploadedPath = null;
         const { error: cleanupError } = await supabase.storage.from("documents").remove([failedPath]);
         if (cleanupError) {
           void captureIncident(cleanupError, { source: "manual", operation: "document_cleanup" }, "warning");
