@@ -561,15 +561,11 @@ function scoreContentQuality(data: ResumeJSON): ATSSectionScore {
   // Projects bonus (3 points) - NOT free points, must have content
   const validProjects = data.projects.filter((p) => p.title);
   if (validProjects.length > 0) {
-    let projectScore = 0;
     const hasDescriptions = validProjects.some((p) => p.bullets.length > 0 && p.bullets.some(b => b.trim()));
-    if (hasDescriptions) {
-      projectScore = 3;
-    } else {
-      projectScore = 1;
+    if (!hasDescriptions) {
       issues.push({ id: "cq-proj-desc", section: "Content Quality", severity: "suggestion", title: "Projects lack descriptions", description: "Add 1-3 bullet points per project describing what you built and technologies used." });
     }
-    score += projectScore;
+    score += hasDescriptions ? 3 : 1;
   } else {
     // No penalty for missing projects, but note it for new grads
     issues.push({ id: "cq-no-proj", section: "Content Quality", severity: "suggestion", title: "No projects section", description: "Projects demonstrate practical skills, especially valuable for career changers or new graduates." });

@@ -236,7 +236,7 @@ export default function ResumeProjects() {
     } else {
       // "upload" or "existing", get extracted text and AI-parse it
       let textToParse: string;
-      let sourceDocumentId: string | null = null;
+      let sourceDocumentId: string | null;
       if (resumeSource === "upload") {
         textToParse = uploadedResumeText!;
         sourceDocumentId = uploadedDocumentId;
