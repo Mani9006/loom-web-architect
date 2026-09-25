@@ -1,8 +1,16 @@
 name: Dev career operations schedule
 
 on:
-  schedule:
-    - cron: "17 * * * *"
+  # Cron trigger disabled: this and several other scheduled workflows in
+  # this repo (career-ops, continuous-agent, continuous-apply, prod-backend
+  # crons) ran often enough combined (as often as every 10 minutes) to
+  # exhaust the account's GitHub Actions usage/spending limit, which made
+  # every workflow run in the repo -- including ordinary PR CI -- fail at
+  # startup. Re-enable by uncommenting the schedule below once Actions
+  # capacity is confirmed available (check the account's Actions usage /
+  # spending limit under Settings > Billing).
+  # schedule:
+  #   - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
