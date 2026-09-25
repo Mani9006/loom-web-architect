@@ -1,8 +1,15 @@
 name: Dev continuous application scheduler
 
 on:
-  schedule:
-    - cron: "*/10 * * * *"
+  # Cron trigger disabled: this fired every 10 minutes (144 runs/day) and,
+  # combined with the other scheduled "job agent" workflows in this repo,
+  # exhausted the account's GitHub Actions usage/spending limit -- which
+  # made every workflow run in the repo, including ordinary PR CI, fail at
+  # startup. Re-enable by uncommenting the schedule below once Actions
+  # capacity is confirmed available (check the account's Actions usage /
+  # spending limit under Settings > Billing).
+  # schedule:
+  #   - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
