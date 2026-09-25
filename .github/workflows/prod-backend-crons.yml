@@ -7,9 +7,16 @@ name: Prod backend crons
 # Auth: functions accept WORKER_AUTH_TOKEN as a trusted caller.
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"   # tick: gmail-poll + agents-orchestrator
-    - cron: "7 * * * *"      # hourly: career-ops-scan
+  # Cron triggers disabled: this fired every 15 minutes (plus an hourly
+  # tick) and, combined with the other scheduled "job agent" workflows in
+  # this repo, exhausted the account's GitHub Actions usage/spending limit
+  # -- which made every workflow run in the repo, including ordinary PR CI,
+  # fail at startup. Re-enable by uncommenting the schedule below once
+  # Actions capacity is confirmed available (check the account's Actions
+  # usage / spending limit under Settings > Billing).
+  # schedule:
+  #   - cron: "*/15 * * * *"   # tick: gmail-poll + agents-orchestrator
+  #   - cron: "7 * * * *"      # hourly: career-ops-scan
   workflow_dispatch: {}
 
 concurrency:
