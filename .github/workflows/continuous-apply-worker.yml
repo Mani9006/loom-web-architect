@@ -1,13 +1,22 @@
 name: Continuous Apply browser worker
 
 on:
-  # Fifteen-minute cadence drains the production queue in small bounded
-  # batches. Runs never overlap (concurrency below) and each run self-limits
-  # to --max-tasks=10, so a single run cannot hold the queue hostage. If a
-  # run is killed mid-task, the DB queue reaper returns the stale task to
-  # pending (see supabase/migrations/20260720020000_queue_reaper.sql).
-  schedule:
-    - cron: "*/15 * * * *"
+  # Cron trigger disabled: this fired every 15 minutes and installed
+  # Chromium on every run, making it one of the more expensive contributors
+  # to the account's GitHub Actions usage/spending limit being exhausted --
+  # which made every workflow run in the repo, including ordinary PR CI,
+  # fail at startup. Re-enable by uncommenting the schedule below once
+  # Actions capacity is confirmed available (check the account's Actions
+  # usage / spending limit under Settings > Billing).
+  #
+  # Original cadence note: fifteen-minute cadence drains the production
+  # queue in small bounded batches. Runs never overlap (concurrency below)
+  # and each run self-limits to --max-tasks=10, so a single run cannot hold
+  # the queue hostage. If a run is killed mid-task, the DB queue reaper
+  # returns the stale task to pending (see
+  # supabase/migrations/20260720020000_queue_reaper.sql).
+  # schedule:
+  #   - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       auto_submit:
