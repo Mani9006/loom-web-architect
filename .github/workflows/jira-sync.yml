@@ -1,9 +1,15 @@
 name: Jira Ticket Sync
 
 on:
-  schedule:
-    # Check every 4 hours for review tickets
-    - cron: '0 */4 * * *'
+  # Cron trigger disabled: part of the scheduled "job agent" automation in
+  # this repo whose combined run cadence (as often as every 10 minutes
+  # across all scheduled workflows) exhausted the account's GitHub Actions
+  # usage/spending limit, which made every workflow run in the repo --
+  # including ordinary PR CI -- fail at startup. Re-enable by uncommenting
+  # the schedule below once Actions capacity is confirmed available (check
+  # the account's Actions usage / spending limit under Settings > Billing).
+  # schedule:
+  #   - cron: '0 */4 * * *'
   workflow_dispatch:
 
 permissions:
