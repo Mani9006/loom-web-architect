@@ -83,6 +83,10 @@ export function ProfileSetupWizard() {
   const [newSkill, setNewSkill] = useState("");
   const [newLocation, setNewLocation] = useState("");
   const [newBlacklist, setNewBlacklist] = useState("");
+  // Raw job_preferences JSONB, kept around so saveStep()/handleFinish() merge
+  // into it instead of clobbering fields other pages (OnboardingModal,
+  // Profile, CareerOpsPreferencesPage) already stored there.
+  const [jobPreferences, setJobPreferences] = useState<Record<string, unknown>>({});
 
   // Load existing profile
   useEffect(() => {
@@ -98,24 +102,32 @@ export function ProfileSetupWizard() {
       .maybeSingle();
 
     if (data) {
+      // None of these belong to real columns on `profiles` except
+      // full_name/email/phone/location/target_role/job_preferences below —
+      // they live under job_preferences.setup, written by saveStep().
+      const preferences = (data.job_preferences || {}) as Record<string, unknown>;
+      const setup = (preferences.setup || {}) as Record<string, unknown>;
+      const salary = (setup.salary_expectations || {}) as { min?: number; max?: number };
+      setJobPreferences(preferences);
       setProfile((p) => ({
         ...p,
         full_name: data.full_name || "",
         email: data.email || "",
-        phone: (data as any).phone || "",
-        location: (data as any).location || "",
-        linkedin_url: (data as any).linkedin_url || "",
-        desired_roles: (data as any).desired_roles || [],
-        seniority_level: (data as any).seniority_level || "",
-        years_of_experience: (data as any).years_of_experience || 0,
-        skills: (data as any).skills || [],
-        preferred_work_type: (data as any).preferred_work_type || [],
-        desired_locations: (data as any).desired_locations || [],
-        salary_min: (data as any).salary_expectations?.min || 0,
-        salary_max: (data as any).salary_expectations?.max || 0,
-        work_authorization: (data as any).work_authorization || "",
-        education_level: (data as any).education_level || "",
-        blacklisted_companies: (data as any).blacklisted_companies || [],
+        phone: data.phone || "",
+        location: data.location || "",
+        linkedin_url: String(setup.linkedin_url || ""),
+        desired_roles: Array.isArray(setup.desired_roles) ? setup.desired_roles as string[] : (data.target_role ? [data.target_role] : []),
+        seniority_level: String(setup.seniority_level || ""),
+        years_of_experience: Number(setup.years_of_experience) || 0,
+        skills: Array.isArray(setup.skills) ? setup.skills as string[] : [],
+        preferred_work_type: Array.isArray(setup.preferred_work_type) ? setup.preferred_work_type as string[] : [],
+        desired_locations: Array.isArray(setup.desired_locations) ? setup.desired_locations as string[] : [],
+        salary_min: Number(salary.min) || 0,
+        salary_max: Number(salary.max) || 0,
+        work_authorization: String(setup.work_authorization || ""),
+        education_level: String(setup.education_level || ""),
+        experience_summary: String(setup.experience_summary || ""),
+        blacklisted_companies: Array.isArray(setup.blacklisted_companies) ? setup.blacklisted_companies as string[] : [],
       }));
     }
   };
@@ -142,7 +154,23 @@ export function ProfileSetupWizard() {
     setSaving(true);
     try {
       const completeness = calcCompleteness();
-      await supabase
+      const setup = {
+        linkedin_url: profile.linkedin_url,
+        desired_roles: profile.desired_roles,
+        seniority_level: profile.seniority_level,
+        years_of_experience: profile.years_of_experience,
+        skills: profile.skills,
+        preferred_work_type: profile.preferred_work_type,
+        desired_locations: profile.desired_locations,
+        salary_expectations: { min: profile.salary_min, max: profile.salary_max, currency: "USD" },
+        work_authorization: profile.work_authorization,
+        education_level: profile.education_level,
+        experience_summary: profile.experience_summary,
+        blacklisted_companies: profile.blacklisted_companies,
+        profile_completeness: completeness,
+      };
+      const nextPreferences = { ...jobPreferences, setup };
+      const { error } = await supabase
         .from("profiles")
         .update({
           full_name: profile.full_name,
@@ -150,27 +178,12 @@ export function ProfileSetupWizard() {
           phone: profile.phone,
           location: profile.location,
           target_role: profile.desired_roles[0] || null,
-          job_preferences: {
-            location: profile.desired_locations[0] || "",
-            jobTypes: profile.preferred_work_type,
-            experienceLevel: profile.seniority_level,
-            salary_min: profile.salary_min,
-            salary_max: profile.salary_max,
-          } as any,
-          linkedin_url: profile.linkedin_url,
-          desired_roles: profile.desired_roles,
-          seniority_level: profile.seniority_level,
-          years_of_experience: profile.years_of_experience,
-          skills: profile.skills,
-          preferred_work_type: profile.preferred_work_type,
-          desired_locations: profile.desired_locations,
-          salary_expectations: { min: profile.salary_min, max: profile.salary_max, currency: "USD" },
-          work_authorization: profile.work_authorization,
-          education_level: profile.education_level,
-          blacklisted_companies: profile.blacklisted_companies,
-          profile_completeness: completeness,
-        } as any)
+          job_preferences: nextPreferences as any,
+          updated_at: new Date().toISOString(),
+        })
         .eq("user_id", user.id);
+      if (error) throw error;
+      setJobPreferences(nextPreferences);
 
       toast({ title: "Saved", description: `Step ${step + 1} saved successfully.` });
     } catch (err) {
@@ -190,14 +203,21 @@ export function ProfileSetupWizard() {
     if (!user) return;
     setSaving(true);
     try {
-      await supabase
+      const existingSetup = (jobPreferences.setup || {}) as Record<string, unknown>;
+      const nextPreferences = {
+        ...jobPreferences,
+        setup: { ...existingSetup, profile_setup_completed: true, profile_completeness: calcCompleteness() },
+      };
+      const { error } = await supabase
         .from("profiles")
         .update({
-          profile_setup_completed: true,
-          profile_completeness: calcCompleteness(),
+          job_preferences: nextPreferences as any,
           onboarding_completed: true,
-        } as any)
+          updated_at: new Date().toISOString(),
+        })
         .eq("user_id", user.id);
+      if (error) throw error;
+      setJobPreferences(nextPreferences);
 
       toast({ title: "Profile Complete!", description: "Your profile is ready. Let's find your perfect job!" });
       navigate("/job-search");
