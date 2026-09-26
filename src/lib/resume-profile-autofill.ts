@@ -112,8 +112,11 @@ export async function hydrateApplicationProfileFromResume(args: {
   accountEmail?: string;
 }): Promise<InferredApplicationProfile> {
   const inferred = inferApplicationProfileFromResume(args.resume, args.accountEmail);
+  // years_of_experience/linkedin_url are not columns on `profiles` (the
+  // application profile's copy of both lives in job_preferences.applypass.profile
+  // below, same as Profile.tsx uses) — select/write only real columns here.
   const { data: existing } = await supabase.from("profiles")
-    .select("full_name,email,phone,location,target_role,years_of_experience,linkedin_url,job_preferences")
+    .select("full_name,email,phone,location,target_role,job_preferences")
     .eq("user_id", args.userId)
     .maybeSingle();
   const preferences = record(existing?.job_preferences);
@@ -138,8 +141,6 @@ export async function hydrateApplicationProfileFromResume(args: {
     phone: existing?.phone || inferred.phone || null,
     location: existing?.location || inferred.location || null,
     target_role: existing?.target_role || inferred.currentTitle || null,
-    years_of_experience: existing?.years_of_experience ?? (Number(inferred.yearsExperience) || null),
-    linkedin_url: existing?.linkedin_url || inferred.linkedinUrl || null,
     job_preferences: {
       ...preferences,
       applypass: { ...applypass, profile: mergedProfile },
