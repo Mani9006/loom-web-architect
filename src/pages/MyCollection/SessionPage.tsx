@@ -4,6 +4,7 @@ import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inb
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import DiscoverTab from "@/components/my-collection/DiscoverTab";
@@ -33,6 +34,8 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
@@ -75,52 +78,53 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      setLoadError(null);
+      const { data, error } = await (supabase as any)
         .from("mc_sessions")
         .select("*")
         .eq("id", sessionId)
         .maybeSingle();
       if (cancelled) return;
 
-      // Don't bounce the user back to /my-collection on transient failures
-      // (e.g. Supabase token refresh on tab focus, network blip). Only
-      // navigate away if we KNOW the session doesn't exist on the very
-      // first load, otherwise just keep showing what we already have.
       if (error) {
-        console.error("[SessionPage] reload failed:", error.message);
-        if (!hadInitialLoad) {
-          const safeError = toUserFacingError(error, {
-            operation: "load_application_workspace",
-            defaultMessage: "This application workspace could not be loaded.",
-          });
-          toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
-        }
+        console.error("[SessionPage] load failed:", error.message);
+        const safeError = toUserFacingError(error, {
+          operation: "load_application_workspace",
+          defaultMessage: "This application workspace could not be loaded.",
+        });
+        setLoadError(safeError.message);
         setLoading(false);
         return;
       }
       if (!data) {
-        if (!hadInitialLoad) {
-          toast({ title: "Session not found" });
-          navigate("/my-collection");
-        }
+        toast({ title: "Session not found" });
+        navigate("/my-collection");
         return;
       }
-      hadInitialLoad = true;
       setSession(data as unknown as MCSession);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-    // Intentionally only re-run when sessionId changes. navigate/toast are
-    // unstable references that, if included, would cause this effect to
-    // re-fire on every render, which on tab focus produces a flash and
-    // can navigate the user away on a transient RLS hiccup.
+    // Intentionally only re-run when sessionId or reloadKey changes.
+    // navigate/toast are unstable references that, if included, would
+    // cause this effect to re-fire on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, reloadKey]);
+
+  if (loadError && !session) {
+    return (
+      <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8">
+        <Card className="p-8 text-center border-dashed">
+          <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+          <Button onClick={() => setReloadKey((k) => k + 1)}>Try again</Button>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
