@@ -51,7 +51,11 @@ export default function ResumesTab({
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const focusHandled = useRef(false);
+  // Tracks which focusResumeId we've already auto-opened, so a NEW deep
+  // link (e.g. clicking "View tailored resume" on a different board card
+  // while already on this tab) still opens its editor instead of being
+  // silently ignored because some earlier resume id was already handled.
+  const focusHandledId = useRef<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -72,11 +76,12 @@ export default function ResumesTab({
     load();
   }, [sessionId]);
 
-  // Open the deep-linked resume's editor once, as soon as it's in the loaded list.
+  // Open the deep-linked resume's editor once per distinct focusResumeId, as
+  // soon as it's in the loaded list.
   useEffect(() => {
-    if (focusHandled.current || !focusResumeId || loading) return;
+    if (!focusResumeId || loading || focusHandledId.current === focusResumeId) return;
     const match = resumes.find((r) => r.id === focusResumeId);
-    focusHandled.current = true;
+    focusHandledId.current = focusResumeId;
     if (match) {
       setEditing(match);
     } else {

@@ -125,8 +125,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [activeJobHistory, setActiveJobHistory] = useState<ClarificationTurn[]>(
     initial.current?.activeJobHistory ?? [],
   );
-  const [tailoringKey, setTailoringKey] = useState<string | null>(null);
-  const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
+  // Keyed by `${company}::${title}` so tailoring two different jobs at once
+  // (nothing in the UI prevents clicking "Tailor to job" on a second card
+  // while the first is still running) doesn't have the second job's start,
+  // or the first job's finish, clobber a single shared status value.
+  const [tailoringKeys, setTailoringKeys] = useState<Set<string>>(new Set());
+  const [tailoringStatuses, setTailoringStatuses] = useState<Record<string, JobStatus | null>>({});
   const [addOpen, setAddOpen] = useState(false);
 
   // Ties every waitForJob/runOnLocalWorker call below to this component
@@ -534,8 +538,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       return;
     }
 
-    setTailoringKey(key);
-    setTailoringStatus("queued");
+    setTailoringKeys((s) => new Set(s).add(key));
+    setTailoringStatuses((m) => ({ ...m, [key]: "queued" }));
 
     try {
       // 1. Save the discovered job to mc_tracked_jobs so we can link the tailored resume.
@@ -614,7 +618,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         model: "sonnet-4-6",
         input: { tracked_job_id: trackedJobId, company: job.company, job_title: job.title },
         timeoutMs: 6 * 60 * 1000,
-        onProgress: (s) => setTailoringStatus(s),
+        onProgress: (s) => setTailoringStatuses((m) => ({ ...m, [key]: s })),
         signal: abortRef.current?.signal,
       });
 
@@ -654,8 +658,16 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Tailor failed", description: msg, variant: "destructive" });
     } finally {
-      setTailoringKey(null);
-      setTailoringStatus(null);
+      setTailoringKeys((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
+      setTailoringStatuses((m) => {
+        const next = { ...m };
+        delete next[key];
+        return next;
+      });
     }
   }
 
@@ -830,16 +842,16 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
-                    disabled={tailoringKey === key}
+                    disabled={tailoringKeys.has(key)}
                     className="h-7 text-[11px]"
                   >
-                    {tailoringKey === key ? (
+                    {tailoringKeys.has(key) ? (
                       <>
                         <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        {tailoringStatus === "queued" && "Queued…"}
-                        {tailoringStatus === "running" && "Tailoring…"}
-                        {tailoringStatus === "done" && "Saving…"}
-                        {!tailoringStatus && "Working…"}
+                        {tailoringStatuses[key] === "queued" && "Queued…"}
+                        {tailoringStatuses[key] === "running" && "Tailoring…"}
+                        {tailoringStatuses[key] === "done" && "Saving…"}
+                        {!tailoringStatuses[key] && "Working…"}
                       </>
                     ) : (
                       <>
@@ -851,7 +863,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || tailoringKeys.has(key)}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
