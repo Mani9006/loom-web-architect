@@ -43,7 +43,7 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
 
   async function load() {
     setLoading(true);
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_tracked_jobs")
       .select("id,job_title,company,location,status,deleted_at")
       .eq("session_id", sessionId)
@@ -65,7 +65,7 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
 
   async function restore(id: string) {
     setBusyId(id);
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tracked_jobs")
       .update({ deleted_at: null })
       .eq("id", id);
@@ -82,7 +82,7 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
   async function deleteForever(id: string, label: string) {
     if (!confirm(`Permanently delete "${label}"?\n\nThis cannot be undone.`)) return;
     setBusyId(id);
-    const { error } = await (supabase as any).from("mc_tracked_jobs").delete().eq("id", id);
+    const { error } = await supabase.from("mc_tracked_jobs").delete().eq("id", id);
     setBusyId(null);
     if (error) {
       toast({ title: "Couldn't delete", description: error.message, variant: "destructive" });
