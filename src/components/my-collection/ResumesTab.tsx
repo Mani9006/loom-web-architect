@@ -51,11 +51,15 @@ export default function ResumesTab({
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const focusHandled = useRef(false);
+  // Tracks which focusResumeId we've already auto-opened, so a NEW deep
+  // link (e.g. clicking "View tailored resume" on a different board card
+  // while already on this tab) still opens its editor instead of being
+  // silently ignored because some earlier resume id was already handled.
+  const focusHandledId = useRef<string | null>(null);
 
   async function load() {
     setLoading(true);
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("mc_tailored_resumes")
       .select("*")
       .eq("session_id", sessionId)
@@ -72,11 +76,12 @@ export default function ResumesTab({
     load();
   }, [sessionId]);
 
-  // Open the deep-linked resume's editor once, as soon as it's in the loaded list.
+  // Open the deep-linked resume's editor once per distinct focusResumeId, as
+  // soon as it's in the loaded list.
   useEffect(() => {
-    if (focusHandled.current || !focusResumeId || loading) return;
+    if (!focusResumeId || loading || focusHandledId.current === focusResumeId) return;
     const match = resumes.find((r) => r.id === focusResumeId);
-    focusHandled.current = true;
+    focusHandledId.current = focusResumeId;
     if (match) {
       setEditing(match);
     } else {
@@ -90,14 +95,14 @@ export default function ResumesTab({
 
   async function deleteResume(id: string) {
     if (!confirm("Delete this tailored resume?")) return;
-    const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
+    const { error } = await supabase.from("mc_tailored_resumes").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
       return;
     }
     // Unlink from any board card that pointed at this resume so "View
     // tailored resume" doesn't dead-end on a card that still thinks it has one.
-    await (supabase as any)
+    await supabase
       .from("mc_tracked_jobs")
       .update({ tailored_resume_id: null })
       .eq("tailored_resume_id", id);
@@ -106,7 +111,7 @@ export default function ResumesTab({
 
   async function commitRename() {
     if (!renaming || !renameValue.trim()) return;
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tailored_resumes")
       .update({ name: renameValue.trim() })
       .eq("id", renaming.id);
@@ -324,7 +329,7 @@ function CanvasEditor({
 
   async function save() {
     setSaving(true);
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("mc_tailored_resumes")
       .update({ name: name.trim(), cv_md: cv })
       .eq("id", resume.id);
