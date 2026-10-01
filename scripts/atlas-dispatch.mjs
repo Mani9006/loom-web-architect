@@ -6,7 +6,7 @@ import path from "node:path";
 const ROOT = process.cwd();
 const REPORT_DIR = path.join(ROOT, ".reports");
 const AGENTS_FILE = path.join(ROOT, ".github", "agents.json");
-const DEFAULT_OWNER_SOURCE = "HARDENING_SPRINT_OPS.md";
+const DEFAULT_OWNER_SOURCE = "docs/archive/HARDENING_SPRINT_OPS.md";
 const STATE_FILE = path.join(REPORT_DIR, "atlas-dispatch-state.json");
 const JIRA_HELPER_DEFAULT = "";
 
@@ -24,7 +24,7 @@ const OWNER_ALIAS_TO_AGENT = {
 
 const USAGE = `Usage:
   node scripts/atlas-dispatch.mjs [--dry-run] [--project KAN] [--max 9]
-    [--owner-source HARDENING_SPRINT_OPS.md] [--force]
+    [--owner-source docs/archive/HARDENING_SPRINT_OPS.md] [--force]
     [--include-operations] [--provider auto|openai|anthropic]
     [--model MODEL] [--exempt-keys KAN-10]
     [--timeout-seconds 900] [--kill-delay-ms 5000]

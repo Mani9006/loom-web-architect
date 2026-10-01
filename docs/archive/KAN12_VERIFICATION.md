@@ -15,20 +15,20 @@
   - <1 second execution time
 
 ### Test & Documentation
-- [x] `/KAN12_TEST_EXAMPLES.md` (500+ lines)
+- [x] `KAN12_TEST_EXAMPLES.md` (500+ lines)
   - 5 success scenarios with curl examples
   - 5 error scenarios with curl examples
   - Database verification queries
   - Performance benchmarks
   - Debugging guide
 
-- [x] `/KAN12_IMPLEMENTATION_SUMMARY.md` (150+ lines)
+- [x] `KAN12_IMPLEMENTATION_SUMMARY.md` (150+ lines)
   - Detailed overview of deliverables
   - Acceptance criteria checklist
   - Code quality assessment
   - Deployment instructions
 
-- [x] `/KAN12_JIRA_COMMENT.md` (250+ lines)
+- [x] `KAN12_JIRA_COMMENT.md` (250+ lines)
   - Ready-to-post Jira comment
   - Completion status report
   - Quick links to all files
@@ -238,11 +238,11 @@ All acceptance criteria met. All tests documented. All code production-ready.
 - **Primary Commit:** `d557682`
 - **Docs Commit:** `f0e58cf`
 - **Branch:** `codex/kan-12-apply-jobs`
-- **Test Guide:** `/KAN12_TEST_EXAMPLES.md`
+- **Test Guide:** `KAN12_TEST_EXAMPLES.md`
 - **Migration:** `/supabase/migrations/20260221_apply_jobs_schema.sql`
 - **Edge Function:** `/supabase/functions/apply-to-job/index.ts`
-- **Summary:** `/KAN12_IMPLEMENTATION_SUMMARY.md`
-- **Jira Comment:** `/KAN12_JIRA_COMMENT.md`
+- **Summary:** `KAN12_IMPLEMENTATION_SUMMARY.md`
+- **Jira Comment:** `KAN12_JIRA_COMMENT.md`
 
 ---
 

@@ -111,7 +111,7 @@ function renderKpiBoard(counts, generatedAt, dryRun) {
     "| Interview Readiness usage | 30% of resume creators | `interview_readiness_viewed` event |",
     "",
     "---",
-    "See full strategy: MARKET_DOMINATION_MAP.md",
+    "See full strategy: docs/archive/MARKET_DOMINATION_MAP.md",
   ].filter((l) => l !== null);
 
   return lines.join("\n");

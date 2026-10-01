@@ -132,8 +132,8 @@ Agent work can be triggered by creating a GitHub issue with the `agent-task` lab
 
 ## Documentation index
 
-- `QUICK_START.md` — fast setup notes
-- `SETUP_GUIDE.md` — deeper setup guidance
+- `CONTRIBUTING.md` — branches, PRs, quality gates, regenerating Supabase types
+- `docs/env-inventory.md` — every environment variable and where it is read (generated: `npm run env:inventory`)
 - `docs/CAREER_OPS_RUNBOOK.md` — career operations workflows
 - `docs/product-rescue-blueprint.md` — live product audit, market map, target architecture, and delivery sequence
 - `docs/infrastructure-decision.md` — zero-operations hosting, CI/CD, AI-review budget, and Jenkins/Kubernetes decision
@@ -141,7 +141,7 @@ Agent work can be triggered by creating a GitHub issue with the `agent-task` lab
 - `docs/applypass-browser-worker.md` — ApplyPass worker operations
 - `docs/enterprise-readiness-blueprint.md` — enterprise readiness plan
 - `docs/growth-experiment-fabric.md` — growth experimentation system
-- `DEPLOYMENT_RELIABILITY_CHECKLIST.md` — release and deployment checklist
+- `docs/archive/` — historical status reports, sprint logs and one-off fix notes (not maintained; includes the old `QUICK_START.md`, `SETUP_GUIDE.md` and `DEPLOYMENT_RELIABILITY_CHECKLIST.md`)
 
 ## License
 

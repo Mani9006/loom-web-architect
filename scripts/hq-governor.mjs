@@ -8,7 +8,7 @@ const JIRA_HELPER_DEFAULT = "";
 
 const USAGE = `Usage:
   node scripts/hq-governor.mjs [--dry-run] [--project KAN] [--wip-limit 5]
-    [--repo owner/repo] [--owner-source HARDENING_SPRINT_OPS.md]
+    [--repo owner/repo] [--owner-source docs/archive/HARDENING_SPRINT_OPS.md]
     [--auto-demote] [--exempt-keys KAN-10,KAN-14,KAN-22]
 
 Examples:
@@ -301,7 +301,7 @@ async function main() {
   const dryRun = Boolean(options["dry-run"]);
   const project = String(options.project || process.env.PROJECT_KEY || "KAN");
   const wipLimit = Number(options["wip-limit"] || process.env.HQ_WIP_LIMIT || 5);
-  const ownerSource = path.resolve(ROOT, String(options["owner-source"] || "HARDENING_SPRINT_OPS.md"));
+  const ownerSource = path.resolve(ROOT, String(options["owner-source"] || "docs/archive/HARDENING_SPRINT_OPS.md"));
   const githubRepo = String(options.repo || process.env.EXECUTIVE_GITHUB_REPO || "Mani9006/loom-web-architect");
   const autoDemote = Boolean(options["auto-demote"]);
   const wipTargetStatus = String(options["wip-target-status"] || "To Do");

@@ -6,7 +6,7 @@ import path from "node:path";
 const ROOT = process.cwd();
 const REPORT_DIR = path.join(ROOT, ".reports");
 const STATE_FILE = path.join(REPORT_DIR, "github-agent-dispatch-state.json");
-const OWNER_SOURCE_DEFAULT = "HARDENING_SPRINT_OPS.md";
+const OWNER_SOURCE_DEFAULT = "docs/archive/HARDENING_SPRINT_OPS.md";
 const JIRA_HELPER_DEFAULT = "";
 
 const OWNER_ALIAS_TO_AGENT = {
@@ -24,7 +24,7 @@ const OWNER_ALIAS_TO_AGENT = {
 const USAGE = `Usage:
   node scripts/github-agent-dispatch.mjs [--dry-run] [--project KAN] [--max 3]
     [--repo Mani9006/loom-web-architect] [--base main]
-    [--owner-source HARDENING_SPRINT_OPS.md] [--force]
+    [--owner-source docs/archive/HARDENING_SPRINT_OPS.md] [--force]
     [--include-operations] [--exempt-keys KAN-10]
 
 Examples:
