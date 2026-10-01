@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { clearUserDrafts } from "@/lib/clear-user-drafts";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return next;
         });
         if (event === "SIGNED_OUT") {
+          clearUserDrafts();
           setSession(null);
           setUser(null);
           setRoles([]);
@@ -116,6 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchRoles]);
 
   const signOut = useCallback(async () => {
+    clearUserDrafts();
     await supabase.auth.signOut();
   }, []);
 

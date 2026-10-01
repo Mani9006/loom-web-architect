@@ -816,7 +816,7 @@ export default function ResumeBuilder() {
   const handleDownloadPDF = () => exportToPDF(previewData, fileName);
   const handleDownloadWord = () => exportToWord(previewData, fileName);
   const handleDownloadText = () => exportToText(previewData, fileName);
-  const handlePrintView = () => { localStorage.setItem("printResumeData", JSON.stringify(data)); window.open("/print-resume", "_blank"); };
+  const handlePrintView = () => { localStorage.setItem("printResumeData", JSON.stringify(previewData)); window.open("/print-resume", "_blank"); };
 
   if (!isLoaded) return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 

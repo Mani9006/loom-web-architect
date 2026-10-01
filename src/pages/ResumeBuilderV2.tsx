@@ -110,6 +110,10 @@ export default function ResumeBuilderV2() {
   const [storedExtras, setStoredExtras] = useState<Record<string, unknown>>({ document_role: "master" });
   const [hydrated, setHydrated] = useState(false);
   const initialLoadDone = useRef(false);
+  const savingRef = useRef(false);
+  const saveAgainRef = useRef(false);
+  const createdIdRef = useRef<string | null>(null);
+  const saveRef = useRef<(() => Promise<void>) | null>(null);
   const { exportToPDF, exportToWord, exportToJSON, isExporting } = useResumeExport();
 
   // ─── load ───────────────────────────────────────────────────────────────
@@ -128,6 +132,9 @@ export default function ResumeBuilderV2() {
 
     initialLoadDone.current = true;
     setHydrated(false);
+    // Clear any résumé left in the global store from a previous page so it is
+    // never shown, saved or exported under this id.
+    reset();
     setStatus("loading");
     (async () => {
       const { data, error } = await supabase
@@ -164,40 +171,64 @@ export default function ResumeBuilderV2() {
 
   // ─── save (debounced autosave) ─────────────────────────────────────────
   const save = useCallback(async () => {
-    if (!user) return;
-    setStatus("saving");
-    const payload = resumeJSONToRow(resume, resumeName, user.id, importFormatMode, sourceDocumentId, storedExtras);
-    const table = supabase.from("resumes") as ReturnType<typeof supabase.from>;
-    if (resumeId) {
-      const { error } = await table.update(payload as never).eq("id", resumeId).eq("user_id", user.id);
-      if (error) {
-        setStatus("error", error.message);
-        void captureIncident(error, { source: "manual", operation: "resume_save" });
-        const safeError = toUserFacingError(error, {
-          operation: "resume_save",
-          defaultMessage: "Your latest edits remain on this screen. Try saving again in a moment.",
-        });
-        toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
-        return;
-      }
-      setStatus("saved");
-    } else {
-      const { data, error } = await table.insert(payload as never).select("id").maybeSingle();
-      if (error || !data) {
-        setStatus("error", error?.message ?? "save failed");
-        if (error) void captureIncident(error, { source: "manual", operation: "resume_create" });
-        const safeError = toUserFacingError(error ?? new Error("Resume create returned no record"), {
-          operation: "resume_create",
-          defaultMessage: "Your résumé remains on this screen. Try saving again in a moment.",
-        });
-        toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
-        return;
-      }
-      setResumeId(data.id);
-      navigate(`/resume-builder/v2/${data.id}`, { replace: true });
-      setStatus("saved");
+    if (!user || !hydrated) return;
+    if (savingRef.current) {
+      saveAgainRef.current = true;
+      return;
     }
-  }, [resume, resumeName, resumeId, user, setStatus, setResumeId, navigate, importFormatMode, sourceDocumentId, storedExtras]);
+    savingRef.current = true;
+    try {
+      await persist();
+    } finally {
+      savingRef.current = false;
+      if (saveAgainRef.current) {
+        saveAgainRef.current = false;
+        void saveRef.current?.();
+      }
+    }
+
+    async function persist() {
+      if (!user) return;
+      setStatus("saving");
+      const payload = resumeJSONToRow(resume, resumeName, user.id, importFormatMode, sourceDocumentId, storedExtras);
+      const table = supabase.from("resumes") as ReturnType<typeof supabase.from>;
+      const targetId = resumeId ?? createdIdRef.current;
+      if (targetId) {
+        const { error } = await table.update(payload as never).eq("id", targetId).eq("user_id", user.id);
+        if (error) {
+          setStatus("error", error.message);
+          void captureIncident(error, { source: "manual", operation: "resume_save" });
+          const safeError = toUserFacingError(error, {
+            operation: "resume_save",
+            defaultMessage: "Your latest edits remain on this screen. Try saving again in a moment.",
+          });
+          toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
+          return;
+        }
+        setStatus("saved");
+      } else {
+        const { data, error } = await table.insert(payload as never).select("id").maybeSingle();
+        if (error || !data) {
+          setStatus("error", error?.message ?? "save failed");
+          if (error) void captureIncident(error, { source: "manual", operation: "resume_create" });
+          const safeError = toUserFacingError(error ?? new Error("Resume create returned no record"), {
+            operation: "resume_create",
+            defaultMessage: "Your résumé remains on this screen. Try saving again in a moment.",
+          });
+          toast.error(`${safeError.title}. ${withSupportReference(safeError)}`);
+          return;
+        }
+        createdIdRef.current = data.id;
+        setResumeId(data.id);
+        navigate(`/resume-builder/v2/${data.id}`, { replace: true });
+        setStatus("saved");
+      }
+    }
+  }, [resume, resumeName, resumeId, user, hydrated, setStatus, setResumeId, navigate, importFormatMode, sourceDocumentId, storedExtras]);
+
+  useEffect(() => {
+    saveRef.current = save;
+  }, [save]);
 
   useEffect(() => {
     if (!initialLoadDone.current || !hydrated || !user) return;
@@ -239,6 +270,7 @@ export default function ResumeBuilderV2() {
         onRename={setResumeName}
         status={status}
         onBack={() => navigate("/resume-builder")}
+        disabled={!hydrated}
         onSave={() => void save()}
         onExportPDF={() => void exportToPDF(resume, safeFileName(resumeName))}
         onExportWord={() => void exportToWord(resume, safeFileName(resumeName))}
@@ -336,6 +368,7 @@ function TopBar({
   onRename,
   status,
   onBack,
+  disabled,
   onSave,
   onExportPDF,
   onExportWord,
@@ -350,6 +383,7 @@ function TopBar({
   onRename: (v: string) => void;
   status: ReturnType<typeof useResumeStore.getState>["status"];
   onBack: () => void;
+  disabled: boolean;
   onSave: () => void;
   onExportPDF: () => void;
   onExportWord: () => void;
@@ -384,12 +418,12 @@ function TopBar({
       >
         <Sparkles className="size-4 mr-1.5" /> Tailor to job
       </Button>
-      <Button variant="outline" size="sm" onClick={onSave}>
+      <Button variant="outline" size="sm" onClick={onSave} disabled={disabled}>
         <Save className="size-4 mr-1" /> Save
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" disabled={isExporting}>
+          <Button size="sm" disabled={isExporting || disabled}>
             {isExporting ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Download className="size-4 mr-1.5" />}
             Export <ChevronDown className="ml-1 size-3" />
           </Button>
@@ -717,6 +751,8 @@ function resumeJSONToRow(
     user_id: userId,
     title,
     personal_info: {
+      // Write both keys: V2 reads fullName, the library/edge functions read name.
+      name: r.header.name,
       fullName: r.header.name,
       title: r.header.title,
       location: r.header.location,
