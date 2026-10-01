@@ -23,6 +23,12 @@ describe("mc-gmail-poll deterministic email classification", () => {
     expect(classify(text)).toBe("offer");
   });
 
+  it("leaves 'unfortunately' mixed with interview/offer wording to the LLM", () => {
+    expect(classify("Unfortunately the interviewer is out sick. Can we reschedule your interview?")).toBeNull();
+    expect(classify("We are pleased to offer you the role. Unfortunately we cannot cover relocation.")).toBeNull();
+    expect(classify("Unfortunately, the role has been filled.")).toBe("reject");
+  });
+
   it("does not treat generic 'move forward with ... position' as an offer", () => {
     expect(classify("We have decided to move forward with your application for the position. Please schedule a call.")).toBe("interview_invite");
   });

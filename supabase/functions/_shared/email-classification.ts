@@ -21,7 +21,12 @@ export interface DeterministicClassifiedEmail {
   next_action?: string;
 }
 
-const REJECT_PATTERN = /unfortunately|not (?:be )?moving forward|other candidates|will not proceed|not selected/;
+// Unambiguous rejection wording: always wins.
+const REJECT_PATTERN = /not (?:be )?moving forward|other candidates|will not proceed|not selected/;
+// "Unfortunately" alone is weak: interview reschedules ("unfortunately the
+// interviewer is out, can we reschedule your interview?") and offers
+// ("unfortunately we can't offer relocation") use it too.
+const WEAK_REJECT_PATTERN = /unfortunately/;
 // Requires an offer noun right after the verb so generic "move forward with
 // ... position" wording (common in rejections) can't match.
 const OFFER_PATTERN = /pleased to (?:offer|extend (?:you )?(?:an|this|the) offer)|offer letter|extend(?:ing)? (?:you )?(?:an|this|the|a formal) offer|(?:decided|chosen) to (?:move forward with|extend) (?:you )?(?:an|a formal|the) offer/;
@@ -32,6 +37,12 @@ const CONFIRMATION_PATTERN = /application (?:has been )?(?:received|submitted)|t
 export function deterministicClassification(text: string): DeterministicClassifiedEmail | null {
   const value = text.toLowerCase();
   if (REJECT_PATTERN.test(value)) {
+    return { classification: "reject", confidence: 0.93, summary: "Application was not selected" };
+  }
+  if (WEAK_REJECT_PATTERN.test(value)) {
+    // Weak rejection signal mixed with offer/interview/assessment wording is
+    // ambiguous: leave it to the LLM classifier rather than auto-moving the job.
+    if (OFFER_PATTERN.test(value) || INTERVIEW_PATTERN.test(value) || TAKE_HOME_PATTERN.test(value)) return null;
     return { classification: "reject", confidence: 0.93, summary: "Application was not selected" };
   }
   if (OFFER_PATTERN.test(value)) {
