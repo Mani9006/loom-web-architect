@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAuthedUser, HttpError, serviceClient } from "../_shared/guards.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -324,9 +325,20 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const repo = body?.repo || Deno.env.get("EXECUTIVE_GITHUB_REPO") || "Mani9006/loom-web-architect";
-    const projectKey = body?.projectKey || Deno.env.get("EXECUTIVE_JIRA_PROJECT") || "KAN";
+    // Internal operations data: admins only. Repo and Jira project come from
+    // server config, never from the request (the project key is placed into
+    // a JQL query).
+    const caller = await getAuthedUser(req);
+    const { data: adminRole } = await serviceClient()
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", caller.id)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (!adminRole) throw new HttpError(403, "forbidden");
+
+    const repo = Deno.env.get("EXECUTIVE_GITHUB_REPO") || "Mani9006/loom-web-architect";
+    const projectKey = Deno.env.get("EXECUTIVE_JIRA_PROJECT") || "KAN";
 
     const jiraBaseUrl = Deno.env.get("JIRA_BASE_URL");
     const jiraUser = Deno.env.get("JIRA_USER");
@@ -386,7 +398,7 @@ serve(async (req) => {
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
+        status: error instanceof HttpError ? error.status : 500,
       },
     );
   }

@@ -358,7 +358,9 @@ async function authenticateOwner(req: Request) {
 
   const ownerEmails = parseOwnerEmails();
   const email = toLower(user.email);
-  const isOwner = ownerEmails.includes(email);
+  // Owner status comes only from the verified auth email, never from
+  // profiles.email (users can edit their own profile row).
+  const isOwner = ownerEmails.includes(email) && Boolean(user.email_confirmed_at);
 
   const serviceRole = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!serviceRole) {
@@ -393,26 +395,21 @@ async function authenticateOwner(req: Request) {
     }
   }
 
-  return { user, ownerEmails, serviceClient, supabaseUrl, serviceRole };
+  return { user, isOwner, ownerEmails, serviceClient, supabaseUrl, serviceRole };
 }
 
-async function ensureOwnerRoles(serviceClient: ReturnType<typeof createClient>, ownerEmails: string[]) {
-  const { data: ownerProfiles } = await serviceClient
-    .from("profiles")
-    .select("user_id,email")
-    .in("email", ownerEmails);
+// Grants the admin role to the calling owner only. It previously granted
+// admin to every profile whose (user-editable) email matched an owner email,
+// which let anyone become admin by changing their profile email.
+async function ensureOwnerRoles(serviceClient: ReturnType<typeof createClient>, userId: string, isOwner: boolean) {
+  if (!isOwner) return;
+  await serviceClient.from("user_roles").upsert({ user_id: userId, role: "admin" }, { onConflict: "user_id,role" });
+}
 
-  const ownerUserIds = (ownerProfiles || [])
-    .map((row: { user_id: string }) => row.user_id)
-    .filter(Boolean);
-
-  if (ownerUserIds.length === 0) return;
-
-  await Promise.all(
-    ownerUserIds.map((userId) =>
-      serviceClient.from("user_roles").upsert({ user_id: userId, role: "admin" }, { onConflict: "user_id,role" }),
-    ),
-  );
+// Verified login email for a user, used for owner-protection checks.
+async function authEmailFor(serviceClient: ReturnType<typeof createClient>, userId: string): Promise<string> {
+  const { data } = await serviceClient.auth.admin.getUserById(userId);
+  return toLower(data?.user?.email);
 }
 
 async function setUserRole(
@@ -435,7 +432,7 @@ async function setUserRole(
     throw new Error("Target user not found");
   }
 
-  const targetEmail = toLower((targetProfile as { email: string | null }).email);
+  const targetEmail = await authEmailFor(serviceClient, targetUserId);
   if (ownerEmails.includes(targetEmail) && role !== "admin") {
     throw new Error("Owner account cannot be demoted from admin");
   }
@@ -473,13 +470,7 @@ async function setUserAccessControl(
 ) {
   if (!isValidUuid(targetUserId)) throw new Error("Invalid user ID");
 
-  const { data: profile } = await serviceClient
-    .from("profiles")
-    .select("email")
-    .eq("user_id", targetUserId)
-    .maybeSingle();
-
-  const targetEmail = toLower((profile as { email?: string | null } | null)?.email);
+  const targetEmail = await authEmailFor(serviceClient, targetUserId);
 
   const accountStatus = normalizeAccountStatus(payload.accountStatus);
   const purchaseState = normalizePurchaseState(payload.purchaseState);
@@ -1160,8 +1151,8 @@ serve(async (req) => {
   }
 
   try {
-    const { user, serviceClient, ownerEmails, supabaseUrl, serviceRole } = await authenticateOwner(req);
-    await ensureOwnerRoles(serviceClient, ownerEmails);
+    const { user, isOwner, serviceClient, ownerEmails, supabaseUrl, serviceRole } = await authenticateOwner(req);
+    await ensureOwnerRoles(serviceClient, user.id, isOwner);
 
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "summary");

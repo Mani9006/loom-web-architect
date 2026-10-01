@@ -499,7 +499,9 @@ serve(async (req: Request) => {
         return jsonResponse({ error: "taskId is required" }, 400);
       }
 
-      const { data, error } = await supabase
+      // Users no longer have UPDATE on applypass_tasks (RLS); cancel through
+      // the service role, still scoped to the caller's own task.
+      const { data, error } = await createServiceClient()
         .from("applypass_tasks")
         .update({ status: "canceled", updated_at: new Date().toISOString() })
         .eq("id", taskId)
@@ -536,7 +538,9 @@ serve(async (req: Request) => {
       createdAt: new Date().toISOString(),
     };
 
-    const { data, error } = await supabase
+    // Insert with the service role after the entitlement and cap checks
+    // above; users cannot insert queue rows directly.
+    const { data, error } = await serviceClient
       .from("applypass_tasks")
       .insert({
         user_id: user.id,

@@ -35,8 +35,10 @@ jobs:
       APPLYPASS_WORKER_TOKEN: ${{ secrets.PROD_APPLYPASS_WORKER_TOKEN }}
       APPLYPASS_WORKER_ID: github-prod-worker-${{ github.run_id }}
       APPLYPASS_WORKER_CONCURRENCY: "1"
-      # Scheduled runs submit; manual dispatch can force a dry-run.
-      APPLYPASS_AUTO_SUBMIT: ${{ github.event.inputs.auto_submit == false && 'false' || 'true' }}
+      # Scheduled runs submit; manual dispatch can force a dry-run. Use the
+      # typed `inputs` context: github.event.inputs.auto_submit is the string
+      # "false", which never equals boolean false, so dry-runs used to submit.
+      APPLYPASS_AUTO_SUBMIT: ${{ (github.event_name != 'workflow_dispatch' || inputs.auto_submit) && 'true' || 'false' }}
       APPLYPASS_SCREENSHOT_DIR: /tmp/applypass-screenshots
       WORKER_LOG: /tmp/applypass-worker.log
     steps:

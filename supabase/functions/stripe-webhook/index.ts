@@ -82,7 +82,10 @@ serve(async (req: Request) => {
         const planType = session.metadata?.plan_type;
 
         if (userId && ["pro", "autopilot"].includes(planType) && session.mode === "subscription") {
-          await supabase.from("subscription_plans").upsert({
+          // Both writes are idempotent upserts. If either fails, throw so the
+          // handler returns 5xx and Stripe retries; returning 200 here left
+          // paying customers without access and with no retry.
+          const { error: planError } = await supabase.from("subscription_plans").upsert({
             user_id: userId,
             plan_type: planType,
             status: "active",
@@ -92,14 +95,16 @@ serve(async (req: Request) => {
             current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
             updated_at: new Date().toISOString(),
           }, { onConflict: "user_id" });
+          if (planError) throw new Error(`subscription_plans upsert failed: ${planError.message}`);
 
-          await supabase.from("user_access_controls").upsert({
+          const { error: accessError } = await supabase.from("user_access_controls").upsert({
             user_id: userId,
             purchase_state: "active",
             subscription_plan: planType,
             ai_features_enabled: true,
             updated_at: new Date().toISOString(),
           }, { onConflict: "user_id" });
+          if (accessError) throw new Error(`user_access_controls upsert failed: ${accessError.message}`);
 
           console.log(`[StripeWebhook] Activated ${planType} for ${userId}`);
 
