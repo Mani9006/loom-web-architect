@@ -127,11 +127,15 @@ export default function AppLayout() {
   const crumb = current?.label ?? "";
 
   // ── Nav item ───────────────────────────────────────────────────────────
-  const NavButton = ({ item }: { item: NavItem }) => {
+  // Rendered via a plain function call (not as a component declared inside
+  // render) so React keeps the same <a> elements across re-renders and
+  // keyboard focus is not lost on navigation.
+  const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;
     const active = isActive(item.path);
     return (
       <a
+        key={item.path}
         href={item.path}
         onClick={(e) => handleLinkClick(e, item.path)}
         title={!showText ? item.label : undefined}
@@ -234,12 +238,12 @@ export default function AppLayout() {
 
       <nav className="flex-1 overflow-y-auto py-2">
         {showText && <SectionLabel>Your workflow</SectionLabel>}
-        {mainNav.map((i) => <NavButton key={i.path} item={i} />)}
+        {mainNav.map(renderNavItem)}
 
         {visibleOwnerTools.length > 0 && (
           <>
             {showText && <SectionLabel>Admin</SectionLabel>}
-            {visibleOwnerTools.map((i) => <NavButton key={i.path} item={i} />)}
+            {visibleOwnerTools.map(renderNavItem)}
           </>
         )}
       </nav>

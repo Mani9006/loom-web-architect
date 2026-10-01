@@ -384,7 +384,19 @@ export function DocumentUpload({
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onClick={() => !isProcessing && fileInputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget || isProcessing) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
+        role="button"
+        tabIndex={isProcessing ? -1 : 0}
+        aria-label={label}
+        aria-disabled={isProcessing}
         className={cn(
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "relative border-2 border-dashed rounded-lg p-6 transition-all cursor-pointer",
           "flex flex-col items-center justify-center gap-2 text-center",
           isDragOver 
