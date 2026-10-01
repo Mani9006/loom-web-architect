@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { decryptSecret, encryptSecret } from "../_shared/oauth-crypto.ts";
 import { classifyGmailPollFailure } from "../_shared/gmail-poll-failure.ts";
 import { chatFree } from "../_shared/llm.ts";
+import { deterministicClassification } from "../_shared/email-classification.ts";
 import {
   applicationSenderDomain,
   extractApplicationCode,
@@ -27,6 +28,10 @@ const STATUS_MAP: Record<string, string> = {
 // moves are intentionally excluded — a mail per ATS acknowledgement is too
 // noisy.
 const NOTIFY_STATUSES = new Set(["interview", "take_home", "offer", "rejected"]);
+
+// Gmail list pagination per poll (up to 4 x 50 = 200 message refs).
+const GMAIL_LIST_PAGE_SIZE = 50;
+const GMAIL_LIST_MAX_PAGES = 4;
 
 // Funnel order for auto-applied (source="email") status moves only — manual
 // board drags are unrestricted. Without this, a later, lower-signal email
@@ -172,16 +177,32 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
     ? Math.floor(new Date(connection.last_polled_at).getTime() / 1000)
     : 0;
   const gmailQuery = sinceTs ? `after:${sinceTs}` : "newer_than:7d";
-  const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(gmailQuery)}&maxResults=25`,
-    { headers: { authorization: `Bearer ${accessToken}` } },
-  );
-  if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
-  const list = await listResponse.json();
+  // Capture the cursor BEFORE listing: mail arriving while this poll runs must
+  // fall after the next poll's `after:` bound instead of being skipped.
+  const pollStartedAt = new Date();
+  // Follow nextPageToken so a backlog (first connect, or a gap) larger than one
+  // page isn't silently skipped when the cursor advances. Capped per poll.
+  const messageRefs: Array<{ id: string }> = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < GMAIL_LIST_MAX_PAGES; page += 1) {
+    const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    listUrl.searchParams.set("q", gmailQuery);
+    listUrl.searchParams.set("maxResults", String(GMAIL_LIST_PAGE_SIZE));
+    if (pageToken) listUrl.searchParams.set("pageToken", pageToken);
+    const listResponse = await fetch(listUrl.toString(), { headers: { authorization: `Bearer ${accessToken}` } });
+    if (!listResponse.ok) throw new Error(`gmail_list_${listResponse.status}`);
+    const list = await listResponse.json();
+    messageRefs.push(...(list.messages ?? []));
+    pageToken = list.nextPageToken || undefined;
+    if (!pageToken) break;
+  }
+  if (pageToken) {
+    console.warn("mc-gmail-poll list page cap reached", connection.id, messageRefs.length);
+  }
 
   let processed = 0;
   let statusUpdates = 0;
-  for (const messageRef of list.messages ?? []) {
+  for (const messageRef of messageRefs) {
     const { data: existing } = await admin
       .from("mc_inbound_emails")
       .select("id")
@@ -318,7 +339,7 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
 
   await admin
     .from("mc_gmail_connections")
-    .update({ last_polled_at: new Date().toISOString() })
+    .update({ last_polled_at: pollStartedAt.toISOString() })
     .eq("id", connection.id);
   return { processed, statusUpdates };
 }
@@ -467,26 +488,6 @@ async function notifyStatusChange(
   } catch (err) {
     console.error(`[mc-gmail-poll] status email error (${detail.newStatus}):`, err);
   }
-}
-
-function deterministicClassification(text: string): ClassifiedEmail | null {
-  const value = text.toLowerCase();
-  if (/we (?:have )?(?:decided|chosen) (?:to )?(?:move forward with|extend).{0,80}(?:offer|position)|offer letter|pleased to offer/.test(value)) {
-    return { classification: "offer", confidence: 0.96, summary: "Offer received", next_action: "Review the offer details and response deadline." };
-  }
-  if (/interview|schedule (?:a|your) (?:call|conversation)|availability for (?:a|the) call/.test(value)) {
-    return { classification: "interview_invite", confidence: 0.92, summary: "Interview invitation received", next_action: "Confirm availability and prepare for the conversation." };
-  }
-  if (/take[- ]?home|coding (?:test|challenge|assessment)|technical assessment|complete (?:the|this) assessment|hackerrank|codility|codesignal|karat|hirevue|online assessment|assessment invitation|test invitation|aptitude test/.test(value)) {
-    return { classification: "take_home", confidence: 0.92, summary: "Assessment requested", next_action: "Review the instructions and completion deadline." };
-  }
-  if (/unfortunately|not (?:be )?moving forward|other candidates|will not proceed|not selected/.test(value)) {
-    return { classification: "reject", confidence: 0.93, summary: "Application was not selected" };
-  }
-  if (/application (?:has been )?(?:received|submitted)|thank you for applying|we received your application/.test(value)) {
-    return { classification: "confirmation", confidence: 0.94, summary: "Application received" };
-  }
-  return null;
 }
 
 async function classifyEmail(input: { subject: string; from: string; body: string }): Promise<ClassifiedEmail> {

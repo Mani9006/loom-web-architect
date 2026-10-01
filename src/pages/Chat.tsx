@@ -133,10 +133,16 @@ export default function Chat() {
 
   // Track if we've initialized for the current user to prevent re-initialization on token refresh
   const userInitializedRef = useRef<string | null>(null);
+  // Set right before navigating to a conversation whose messages are being
+  // streamed in locally (resume generation) so the route-change load does not
+  // overwrite the in-flight chat state with the partially persisted rows.
+  const skipMessageLoadForConvIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (conversationId && user) {
-      loadConversation(conversationId);
+      const skipMessages = skipMessageLoadForConvIdRef.current === conversationId;
+      skipMessageLoadForConvIdRef.current = null;
+      loadConversation(conversationId, { skipMessages });
       setChatMode("resume-chat");
     } else if (!conversationId) {
       // Check for mode query param
@@ -257,7 +263,7 @@ export default function Chat() {
     }
   };
 
-  const loadConversation = async (id: string) => {
+  const loadConversation = async (id: string, options: { skipMessages?: boolean } = {}) => {
     const { data: conv } = await supabase.from("conversations").select("*").eq("id", id).maybeSingle();
 
     if (!conv) {
@@ -268,6 +274,8 @@ export default function Chat() {
 
     if (conv) {
       setCurrentConversation(conv);
+
+      if (options.skipMessages) return;
 
       // Determine chat mode from conversation
       const mode = (conv as any).chat_mode || "general";
@@ -1285,6 +1293,7 @@ Format with clear headers and bullet points. Be specific to the role and company
         setChatMode("resume-form");
         return;
       }
+      skipMessageLoadForConvIdRef.current = convId;
       navigate(`/c/${convId}`);
 
       // Build context message from experience
@@ -1597,11 +1606,16 @@ ${experienceSummary}
       // Full parse after streaming complete for experience options
       parseComplete(assistantContent);
 
-      await supabase.from("messages").insert({
-        conversation_id: currentConversation.id,
-        role: "assistant",
-        content: assistantContent,
-      });
+      if (assistantContent) {
+        await supabase.from("messages").insert({
+          conversation_id: currentConversation.id,
+          role: "assistant",
+          content: assistantContent,
+        });
+      } else {
+        // Don't leave an empty assistant turn in history for the next request.
+        setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
+      }
 
       await supabase
         .from("conversations")
@@ -1610,6 +1624,7 @@ ${experienceSummary}
 
       await fetchConversations();
     } catch (error) {
+      setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to send message",
@@ -1842,6 +1857,11 @@ ${experienceSummary}
               selectedModel={selectedModel}
               onModelChange={setSelectedModel}
               onBack={handleNewChat}
+              onLoadSavedLetter={(letter) =>
+                setCoverLetterMessages([
+                  { id: crypto.randomUUID(), role: "assistant", content: letter.content, timestamp: new Date() },
+                ])
+              }
             />
           </div>
         )}

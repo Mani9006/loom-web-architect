@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { BulletLinesTextarea } from "@/components/shared/BulletLinesTextarea";
 import { useResumeStore } from "@/lib/resume-store";
-import { CANONICAL_SKILL_CATEGORIES, normalizeResumeSkills } from "@/lib/resume-skills";
+import { CANONICAL_SKILL_CATEGORIES, applySkillCategoryText } from "@/lib/resume-skills";
 import type {
   ExperienceEntry,
   EducationEntry,
@@ -291,15 +292,27 @@ export function SkillsEditor() {
     useShallow((s) => ({ skills: s.resume.skills, setSkills: s.setSkills })),
   );
   const [newCategory, setNewCategory] = useState("");
+  // Raw text per category while the user is typing. It is split + normalized
+  // only on blur/Enter so commas and spaces are not stripped mid-keystroke.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
-  const updCategory = (cat: string, value: string) => {
-    const list = value.split(",").map((v) => v.trim()).filter(Boolean);
-    setSkills(normalizeResumeSkills({ ...skills, [cat]: list }));
+  const clearDraft = (cat: string) =>
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[cat];
+      return next;
+    });
+  const commitCategory = (cat: string) => {
+    const value = drafts[cat];
+    if (value === undefined) return;
+    setSkills(applySkillCategoryText(skills, cat, value));
+    clearDraft(cat);
   };
   const removeCategory = (cat: string) => {
     const next = { ...skills };
     delete next[cat];
     setSkills(next);
+    clearDraft(cat);
   };
   const addCategory = () => {
     const cat = newCategory;
@@ -309,7 +322,7 @@ export function SkillsEditor() {
     setNewCategory("");
   };
 
-  const cats = CANONICAL_SKILL_CATEGORIES.map(({ key }) => key).filter((key) => skills[key]?.length);
+  const cats = CANONICAL_SKILL_CATEGORIES.map(({ key }) => key).filter((key) => Array.isArray(skills[key]));
   const available = CANONICAL_SKILL_CATEGORIES.filter(({ key }) => !skills[key]);
 
   return (
@@ -338,8 +351,18 @@ export function SkillsEditor() {
           </div>
           <Input
             aria-label={`${CANONICAL_SKILL_CATEGORIES.find(({ key }) => key === cat)?.label ?? cat} skills`}
-            value={skills[cat].join(", ")}
-            onChange={(e) => updCategory(cat, e.target.value)}
+            value={drafts[cat] ?? skills[cat].join(", ")}
+            onChange={(e) => {
+              const value = e.target.value;
+              setDrafts((prev) => ({ ...prev, [cat]: value }));
+            }}
+            onBlur={() => commitCategory(cat)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitCategory(cat);
+              }
+            }}
             placeholder="Python, PyTorch, JAX, ..."
           />
         </div>
@@ -411,10 +434,10 @@ function ProjectCard({
         </Field>
       </div>
       <Field label="Bullets (one per line)">
-        <Textarea
+        <BulletLinesTextarea
           rows={3}
-          value={entry.bullets.join("\n")}
-          onChange={(e) => upd({ bullets: e.target.value.split("\n").filter(Boolean) })}
+          bullets={entry.bullets}
+          onBulletsChange={(bullets) => upd({ bullets })}
         />
       </Field>
       <div className="flex justify-end">

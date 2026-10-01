@@ -28,6 +28,7 @@ import {
   serviceClient,
   enforceAccountActive,
   enforceDailyCap,
+  logAiUsage,
 } from "../_shared/guards.ts";
 import {
   applyFilters,
@@ -81,13 +82,15 @@ Deno.serve((req) =>
     const page = Math.max(0, body.page ?? 0);
 
     // 1. Perplexity discovery
-    const perplexityJobs = await searchPerplexity({
+    const { jobs: perplexityJobs, usage } = await searchPerplexity({
       query,
       location: body.location ?? "",
       dateWindow: filters.dateWindow,
       level: filters.level,
       remote: filters.remote,
     });
+    // Record the call so enforceDailyCap above actually trips on repeat use.
+    await logAiUsage(svc, user.id, "evaluation", usage.tokens_in, usage.tokens_out);
 
     // 2. Apify follow-up (optional, gated on env)
     const apifyJobs = await searchApifyIfConfigured({
@@ -136,7 +139,7 @@ async function searchPerplexity(params: {
   dateWindow: DateWindow;
   level?: ExperienceLevel;
   remote: RemoteFilter;
-}): Promise<NormalizedJob[]> {
+}): Promise<{ jobs: NormalizedJob[]; usage: { tokens_in: number; tokens_out: number } }> {
   const apiKey = Deno.env.get("PERPLEXITY_API_KEY");
   if (!apiKey) throw new HttpError(500, "PERPLEXITY_API_KEY not configured");
 
@@ -213,7 +216,13 @@ Return up to 30 results. No prose, no markdown fences.`;
       raw,
     });
   }
-  return out;
+  return {
+    jobs: out,
+    usage: {
+      tokens_in: Number(data.usage?.prompt_tokens) || 0,
+      tokens_out: Number(data.usage?.completion_tokens) || 0,
+    },
+  };
 }
 
 function buildUserPrompt(p: {

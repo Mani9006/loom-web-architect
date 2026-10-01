@@ -3,17 +3,30 @@ import { ResumeJSON, getSkillCategoryLabel } from "@/types/resume";
 
 export default function PrintResume() {
   const [data, setData] = useState<ResumeJSON | null>(null);
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
     // Get resume data from localStorage (passed from main app)
-    const storedData = localStorage.getItem("printResumeData");
-    if (storedData) {
-      setData(JSON.parse(storedData));
+    let parsed: ResumeJSON | null = null;
+    try {
+      const storedData = localStorage.getItem("printResumeData");
+      if (storedData) {
+        const candidate = JSON.parse(storedData) as ResumeJSON | null;
+        if (candidate && typeof candidate === "object" && candidate.header) parsed = candidate;
+      }
       // Clean up after reading
       localStorage.removeItem("printResumeData");
+    } catch {
+      parsed = null;
     }
 
-    // Auto-trigger print dialog after a short delay
+    if (!parsed) {
+      setMissing(true);
+      return;
+    }
+    setData(parsed);
+
+    // Auto-trigger print dialog after a short delay, only when there is content
     const timer = setTimeout(() => {
       window.print();
     }, 500);
@@ -24,10 +37,15 @@ export default function PrintResume() {
   if (!data) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Loading resume...</p>
+        <p>{missing ? "Nothing to print. Reopen the print view from the résumé editor." : "Loading resume..."}</p>
       </div>
     );
   }
+
+  const languages = (data.languages ?? []).filter((l) => l.language);
+  const volunteer = (data.volunteer ?? []).filter((v) => v.organization);
+  const awards = (data.awards ?? []).filter((a) => a.title);
+  const customSections = (data.customSections ?? []).filter((cs) => cs.entries?.some((e) => e.title));
 
   // Get non-empty skill categories
   const skillCategories = Object.entries(data.skills)
@@ -273,6 +291,112 @@ export default function PrintResume() {
             </div>
           </section>
         )}
+
+        {/* Languages Section */}
+        {languages.length > 0 && (
+          <section className="mb-4 print-no-break">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">LANGUAGES</h2>
+            <p style={{ fontSize: "10pt" }}>
+              {languages.map((l, idx) => (
+                <span key={l.id}>
+                  <span className="font-bold">{l.language}</span>
+                  {l.proficiency && ` (${l.proficiency})`}
+                  {idx < languages.length - 1 && "  |  "}
+                </span>
+              ))}
+            </p>
+          </section>
+        )}
+
+        {/* Volunteer Section */}
+        {volunteer.length > 0 && (
+          <section className="mb-4">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
+              VOLUNTEER EXPERIENCE
+            </h2>
+            <div className="space-y-2">
+              {volunteer.map((vol) => (
+                <div key={vol.id} className="print-no-break">
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-bold" style={{ fontSize: "10pt" }}>
+                      {vol.role || "Volunteer"}
+                    </span>
+                    {vol.date && <span className="text-sm whitespace-nowrap ml-2">{vol.date}</span>}
+                  </div>
+                  <div className="italic" style={{ fontSize: "10pt" }}>
+                    {vol.organization}
+                  </div>
+                  {vol.bullets?.length > 0 && (
+                    <ul className="mt-1 ml-5 space-y-0.5 list-disc" style={{ fontSize: "10pt" }}>
+                      {vol.bullets.map((bullet, idx) => (
+                        <li key={idx} className="pl-1">
+                          {bullet}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Awards Section */}
+        {awards.length > 0 && (
+          <section className="mb-4 print-no-break">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
+              AWARDS & PUBLICATIONS
+            </h2>
+            <div style={{ fontSize: "10pt" }}>
+              {awards.map((award) => (
+                <div key={award.id} className="flex justify-between items-baseline" style={{ marginBottom: "2pt" }}>
+                  <span>
+                    <span className="font-bold">{award.title}</span>
+                    {award.issuer && <span>, {award.issuer}</span>}
+                  </span>
+                  <span className="text-sm whitespace-nowrap ml-2">{award.date}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Custom Sections */}
+        {customSections.map((cs) => (
+          <section key={cs.id} className="mb-4">
+            <h2 className="font-bold uppercase tracking-wider text-sm border-b border-black pb-1 mb-2">
+              {(cs.name || "").toUpperCase()}
+            </h2>
+            <div className="space-y-2">
+              {cs.entries
+                .filter((e) => e.title)
+                .map((entry) => (
+                  <div key={entry.id} className="print-no-break">
+                    <div className="flex justify-between items-baseline">
+                      <span className="font-bold" style={{ fontSize: "10pt" }}>
+                        {entry.title}
+                      </span>
+                      {entry.date && <span className="text-sm whitespace-nowrap ml-2">{entry.date}</span>}
+                    </div>
+                    {entry.subtitle && (
+                      <div className="italic" style={{ fontSize: "10pt" }}>
+                        {entry.subtitle}
+                      </div>
+                    )}
+                    {entry.bullets?.length > 0 && (
+                      <ul className="mt-1 ml-5 space-y-0.5 list-disc" style={{ fontSize: "10pt" }}>
+                        {entry.bullets.map((bullet, idx) => (
+                          <li key={idx} className="pl-1">
+                            {bullet}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </section>
+        ))}
       </div>
     </>
   );

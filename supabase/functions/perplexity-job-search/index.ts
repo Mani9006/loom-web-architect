@@ -296,7 +296,11 @@ async function searchDatabase(
   // Text search: match ALL search terms against title OR company OR role_category
   // Use ilike for each term — job must match ALL terms in at least one of the fields
   for (const term of searchTerms) {
-    const pattern = `%${term}%`;
+    // Strip PostgREST or()-syntax and wildcard characters, matching
+    // searchScannedJobs: a raw comma/parenthesis breaks (or injects into) the filter.
+    const safeTerm = term.replace(/[%_,()"\\]/g, "");
+    if (!safeTerm) continue;
+    const pattern = `%${safeTerm}%`;
     dbQuery = dbQuery.or(`title.ilike.${pattern},company.ilike.${pattern},role_category.ilike.${pattern},description.ilike.${pattern}`);
   }
 
@@ -554,7 +558,7 @@ serve(async (req) => {
             default: maxAgeDays = 9999; break;
           }
 
-          dateFilteredJobs = dbResult.jobs.filter((j: any) => {
+          dateFilteredJobs = dateFilteredJobs.filter((j: any) => {
             const dp = (j.date_posted || "").trim();
             if (!dp || /recently|just now/i.test(dp)) return true; // keep ambiguous ones
 

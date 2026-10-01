@@ -32,6 +32,8 @@ interface CoverLetterPanelProps {
   selectedModel: string;
   onModelChange: (model: string) => void;
   onBack?: () => void;
+  /** Seeds the chat with a saved letter's content so view/copy/save act on it. */
+  onLoadSavedLetter?: (letter: CoverLetter) => void;
 }
 
 export function CoverLetterPanel({
@@ -42,6 +44,7 @@ export function CoverLetterPanel({
   selectedModel,
   onModelChange,
   onBack,
+  onLoadSavedLetter,
 }: CoverLetterPanelProps) {
   const [resumeText, setResumeText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
@@ -151,10 +154,10 @@ export function CoverLetterPanel({
     setResumeText(letter.resume_text || "");
     setHasGenerated(true);
     setActiveTab("create");
-    
-    // Note: We show the content in the messages but can't modify parent state directly
-    // The user can see it was loaded and continue editing
-    toast({ 
+    // Seed the chat with the saved letter so the view and Copy/Save/PDF act on it
+    onLoadSavedLetter?.(letter);
+
+    toast({
       title: "Loaded!", 
       description: "Cover letter loaded. You can copy, download, or request revisions." 
     });

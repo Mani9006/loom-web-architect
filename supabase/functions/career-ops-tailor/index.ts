@@ -405,7 +405,10 @@ serve(async (req) => {
 
     let baseResume: any = null;
     if (ev.resume_id) {
-      const { data } = await svc.from("resumes").select("*").eq("id", ev.resume_id).maybeSingle();
+      // evaluation.resume_id is user-writable; never load another user's resume
+      // with the service role. A foreign id falls back to the caller's latest.
+      const { data } = await svc.from("resumes").select("*")
+        .eq("id", ev.resume_id).eq("user_id", user.id).maybeSingle();
       baseResume = data;
     }
     if (!baseResume) {

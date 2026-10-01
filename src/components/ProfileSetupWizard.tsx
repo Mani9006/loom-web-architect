@@ -137,12 +137,12 @@ export function ProfileSetupWizard() {
     return Math.min(score, 100);
   };
 
-  const saveStep = async () => {
-    if (!user) return;
+  const saveStep = async (): Promise<boolean> => {
+    if (!user) return false;
     setSaving(true);
     try {
       const completeness = calcCompleteness();
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           full_name: profile.full_name,
@@ -171,26 +171,29 @@ export function ProfileSetupWizard() {
           profile_completeness: completeness,
         } as any)
         .eq("user_id", user.id);
+      if (error) throw error;
 
       toast({ title: "Saved", description: `Step ${step + 1} saved successfully.` });
+      return true;
     } catch (err) {
       console.error("Save error:", err);
       toast({ title: "Error", description: "Failed to save", variant: "destructive" });
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
   const handleNext = async () => {
-    await saveStep();
-    if (step < STEPS.length - 1) setStep(step + 1);
+    const saved = await saveStep();
+    if (saved && step < STEPS.length - 1) setStep(step + 1);
   };
 
   const handleFinish = async () => {
     if (!user) return;
     setSaving(true);
     try {
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           profile_setup_completed: true,
@@ -198,6 +201,7 @@ export function ProfileSetupWizard() {
           onboarding_completed: true,
         } as any)
         .eq("user_id", user.id);
+      if (error) throw error;
 
       toast({ title: "Profile Complete!", description: "Your profile is ready. Let's find your perfect job!" });
       navigate("/job-search");

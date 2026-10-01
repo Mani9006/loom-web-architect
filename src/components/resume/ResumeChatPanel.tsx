@@ -149,6 +149,7 @@ export function ResumeChatPanel({
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask AI to refine any section..."
+              aria-label="Message"
               disabled={isLoading}
               className="min-h-[44px] max-h-32 resize-none bg-secondary text-sm"
               rows={1}
@@ -165,6 +166,7 @@ export function ResumeChatPanel({
           <Button
             type="submit"
             size="icon"
+            aria-label="Send message"
             disabled={!input.trim() || isLoading}
             className="shrink-0 self-start"
           >

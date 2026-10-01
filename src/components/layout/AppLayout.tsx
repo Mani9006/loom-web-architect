@@ -15,6 +15,7 @@
  */
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Home, FileText, Search, Bot, Columns3, Sparkles, Map, Inbox,
@@ -127,11 +128,15 @@ export default function AppLayout() {
   const crumb = current?.label ?? "";
 
   // ── Nav item ───────────────────────────────────────────────────────────
-  const NavButton = ({ item }: { item: NavItem }) => {
+  // Rendered via a plain function call (not as a component declared inside
+  // render) so React keeps the same <a> elements across re-renders and
+  // keyboard focus is not lost on navigation.
+  const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;
     const active = isActive(item.path);
     return (
       <a
+        key={item.path}
         href={item.path}
         onClick={(e) => handleLinkClick(e, item.path)}
         title={!showText ? item.label : undefined}
@@ -234,12 +239,12 @@ export default function AppLayout() {
 
       <nav className="flex-1 overflow-y-auto py-2">
         {showText && <SectionLabel>Your workflow</SectionLabel>}
-        {mainNav.map((i) => <NavButton key={i.path} item={i} />)}
+        {mainNav.map(renderNavItem)}
 
         {visibleOwnerTools.length > 0 && (
           <>
             {showText && <SectionLabel>Admin</SectionLabel>}
-            {visibleOwnerTools.map((i) => <NavButton key={i.path} item={i} />)}
+            {visibleOwnerTools.map(renderNavItem)}
           </>
         )}
       </nav>
@@ -301,11 +306,16 @@ export default function AppLayout() {
 
   return (
     <div className="flex h-screen bg-rp-canvas">
-      {isMobile && mobileOpen && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="fixed inset-0 bg-rp-ink/30 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <div className="relative z-50">{sidebarContent}</div>
-        </div>
+      {isMobile && (
+        <DialogPrimitive.Root open={mobileOpen} onOpenChange={setMobileOpen}>
+          <DialogPrimitive.Portal>
+            <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-rp-ink/30 backdrop-blur-sm" />
+            <DialogPrimitive.Content aria-describedby={undefined} className="fixed inset-y-0 left-0 z-50 flex focus:outline-none">
+              <DialogPrimitive.Title className="sr-only">Navigation</DialogPrimitive.Title>
+              {sidebarContent}
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
       )}
 
       {!isMobile && sidebarContent}

@@ -51,8 +51,8 @@ export default function Profile() {
   const { toast } = useToast();
   const [profile, setProfile] = useState(emptyProfile);
   const [resume, setResume] = useState<ResumeSummary | null>(null);
-  const [jobPreferences, setJobPreferences] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -63,13 +63,14 @@ export default function Profile() {
     ]);
     if (profileResult.error) {
       toast({ title: "Couldn't load your profile", description: "Refresh to try again before editing.", variant: "destructive" });
+      setLoadFailed(true);
       setLoading(false); return;
     }
+    setLoadFailed(false);
     const row = profileResult.data;
     const preferences = (row?.job_preferences || {}) as Record<string, unknown>;
     const applypass = (preferences.applypass || {}) as Record<string, unknown>;
     const application = (applypass.profile || {}) as Record<string, unknown>;
-    setJobPreferences(preferences);
     setProfile({
       full_name: row?.full_name || "",
       email: row?.email || user.email || "",
@@ -96,8 +97,17 @@ export default function Profile() {
   }, [profile, resume]);
 
   async function save() {
-    if (!user) return;
+    if (!user || loadFailed) return;
     setSaving(true);
+    // Re-read the latest job_preferences so keys written elsewhere (Settings,
+    // Match Preferences) since this page loaded are not overwritten.
+    const currentResult = await supabase.from("profiles").select("job_preferences").eq("user_id", user.id).maybeSingle();
+    if (currentResult.error) {
+      setSaving(false);
+      toast({ title: "Profile wasn't saved", description: "Your previous profile is unchanged. Try again.", variant: "destructive" });
+      return;
+    }
+    const jobPreferences = (currentResult.data?.job_preferences || {}) as Record<string, unknown>;
     const oldApplypass = (jobPreferences.applypass || {}) as Record<string, unknown>;
     const oldApplicationProfile = (oldApplypass.profile || {}) as Record<string, unknown>;
     const applicationProfile = {
@@ -114,13 +124,13 @@ export default function Profile() {
       job_preferences: { ...jobPreferences, applypass: { ...oldApplypass, profile: applicationProfile } },
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" });
-    void supabase.from("user_job_prefs").upsert({
+    const prefsResult = await supabase.from("user_job_prefs").upsert({
       user_id: user.id,
       requires_sponsorship: profile.requires_sponsorship,
       work_authorization: profile.work_authorization || null,
     }, { onConflict: "user_id" });
     setSaving(false);
-    if (profileResult.error) {
+    if (profileResult.error || prefsResult.error) {
       toast({ title: "Profile wasn't saved", description: "Your previous profile is unchanged. Try again.", variant: "destructive" });
       return;
     }
@@ -281,7 +291,7 @@ export default function Profile() {
               </button>
               <button
                 onClick={save}
-                disabled={saving}
+                disabled={saving || loadFailed}
                 className="inline-flex items-center gap-2 bg-rp-accent text-rp-canvas hover:bg-rp-accent-2 transition-colors px-8 py-3 disabled:opacity-50"
                 style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 700 }}
               >

@@ -60,7 +60,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     if (!user) return;
     setSaving(true);
     try {
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           onboarding_completed: true,
@@ -68,10 +68,12 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
           job_preferences: preferences as any,
         } as any)
         .eq("user_id", user.id);
+      if (error) throw error;
       onComplete();
       // Redirect to comprehensive profile setup
       navigate("/profile-setup");
-    } catch {
+    } catch (err) {
+      console.error("Onboarding save error:", err);
       onComplete();
     } finally {
       setSaving(false);

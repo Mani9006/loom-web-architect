@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
+import { safeHttpUrl } from "@/lib/job-url";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
@@ -405,6 +406,16 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       onDragStart={() => setDraggedId(job.id)}
                       onDragEnd={() => setDraggedId(null)}
                       onClick={() => setSelected(job)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${job.job_title} at ${job.company}`}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelected(job);
+                        }
+                      }}
                       className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
                     >
                       <button
@@ -469,9 +480,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {selected.apply_url && (
+                  {safeHttpUrl(selected.apply_url) && (
                     <Button asChild variant="outline" size="sm">
-                      <a href={selected.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={safeHttpUrl(selected.apply_url)} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open application
                       </a>
                     </Button>

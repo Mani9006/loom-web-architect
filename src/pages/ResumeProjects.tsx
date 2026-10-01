@@ -41,6 +41,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { TerminalLoader, TerminalText } from "@/components/Terminal";
 import { normalizeResumeSkills } from "@/lib/resume-skills";
 import { hydrateApplicationProfileFromResume } from "@/lib/resume-profile-autofill";
+import { personalInfoToHeader } from "@/lib/resume-personal-info";
 
 type ResumeSource = "scratch" | "upload" | "existing";
 type ImportFormatMode = "ats_recommended" | "preserve_source";
@@ -69,9 +70,8 @@ interface ResumeRow {
 }
 
 function mapRowToResumeJSON(r: ResumeRow): ResumeJSON {
-  const empty = createEmptyResumeJSON();
   return {
-    header: r.personal_info || empty.header,
+    header: personalInfoToHeader(r.personal_info),
     summary: r.summary || "",
     experience: Array.isArray(r.experience) ? r.experience : [],
     education: Array.isArray(r.education) ? r.education : [],
@@ -185,7 +185,7 @@ export default function ResumeProjects() {
     return resumes.filter((r) => {
       const title = r.title?.toLowerCase() || "";
       const role = r.personal_info?.title?.toLowerCase() || "";
-      const name = r.personal_info?.name?.toLowerCase() || "";
+      const name = (r.personal_info?.name || r.personal_info?.fullName)?.toLowerCase() || "";
       return title.includes(q) || role.includes(q) || name.includes(q);
     });
   }, [resumes, searchQuery]);
@@ -900,8 +900,18 @@ function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimar
 
   return (
     <div
-      className="group relative rounded-xl border border-border bg-card overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all cursor-pointer"
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${resume.title || "Untitled resume"}`}
+      className="group relative rounded-xl border border-border bg-card overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       {/* Thumbnail, zoomed to show top portion of resume, centered */}
       <div className="relative h-52 overflow-hidden bg-rp-paper border-b border-border flex items-start justify-center">
@@ -962,7 +972,7 @@ function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimar
                 variant="ghost"
                 size="icon"
                 aria-label={`Actions for ${resume.title || "Untitled resume"}`}
-                className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-8 w-8 shrink-0 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100"
               >
                 <MoreVertical className="h-4 w-4" />
               </Button>

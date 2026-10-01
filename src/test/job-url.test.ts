@@ -6,6 +6,7 @@ import {
   isGenericCareerPage,
   looksLikelyBrokenUrl,
   resolveJobUrl,
+  safeHttpUrl,
 } from "@/lib/job-url";
 
 describe("job-url utilities", () => {
@@ -113,6 +114,29 @@ describe("job-url utilities", () => {
         isFallback: false,
         label: "Apply",
       });
+    });
+  });
+
+  describe("safeHttpUrl", () => {
+    it.each(["https://jobs.example.org/123", "http://acme.com/careers/42", "  https://a.io/x  "])(
+      "accepts http(s) URL %s",
+      (url) => {
+        expect(safeHttpUrl(url)).toBe(url.trim());
+      },
+    );
+
+    it.each([
+      null,
+      undefined,
+      "",
+      "javascript:alert(1)",
+      "JavaScript:fetch('//evil')",
+      "data:text/html,<script>alert(1)</script>",
+      "vbscript:msgbox",
+      "/relative/path",
+      "not a url",
+    ])("rejects %s", (url) => {
+      expect(safeHttpUrl(url)).toBeUndefined();
     });
   });
 });

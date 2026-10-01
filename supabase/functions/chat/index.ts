@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { evaluateUserAccess } from "../_shared/access-control.ts";
+import { createSseLineSplitter } from "../_shared/sse-lines.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -279,6 +280,10 @@ interface ModelConfig {
   model: string;
 }
 
+// OpenAI models getModelConfig routes to; the only values a request body
+// `model` override may select.
+const ALLOWED_OPENAI_MODEL_OVERRIDES = new Set(["gpt-4o", "gpt-4o-mini"]);
+
 // Model configurations per task type
 function getModelConfig(mode: string): ModelConfig {
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -385,37 +390,41 @@ function convertAnthropicStream(anthropicBody: ReadableStream<Uint8Array>): Read
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
+  const splitter = createSseLineSplitter();
+
+  const handleLine = (controller: ReadableStreamDefaultController<Uint8Array>, line: string) => {
+    if (!line.startsWith("data: ")) return;
+    try {
+      const data = JSON.parse(line.slice(6));
+      // Anthropic content_block_delta events
+      if (data.type === "content_block_delta" && data.delta?.text) {
+        const openaiFormat = {
+          choices: [{ delta: { content: data.delta.text } }],
+        };
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(openaiFormat)}\n\n`));
+      }
+      // Anthropic message_stop event
+      if (data.type === "message_stop") {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      }
+    } catch { /* Ignore malformed provider stream fragments. */ }
+  };
+
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
         const { done, value } = await reader.read();
         if (done) {
+          for (const line of splitter.push(decoder.decode())) handleLine(controller, line);
+          for (const line of splitter.flush()) handleLine(controller, line);
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
           return;
         }
 
+        // Carry a partial SSE line across chunk boundaries.
         const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              // Anthropic content_block_delta events
-              if (data.type === "content_block_delta" && data.delta?.text) {
-                const openaiFormat = {
-                  choices: [{ delta: { content: data.delta.text } }],
-                };
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(openaiFormat)}\n\n`));
-              }
-              // Anthropic message_stop event
-              if (data.type === "message_stop") {
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-              }
-            } catch { /* Ignore malformed provider stream fragments. */ }
-          }
-        }
+        for (const line of splitter.push(chunk)) handleLine(controller, line);
       } catch (e) {
         console.error("Stream conversion error:", e);
         controller.close();
@@ -527,9 +536,15 @@ serve(async (req) => {
     // Select optimal model and provider
     const modelConfig = getModelConfig(chatMode);
 
-    // Allow frontend to override model, but keep provider routing
-    const effectiveModel = requestedModel || modelConfig.model;
-    const effectiveProvider = requestedModel ? "openai" : modelConfig.provider;
+    // Allow frontend to override model, but only with the OpenAI models this
+    // function already routes to — an arbitrary body `model` must not be able
+    // to select a premium model at the platform's expense.
+    const allowedOverride = typeof requestedModel === "string" &&
+        ALLOWED_OPENAI_MODEL_OVERRIDES.has(requestedModel)
+      ? requestedModel
+      : null;
+    const effectiveModel = allowedOverride || modelConfig.model;
+    const effectiveProvider = allowedOverride ? "openai" : modelConfig.provider;
 
     // Fallback: if chosen provider's key isn't available, fall back to the other
     const finalProvider = (effectiveProvider === "anthropic" && !ANTHROPIC_API_KEY)

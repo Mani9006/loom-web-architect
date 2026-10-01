@@ -268,6 +268,25 @@ export function mergeResumeSkills(existing: unknown, incoming: unknown): SkillsO
   return normalizeResumeSkills(combined);
 }
 
+/**
+ * Commit comma-separated editor text for one category: split, normalize the
+ * whole skills object, and keep the edited category (and any other existing
+ * canonical category) present, possibly empty, so editor rows stay visible
+ * after they are cleared or reclassified.
+ */
+export function applySkillCategoryText(skills: unknown, category: string, text: string): SkillsObject {
+  const base = skills && typeof skills === "object" && !Array.isArray(skills) ? (skills as Record<string, unknown>) : {};
+  const list = text.split(",").map((v) => v.trim()).filter(Boolean);
+  const next = normalizeResumeSkills({ ...base, [category]: list });
+  // normalizeResumeSkills drops empty buckets; keep canonical categories the
+  // user already had (e.g. newly added, still-empty rows) and the edited one.
+  for (const { key } of CANONICAL_SKILL_CATEGORIES) {
+    if (!next[key] && Array.isArray(base[key])) next[key] = [];
+  }
+  if (!next[category]) next[category] = [];
+  return next;
+}
+
 export function getCanonicalSkillCategoryLabel(key: string): string | null {
   return LABELS[key] ?? null;
 }

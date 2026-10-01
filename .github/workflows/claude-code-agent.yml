@@ -31,12 +31,15 @@ jobs:
       vars.ENABLE_CLAUDE_AGENT == '1' && (
         (github.event_name == 'workflow_dispatch') ||
         (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'agent-task')) ||
-        (github.event_name == 'issue_comment' && contains(github.event.issue.labels.*.name, 'agent-task') && github.event.comment.user.login != 'github-actions[bot]')
+        (github.event_name == 'issue_comment' && contains(github.event.issue.labels.*.name, 'agent-task') && github.event.comment.user.login != 'github-actions[bot]' &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
       )
     steps:
+      # Do not persist the token in .git/config; the push step authenticates explicitly.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -47,23 +50,30 @@ jobs:
 
       - name: Determine task
         id: task
+        # Event fields are untrusted: pass them via env, never inline ${{ }} in run.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TASK: ${{ inputs.task }}
+          INPUT_TICKET: ${{ inputs.ticket_key }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "description<<EOF" >> "$GITHUB_OUTPUT"
-            echo "${{ inputs.task }}" >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
-            echo "ticket=${{ inputs.ticket_key }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "issue_comment" ]; then
-            echo "description<<EOF" >> "$GITHUB_OUTPUT"
-            echo "${{ github.event.comment.body }}" >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
-            echo "ticket=${{ github.event.issue.title }}" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            DESCRIPTION="$INPUT_TASK"
+            TICKET="$INPUT_TICKET"
+          elif [ "$EVENT_NAME" = "issue_comment" ]; then
+            DESCRIPTION="$COMMENT_BODY"
+            TICKET="$ISSUE_TITLE"
           else
-            echo "description<<EOF" >> "$GITHUB_OUTPUT"
-            echo "${{ github.event.issue.body }}" >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
-            echo "ticket=${{ github.event.issue.title }}" >> "$GITHUB_OUTPUT"
+            DESCRIPTION="$ISSUE_BODY"
+            TICKET="$ISSUE_TITLE"
           fi
+          DELIM="EOF_$(openssl rand -hex 16)"
+          {
+            printf 'description<<%s\n%s\n%s\n' "$DELIM" "$DESCRIPTION" "$DELIM"
+            printf 'ticket=%s\n' "$(printf '%s' "$TICKET" | tr -d '\r\n')"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Quality gate (pre-check)
         run: |
@@ -102,16 +112,21 @@ jobs:
         if: steps.validate.outputs.status == 'pass'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TICKET: ${{ steps.task.outputs.ticket }}
+          DESCRIPTION: ${{ steps.task.outputs.description }}
+          BRANCH: ${{ steps.branch.outputs.name }}
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "[Agent] ${{ steps.task.outputs.ticket }}: automated task execution"
-            git push -u origin "${{ steps.branch.outputs.name }}"
+            git commit -m "[Agent] $TICKET: automated task execution"
+            gh auth setup-git
+            git push -u origin "$BRANCH"
+            BODY=$(printf 'Automated task execution by Claude Code agent.\n\nTask: %s\n\nQuality gates: ✅ Passed' "$DESCRIPTION")
             gh pr create \
-              --title "[Agent] ${{ steps.task.outputs.ticket }}" \
-              --body "Automated task execution by Claude Code agent.\n\nTask: ${{ steps.task.outputs.description }}\n\nQuality gates: ✅ Passed" \
+              --title "[Agent] $TICKET" \
+              --body "$BODY" \
               --base main
           else
             echo "No changes to commit"

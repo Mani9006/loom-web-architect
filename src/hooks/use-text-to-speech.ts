@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 interface UseTextToSpeechOptions {
   onStart?: () => void;
@@ -21,11 +21,40 @@ export function useTextToSpeech({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+  // Keep the latest callbacks in refs so utterance handlers always call the
+  // current callbacks rather than ones captured when speak() was created.
+  // Callers often pass inline closures over component state, and speak() is
+  // frequently invoked right after a setState in the same closure.
+  const onStartRef = useRef(onStart);
+  const onEndRef = useRef(onEnd);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onStartRef.current = onStart;
+    onEndRef.current = onEnd;
+    onErrorRef.current = onError;
+  });
+
   const isSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  // Stop this hook's speech if it is still playing when the component unmounts.
+  // Detach the handlers first so cancel() does not fire onEnd/onError into an
+  // unmounted component (e.g. the voice interview starting to listen again).
+  useEffect(() => {
+    if (!isSupported) return;
+    return () => {
+      const utterance = utteranceRef.current;
+      if (!utterance) return;
+      utterance.onstart = null;
+      utterance.onend = null;
+      utterance.onerror = null;
+      utteranceRef.current = null;
+      window.speechSynthesis.cancel();
+    };
+  }, [isSupported]);
 
   const speak = useCallback((text: string) => {
     if (!isSupported) {
-      onError?.("Speech synthesis not supported");
+      onErrorRef.current?.("Speech synthesis not supported");
       return;
     }
 
@@ -68,22 +97,24 @@ export function useTextToSpeech({
 
     utterance.onstart = () => {
       setIsSpeaking(true);
-      onStart?.();
+      onStartRef.current?.();
     };
 
     utterance.onend = () => {
+      if (utteranceRef.current === utterance) utteranceRef.current = null;
       setIsSpeaking(false);
-      onEnd?.();
+      onEndRef.current?.();
     };
 
     utterance.onerror = (event) => {
       console.error("Speech synthesis error:", event);
+      if (utteranceRef.current === utterance) utteranceRef.current = null;
       setIsSpeaking(false);
-      onError?.(event.error);
+      onErrorRef.current?.(event.error);
     };
 
     window.speechSynthesis.speak(utterance);
-  }, [isSupported, onStart, onEnd, onError]);
+  }, [isSupported]);
 
   const stop = useCallback(() => {
     if (!isSupported) return;

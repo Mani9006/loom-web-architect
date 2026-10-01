@@ -175,7 +175,9 @@ export function ChatSidebar({
       older: [],
     };
 
-    unfolderedConversations.forEach((conv) => {
+    // Folders are hidden while searching, so include foldered matches too.
+    const source = searchQuery ? filteredConversations : unfolderedConversations;
+    source.forEach((conv) => {
       const date = new Date(conv.updated_at);
       if (isToday(date)) {
         groups.today.push(conv);
@@ -195,7 +197,7 @@ export function ChatSidebar({
     });
 
     return groups;
-  }, [unfolderedConversations]);
+  }, [unfolderedConversations, filteredConversations, searchQuery]);
 
   const handleStartEditing = (conv: Conversation) => {
     setEditingId(conv.id);
@@ -521,6 +523,12 @@ export function ChatSidebar({
                 No conversations yet.
                 <br />
                 Start a new chat!
+              </div>
+            )}
+
+            {conversations.length > 0 && searchQuery && filteredConversations.length === 0 && !isCollapsed && (
+              <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                No matching conversations.
               </div>
             )}
           </ScrollArea>

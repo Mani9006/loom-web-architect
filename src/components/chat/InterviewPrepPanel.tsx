@@ -110,21 +110,23 @@ export function InterviewPrepPanel({
     }
   }, [messages]);
 
-  // Auto-speak new assistant messages
+  // Auto-speak new assistant messages once streaming has finished, so the
+  // empty placeholder is not marked as spoken before its content arrives.
   useEffect(() => {
-    if (!autoSpeak || !isSpeechSupported) return;
+    if (!autoSpeak || !isSpeechSupported || isLoading) return;
     
     const lastMessage = messages[messages.length - 1];
     if (
       lastMessage &&
       lastMessage.role === "assistant" &&
       !lastMessage.isThinking &&
+      lastMessage.content.trim() &&
       lastMessage.id !== lastSpokenMessageId
     ) {
       setLastSpokenMessageId(lastMessage.id);
       speak(lastMessage.content);
     }
-  }, [messages, autoSpeak, isSpeechSupported, lastSpokenMessageId, speak]);
+  }, [messages, autoSpeak, isSpeechSupported, isLoading, lastSpokenMessageId, speak]);
 
   // Update input while listening
   useEffect(() => {

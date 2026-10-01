@@ -256,6 +256,17 @@ Guidelines:
 
 Always state assumptions when metrics are missing.`,
   },
+  resume_fix: {
+    name: "Resume Structured Editor",
+    description: "Applies caller-specified resume edits and returns them in the exact requested format",
+    systemPrompt: `You edit resume content exactly as the caller instructs.
+
+Rules:
+- Follow the output format given in the instructions exactly (JSON object, JSON array, or plain text)
+- When JSON is requested, return only valid JSON — no prose, no markdown fences
+- Return the complete requested content; never truncate or summarize it
+- Preserve factual accuracy; never fabricate experience, metrics, or skills`,
+  },
   salary_negotiation: {
     name: "Salary Negotiation Advisor",
     description: "Provides compensation strategy and negotiation support",
@@ -301,9 +312,20 @@ const ROUTABLE_INTENTS = new Set(
   Object.keys(AGENTS).filter((key) => key !== "orchestrator")
 );
 
+// Frontend modes that are not agent names of their own. resume_bullets asks
+// for a raw JSON array, so it shares the structured resume_fix agent.
+const INTENT_ALIASES: Record<string, string> = {
+  resume_bullets: "resume_fix",
+};
+
+// Agents whose output format is dictated by the caller (often JSON), so the
+// generic "use markdown" suffix must not be appended.
+const CALLER_FORMATTED_INTENTS = new Set(["resume_parse", "resume_fix"]);
+
 function normalizeIntent(intent: string): string {
   const normalized = intent.toLowerCase().trim().replace(/[\s-]+/g, "_");
-  return ROUTABLE_INTENTS.has(normalized) ? normalized : "general";
+  const resolved = INTENT_ALIASES[normalized] ?? normalized;
+  return ROUTABLE_INTENTS.has(resolved) ? resolved : "general";
 }
 
 async function fetchWithTimeout(
@@ -429,6 +451,7 @@ function getOptimalModelForAgent(agentType: string): string {
     case "salary_negotiation":
     case "networking":
     case "resume_enhance":
+    case "resume_fix":
       return mini;
     case "resume_parse":
       return parser;
@@ -455,6 +478,8 @@ function getMaxTokensForAgent(agentType: string): number {
   );
   switch (agentType) {
     case "resume_parse":
+    case "resume_fix":
+      // resume_fix (tailor-to-job) returns the full resume JSON.
       return parseMax;
     case "resume":
     case "cover_letter":
@@ -483,12 +508,12 @@ async function executeAgent(
   // surfaced as "Import failed" toasts in the resume upload flow.
   const TIMEOUT_LONG = 90_000;
   const TIMEOUT_SHORT = 45_000;
-  const timeoutMs = ["resume_parse", "resume", "cover_letter", "ats", "resume_enhance"]
+  const timeoutMs = ["resume_parse", "resume_fix", "resume", "cover_letter", "ats", "resume_enhance"]
     .includes(normalizedAgentType) ? TIMEOUT_LONG : TIMEOUT_SHORT;
 
   console.log(`[Agent] Executing ${normalizedAgentType} with OpenAI model: ${optimalModel} (timeout=${timeoutMs}ms)`);
 
-  const systemPrompt = normalizedAgentType === "resume_parse"
+  const systemPrompt = CALLER_FORMATTED_INTENTS.has(normalizedAgentType)
     ? agent.systemPrompt
     : `${agent.systemPrompt}
 

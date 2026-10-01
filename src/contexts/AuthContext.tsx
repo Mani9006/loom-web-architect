@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { clearUserDrafts } from "@/lib/clear-user-drafts";
+import { clearPersistedState } from "@/hooks/use-persisted-state";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -73,11 +75,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return next;
         });
         if (event === "SIGNED_OUT") {
+          clearUserDrafts();
           setSession(null);
           setUser(null);
           setRoles([]);
           setRolesReady(true);
           fetchedRolesForUserRef.current = null;
+          // Drop page drafts (resume text, job descriptions, etc.) so they
+          // are not pre-filled for the next user on this browser.
+          clearPersistedState();
         }
         setAuthReady(true);
         // Only refetch roles when this is genuinely a *new* user signing in.
@@ -116,7 +122,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchRoles]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    clearUserDrafts();
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      clearPersistedState();
+    }
   }, []);
 
   const isAdmin = roles.includes("admin");

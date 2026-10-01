@@ -77,7 +77,7 @@ export default function ControlCenter() {
       } = await supabase.auth.getSession();
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       const response = await fetch(`${supabaseUrl}/functions/v1/executive-brief`, {
         method: "POST",

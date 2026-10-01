@@ -22,6 +22,11 @@ const STALE_MINUTES = 9;
 const MAX_USERS_PER_RUN = 200;
 const SCAN_STALE_HOURS = 6;
 const SCAN_WAIT_MS = 90_000;
+// Total time the fan-out may spend before returning, kept well under the edge
+// wall-clock limit. Users not reached are left for the next tick; the query
+// orders by oldest last_agent_run_at so they go first then.
+const FANOUT_BUDGET_MS = 100_000;
+const MIN_DISPATCH_WAIT_MS = 5_000;
 
 function svc() {
   return createClient(
@@ -31,8 +36,12 @@ function svc() {
   );
 }
 
-async function dispatch(userId: string): Promise<{ user_id: string; ok: boolean; error?: string }> {
+type DispatchResult = { user_id: string; ok: boolean; started?: boolean; error?: string };
+
+async function dispatch(userId: string, waitMs: number): Promise<DispatchResult> {
   const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/agents-job-hunter`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), waitMs);
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -41,13 +50,21 @@ async function dispatch(userId: string): Promise<{ user_id: string; ok: boolean;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ user_id: userId }),
+      signal: controller.signal,
     });
     if (!res.ok) {
       return { user_id: userId, ok: false, error: `${res.status}` };
     }
     return { user_id: userId, ok: true };
   } catch (e) {
+    // A client-side abort leaves the accepted run going server-side (same
+    // assumption as the scan backstop), so count it as started.
+    if (e instanceof Error && e.name === "AbortError") {
+      return { user_id: userId, ok: true, started: true };
+    }
     return { user_id: userId, ok: false, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -74,6 +91,7 @@ serve(async (req) => {
       .select("user_id, agent_actions_today, agent_max_actions_per_day, last_agent_run_at")
       .eq("agent_enabled", true)
       .or(`last_agent_run_at.is.null,last_agent_run_at.lt.${cutoff}`)
+      .order("last_agent_run_at", { ascending: true, nullsFirst: true })
       .limit(MAX_USERS_PER_RUN);
 
     const candidates = ((rows || []) as Array<{
@@ -103,32 +121,21 @@ serve(async (req) => {
       .map((row) => row.user_id));
     const users = candidates.filter((userId) => entitled.has(userId));
 
-    const results: Array<{ user_id: string; ok: boolean; error?: string }> = [];
-    const queue = [...users];
-    const workers = Array.from({ length: CONCURRENCY }, async () => {
-      while (queue.length > 0) {
-        const id = queue.shift();
-        if (!id) return;
-        results.push(await dispatch(id));
-      }
-    });
-    await Promise.all(workers);
-
     // Scan backstop: career-ops-scan normally runs on its own hourly pg_cron.
     // If the newest posting is stale >6h that schedule is likely down, so kick
     // one scan here (service-role, same internal pattern as the fan-out). The
-    // backstop is best-effort and never fails the fan-out response.
-    let scanRefresh = "fresh";
-    try {
-      const { data: newest } = await client
-        .from("scanned_jobs")
-        .select("last_seen_at")
-        .order("last_seen_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const newestTs = newest?.last_seen_at ? Date.parse(newest.last_seen_at) : 0;
-      if (newestTs < Date.now() - SCAN_STALE_HOURS * 3600_000) {
-        scanRefresh = "triggered";
+    // backstop is best-effort and never fails the fan-out response. It starts
+    // before the fan-out so a long fan-out cannot prevent it from running.
+    const scanBackstop = (async (): Promise<string> => {
+      try {
+        const { data: newest } = await client
+          .from("scanned_jobs")
+          .select("last_seen_at")
+          .order("last_seen_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const newestTs = newest?.last_seen_at ? Date.parse(newest.last_seen_at) : 0;
+        if (newestTs >= Date.now() - SCAN_STALE_HOURS * 3600_000) return "fresh";
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), SCAN_WAIT_MS);
         try {
@@ -142,21 +149,37 @@ serve(async (req) => {
             signal: controller.signal,
           });
           // A client-side abort leaves the accepted scan running server-side.
-          scanRefresh = scanRes.ok ? "completed" : `http_${scanRes.status}`;
+          return scanRes.ok ? "completed" : `http_${scanRes.status}`;
         } catch (scanError) {
-          scanRefresh = scanError instanceof Error && scanError.name === "AbortError" ? "started_timeout" : "failed";
+          return scanError instanceof Error && scanError.name === "AbortError" ? "started_timeout" : "failed";
         } finally {
           clearTimeout(timer);
         }
+      } catch {
+        return "check_failed";
       }
-    } catch {
-      scanRefresh = "check_failed";
-    }
+    })();
+
+    const results: DispatchResult[] = [];
+    const queue = [...users];
+    const deadline = Date.now() + FANOUT_BUDGET_MS;
+    const workers = Array.from({ length: CONCURRENCY }, async () => {
+      while (queue.length > 0 && Date.now() < deadline) {
+        const id = queue.shift();
+        if (!id) return;
+        const waitMs = Math.max(deadline - Date.now(), MIN_DISPATCH_WAIT_MS);
+        results.push(await dispatch(id, waitMs));
+      }
+    });
+    await Promise.all(workers);
+    const scanRefresh = await scanBackstop;
 
     const ok = results.filter((r) => r.ok).length;
     return new Response(JSON.stringify({
       dispatched: ok,
       failed: results.length - ok,
+      started_async: results.filter((r) => r.started).length,
+      deferred: queue.length,
       total_eligible: users.length,
       skipped_unentitled: candidates.length - users.length,
       scan_refresh: scanRefresh,

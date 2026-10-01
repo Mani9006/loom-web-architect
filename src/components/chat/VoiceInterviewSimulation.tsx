@@ -68,6 +68,13 @@ export function VoiceInterviewSimulation({
   const [isPaused, setIsPaused] = useState(false);
   const { toast } = useToast();
   const answerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Latest-value refs: TTS onEnd and the answer timeout fire long after the
+  // render that scheduled them, so they must not read stale closure state.
+  const stateRef = useRef<SimulationState>(state);
+  stateRef.current = state;
+  const isPausedRef = useRef(isPaused);
+  isPausedRef.current = isPaused;
+  const handleStopListeningRef = useRef<() => void>(() => {});
 
   // Speech recognition
   const {
@@ -97,13 +104,13 @@ export function VoiceInterviewSimulation({
     isSupported: isSpeechSupported,
   } = useTextToSpeech({
     onEnd: () => {
-      if (state === "asking" && !isPaused) {
+      if (stateRef.current === "asking" && !isPausedRef.current) {
         // Start listening after question is spoken
         setState("listening");
         startListening();
         // Auto-stop after 60 seconds of listening
         answerTimeoutRef.current = setTimeout(() => {
-          handleStopListening();
+          handleStopListeningRef.current();
         }, 60000);
       }
     },
@@ -246,6 +253,7 @@ Return ONLY the 5 questions, one per line, numbered 1-5. No other text or explan
       speak(questions[currentQuestionIndex]);
     }
   }, [currentAnswer, stopListening, questions, currentQuestionIndex, speak, toast]);
+  handleStopListeningRef.current = handleStopListening;
 
   const generateFeedback = async (answer: string) => {
     if (!session) return;
@@ -368,6 +376,9 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
   };
 
   const handleSkipQuestion = () => {
+    // Only skip a question that has not been answered yet; in processing or
+    // feedback the answer is already (or about to be) in the transcript.
+    if (state !== "asking" && state !== "listening") return;
     stopSpeaking();
     stopListening();
     if (answerTimeoutRef.current) {
@@ -586,6 +597,7 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
               variant="ghost"
               size="lg"
               onClick={handleSkipQuestion}
+              disabled={state !== "asking" && state !== "listening"}
               className="gap-2"
             >
               <SkipForward className="w-4 h-4" />
