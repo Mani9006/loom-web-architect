@@ -18,6 +18,16 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
+          // Small helpers shared by the entry and the lazy-only vendors below. Without this rule
+          // Rollup folds them into whichever vendor chunk depends on them (e.g. jspdf-vendor,
+          // recharts-vendor), which forces those large chunks into every page's initial load.
+          if (
+            id.includes("vite/preload-helper") ||
+            id.includes("commonjsHelpers") ||
+            id.includes("node_modules/clsx") ||
+            id.includes("node_modules/tailwind-merge")
+          )
+            return "app-shared";
           if (id.includes("node_modules/html2pdf.js")) return "html2pdf-vendor";
           if (id.includes("node_modules/jspdf")) return "jspdf-vendor";
           if (id.includes("node_modules/html2canvas")) return "html2canvas-vendor";
