@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 interface UseTextToSpeechOptions {
   onStart?: () => void;
@@ -21,11 +21,32 @@ export function useTextToSpeech({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+  // Keep the latest callbacks in refs so utterance handlers always call the
+  // current callbacks rather than ones captured when speak() was created.
+  // Callers often pass inline closures over component state, and speak() is
+  // frequently invoked right after a setState in the same closure.
+  const onStartRef = useRef(onStart);
+  const onEndRef = useRef(onEnd);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onStartRef.current = onStart;
+    onEndRef.current = onEnd;
+    onErrorRef.current = onError;
+  });
+
   const isSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  // Stop any speech still playing when the component using this hook unmounts.
+  useEffect(() => {
+    if (!isSupported) return;
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, [isSupported]);
 
   const speak = useCallback((text: string) => {
     if (!isSupported) {
-      onError?.("Speech synthesis not supported");
+      onErrorRef.current?.("Speech synthesis not supported");
       return;
     }
 
@@ -68,22 +89,22 @@ export function useTextToSpeech({
 
     utterance.onstart = () => {
       setIsSpeaking(true);
-      onStart?.();
+      onStartRef.current?.();
     };
 
     utterance.onend = () => {
       setIsSpeaking(false);
-      onEnd?.();
+      onEndRef.current?.();
     };
 
     utterance.onerror = (event) => {
       console.error("Speech synthesis error:", event);
       setIsSpeaking(false);
-      onError?.(event.error);
+      onErrorRef.current?.(event.error);
     };
 
     window.speechSynthesis.speak(utterance);
-  }, [isSupported, onStart, onEnd, onError]);
+  }, [isSupported]);
 
   const stop = useCallback(() => {
     if (!isSupported) return;
