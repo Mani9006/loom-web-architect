@@ -11,6 +11,7 @@ import {
   isRoleFamilyCompatible,
   type CandidatePreferences,
 } from "../_shared/career-fit.ts";
+import { type ExistingEvaluation, withoutPreservedEvaluations } from "../_shared/match-feed-preserve.ts";
 import {
   corsHeaders,
   getAuthedUserOrService,
@@ -209,9 +210,19 @@ serve(async (req) => {
       .sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.fit_score - a.fit_score || b._relevance - a._relevance)
       .slice(0, MAX_EVALUATIONS)
       .map(({ _relevance: _ignored, ...row }) => row);
-    if (persisted.length > 0) {
+    // Never overwrite a manually requested AI evaluation or a dismissed row:
+    // the upsert would wipe the paid report/STAR stories (and relabel the row
+    // deterministic, making it eligible for the stale cleanup below).
+    const { data: existingEvaluations } = persisted.length > 0
+      ? await svc.from("job_evaluations")
+        .select("scanned_job_id,model,dismissed_at")
+        .eq("user_id", user.id)
+        .in("scanned_job_id", persisted.map((row) => row.scanned_job_id))
+      : { data: [] };
+    const refreshable = withoutPreservedEvaluations(persisted, (existingEvaluations || []) as ExistingEvaluation[]);
+    if (refreshable.length > 0) {
       const { error: saveError } = await svc.from("job_evaluations")
-        .upsert(persisted, { onConflict: "user_id,scanned_job_id" });
+        .upsert(refreshable, { onConflict: "user_id,scanned_job_id" });
       if (saveError) throw new HttpError(500, "unable to save match feed");
     }
 
@@ -231,7 +242,9 @@ serve(async (req) => {
     let staleQuery = svc.from("job_evaluations")
       .delete()
       .eq("user_id", user.id)
-      .eq("model", "deterministic-career-fit");
+      .eq("model", "deterministic-career-fit")
+      // Dismissed rows remember "Passed" so the job does not resurface.
+      .is("dismissed_at", null);
     if (publishedIds.length > 0) {
       staleQuery = staleQuery.not("scanned_job_id", "in", `(${publishedIds.join(",")})`);
     }

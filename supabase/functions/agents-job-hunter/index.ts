@@ -12,6 +12,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enforceAutoApplyEntitlement, HttpError } from "../_shared/guards.ts";
+import { isManualIntakeIdentifier } from "../_shared/auto-submit-portal.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -120,7 +121,7 @@ async function listUnpreparedEvaluations(
   alreadyPrepared: number;
 }> {
   const { data: evaluations } = await client.from("job_evaluations")
-    .select("id,scanned_job_id,fit_score,scanned_jobs(title,company:scan_companies(api_type))")
+    .select("id,scanned_job_id,fit_score,scanned_jobs(title,company:scan_companies(api_type,api_identifier))")
     .eq("user_id", userId)
     .eq("eligible", true)
     .eq("score_version", "career-fit-v2")
@@ -140,13 +141,17 @@ async function listUnpreparedEvaluations(
       id: string;
       scanned_job_id: string;
       fit_score: number;
-      scanned_jobs: { title: string; company: { api_type: string | null } | null } | null;
+      scanned_jobs: { title: string; company: { api_type: string | null; api_identifier: string | null } | null } | null;
     }) => ({
       id: evaluation.id,
       scanned_job_id: evaluation.scanned_job_id,
       fit_score: evaluation.fit_score,
       title: evaluation.scanned_jobs?.title ?? "Unknown role",
-      portal: evaluation.scanned_jobs?.company?.api_type ?? null,
+      // One-click intake stores unsupported portals (Workday, iCIMS, ...) as
+      // api_type "lever" with a manual identifier; they are review-only.
+      portal: isManualIntakeIdentifier(evaluation.scanned_jobs?.company?.api_identifier)
+        ? null
+        : evaluation.scanned_jobs?.company?.api_type ?? null,
     }));
   return { evaluations: mapped, alreadyPrepared };
 }
@@ -385,7 +390,7 @@ async function runAgent(userId: string, runId: string) {
     const supportedPortals = new Set(["greenhouse", "ashby", "lever", "workable"]);
     const enabledPortals = new Set(prefs.auto_apply_portals ?? []);
     const { data: readyDrafts } = await client.from("draft_applications")
-      .select("id,tailored_resume_id,error_message,evaluation:job_evaluations(fit_score,eligible,dismissed_at,scanned_jobs(id,company:scan_companies(api_type)))")
+      .select("id,tailored_resume_id,error_message,evaluation:job_evaluations(fit_score,eligible,dismissed_at,scanned_jobs(id,company:scan_companies(api_type,api_identifier)))")
       .eq("user_id", userId)
       .eq("status", "ready")
       // Actionable drafts first, then highest-fit first: with 30+ ready
@@ -402,7 +407,7 @@ async function runAgent(userId: string, runId: string) {
         fit_score: number | null;
         eligible: boolean | null;
         dismissed_at: string | null;
-        scanned_jobs: { id: string; company: { api_type: string | null } | null } | null;
+        scanned_jobs: { id: string; company: { api_type: string | null; api_identifier: string | null } | null } | null;
       } | null;
     }>).filter((draft) => {
       const portal = draft.evaluation?.scanned_jobs?.company?.api_type ?? null;
@@ -413,6 +418,7 @@ async function runAgent(userId: string, runId: string) {
         && typeof portal === "string"
         && supportedPortals.has(portal)
         && enabledPortals.has(portal)
+        && !isManualIntakeIdentifier(draft.evaluation?.scanned_jobs?.company?.api_identifier)
         && !/employer verification is required|complete the final check|required field\(s\) still need review|flagged as possible spam|couldn.t submit your application/i.test(draft.error_message ?? "");
     });
 
