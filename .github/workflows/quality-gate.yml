@@ -3,12 +3,29 @@ name: Quality gate
 # Runs on every push and PR. Must pass before merge to main or production.
 # Vercel handles its own preview deploy in parallel — this workflow only
 # verifies the entire repository lints, compiles, types, and tests.
+#
+# Jobs run in parallel:
+#   gate             frontend: audit, env inventory, type-check, lint, test, build
+#   edge-functions   `deno check` over every supabase/functions/*/index.ts
+#   worker-adapters  node --test for the Playwright ATS adapters (scripts/ats-adapters)
+#
+# Docs-only changes (markdown, docs/) skip this workflow. NOTE: if "gate" is a
+# REQUIRED status check in branch protection, a docs-only PR will wait forever
+# for it; either make the check non-required for docs or drop paths-ignore.
 
 on:
   push:
     branches: [main, production]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
   pull_request:
     branches: [main, production]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
 
 permissions:
   contents: read
@@ -35,6 +52,9 @@ jobs:
       - name: Dependency security gate
         run: npm audit --audit-level=high
 
+      - name: Env inventory and .env.example up to date
+        run: npm run env:check
+
       - name: Type check
         run: npm run type-check
 
@@ -53,3 +73,47 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
           VITE_SUPABASE_PROJECT_ID: ${{ secrets.STAGING_SUPABASE_PROJECT_REF }}
+
+  edge-functions:
+    # Type-checks every edge function entrypoint with Deno (the runtime
+    # Supabase deploys them on). continue-on-error: as of 2026-10-01 there is
+    # existing type debt (~8 functions / ~30 errors, mostly supabase-js
+    # generic mismatches in admin-portal). The job prints a per-function
+    # count to the step summary; flip continue-on-error to false once the
+    # count reaches zero so new type errors block merges.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          # Supabase Edge Runtime runs Deno 2.x.
+          deno-version: v2.x
+
+      - name: deno check supabase/functions/*/index.ts
+        run: bash scripts/check-edge-functions.sh
+
+  worker-adapters:
+    # Unit + mock end-to-end tests for the Playwright ATS adapters used by the
+    # browser apply worker (scripts/applypass-browser-worker.mjs).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium
+        # Without a browser the mock-e2e tests self-skip; install it so they run.
+        run: npx playwright install --with-deps chromium
+
+      - name: ATS adapter tests
+        run: node --test scripts/ats-adapters/*.test.mjs
