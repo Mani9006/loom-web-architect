@@ -40,7 +40,9 @@ export default {
 				'body-lg': ['1rem', { lineHeight: '1.5rem', letterSpacing: '-0.005em' }],
 				title: ['1.25rem', { lineHeight: '1.75rem', letterSpacing: '-0.01em' }],
 				headline: ['1.75rem', { lineHeight: '2.125rem', letterSpacing: '-0.02em' }],
-				display: ['2.5rem', { lineHeight: '2.75rem', letterSpacing: '-0.03em' }]
+				display: ['2.5rem', { lineHeight: '2.75rem', letterSpacing: '-0.03em' }],
+				// Marketing hero only (Landing h1 at >=sm). Not for product UI.
+				hero: ['3.5rem', { lineHeight: '3.625rem', letterSpacing: '-0.035em' }]
 			},
 			fontWeight: {
 				// 400/500/600 only. Heavier legacy weights collapse to 600.
