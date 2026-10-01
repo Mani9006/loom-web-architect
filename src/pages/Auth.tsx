@@ -131,7 +131,7 @@ export default function Auth() {
         <div className="relative max-w-md">
           <Logo size="lg" className="mb-10" />
           <h2 className="text-5xl font-semibold text-foreground mb-4 text-balance">
-            Your career, supercharged.
+            Every application, tracked and tailored.
           </h2>
           <p className="text-muted-foreground text-base">
             Résumé building, evidence-based job matching, application preparation, and verified tracking in one workspace.
