@@ -213,12 +213,14 @@ serve(async (req) => {
     // Never overwrite a manually requested AI evaluation or a dismissed row:
     // the upsert would wipe the paid report/STAR stories (and relabel the row
     // deterministic, making it eligible for the stale cleanup below).
-    const { data: existingEvaluations } = persisted.length > 0
+    // Fail closed: if the lookup errors, refreshing blindly would overwrite them.
+    const { data: existingEvaluations, error: existingError } = persisted.length > 0
       ? await svc.from("job_evaluations")
         .select("scanned_job_id,model,dismissed_at")
         .eq("user_id", user.id)
         .in("scanned_job_id", persisted.map((row) => row.scanned_job_id))
-      : { data: [] };
+      : { data: [], error: null };
+    if (existingError) throw new HttpError(500, "unable to save match feed");
     const refreshable = withoutPreservedEvaluations(persisted, (existingEvaluations || []) as ExistingEvaluation[]);
     if (refreshable.length > 0) {
       const { error: saveError } = await svc.from("job_evaluations")
