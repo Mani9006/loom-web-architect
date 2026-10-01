@@ -41,7 +41,7 @@ test.describe("Route Integrity E2E Tests", () => {
     });
 
     // Try to access protected page
-    await page.goto("/dashboard", { waitUntil: "networkidle" }).catch(() => {
+    await page.goto("/home", { waitUntil: "networkidle" }).catch(() => {
       // Expected to fail or redirect
     });
 

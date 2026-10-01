@@ -85,7 +85,7 @@ export function SettingsDialog({
           <div className="space-y-5 py-2">
             <SettingsSection title="Account">
               <SettingsNavButton icon={User} label="Profile Settings" onClick={() => handleNavigation("/profile")} />
-              <SettingsNavButton icon={LayoutDashboard} label="Dashboard" onClick={() => handleNavigation("/dashboard")} />
+              <SettingsNavButton icon={LayoutDashboard} label="Today" onClick={() => handleNavigation("/home")} />
             </SettingsSection>
 
             <Separator />

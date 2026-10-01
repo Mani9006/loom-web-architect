@@ -33,19 +33,16 @@ const HomePage = lazy(() => import("./pages/HomePage"));
 const JobTracker = lazy(() => import("./pages/JobTracker"));
 const Documents = lazy(() => import("./pages/Documents"));
 const ResumeProjects = lazy(() => import("./pages/ResumeProjects"));
-const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
 const ResumeBuilderV2 = lazy(() => import("./pages/ResumeBuilderV2"));
 const JobSearchPage = lazy(() => import("./pages/JobSearchPage"));
 // Legacy application routes redirect into the consolidated Agent workspace.
 const CoverLettersPage = lazy(() => import("./pages/CoverLettersPage"));
 const ATSCheckerPage = lazy(() => import("./pages/ATSCheckerPage"));
-const AIToolbox = lazy(() => import("./pages/AIToolbox"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Profile = lazy(() => import("./pages/Profile"));
 const InboxPage = lazy(() => import("./pages/InboxPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
 const AdminPortal = lazy(() => import("./pages/AdminPortal"));
@@ -114,12 +111,12 @@ const App = () => {
                     <Route path="/job-search" element={<JobSearchPage />} />
                     <Route path="/applypass" element={<Navigate to="/agent" replace />} />
                     <Route path="/resume-builder" element={<ResumeProjects />} />
-                    {/* v2 is now the default editor everywhere. v1 still
-                        accessible at /resume-builder/legacy/:id as a fallback
-                        in case anything's missing during the cutover. */}
+                    {/* v2 is the only editor. The v1 editor was removed; old
+                        /resume-builder/legacy links land on the resume list. */}
                     <Route path="/resume-builder/v2" element={<ResumeBuilderV2 />} />
                     <Route path="/resume-builder/v2/:resumeId" element={<ResumeBuilderV2 />} />
-                    <Route path="/resume-builder/legacy/:resumeId" element={<ResumeBuilder />} />
+                    <Route path="/resume-builder/legacy" element={<Navigate to="/resume-builder" replace />} />
+                    <Route path="/resume-builder/legacy/:resumeId" element={<Navigate to="/resume-builder" replace />} />
                     <Route path="/resume-builder/:resumeId" element={<ResumeBuilderV2 />} />
                     <Route path="/ats-checker" element={<ATSCheckerPage />} />
                     <Route path="/job-tracker" element={<JobTracker />} />
@@ -138,9 +135,23 @@ const App = () => {
                     <Route path="/cover-letters" element={<CoverLettersPage />} />
                     <Route path="/chat" element={<Chat />} />
                     <Route path="/c/:conversationId" element={<Chat />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/control-center" element={<ControlCenter />} />
-                    <Route path="/market-domination-map" element={<MarketDominationMap />} />
+                    <Route path="/dashboard" element={<Navigate to="/home" replace />} />
+                    <Route
+                      path="/control-center"
+                      element={
+                        <OwnerProtectedRoute>
+                          <ControlCenter />
+                        </OwnerProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/market-domination-map"
+                      element={
+                        <OwnerProtectedRoute>
+                          <MarketDominationMap />
+                        </OwnerProtectedRoute>
+                      }
+                    />
                     <Route
                       path="/admin"
                       element={
@@ -160,7 +171,7 @@ const App = () => {
                     <Route path="/profile" element={<Profile />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/documents" element={<Documents />} />
-                    <Route path="/ai-toolbox" element={<AIToolbox />} />
+                    <Route path="/ai-toolbox" element={<Navigate to="/home" replace />} />
                     <Route path="/analytics" element={<Analytics />} />
                   </Route>
                 </Route>
