@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { evaluateUserAccess } from "../_shared/access-control.ts";
+import { createSseLineSplitter } from "../_shared/sse-lines.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -342,10 +343,44 @@ function transformAnthropicStream(response: Response): ReadableStream {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
+  const splitter = createSseLineSplitter();
+
+  const handleLine = (controller: ReadableStreamDefaultController, line: string) => {
+    if (!line.startsWith("data: ")) return;
+    const data = line.slice(6);
+    if (data === "[DONE]") {
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(data);
+
+      // Handle different Anthropic event types
+      if (parsed.type === "content_block_delta" && parsed.delta?.text) {
+        const openAIFormat = {
+          choices: [
+            {
+              delta: { content: parsed.delta.text },
+              index: 0,
+            },
+          ],
+        };
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIFormat)}\n\n`));
+      } else if (parsed.type === "message_stop") {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      }
+    } catch {
+      // Skip invalid JSON
+    }
+  };
+
   return new ReadableStream({
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) {
+        for (const line of splitter.push(decoder.decode())) handleLine(controller, line);
+        for (const line of splitter.flush()) handleLine(controller, line);
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
         return;
@@ -355,39 +390,9 @@ function transformAnthropicStream(response: Response): ReadableStream {
       // across a chunk boundary instead of emitting it as U+FFFD — the
       // resume system prompt uses multi-byte glyphs (📍✉️📞🔗, em-dashes),
       // so without this a chunk split mid-character corrupted the output.
+      // The line splitter likewise carries a partial SSE line to the next read.
       const text = decoder.decode(value, { stream: true });
-      const lines = text.split("\n");
-
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6);
-          if (data === "[DONE]") {
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-            continue;
-          }
-
-          try {
-            const parsed = JSON.parse(data);
-            
-            // Handle different Anthropic event types
-            if (parsed.type === "content_block_delta" && parsed.delta?.text) {
-              const openAIFormat = {
-                choices: [
-                  {
-                    delta: { content: parsed.delta.text },
-                    index: 0,
-                  },
-                ],
-              };
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIFormat)}\n\n`));
-            } else if (parsed.type === "message_stop") {
-              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-            }
-          } catch {
-            // Skip invalid JSON
-          }
-        }
-      }
+      for (const line of splitter.push(text)) handleLine(controller, line);
     },
   });
 }
