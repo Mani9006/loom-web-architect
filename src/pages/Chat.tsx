@@ -1842,6 +1842,11 @@ ${experienceSummary}
               selectedModel={selectedModel}
               onModelChange={setSelectedModel}
               onBack={handleNewChat}
+              onLoadSavedLetter={(letter) =>
+                setCoverLetterMessages([
+                  { id: crypto.randomUUID(), role: "assistant", content: letter.content, timestamp: new Date() },
+                ])
+              }
             />
           </div>
         )}

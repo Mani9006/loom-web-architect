@@ -332,11 +332,15 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
   const [selectedResumeId, setSelectedResumeId] = useState("");
   const [loadingDocs, setLoadingDocs] = useState(false);
 
-  const [jobPreferences, setJobPreferences] = useState<Record<string, unknown>>({});
+  const [, setJobPreferences] = useState<Record<string, unknown>>({});
   const [loadingPrefs, setLoadingPrefs] = useState(false);
 
   const [answerMemory, setAnswerMemory] = useState<Record<string, string>>({});
   const [applyStatusMap, setApplyStatusMap] = useState<Record<string, ApplyStatusEntry>>({});
+  // Synchronous mirrors so sequential/async saves always merge into the latest
+  // data instead of a stale render snapshot (which would revert earlier writes).
+  const prefsRef = useRef<Record<string, unknown>>({});
+  const applyStatusRef = useRef<Record<string, ApplyStatusEntry>>({});
   const [candidateProfile, setCandidateProfile] = useState<CandidateProfile>(EMPTY_PROFILE);
   const [briefByJobId, setBriefByJobId] = useState<Record<string, string>>({});
 
@@ -481,12 +485,12 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
     return () => window.clearTimeout(timeoutId);
   }, [activeBrowserUrl, browserRefreshKey]);
 
+  // Reset the browser mode only when the selected job changes; depending on
+  // browserMode here would immediately undo fallback/reader/manual choices.
   useEffect(() => {
-    if (browserMode !== "cloud") {
-      setBrowserMode("primary");
-      setManualBrowserUrl("");
-    }
-  }, [selectedJobId, browserMode]);
+    setBrowserMode((prev) => (prev === "cloud" ? prev : "primary"));
+    setManualBrowserUrl("");
+  }, [selectedJobId]);
 
   // Auto-switch to cloud mode when a cloud session already exists and the
   // primary URL is blocklisted. We no longer auto-*create* cloud sessions
@@ -587,9 +591,12 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
         const basePrefs = asObject(profileData.job_preferences);
         const applypass = asObject(basePrefs.applypass);
 
+        prefsRef.current = basePrefs;
         setJobPreferences(basePrefs);
         setAnswerMemory(parseAnswerMemory(applypass.answers));
-        setApplyStatusMap(parseApplyStatusMap(applypass.applyStatus));
+        const loadedStatus = parseApplyStatusMap(applypass.applyStatus);
+        applyStatusRef.current = loadedStatus;
+        setApplyStatusMap(loadedStatus);
         setBriefByJobId(parseAnswerMemory(applypass.jobBriefs));
 
         const storedProfile = parseCandidateProfile(applypass.profile);
@@ -937,7 +944,7 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
 
     if (!user) throw new Error("Sign in required.");
 
-    const currentPrefs = asObject(jobPreferences);
+    const currentPrefs = asObject(prefsRef.current);
     const currentApplypass = asObject(currentPrefs.applypass);
 
     const nextPrefs: Record<string, unknown> = {
@@ -948,6 +955,7 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
         updatedAt: new Date().toISOString(),
       },
     };
+    prefsRef.current = nextPrefs;
 
     const payload: Database["public"]["Tables"]["profiles"]["Insert"] = {
       user_id: user.id,
@@ -1287,11 +1295,9 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
       updatedAt: new Date().toISOString(),
     };
 
-    let nextMap: Record<string, ApplyStatusEntry> = {};
-    setApplyStatusMap((prev) => {
-      nextMap = { ...prev, [job.id]: nextEntry };
-      return nextMap;
-    });
+    const nextMap: Record<string, ApplyStatusEntry> = { ...applyStatusRef.current, [job.id]: nextEntry };
+    applyStatusRef.current = nextMap;
+    setApplyStatusMap(nextMap);
 
     try {
       await persistApplypassState({ applyStatus: nextMap });
