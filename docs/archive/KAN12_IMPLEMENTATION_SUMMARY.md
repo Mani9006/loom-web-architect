@@ -169,7 +169,7 @@ supabase migration down
 
 ## Test Coverage
 
-**File:** `/KAN12_TEST_EXAMPLES.md`
+**File:** `KAN12_TEST_EXAMPLES.md`
 
 ### Success Scenarios (5)
 1. Basic application (resume only)

@@ -122,7 +122,7 @@ Built production-ready Deno Edge Function with:
    - Message: "Internal server error"
 
 ### Test Documentation
-**File:** `/KAN12_TEST_EXAMPLES.md` (500+ lines)
+**File:** `KAN12_TEST_EXAMPLES.md` (500+ lines)
 - Complete setup instructions
 - All curl examples with full requests/responses
 - Verification SQL queries
@@ -249,8 +249,8 @@ These will be implemented in subsequent milestones.
 ## Quick Links
 
 - **Git Commit:** `d557682`
-- **Test Guide:** `/KAN12_TEST_EXAMPLES.md`
-- **Implementation Summary:** `/KAN12_IMPLEMENTATION_SUMMARY.md`
+- **Test Guide:** `KAN12_TEST_EXAMPLES.md`
+- **Implementation Summary:** `KAN12_IMPLEMENTATION_SUMMARY.md`
 - **Database Migration:** `/supabase/migrations/20260221_apply_jobs_schema.sql`
 - **Edge Function:** `/supabase/functions/apply-to-job/index.ts`
 
