@@ -57,18 +57,18 @@ export default function FeedbackPage() {
 
   return (
     <div className="px-6 lg:px-10 pt-10 pb-16 max-w-[780px] mx-auto">
-      <p className="text-[12px] font-medium text-muted-foreground mb-1.5">Feedback</p>
-      <h1 className="text-[28px] sm:text-[32px] font-bold text-foreground tracking-tight leading-tight">
+      <p className="text-xs font-medium text-muted-foreground mb-1.5">Feedback</p>
+      <h1 className="text-3xl sm:text-3xl font-bold text-foreground tracking-tight leading-tight">
         Tell us what's on your mind
       </h1>
-      <p className="mt-2 text-[14px] text-muted-foreground max-w-[64ch] leading-relaxed">
+      <p className="mt-2 text-sm text-muted-foreground max-w-[64ch] leading-relaxed">
         Bug, feature, kind words, all of it lands in our inbox. {user?.email ? `We'll reply to ${user.email}.` : ""}
       </p>
 
       <div className="mt-8 space-y-6">
         {/* Category picker */}
         <div>
-          <label className="block text-[13px] font-semibold text-foreground mb-2">Category</label>
+          <label className="block text-meta font-semibold text-foreground mb-2">Category</label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {CATEGORIES.map((c) => {
               const Icon = c.icon;
@@ -87,8 +87,8 @@ export default function FeedbackPage() {
                 >
                   <Icon className={cn("w-4 h-4", active ? "text-foreground" : "text-muted-foreground")} strokeWidth={1.75} />
                   <div>
-                    <div className="text-[13px] font-semibold text-foreground">{c.label}</div>
-                    <div className="text-[11.5px] text-muted-foreground mt-0.5 leading-snug">{c.desc}</div>
+                    <div className="text-meta font-semibold text-foreground">{c.label}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{c.desc}</div>
                   </div>
                 </button>
               );
@@ -97,19 +97,19 @@ export default function FeedbackPage() {
         </div>
 
         <div>
-          <label htmlFor="feedback-subject" className="block text-[13px] font-semibold text-foreground mb-2">Subject</label>
+          <label htmlFor="feedback-subject" className="block text-meta font-semibold text-foreground mb-2">Subject</label>
           <input
             id="feedback-subject"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             placeholder="Short one-liner"
             maxLength={200}
-            className="w-full h-10 px-3 rounded-md bg-background border border-border text-[13.5px] focus:outline-none focus:border-foreground/40"
+            className="w-full h-10 px-3 rounded-md bg-background border border-border text-meta focus:outline-none focus:border-foreground/40"
           />
         </div>
 
         <div>
-          <label htmlFor="feedback-message" className="block text-[13px] font-semibold text-foreground mb-2">Message</label>
+          <label htmlFor="feedback-message" className="block text-meta font-semibold text-foreground mb-2">Message</label>
           <textarea
             id="feedback-message"
             value={message}
@@ -117,9 +117,9 @@ export default function FeedbackPage() {
             placeholder="What happened, what you expected, and anything else useful."
             rows={7}
             maxLength={5000}
-            className="w-full px-3 py-2.5 rounded-md bg-background border border-border text-[13.5px] leading-relaxed focus:outline-none focus:border-foreground/40 resize-y"
+            className="w-full px-3 py-2.5 rounded-md bg-background border border-border text-meta leading-relaxed focus:outline-none focus:border-foreground/40 resize-y"
           />
-          <p className="text-[11px] text-muted-foreground mt-1.5">
+          <p className="text-xs text-muted-foreground mt-1.5">
             {message.length} / 5000 characters
           </p>
         </div>
@@ -128,13 +128,13 @@ export default function FeedbackPage() {
           <button
             onClick={submit}
             disabled={submitting}
-            className="h-10 px-5 rounded-md text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
+            className="h-10 px-5 rounded-md text-meta font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
           >
             {submitting ? "Sending…" : "Send feedback"}
           </button>
           <button
             onClick={() => navigate(-1)}
-            className="h-10 px-4 rounded-md text-[13px] text-foreground hover:bg-muted transition-colors"
+            className="h-10 px-4 rounded-md text-meta text-foreground hover:bg-muted transition-colors"
           >
             Cancel
           </button>

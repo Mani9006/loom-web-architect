@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { MotionConfig } from "framer-motion";
 import App from "./App.tsx";
 import "./index.css";
 import { analyticsCollector } from "./lib/analytics";
@@ -14,7 +15,13 @@ initializeTheme();
 installGlobalIncidentHandlers();
 
 // Initialize analytics collector and log metrics after DOM is ready
-createRoot(document.getElementById("root")!).render(<App />);
+// One motion house style: critically damped springs (no overshoot), and
+// framer-motion honours the OS reduced-motion setting everywhere.
+createRoot(document.getElementById("root")!).render(
+  <MotionConfig reducedMotion="user" transition={{ type: "spring", bounce: 0, duration: 0.35 }}>
+    <App />
+  </MotionConfig>,
+);
 
 // Log metrics after a short delay to allow Web Vitals to populate
 setTimeout(() => {

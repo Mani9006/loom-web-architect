@@ -15,8 +15,8 @@ interface LegalLayoutProps {
 export function LegalSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-10">
-      <h2 className="text-[18px] font-semibold tracking-tight text-foreground">{title}</h2>
-      <div className="mt-3 space-y-3 text-[14px] leading-relaxed text-muted-foreground">{children}</div>
+      <h2 className="text-xl font-semibold tracking-tight text-foreground">{title}</h2>
+      <div className="mt-3 space-y-3 text-sm leading-relaxed text-muted-foreground">{children}</div>
     </section>
   );
 }
@@ -40,11 +40,11 @@ export default function LegalLayout({ title, subtitle, children }: LegalLayoutPr
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <nav className="sticky top-0 z-50 bg-background/85 backdrop-blur-md border-b border-border">
+      <nav className="sticky top-0 z-50 material-bar border-b border-border">
         <div className="max-w-[1200px] mx-auto px-6 h-14 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 no-underline">
-            <div className="w-6 h-6 rounded-md bg-foreground text-background flex items-center justify-center text-[12px] font-bold">R</div>
-            <span className="text-[15px] font-semibold tracking-tight">ResumePreps</span>
+            <div className="w-6 h-6 rounded-md bg-foreground text-background flex items-center justify-center text-xs font-bold">R</div>
+            <span className="text-sm font-semibold tracking-tight">ResumePreps</span>
           </Link>
           <div className="flex items-center gap-1.5">
             <button
@@ -57,7 +57,7 @@ export default function LegalLayout({ title, subtitle, children }: LegalLayoutPr
             </button>
             <Link
               to="/"
-              className="h-9 px-3 rounded-md text-[13px] text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
+              className="h-9 px-3 rounded-md text-meta text-foreground hover:bg-muted transition-colors inline-flex items-center gap-1.5"
             >
               <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2} /> Back to home
             </Link>
@@ -66,17 +66,17 @@ export default function LegalLayout({ title, subtitle, children }: LegalLayoutPr
       </nav>
 
       <main className="max-w-[760px] mx-auto px-6 pt-14 pb-20">
-        <p className="text-[12px] font-medium text-muted-foreground mb-2">Legal</p>
-        <h1 className="text-[32px] sm:text-[40px] font-bold tracking-tight text-foreground leading-[1.1]">{title}</h1>
-        <p className="mt-3 text-[13.5px] text-muted-foreground">
+        <p className="text-xs font-medium text-muted-foreground mb-2">Legal</p>
+        <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-foreground leading-[1.1]">{title}</h1>
+        <p className="mt-3 text-meta text-muted-foreground">
           Effective date: {LEGAL_EFFECTIVE_DATE} · {subtitle}
         </p>
         <div className="mt-4 border-t border-border" />
         {children}
 
         <div className="mt-14 rounded-xl border border-border bg-card p-5">
-          <p className="text-[13.5px] font-semibold text-foreground">Questions about this document?</p>
-          <p className="mt-1.5 text-[13px] text-muted-foreground leading-relaxed">
+          <p className="text-meta font-semibold text-foreground">Questions about this document?</p>
+          <p className="mt-1.5 text-meta text-muted-foreground leading-relaxed">
             Contact us at{" "}
             <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="text-foreground underline underline-offset-2 hover:text-foreground/70">
               {LEGAL_CONTACT_EMAIL}
@@ -93,13 +93,13 @@ export default function LegalLayout({ title, subtitle, children }: LegalLayoutPr
       <footer className="border-t border-border py-10">
         <div className="max-w-[1200px] mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-foreground text-background flex items-center justify-center text-[12px] font-bold">R</div>
-            <span className="text-[14px] font-semibold tracking-tight">ResumePreps</span>
+            <div className="w-6 h-6 rounded-md bg-foreground text-background flex items-center justify-center text-xs font-bold">R</div>
+            <span className="text-sm font-semibold tracking-tight">ResumePreps</span>
           </div>
           <div className="flex items-center gap-5">
-            <Link to="/privacy" className="text-[12.5px] text-muted-foreground hover:text-foreground transition-colors">Privacy Policy</Link>
-            <Link to="/terms" className="text-[12.5px] text-muted-foreground hover:text-foreground transition-colors">Terms of Service</Link>
-            <p className="text-[12px] text-muted-foreground">&copy; {new Date().getFullYear()} ResumePreps. All rights reserved.</p>
+            <Link to="/privacy" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy Policy</Link>
+            <Link to="/terms" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms of Service</Link>
+            <p className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} ResumePreps. All rights reserved.</p>
           </div>
         </div>
       </footer>

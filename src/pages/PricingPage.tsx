@@ -17,10 +17,6 @@ import { captureIncident } from "@/lib/incidents";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { PageHeader } from "@/components/PageHeader";
 
-const URBAN = { fontFamily: '"Urbanist", "Manrope", system-ui, sans-serif' } as const;
-const EPI = { fontFamily: '"Epilogue", "Inter", system-ui, sans-serif' } as const;
-const MONO = { fontFamily: '"JetBrains Mono", ui-monospace, monospace' } as const;
-
 export default function PricingPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -93,52 +89,46 @@ export default function PricingPage() {
                     <div
                       aria-hidden
                       className="absolute -top-12 -right-6 w-64 h-64 rounded-full blur-3xl pointer-events-none"
-                      style={{ background: "hsl(var(--rp-accent) / 0.10)" }}
+                      style={{ background: "oklch(var(--rp-accent) / 0.10)" }}
                     />
                   )}
 
                   <header className="relative">
                     <div className="flex items-baseline gap-3 mb-2">
                       <span
-                        className="text-rp-ink-3 tabular-nums"
-                        style={{ ...MONO, fontSize: "11px", letterSpacing: "0.14em" }}
+                        className="text-rp-ink-3 tabular-nums text-xs font-medium"
                       >
                         {String(i + 1).padStart(2, "0")}
                       </span>
                       <span
-                        className={cn(
+                        className={cn("text-xs font-semibold",
                           isFeatured ? "text-rp-accent" : "text-rp-ink-3",
                         )}
-                        style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
                       >
                         {isFeatured ? "Featured tier" : plan.id === "free" ? "Get started" : "Full autonomy"}
                       </span>
                     </div>
                     <h2
-                      className="text-rp-ink"
-                      style={{ ...URBAN, fontSize: "38px", lineHeight: 1.05, letterSpacing: "-0.02em", fontWeight: 400 }}
+                      className="text-rp-ink text-5xl font-normal leading-tight"
                     >
                       {plan.name}
                     </h2>
 
                     <div className="mt-6 flex items-baseline gap-2">
                       <span
-                        className={cn("tabular-nums", isFeatured ? "text-rp-accent-2" : "text-rp-ink")}
-                        style={{ ...URBAN, fontSize: "56px", lineHeight: 1, letterSpacing: "-0.03em", fontWeight: 200 }}
+                        className={cn("text-5xl font-normal leading-tight", "tabular-nums", isFeatured ? "text-rp-accent-2" : "text-rp-ink")}
                       >
                         {formatPlanPrice(plan.price)}
                       </span>
                       <span
-                        className="text-rp-ink-3"
-                        style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}
+                        className="text-rp-ink-3 text-meta font-normal"
                       >
                         {plan.period}
                       </span>
                     </div>
 
                     <p
-                      className="text-rp-ink-2 mt-4 max-w-sm leading-relaxed"
-                      style={{ ...EPI, fontSize: "14px", fontWeight: 300 }}
+                      className="text-rp-ink-2 mt-4 max-w-sm leading-relaxed text-sm font-normal"
                     >
                       {plan.description}
                     </p>
@@ -154,8 +144,7 @@ export default function PricingPage() {
                           strokeWidth={1.75}
                         />
                         <span
-                          className="text-rp-ink-2"
-                          style={{ ...EPI, fontSize: "13.5px", lineHeight: 1.55, fontWeight: 300 }}
+                          className="text-rp-ink-2 text-meta font-normal leading-relaxed"
                         >
                           {feature}
                         </span>
@@ -166,14 +155,13 @@ export default function PricingPage() {
                   <button
                     disabled={loadingPlan !== null || isCurrent || plan.id === "free"}
                     onClick={() => handleUpgrade(plan.id)}
-                    className={cn(
+                    className={cn("text-xs font-semibold",
                       "mt-10 group inline-flex items-center justify-between gap-3 border-b pb-2 transition-colors",
                       isFeatured
                         ? "border-rp-accent text-rp-accent hover:text-rp-accent-2 hover:border-rp-accent-2"
                         : "border-rp-rule-2 text-rp-ink hover:border-rp-accent hover:text-rp-accent",
                       (isCurrent || plan.id === "free") && "opacity-60 cursor-not-allowed",
                     )}
-                    style={{ ...URBAN, fontSize: "11.5px", fontWeight: 600, letterSpacing: "0.22em", textTransform: "uppercase" }}
                   >
                     <span className="inline-flex items-center gap-2">
                       {loadingPlan === plan.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -190,14 +178,13 @@ export default function PricingPage() {
         </section>
 
         <footer className="mt-12 flex flex-wrap items-baseline justify-between gap-6 border-t border-rp-rule pt-6">
-          <p className="text-rp-ink-3 max-w-2xl leading-relaxed" style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}>
+          <p className="text-rp-ink-3 max-w-2xl leading-relaxed text-meta font-normal">
             Monthly limits are deliberate. They exist so every application stays worth reading, and so you never see a
             surprise usage charge at the end of the month.
           </p>
           <a
             href="mailto:support@resumepreps.com"
-            className="text-rp-ink-2 hover:text-rp-accent transition-colors inline-flex items-center gap-2"
-            style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+            className="text-rp-ink-2 hover:text-rp-accent transition-colors inline-flex items-center gap-2 text-xs font-semibold"
           >
             Talk to us
             <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />

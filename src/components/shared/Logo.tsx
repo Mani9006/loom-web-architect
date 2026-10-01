@@ -9,23 +9,23 @@ interface LogoProps {
 }
 
 const sizes = {
-  sm: { mark: "w-7 h-7", text: "text-sm" },
-  md: { mark: "w-8 h-8", text: "text-[15px]" },
-  lg: { mark: "w-10 h-10", text: "text-lg" },
-  xl: { mark: "w-14 h-14", text: "text-2xl" },
+  sm: { mark: "w-6 h-6 text-xs", text: "text-sm" },
+  md: { mark: "w-7 h-7 text-sm", text: "text-sm" },
+  lg: { mark: "w-8 h-8 text-base", text: "text-base" },
+  xl: { mark: "w-10 h-10 text-xl", text: "text-xl" },
 };
 
 export function LogoIcon({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "rounded-full flex items-center justify-center font-semibold select-none",
+        "rounded-md flex items-center justify-center font-semibold select-none",
         "bg-foreground text-background",
         className,
       )}
       aria-hidden="true"
     >
-      <span className="leading-none" style={{ fontSize: "0.56em", letterSpacing: "-0.03em" }}>R</span>
+      <span className="leading-none">R</span>
     </div>
   );
 }
@@ -37,7 +37,7 @@ export default function Logo({ size = "md", className, dark, markOnly }: LogoPro
     <div className={cn("flex items-center gap-2.5", className)}>
       <LogoIcon className={s.mark} />
       {!markOnly && (
-        <span className={cn(s.text, "font-medium tracking-tight", textCls)}>
+        <span className={cn(s.text, "font-semibold", textCls)}>
           ResumePreps
         </span>
       )}

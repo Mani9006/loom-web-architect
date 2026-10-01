@@ -28,7 +28,7 @@ export function ChatHeader({ user, displayName, onSignOut }: ChatHeaderProps) {
     .slice(0, 2);
 
   return (
-    <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-background/80 backdrop-blur-lg">
+    <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-background">
       <div className="flex items-center gap-3">
         <SidebarTrigger className="lg:hidden" />
         <div className="flex items-center gap-2 lg:hidden">

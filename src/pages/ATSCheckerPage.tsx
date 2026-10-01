@@ -62,7 +62,7 @@ function ScoreRing({ score, size = 120, strokeWidth = 10 }: { score: number; siz
         <circle
           cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={strokeWidth}
           strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-          className={cn(color, "transition-all duration-1000 ease-out")}
+          className={cn(color, "transition-[stroke-dashoffset] duration-1000 ease-out")}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -96,12 +96,12 @@ function SectionCard({ config, data, expanded, onToggle }: {
                 <span className="text-sm font-medium truncate">{config.label}</span>
                 <div className="flex items-center gap-2">
                   <span className={cn("text-sm font-bold", scoreColor)}>{data.score}</span>
-                  <span className="text-[10px] text-muted-foreground">{config.weight}</span>
+                  <span className="text-xs text-muted-foreground">{config.weight}</span>
                   {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
                 </div>
               </div>
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div className={cn("h-full rounded-full transition-all duration-700", barColor)} style={{ width: `${data.score}%` }} />
+                <div className={cn("h-full rounded-full transition-[width] duration-700 ease-out", barColor)} style={{ width: `${data.score}%` }} />
               </div>
             </div>
           </div>
@@ -116,7 +116,7 @@ function SectionCard({ config, data, expanded, onToggle }: {
               <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1.5">Matched</p>
               <div className="flex flex-wrap gap-1.5">
                 {data.matched.map((item, i) => (
-                  <Badge key={i} variant="secondary" className="text-[11px] bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  <Badge key={i} variant="secondary" className="text-xs bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                     <CheckCircle className="w-3 h-3 mr-1" /> {item}
                   </Badge>
                 ))}
@@ -130,7 +130,7 @@ function SectionCard({ config, data, expanded, onToggle }: {
               <p className="text-xs font-medium text-red-700 dark:text-red-400 mb-1.5">Missing</p>
               <div className="flex flex-wrap gap-1.5">
                 {data.missing.map((item, i) => (
-                  <Badge key={i} variant="secondary" className="text-[11px] bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                  <Badge key={i} variant="secondary" className="text-xs bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                     <AlertTriangle className="w-3 h-3 mr-1" /> {item}
                   </Badge>
                 ))}
@@ -361,7 +361,7 @@ export default function ATSCheckerPage() {
                   <DocumentUpload onTextExtracted={handleDocumentExtracted} isLoading={loading} label="Upload résumé (PDF / Word)" />
                 </div>
                 {uploadedFileName && (
-                  <p className="mt-3 text-rp-ink-3" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}>
+                  <p className="mt-3 text-rp-ink-3 font-mono text-xs">
                     Loaded: <span className="text-rp-ink">{uploadedFileName}</span>
                   </p>
                 )}
@@ -376,7 +376,7 @@ export default function ATSCheckerPage() {
 
               <section>
                 <SectionHead n="02" title="Job description" trailing="Recommended" />
-                <p className="mt-2 text-rp-ink-2 max-w-lg leading-relaxed" style={{ fontFamily: '"Epilogue", sans-serif', fontSize: "13px", fontWeight: 300 }}>
+                <p className="mt-2 text-rp-ink-2 max-w-lg leading-relaxed text-meta font-normal">
                   Paste the target posting to get keyword-match analysis and tailored recommendations.
                 </p>
                 <Textarea
@@ -391,11 +391,10 @@ export default function ATSCheckerPage() {
               <button
                 onClick={analyze}
                 disabled={!resumeText.trim() || loading}
-                className={cn(
+                className={cn("text-xs font-semibold",
                   "group w-full inline-flex items-center justify-center gap-3 py-4 transition-colors",
                   "bg-rp-accent text-rp-canvas hover:bg-rp-accent-2 disabled:opacity-50 disabled:cursor-not-allowed",
                 )}
-                style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "12px", fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase" }}
               >
                 {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing across 6 dimensions…</> : <>Analyze ATS compatibility <Target className="w-4 h-4" /></>}
               </button>
@@ -409,14 +408,14 @@ export default function ATSCheckerPage() {
                   const Icon = config.icon;
                   return (
                     <li key={config.key} className="flex items-center gap-3 py-3">
-                      <span className="text-rp-ink-3 tabular-nums" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.14em" }}>
+                      <span className="text-rp-ink-3 tabular-nums text-xs font-medium">
                         {String(i + 1).padStart(2, "0")}
                       </span>
                       <Icon className="w-3.5 h-3.5 text-rp-accent" strokeWidth={1.6} />
-                      <span className="flex-1 text-rp-ink" style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "13.5px", fontWeight: 500 }}>
+                      <span className="flex-1 text-rp-ink text-meta font-medium">
                         {config.label}
                       </span>
-                      <span className="text-rp-ink-3" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}>
+                      <span className="text-rp-ink-3 font-mono text-xs">
                         {config.weight}
                       </span>
                     </li>
@@ -434,11 +433,11 @@ export default function ATSCheckerPage() {
 function SectionHead({ n, title, required, trailing }: { n: string; title: string; required?: boolean; trailing?: string }) {
   return (
     <div className="flex items-baseline gap-3 border-b border-rp-rule pb-3">
-      <span className="text-rp-accent tabular-nums" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.14em" }}>{n}</span>
-      <h2 className="text-rp-ink" style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "20px", fontWeight: 400, letterSpacing: "-0.015em" }}>{title}</h2>
+      <span className="text-rp-accent tabular-nums text-xs font-medium">{n}</span>
+      <h2 className="text-rp-ink text-xl font-normal">{title}</h2>
       {required && <span className="text-rp-accent" style={{ fontSize: "12px" }}>*</span>}
       <span className="flex-1" />
-      {trailing && <span className="text-rp-ink-3" style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "10px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}>{trailing}</span>}
+      {trailing && <span className="text-rp-ink-3 text-xs font-medium">{trailing}</span>}
     </div>
   );
 }

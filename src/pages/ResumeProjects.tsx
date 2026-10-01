@@ -518,14 +518,12 @@ export default function ResumeProjects() {
         {/* Date + status row */}
         <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pb-4 border-b border-rp-rule">
           <span
-            className="text-rp-ink-2"
-            style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", letterSpacing: "0.06em" }}
+            className="text-rp-ink-2 font-mono text-xs"
           >
             {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </span>
           <span
-            className="text-rp-ink-3"
-            style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em" }}
+            className="text-rp-ink-3 font-mono text-xs"
           >
             library · {resumes.length} {resumes.length === 1 ? "résumé" : "résumés"}
           </span>
@@ -534,21 +532,14 @@ export default function ResumeProjects() {
         {/* Typed title with red cursor */}
         <div className="mt-10 mb-4">
           <h1
-            className="text-rp-ink"
-            style={{
-              fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-              fontSize: "clamp(38px, 6vw, 60px)",
-              lineHeight: 1.04,
-              letterSpacing: "-0.02em",
-              fontWeight: 700,
-            }}
+            className="text-rp-ink font-semibold leading-tight"
+            style={{ fontSize: "clamp(38px, 6vw, 60px)" }}
           >
             <TerminalText text="Your résumés." speed={80} startDelay={150} />
           </h1>
         </div>
         <p
-          className="text-rp-ink-2 max-w-2xl"
-          style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "16px", lineHeight: 1.6 }}
+          className="text-rp-ink-2 max-w-2xl text-base leading-relaxed"
         >
           Your source and master résumés only. Job-specific versions stay attached to Applications, so small edits never clutter this library.
         </p>
@@ -607,14 +598,12 @@ export default function ResumeProjects() {
               placeholder="Search by name or role…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent outline-none placeholder:text-rp-ink-3 text-rp-ink"
-              style={{ fontFamily: '"Inter", system-ui, sans-serif', fontSize: "13.5px" }}
+              className="flex-1 bg-transparent outline-none placeholder:text-rp-ink-3 text-rp-ink text-meta"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="text-rp-ink-3 hover:text-rp-ink"
-                style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.06em", textTransform: "uppercase" }}
+                className="text-rp-ink-3 hover:text-rp-ink text-xs font-medium"
               >
                 clear
               </button>
@@ -740,8 +729,7 @@ export default function ResumeProjects() {
                 />
                 {uploadedResumeText && (
                   <div
-                    className="flex items-center gap-2 mt-2 text-rp-accent"
-                    style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11.5px" }}
+                    className="flex items-center gap-2 mt-2 text-rp-accent font-mono text-xs"
                   >
                     <span className="size-1.5 rounded-full bg-rp-accent" />
                     OK · extracted {uploadedResumeFileName} ({uploadedResumeText.length.toLocaleString()} chars)
@@ -900,7 +888,7 @@ function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimar
 
   return (
     <div
-      className="group relative rounded-xl border border-border bg-card overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all cursor-pointer"
+      className="group relative rounded-xl border border-border bg-card overflow-hidden hover:border-primary/40 pressable cursor-pointer"
       onClick={onClick}
     >
       {/* Thumbnail, zoomed to show top portion of resume, centered */}
@@ -922,7 +910,7 @@ function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimar
           {atsScore.overall}%
         </div>
         {isPrimary && (
-          <div className="absolute left-3 top-3 rounded-full bg-rp-ink px-2.5 py-1 text-[10px] font-semibold text-rp-canvas shadow-md">
+          <div className="absolute left-3 top-3 rounded-full bg-rp-ink px-2.5 py-1 text-xs font-semibold text-rp-canvas shadow-md">
             Matching resume
           </div>
         )}
@@ -930,7 +918,7 @@ function ResumeCard({ resume, onClick, onClone, onDelete, isPrimary, onSetPrimar
         {/* Hover overlay, dark pill against the white resume thumbnail */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <div className="bg-rp-ink/95 text-rp-canvas backdrop-blur-sm rounded-md px-3 py-1.5 flex items-center gap-2 text-xs font-medium">
+            <div className="bg-rp-ink text-rp-canvas rounded-md px-3 py-1.5 flex items-center gap-2 text-xs font-medium">
               <Pencil className="h-3.5 w-3.5" />
               Edit résumé
             </div>

@@ -211,7 +211,7 @@ export default function ControlCenter() {
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-3">
               <div className="rounded-lg border p-4 space-y-2">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Deployment</p>
+                <p className="text-xs text-muted-foreground font-medium">Deployment</p>
                 <Badge variant={deploymentBadgeTone(data.signals.deployment.state)}>
                   {data.signals.deployment.state.toUpperCase()}
                 </Badge>
@@ -229,7 +229,7 @@ export default function ControlCenter() {
               </div>
 
               <div className="rounded-lg border p-4 space-y-2">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Jira Execution</p>
+                <p className="text-xs text-muted-foreground font-medium">Jira Execution</p>
                 <p className="text-sm">Open: <span className="font-semibold">{data.signals.jira.openCount}</span></p>
                 <p className="text-sm">In Progress: <span className="font-semibold">{data.signals.jira.inProgressCount}</span></p>
                 <p className="text-sm">Review: <span className="font-semibold">{data.signals.jira.reviewCount}</span></p>
@@ -239,7 +239,7 @@ export default function ControlCenter() {
               </div>
 
               <div className="rounded-lg border p-4 space-y-2">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Platform Volume</p>
+                <p className="text-xs text-muted-foreground font-medium">Platform Volume</p>
                 <p className="text-sm">Users: <span className="font-semibold">{data.signals.platform.users}</span></p>
                 <p className="text-sm">Resumes: <span className="font-semibold">{data.signals.platform.resumes}</span></p>
                 <p className="text-sm">Tracked Jobs: <span className="font-semibold">{data.signals.platform.trackedJobs}</span></p>

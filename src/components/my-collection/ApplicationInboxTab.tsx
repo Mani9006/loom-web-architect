@@ -178,8 +178,8 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
                     {codeActive && (
                       <div className="mt-3 inline-flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
                         <div>
-                          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Verification code</p>
-                          <p className="font-mono text-lg font-semibold tracking-[0.2em]">{message.verification_code}</p>
+                          <p className="text-xs font-medium text-muted-foreground">Verification code</p>
+                          <p className="font-mono text-lg font-semibold">{message.verification_code}</p>
                         </div>
                         <Button variant="outline" size="sm" onClick={() => copyCode(message.verification_code!)}>
                           <Clipboard className="mr-1.5 h-3.5 w-3.5" /> Copy
@@ -187,7 +187,7 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
                       </div>
                     )}
                   </div>
-                  <time className="shrink-0 text-[10px] text-muted-foreground" dateTime={message.received_at}>
+                  <time className="shrink-0 text-xs text-muted-foreground" dateTime={message.received_at}>
                     {new Date(message.received_at).toLocaleString()}
                   </time>
                 </div>

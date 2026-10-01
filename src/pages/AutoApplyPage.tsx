@@ -1051,7 +1051,7 @@ export default function AutoApplyPage() {
                       {job.match_reasons?.details && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {job.match_reasons.details.slice(0, 3).map((r: string, i: number) => (
-                            <Badge key={i} variant="outline" className="text-[10px] gap-1"><Sparkles className="w-2.5 h-2.5" /> {r}</Badge>
+                            <Badge key={i} variant="outline" className="text-xs gap-1"><Sparkles className="w-2.5 h-2.5" /> {r}</Badge>
                           ))}
                         </div>
                       )}

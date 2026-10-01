@@ -205,7 +205,7 @@ function WedgeCard({ wedge }: { wedge: Wedge }) {
       <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setOpen((v) => !v)}>
         <CardTitle className="text-sm font-semibold flex items-center justify-between gap-2">
           <span className="flex items-center gap-2">
-            <Badge variant="outline" className="font-mono text-[10px]">{wedge.id}</Badge>
+            <Badge variant="outline" className="font-mono text-xs">{wedge.id}</Badge>
             {wedge.title}
           </span>
           {open ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
@@ -214,15 +214,15 @@ function WedgeCard({ wedge }: { wedge: Wedge }) {
       {open && (
         <CardContent className="space-y-3 pt-0">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Insight</p>
+            <p className="text-xs font-semibold text-muted-foreground mb-0.5">Insight</p>
             <p className="text-sm text-foreground">{wedge.insight}</p>
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Win Condition</p>
+            <p className="text-xs font-semibold text-muted-foreground mb-0.5">Win Condition</p>
             <p className="text-sm text-foreground">{wedge.winCondition}</p>
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Activation Play</p>
+            <p className="text-xs font-semibold text-muted-foreground mb-0.5">Activation Play</p>
             <p className="text-sm text-foreground">{wedge.activationPlay}</p>
           </div>
         </CardContent>
@@ -250,7 +250,7 @@ function ActionPhaseCard({ phase, days, items }: { phase: string; days: string; 
           <div key={item.id} className="rounded-lg border p-3 space-y-1">
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm font-medium leading-snug">{item.initiative}</p>
-              <Badge variant="secondary" className="text-[10px] shrink-0">{item.owner}</Badge>
+              <Badge variant="secondary" className="text-xs shrink-0">{item.owner}</Badge>
             </div>
             <p className="text-xs text-muted-foreground">{item.deliverable}</p>
             <p className="text-xs font-medium text-primary">{item.metric}</p>
@@ -277,7 +277,7 @@ function KpiSection({ section, icon: Icon, rows }: { section: string; icon: Reac
                 <p className="text-sm font-medium leading-snug">{row.kpi}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{row.validation}</p>
               </div>
-              <Badge variant="outline" className="text-[11px] whitespace-nowrap">{row.target}</Badge>
+              <Badge variant="outline" className="text-xs whitespace-nowrap">{row.target}</Badge>
             </div>
           ))}
         </div>
@@ -331,10 +331,10 @@ export default function MarketDominationMap() {
               <CardContent>
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={featureCoverageData} layout="vertical" margin={{ top: 4, right: 20, left: 10, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                    <XAxis type="number" domain={[0, 5]} tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" horizontal={false} />
+                    <XAxis type="number" domain={[0, 5]} tick={{ fontSize: 11 }} stroke="oklch(var(--muted-foreground))" />
+                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} stroke="oklch(var(--muted-foreground))" />
+                    <Tooltip contentStyle={{ background: "oklch(var(--card))", border: "1px solid oklch(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
                     <Bar dataKey="features" radius={[0, 6, 6, 0]} name="Features">
                       {featureCoverageData.map((_, i) => (
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -374,7 +374,7 @@ export default function MarketDominationMap() {
             <CardContent className="overflow-x-auto">
               <table className="w-full text-sm border-collapse min-w-[600px]">
                 <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase tracking-wide">
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground font-medium">
                     <th className="py-2 pr-4 font-semibold">Competitor</th>
                     <th className="py-2 pr-4 text-center font-semibold">ATS</th>
                     <th className="py-2 pr-4 text-center font-semibold">IP</th>

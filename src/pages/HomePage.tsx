@@ -263,7 +263,7 @@ export default function HomePage() {
 
           {/* ── Header ─────────────────────────────────────────────── */}
           <header>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-rp-ink-3 font-mono mb-2">
+            <p className="text-xs text-rp-ink-3 font-mono mb-2">
               {now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
             </p>
             <h1
@@ -284,7 +284,7 @@ export default function HomePage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-rp-accent" aria-hidden />
-                    <span className="text-[11px] uppercase tracking-[0.12em] text-rp-accent font-medium">
+                    <span className="text-xs text-rp-accent font-medium">
                       {lede.eyebrow}
                     </span>
                   </div>
@@ -300,7 +300,7 @@ export default function HomePage() {
                 </div>
                 <button
                   onClick={() => navigate(lede.href)}
-                  className="shrink-0 inline-flex items-center gap-2 h-8 px-3 rounded-md bg-rp-ink text-rp-canvas hover:opacity-90 transition-opacity text-[12.5px] font-medium"
+                  className="shrink-0 inline-flex items-center gap-2 h-8 px-3 rounded-md bg-rp-ink text-rp-canvas hover:opacity-90 transition-opacity text-xs font-medium"
                 >
                   {lede.cta}
                   <CornerDownLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -308,16 +308,16 @@ export default function HomePage() {
               </div>
               {agentSummary && (
                 <div className="border-t border-rp-rule px-5 py-3 bg-rp-paper-2/40 flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-500">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                     Agent active
                   </span>
-                  <span className="text-[12px] text-rp-ink-2 truncate">
+                  <span className="text-xs text-rp-ink-2 truncate">
                     {agentSummary.lastSummary || `Ran ${agentSummary.runs24h} time${agentSummary.runs24h === 1 ? "" : "s"} in the last 24h.`}
                   </span>
                   <button
                     onClick={() => navigate("/agent")}
-                    className="ml-auto text-[11.5px] text-rp-ink-2 hover:text-rp-ink transition-colors"
+                    className="ml-auto text-xs text-rp-ink-2 hover:text-rp-ink transition-colors"
                   >
                     Open agent →
                   </button>
@@ -349,7 +349,7 @@ export default function HomePage() {
               />
             ) : (
               <div className="border border-rp-rule rounded-[10px] bg-rp-paper overflow-hidden">
-                <div className="grid grid-cols-[1fr_180px_120px_80px] items-center px-4 py-2 border-b border-rp-rule text-[11px] uppercase tracking-[0.1em] text-rp-ink-3 font-medium">
+                <div className="grid grid-cols-[1fr_180px_120px_80px] items-center px-4 py-2 border-b border-rp-rule text-xs text-rp-ink-3 font-medium">
                   <div>Role · Company</div>
                   <div>Status</div>
                   <div>Updated</div>
@@ -371,7 +371,7 @@ export default function HomePage() {
                           </div>
                         </div>
                         <div>
-                          <span className={`inline-flex items-center h-5 px-2 rounded-full border text-[11px] font-medium ${statusTone(a.status)}`}>
+                          <span className={`inline-flex items-center h-5 px-2 rounded-full border text-xs font-medium ${statusTone(a.status)}`}>
                             {applicationStatusLabel(a.status)}
                           </span>
                         </div>
@@ -405,7 +405,7 @@ export default function HomePage() {
                       onClick={() => navigate("/matches")}
                       className="text-left border border-rp-rule rounded-[10px] bg-rp-paper p-4 hover:border-rp-rule-2 transition-colors"
                     >
-                      <div className={`text-[11.5px] font-medium ${band.tone} mb-1`}>
+                      <div className={`text-xs font-medium ${band.tone} mb-1`}>
                         {band.label}
                       </div>
                       <div className="text-rp-ink" style={{ fontSize: "14.5px", fontWeight: 500, lineHeight: "20px" }}>
@@ -414,7 +414,7 @@ export default function HomePage() {
                       <div className="text-rp-ink-2 truncate" style={{ fontSize: "12.5px" }}>
                         {m.company} · {m.location}
                       </div>
-                      <div className="mt-3 flex items-center gap-2 text-[11px] text-rp-ink-3 tabular-nums">
+                      <div className="mt-3 flex items-center gap-2 text-xs text-rp-ink-3 tabular-nums">
                         <span>{m.score}%</span>
                         {m.dimensions?.length > 0 && <span>· {m.dimensions.length} signals</span>}
                       </div>
@@ -444,7 +444,7 @@ export default function HomePage() {
                           {w.desc}
                         </div>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-rp-ink-3 group-hover:text-rp-accent group-hover:translate-x-0.5 transition-all" strokeWidth={1.75} />
+                      <ArrowRight className="w-4 h-4 text-rp-ink-3 group-hover:text-rp-accent group-hover:translate-x-0.5 transition-[color,transform] duration-state" strokeWidth={1.75} />
                     </button>
                   </li>
                 ))}
@@ -465,15 +465,14 @@ function SectionHead({ title, href, hrefLabel }: { title: string; href?: string;
   return (
     <div className="flex items-baseline justify-between mb-3">
       <h2
-        className="text-rp-ink font-semibold"
-        style={{ fontSize: "13px", lineHeight: "20px", letterSpacing: "-0.005em" }}
+        className="text-meta text-rp-ink font-semibold"
       >
         {title}
       </h2>
       {href && hrefLabel && (
         <button
           onClick={() => navigate(href)}
-          className="text-[12px] text-rp-ink-2 hover:text-rp-ink transition-colors"
+          className="text-xs text-rp-ink-2 hover:text-rp-ink transition-colors"
         >
           {hrefLabel} →
         </button>
@@ -497,10 +496,10 @@ function Stat({
       onClick={onClick}
       className="text-left px-4 py-4 hover:bg-rp-paper-2/60 transition-colors"
     >
-      <div className="text-[11px] uppercase tracking-[0.12em] text-rp-ink-3 font-medium mb-1">
+      <div className="text-xs text-rp-ink-3 font-medium mb-1">
         {label}
       </div>
-      <div className={`tabular-nums ${tone} font-semibold`} style={{ fontSize: "24px", lineHeight: "28px", letterSpacing: "-0.02em" }}>
+      <div className={`text-3xl tabular-nums ${tone} font-semibold`}>
         {value}
       </div>
     </button>
@@ -514,7 +513,7 @@ function EmptyState({ title, body, cta, onClick }: { title: string; body: string
       <p className="text-rp-ink-2 mt-1 mx-auto max-w-md" style={{ fontSize: "12.5px", lineHeight: "18px" }}>{body}</p>
       <button
         onClick={onClick}
-        className="mt-4 inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-rp-ink text-rp-canvas hover:opacity-90 transition-opacity text-[12.5px] font-medium"
+        className="mt-4 inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-rp-ink text-rp-canvas hover:opacity-90 transition-opacity text-xs font-medium"
       >
         {cta}
         <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.75} />

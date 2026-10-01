@@ -65,12 +65,12 @@ export function InterviewPrepPanel({
   const { toast } = useToast();
 
   // Voice recognition hook
-  const { 
-    isListening, 
-    transcript, 
-    startListening, 
-    stopListening, 
-    isSupported: isRecognitionSupported 
+  const {
+    isListening,
+    transcript,
+    startListening,
+    stopListening,
+    isSupported: isRecognitionSupported
   } = useSpeechRecognition({
     onResult: (result) => {
       setFollowUpInput(result);
@@ -87,11 +87,11 @@ export function InterviewPrepPanel({
   });
 
   // Text-to-speech hook
-  const { 
-    isSpeaking, 
-    speak, 
-    stop: stopSpeaking, 
-    isSupported: isSpeechSupported 
+  const {
+    isSpeaking,
+    speak,
+    stop: stopSpeaking,
+    isSupported: isSpeechSupported
   } = useTextToSpeech({
     onEnd: () => {
       // Ready for next message
@@ -113,7 +113,7 @@ export function InterviewPrepPanel({
   // Auto-speak new assistant messages
   useEffect(() => {
     if (!autoSpeak || !isSpeechSupported) return;
-    
+
     const lastMessage = messages[messages.length - 1];
     if (
       lastMessage &&
@@ -333,7 +333,7 @@ export function InterviewPrepPanel({
                     <button
                       key={type.id}
                       onClick={() => setSelectedType(type.id)}
-                      className={`flex items-start gap-3 p-3 rounded-lg border transition-all text-left ${
+                      className={`flex items-start gap-3 p-3 rounded-lg border pressable text-left ${
                         selectedType === type.id
                           ? "border-primary bg-primary/5"
                           : "border-border hover:border-primary/30"
@@ -359,9 +359,9 @@ export function InterviewPrepPanel({
               <div className="flex items-center justify-between gap-4">
                 <ModelSelector value={selectedModel} onChange={onModelChange} />
                 <div className="flex gap-2">
-                  <Button 
-                    onClick={handleStartVoiceSimulation} 
-                    disabled={isLoading} 
+                  <Button
+                    onClick={handleStartVoiceSimulation}
+                    disabled={isLoading}
                     variant="outline"
                     className="gap-2"
                   >
@@ -416,7 +416,7 @@ export function InterviewPrepPanel({
             </div>
           </div>
         </div>
-        
+
         {/* Voice Controls in Header */}
         <VoiceControls
           isListening={isListening}
@@ -471,7 +471,7 @@ export function InterviewPrepPanel({
               onChange={(e) => setFollowUpInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleFollowUp()}
               disabled={isLoading}
-              className={`pr-20 transition-all ${isListening ? "border-primary ring-2 ring-primary/20" : ""}`}
+              className={`pr-20 transition-[border-color,box-shadow] duration-state ${isListening ? "border-primary ring-2 ring-primary/20" : ""}`}
             />
             <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
               {isRecognitionSupported && (
@@ -497,13 +497,13 @@ export function InterviewPrepPanel({
             </div>
           </div>
         </div>
-        
+
         {/* Voice Hint */}
         {(isRecognitionSupported || isSpeechSupported) && (
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            {isListening 
-              ? "🎤 Listening... speak your answer" 
-              : autoSpeak 
+            {isListening
+              ? "🎤 Listening... speak your answer"
+              : autoSpeak
                 ? "🔊 Auto-speak enabled, responses will be read aloud"
                 : "💡 Use the mic to practice answering questions verbally"
             }

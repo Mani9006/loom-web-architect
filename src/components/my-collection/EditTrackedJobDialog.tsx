@@ -173,7 +173,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
               value={jdMd}
               onChange={(e) => setJdMd(e.target.value)}
               rows={9}
-              className="font-mono text-[12px]"
+              className="font-mono text-xs"
               disabled={saving}
             />
           </div>

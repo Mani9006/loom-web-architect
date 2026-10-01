@@ -17,9 +17,6 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
-const URBAN = { fontFamily: '"Urbanist", "Manrope", system-ui, sans-serif' } as const;
-const EPI = { fontFamily: '"Epilogue", "Inter", system-ui, sans-serif' } as const;
-const MONO = { fontFamily: '"JetBrains Mono", ui-monospace, monospace' } as const;
 
 interface ProfileState {
   full_name: string; email: string; phone: string; location: string; linkedin_url: string;
@@ -145,27 +142,26 @@ export default function Profile() {
           <aside className="col-span-12 lg:col-span-4 space-y-10">
             <div>
               <div className="flex items-baseline gap-3 mb-6">
-                <span className="text-rp-accent" style={{ ...MONO, fontSize: "11px", letterSpacing: "0.14em" }}>00</span>
-                <span className="text-rp-ink-2" style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}>Identity</span>
+                <span className="text-rp-accent text-xs font-medium">00</span>
+                <span className="text-rp-ink-2 text-xs font-medium">Identity</span>
                 <span className="flex-1 h-px bg-rp-rule" />
               </div>
               <div className="flex items-center gap-4">
                 <div
-                  className="inline-flex items-center justify-center w-14 h-14 border border-rp-rule-2 text-rp-ink"
-                  style={{ ...URBAN, fontSize: "20px", fontWeight: 500, letterSpacing: "-0.01em" }}
+                  className="inline-flex items-center justify-center w-14 h-14 border border-rp-rule-2 text-rp-ink text-xl font-medium"
                 >
                   {initials}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-rp-ink" style={{ ...URBAN, fontSize: "20px", fontWeight: 500, letterSpacing: "-0.01em" }}>
+                  <p className="truncate text-rp-ink text-xl font-medium">
                     {profile.full_name || "Your name"}
                   </p>
-                  <p className="truncate text-rp-ink-3" style={{ ...MONO, fontSize: "11px", letterSpacing: "0.06em" }}>{user?.email}</p>
+                  <p className="truncate text-rp-ink-3 font-mono text-xs">{user?.email}</p>
                 </div>
               </div>
               <div className="mt-6 flex items-baseline justify-between">
-                <span className="text-rp-ink-3" style={{ ...MONO, fontSize: "10.5px", letterSpacing: "0.14em", textTransform: "uppercase" }}>Completeness</span>
-                <span className="text-rp-accent tabular-nums" style={{ ...URBAN, fontSize: "22px", fontWeight: 300, letterSpacing: "-0.01em" }}>{completion}%</span>
+                <span className="text-rp-ink-3 text-xs font-medium">Completeness</span>
+                <span className="text-rp-accent tabular-nums text-xl font-normal">{completion}%</span>
               </div>
               <div className="mt-2 h-[3px] w-full bg-rp-paper-2 overflow-hidden">
                 <div className="h-full bg-rp-accent transition-[width] duration-700" style={{ width: `${completion}%` }} />
@@ -174,8 +170,8 @@ export default function Profile() {
 
             <div>
               <div className="flex items-baseline gap-3 mb-4">
-                <span className="text-rp-accent" style={{ ...MONO, fontSize: "11px", letterSpacing: "0.14em" }}>—</span>
-                <span className="text-rp-ink-2" style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}>Source résumé</span>
+                <span className="text-rp-accent text-xs font-medium">—</span>
+                <span className="text-rp-ink-2 text-xs font-medium">Source résumé</span>
                 <span className="flex-1 h-px bg-rp-rule" />
               </div>
               {resume ? (
@@ -183,29 +179,27 @@ export default function Profile() {
                   <div className="flex gap-3">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 text-rp-accent shrink-0" strokeWidth={1.75} />
                     <div className="min-w-0">
-                      <p className="truncate text-rp-ink" style={{ ...URBAN, fontSize: "15px", fontWeight: 500 }}>{resume.title || "Untitled résumé"}</p>
-                      <p className="mt-1 text-rp-ink-3" style={{ ...MONO, fontSize: "10.5px", letterSpacing: "0.06em" }}>
+                      <p className="truncate text-rp-ink text-sm font-medium">{resume.title || "Untitled résumé"}</p>
+                      <p className="mt-1 text-rp-ink-3 font-mono text-xs">
                         Updated {new Date(resume.updated_at).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
                   <button
                     onClick={() => navigate(`/resume-builder/${resume.id}`)}
-                    className="mt-5 inline-flex items-center gap-2 border-b border-rp-rule-2 text-rp-ink hover:text-rp-accent hover:border-rp-accent transition-colors pb-1"
-                    style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+                    className="mt-5 inline-flex items-center gap-2 border-b border-rp-rule-2 text-rp-ink hover:text-rp-accent hover:border-rp-accent transition-colors pb-1 text-xs font-semibold"
                   >
                     Review résumé <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />
                   </button>
                 </div>
               ) : (
                 <div>
-                  <p className="text-rp-ink-2 leading-relaxed" style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}>
+                  <p className="text-rp-ink-2 leading-relaxed text-meta font-normal">
                     Import a résumé before the Agent can match your full career story.
                   </p>
                   <button
                     onClick={() => navigate("/resume-builder")}
-                    className="mt-5 inline-flex items-center gap-2 border-b border-rp-accent text-rp-accent hover:text-rp-accent-2 hover:border-rp-accent-2 transition-colors pb-1"
-                    style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+                    className="mt-5 inline-flex items-center gap-2 border-b border-rp-accent text-rp-accent hover:text-rp-accent-2 hover:border-rp-accent-2 transition-colors pb-1 text-xs font-semibold"
                   >
                     Import résumé <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />
                   </button>
@@ -217,8 +211,8 @@ export default function Profile() {
               <div className="flex gap-3 pt-6">
                 <ShieldCheck className="h-4 w-4 shrink-0 text-rp-accent mt-0.5" strokeWidth={1.75} />
                 <div>
-                  <p className="text-rp-ink" style={{ ...URBAN, fontSize: "13px", fontWeight: 600 }}>Used with your approval</p>
-                  <p className="mt-1.5 leading-relaxed text-rp-ink-2" style={{ ...EPI, fontSize: "12.5px", fontWeight: 300 }}>
+                  <p className="text-rp-ink text-meta font-semibold">Used with your approval</p>
+                  <p className="mt-1.5 leading-relaxed text-rp-ink-2 text-xs font-normal">
                     Sensitive or missing answers are never guessed. They move the application to <em className="text-rp-accent not-italic">Needs attention</em>.
                   </p>
                 </div>
@@ -262,8 +256,8 @@ export default function Profile() {
                     className="mt-1 h-4 w-4 accent-rp-accent"
                   />
                   <span>
-                    <span className="block text-rp-ink" style={{ ...URBAN, fontSize: "13.5px", fontWeight: 500 }}>Requires visa sponsorship</span>
-                    <span className="mt-1 block text-rp-ink-3 leading-relaxed" style={{ ...EPI, fontSize: "12px", fontWeight: 300 }}>
+                    <span className="block text-rp-ink text-meta font-medium">Requires visa sponsorship</span>
+                    <span className="mt-1 block text-rp-ink-3 leading-relaxed text-xs font-normal">
                       Used as a hard match filter and a consistent application answer.
                     </span>
                   </span>
@@ -274,16 +268,14 @@ export default function Profile() {
             <div className="flex flex-wrap justify-between gap-4 pt-6 border-t border-rp-rule">
               <button
                 onClick={() => navigate("/career-ops/preferences")}
-                className="inline-flex items-center gap-2 border-b border-rp-rule-2 text-rp-ink-2 hover:text-rp-accent hover:border-rp-accent transition-colors pb-1"
-                style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+                className="inline-flex items-center gap-2 border-b border-rp-rule-2 text-rp-ink-2 hover:text-rp-accent hover:border-rp-accent transition-colors pb-1 text-xs font-semibold"
               >
                 Edit job match preferences <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />
               </button>
               <button
                 onClick={save}
                 disabled={saving}
-                className="inline-flex items-center gap-2 bg-rp-accent text-rp-canvas hover:bg-rp-accent-2 transition-colors px-8 py-3 disabled:opacity-50"
-                style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 700 }}
+                className="inline-flex items-center gap-2 bg-rp-accent text-rp-canvas hover:bg-rp-accent-2 transition-colors px-8 py-3 disabled:opacity-50 text-xs font-semibold"
               >
                 {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</> : <><Save className="w-3.5 h-3.5" /> Save profile</>}
               </button>
@@ -305,20 +297,18 @@ function FormSection({ n, title, description, children }: {
       <header className="border-b border-rp-rule pb-4 mb-6">
         <div className="flex items-baseline gap-3">
           <span
-            className="text-rp-accent tabular-nums"
-            style={{ ...MONO, fontSize: "11px", letterSpacing: "0.14em" }}
+            className="text-rp-accent tabular-nums text-xs font-medium"
           >
             {n}
           </span>
           <h2
-            className="text-rp-ink"
-            style={{ ...URBAN, fontSize: "22px", fontWeight: 400, letterSpacing: "-0.015em" }}
+            className="text-rp-ink text-xl font-normal"
           >
             {title}
           </h2>
         </div>
         {description && (
-          <p className="mt-2 text-rp-ink-2 max-w-lg leading-relaxed" style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}>
+          <p className="mt-2 text-rp-ink-2 max-w-lg leading-relaxed text-meta font-normal">
             {description}
           </p>
         )}
@@ -340,8 +330,7 @@ function TextField({
   return (
     <label className="block">
       <span
-        className="block text-rp-ink-2 mb-2"
-        style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}
+        className="block text-rp-ink-2 mb-2 text-xs font-medium"
       >
         {label}
       </span>
@@ -350,11 +339,10 @@ function TextField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={cn(
+        className={cn("text-sm",
           "w-full bg-transparent border-0 border-b border-rp-rule-2 px-0 py-2 text-rp-ink placeholder:text-rp-ink-3/60",
           "focus:outline-none focus:border-rp-accent transition-colors",
         )}
-        style={{ ...EPI, fontSize: "15px" }}
       />
     </label>
   );
@@ -369,16 +357,14 @@ function SelectField({
   return (
     <label className="block">
       <span
-        className="block text-rp-ink-2 mb-2"
-        style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}
+        className="block text-rp-ink-2 mb-2 text-xs font-medium"
       >
         {label}
       </span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-transparent border-0 border-b border-rp-rule-2 px-0 py-2 text-rp-ink focus:outline-none focus:border-rp-accent transition-colors"
-        style={{ ...EPI, fontSize: "15px" }}
+        className="w-full bg-transparent border-0 border-b border-rp-rule-2 px-0 py-2 text-rp-ink focus:outline-none focus:border-rp-accent transition-colors text-sm"
       >
         {options.map((o) => <option key={o.value} value={o.value} className="bg-rp-canvas text-rp-ink">{o.label}</option>)}
       </select>

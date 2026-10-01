@@ -420,8 +420,7 @@ export default function MatchesPage() {
               type="button"
               onClick={() => void loadMatches(true)}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 border-b border-rp-rule-2 text-rp-ink-2 hover:text-rp-accent hover:border-rp-accent transition-colors pb-1 disabled:opacity-50"
-              style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+              className="inline-flex items-center gap-2 border-b border-rp-rule-2 text-rp-ink-2 hover:text-rp-accent hover:border-rp-accent transition-colors pb-1 disabled:opacity-50 text-xs font-semibold"
             >
               {refreshing ? "Checking…" : "Check for new matches →"}
             </button>
@@ -435,13 +434,12 @@ export default function MatchesPage() {
               <button
                 key={k}
                 onClick={() => setFilter(k)}
-                className={cn(
-                  "h-8 px-3 text-[11px] tracking-[0.14em] uppercase transition-colors",
+                className={cn("font-semibold",
+                  "h-8 px-3 text-xs transition-colors font-medium",
                   filter === k
                     ? "bg-rp-accent text-rp-canvas"
                     : "text-rp-ink-2 hover:text-rp-accent border border-rp-rule",
                 )}
-                style={{ fontFamily: '"Urbanist", sans-serif', fontWeight: 600 }}
               >
                 {k === "recommended" ? "Recommended" : k === "strong" ? "Strong · 80%+" : "Auto-apply ready"}
               </button>
@@ -453,11 +451,10 @@ export default function MatchesPage() {
                 key={mode}
                 type="button"
                 onClick={() => setLocationMode(mode)}
-                className={cn(
-                  "h-8 px-3 text-[11px] tracking-[0.14em] uppercase transition-colors",
+                className={cn("font-medium",
+                  "h-8 px-3 text-xs transition-colors font-medium",
                   locationMode === mode ? "text-rp-accent border-b border-rp-accent" : "text-rp-ink-3 hover:text-rp-ink",
                 )}
-                style={{ fontFamily: '"Urbanist", sans-serif', fontWeight: 500 }}
               >
                 {mode === "all" ? "All locations" : mode === "onsite" ? "On-site" : mode}
               </button>
@@ -468,14 +465,12 @@ export default function MatchesPage() {
             value={matchSearch}
             onChange={(event) => setMatchSearch(event.target.value)}
             placeholder="Filter by role, company, or city"
-            className="ml-auto h-8 min-w-[220px] flex-1 max-w-xs bg-transparent border-0 border-b border-rp-rule-2 px-0 text-[13px] text-rp-ink placeholder:text-rp-ink-3/60 focus:outline-none focus:border-rp-accent"
-            style={{ fontFamily: '"Epilogue", sans-serif' }}
+            className="ml-auto h-8 min-w-[220px] flex-1 max-w-xs bg-transparent border-0 border-b border-rp-rule-2 px-0 text-meta text-rp-ink placeholder:text-rp-ink-3/60 focus:outline-none focus:border-rp-accent"
           />
           <button
             type="button"
             onClick={() => navigate("/career-ops/preferences")}
-            className="text-rp-ink-2 hover:text-rp-accent transition-colors"
-            style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+            className="text-rp-ink-2 hover:text-rp-accent transition-colors text-xs font-semibold"
           >
             Match prefs →
           </button>
@@ -486,29 +481,29 @@ export default function MatchesPage() {
         <div className="glass-card p-12 text-center">
           {jobs.length === 0 ? (
             <>
-              <p className="text-[16px] font-semibold text-foreground">We're still finding jobs that fit your resume.</p>
-              <p className="text-[13px] text-muted-foreground mt-2">
+              <p className="text-base font-semibold text-foreground">We're still finding jobs that fit your resume.</p>
+              <p className="text-meta text-muted-foreground mt-2">
                 Fresh jobs are checked every hour — give it a moment, then refresh.
               </p>
               <button
                 type="button"
                 onClick={() => void loadMatches(true)}
                 disabled={refreshing}
-                className="mt-5 inline-flex h-9 items-center rounded-md bg-foreground px-4 text-[12.5px] font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
+                className="mt-5 inline-flex h-9 items-center rounded-md bg-foreground px-4 text-xs font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
               >
                 {refreshing ? "Checking…" : "Refresh now"}
               </button>
             </>
           ) : (
             <>
-              <p className="text-[16px] font-semibold text-foreground">Nothing fits these filters.</p>
-              <p className="text-[13px] text-muted-foreground mt-2">
+              <p className="text-base font-semibold text-foreground">Nothing fits these filters.</p>
+              <p className="text-meta text-muted-foreground mt-2">
                 Your matches are still here — clear the filters to see them all.
               </p>
               <button
                 type="button"
                 onClick={() => { setFilter("recommended"); setLocationMode("all"); setMatchSearch(""); }}
-                className="mt-5 inline-flex h-9 items-center rounded-md bg-foreground px-4 text-[12.5px] font-medium text-background hover:bg-foreground/90"
+                className="mt-5 inline-flex h-9 items-center rounded-md bg-foreground px-4 text-xs font-medium text-background hover:bg-foreground/90"
               >
                 Clear filters
               </button>
@@ -517,15 +512,15 @@ export default function MatchesPage() {
         </div>
       ) : (
         <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={2} className="glass-card overflow-hidden">
-          <table className="w-full text-[13.5px]">
+          <table className="w-full text-meta">
             <thead>
               <tr className="border-b border-border">
                 <th className="w-10 px-3 py-3" aria-label="Select" />
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 w-28">Fit</th>
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Role</th>
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3">Location</th>
-                <th className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-3 py-3 hidden lg:table-cell">Seen</th>
-                <th className="text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground px-5 py-3">Action</th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-3 py-3 w-28">Fit</th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-3 py-3">Role</th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-3 py-3">Location</th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-3 py-3 hidden lg:table-cell">Seen</th>
+                <th className="text-right text-xs font-medium text-muted-foreground px-5 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -544,7 +539,7 @@ export default function MatchesPage() {
                   <td className="px-3 py-4">
                     {evaluation ? (
                       <div className="w-28 space-y-1.5">
-                        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap", fitChip(careerFitScore(evaluation)).tone)}>
+                        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap", fitChip(careerFitScore(evaluation)).tone)}>
                           {fitChip(careerFitScore(evaluation)).label}
                         </span>
                         <div className="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -552,40 +547,40 @@ export default function MatchesPage() {
                         </div>
                       </div>
                     ) : (
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-dashed border-border text-muted-foreground text-[11px]">—</span>
+                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-dashed border-border text-muted-foreground text-xs">—</span>
                     )}
                   </td>
                   <td className="px-3 py-4">
-                    <div className="text-[14px] font-semibold text-foreground leading-tight">{job.title}</div>
-                    <div className="text-[11.5px] text-muted-foreground mt-1">
+                    <div className="text-sm font-semibold text-foreground leading-tight">{job.title}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
                       {job.company.name}
                       {job.department ? <span className="opacity-60"> · {job.department}</span> : null}
                     </div>
                     {safeMatchSummary(evaluation?.summary ?? null) ? (
-                      <div className="text-[12.5px] text-muted-foreground mt-1.5 max-w-[60ch] line-clamp-2">{safeMatchSummary(evaluation?.summary ?? null)}</div>
+                      <div className="text-xs text-muted-foreground mt-1.5 max-w-[60ch] line-clamp-2">{safeMatchSummary(evaluation?.summary ?? null)}</div>
                     ) : null}
                     {evaluation && !evaluation.eligible ? (
-                      <div className="text-[11.5px] text-muted-foreground mt-1.5 max-w-[60ch] truncate">
+                      <div className="text-xs text-muted-foreground mt-1.5 max-w-[60ch] truncate">
                         Outside your saved preferences · {evaluation.hard_filters?.[0] ?? "review your preferences if you want us to auto-apply to jobs like this"}
                       </div>
                     ) : evaluation?.fit_confidence != null ? (
-                      <div className="text-[11px] text-muted-foreground/80 mt-1">
+                      <div className="text-xs text-muted-foreground/80 mt-1">
                         {Math.round(evaluation.fit_confidence * 100)}% confidence in this match
                       </div>
                     ) : null}
                   </td>
-                  <td className="px-3 py-4 text-[13px] text-muted-foreground">
+                  <td className="px-3 py-4 text-meta text-muted-foreground">
                     {job.location || "—"}
-                    {job.remote_policy ? <div className="text-[11px] text-muted-foreground/80 mt-0.5">{job.remote_policy}</div> : null}
+                    {job.remote_policy ? <div className="text-xs text-muted-foreground/80 mt-0.5">{job.remote_policy}</div> : null}
                   </td>
-                  <td className="px-3 py-4 text-[12px] text-muted-foreground hidden lg:table-cell">{relativeTime(job.last_seen_at)}</td>
+                  <td className="px-3 py-4 text-xs text-muted-foreground hidden lg:table-cell">{relativeTime(job.last_seen_at)}</td>
                   <td className="px-5 py-4 text-right whitespace-nowrap">
                     {evaluation ? (
                       <>
                         {drafts[evaluation.id] ? (
                           <button
                             onClick={() => navigate(`/applications/${drafts[evaluation.id].id}`)}
-                            className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
+                            className="inline-flex h-8 px-3.5 items-center rounded-md text-xs font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors"
                           >
                             Review application
                           </button>
@@ -594,7 +589,7 @@ export default function MatchesPage() {
                             onClick={() => prepareApplication(evaluation.id, job.id)}
                             disabled={preparing === evaluation.id || Boolean(batchProgress)}
                             title={!evaluation.eligible ? "You can still prepare this application; we just won't auto-submit it." : undefined}
-                            className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
+                            className="inline-flex h-8 px-3.5 items-center rounded-md text-xs font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
                           >
                             {preparing === evaluation.id ? "Preparing…" : "Prepare application"}
                           </button>
@@ -602,7 +597,7 @@ export default function MatchesPage() {
                         <button
                           onClick={() => runEvaluation(job.id)}
                           disabled={evaluating === job.id}
-                          className="ml-1.5 inline-flex h-8 px-3 items-center rounded-md text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+                          className="ml-1.5 inline-flex h-8 px-3 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
                         >
                           {evaluating === job.id ? "…" : "Rescore"}
                         </button>
@@ -611,7 +606,7 @@ export default function MatchesPage() {
                       <button
                         onClick={() => runEvaluation(job.id)}
                         disabled={evaluating === job.id}
-                        className="inline-flex h-8 px-3.5 items-center rounded-md text-[12px] font-medium border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                        className="inline-flex h-8 px-3.5 items-center rounded-md text-xs font-medium border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                       >
                         {evaluating === job.id ? "Scoring…" : "Score"}
                       </button>
@@ -624,7 +619,7 @@ export default function MatchesPage() {
         </motion.div>
       )}
 
-      <div className="flex items-center justify-between text-[12px] text-muted-foreground mt-6">
+      <div className="flex items-center justify-between text-xs text-muted-foreground mt-6">
         <p>
           Jobs come straight from employer sites and refresh hourly · every match can be prepared manually
         </p>
@@ -640,14 +635,14 @@ export default function MatchesPage() {
       {selected.size > 0 && (
         <div className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2">
           <div className="flex items-center gap-3 rounded-full border border-border bg-background px-5 py-3 shadow-lg">
-            <span className="text-[13px] font-medium text-foreground">
+            <span className="text-meta font-medium text-foreground">
               {selected.size} selected
             </span>
             <button
               type="button"
               onClick={() => void prepareSelected()}
               disabled={Boolean(batchProgress)}
-              className="inline-flex h-9 items-center rounded-full bg-foreground px-4 text-[12.5px] font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
+              className="inline-flex h-9 items-center rounded-full bg-foreground px-4 text-xs font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
             >
               {batchProgress ? `Preparing ${batchProgress.current}/${batchProgress.total}…` : `Prepare ${selected.size} application${selected.size === 1 ? "" : "s"}`}
             </button>
@@ -655,7 +650,7 @@ export default function MatchesPage() {
               type="button"
               onClick={() => setSelected(new Set())}
               disabled={Boolean(batchProgress)}
-              className="text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+              className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
               Clear
             </button>
@@ -682,8 +677,8 @@ function StatCell({ label, value, tone }: { label: string; value: number; tone: 
   const color = tone === "accent" ? "text-rp-accent" : tone === "highlight" ? "text-rp-accent-2" : "text-rp-ink";
   return (
     <div className="px-6 py-6 border-r border-rp-rule last:border-r-0">
-      <p className="text-rp-ink-3" style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 500 }}>{label}</p>
-      <div className={`${color} tabular-nums mt-2`} style={{ fontFamily: '"Urbanist", sans-serif', fontSize: "38px", lineHeight: 1, fontWeight: 200, letterSpacing: "-0.02em" }}>
+      <p className="text-rp-ink-3 text-xs font-medium">{label}</p>
+      <div className={`${color} tabular-nums mt-2 text-5xl font-normal leading-tight`}>
         {String(value).padStart(2, "0")}
       </div>
     </div>

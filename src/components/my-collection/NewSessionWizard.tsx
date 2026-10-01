@@ -297,7 +297,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
                 </SelectContent>
               </Select>
             </div>
-            <Badge variant="outline" className="text-[10px] font-normal">
+            <Badge variant="outline" className="text-xs font-normal">
               You can edit any of this later from session settings.
             </Badge>
           </div>

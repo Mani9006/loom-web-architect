@@ -714,7 +714,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   // Conversation history (collapsed by default, just shows count)
   const historySection =
     conversation.length === 0 ? null : (
-      <div className="text-[11px] text-muted-foreground bg-muted/40 rounded-md p-2 border">
+      <div className="text-xs text-muted-foreground bg-muted/40 rounded-md p-2 border">
         <span className="flex items-center gap-1">
           <MessageCircle className="w-3 h-3" />
           AI asked {conversation.reduce((n, t) => n + t.questions.length, 0)} clarifying question
@@ -738,7 +738,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           </div>
           {clarification.questions.map((q, idx) => (
             <div key={idx} className="space-y-1">
-              <div className="text-[12px] font-medium leading-snug">
+              <div className="text-xs font-medium leading-snug">
                 <span className="opacity-60 mr-1">Q{idx + 1}.</span>
                 {q}
               </div>
@@ -751,7 +751,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                 }}
                 rows={2}
                 placeholder="Type your answer…"
-                className="text-[12px]"
+                className="text-xs"
                 disabled={busy}
               />
             </div>
@@ -803,7 +803,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-2 flex-wrap">
-                    <h4 className="font-medium text-[14px] leading-snug">{job.title}</h4>
+                    <h4 className="font-medium text-sm leading-snug">{job.title}</h4>
                     {typeof job.fit_score === "number" && <FitBadge score={job.fit_score} />}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
@@ -820,7 +820,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     <p className="text-xs text-muted-foreground mt-2 line-clamp-3">{job.summary}</p>
                   )}
                   {job.fit_reason && (
-                    <p className="text-[11px] text-muted-foreground mt-2 italic">
+                    <p className="text-xs text-muted-foreground mt-2 italic">
                       Why fit: {job.fit_reason}
                     </p>
                   )}
@@ -831,7 +831,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
                     disabled={tailoringKey === key}
-                    className="h-7 text-[11px]"
+                    className="h-7 text-xs"
                   >
                     {tailoringKey === key ? (
                       <>
@@ -852,13 +852,13 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
                     disabled={isSaved || tailoringKey === key}
-                    className="h-7 text-[11px]"
+                    className="h-7 text-xs"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
                     {isSaved ? "Saved" : "Save only"}
                   </Button>
                   {job.apply_url && (
-                    <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
+                    <Button asChild size="sm" variant="outline" className="h-7 text-xs">
                       <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3 h-3 mr-1" /> Open
                       </a>
@@ -897,5 +897,5 @@ function FitBadge({ score }: { score: number }) {
     1: { label: "Stretch", cls: "bg-yellow-100 text-yellow-800 border-yellow-300" },
   };
   const m = map[score] ?? { label: `Fit ${score}`, cls: "bg-rp-paper text-gray-800 border-rp-rule-2" };
-  return <Badge className={`text-[10px] border ${m.cls}`}>{m.label}</Badge>;
+  return <Badge className={`text-xs border ${m.cls}`}>{m.label}</Badge>;
 }

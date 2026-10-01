@@ -7,14 +7,14 @@ import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { useTextToSpeech } from "@/hooks/use-text-to-speech";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { 
-  Mic, 
-  MicOff, 
-  Volume2, 
-  VolumeX, 
-  Play, 
-  Pause, 
-  SkipForward, 
+import {
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Play,
+  Pause,
+  SkipForward,
   ArrowLeft,
   CheckCircle,
   MessageSquare,
@@ -231,7 +231,7 @@ Return ONLY the 5 questions, one per line, numbered 1-5. No other text or explan
       clearTimeout(answerTimeoutRef.current);
     }
     stopListening();
-    
+
     if (currentAnswer.trim()) {
       // Save answer and get feedback
       setState("processing");
@@ -373,7 +373,7 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
     if (answerTimeoutRef.current) {
       clearTimeout(answerTimeoutRef.current);
     }
-    
+
     appendTranscript({
       question: questions[currentQuestionIndex],
       answer: "(Skipped)",
@@ -412,7 +412,7 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
             </p>
           </div>
         </div>
-        
+
         {/* Progress */}
         {questions.length > 0 && (
           <div className="flex items-center gap-3">
@@ -465,15 +465,15 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
                   🎤 Listening... Speak your answer
                 </span>
               </div>
-              
+
               <div className="mb-4 p-4 bg-muted rounded-lg min-h-[100px]">
                 <p className="text-muted-foreground italic">
                   {currentAnswer || "Start speaking your answer..."}
                 </p>
               </div>
-              
+
               <div className="flex justify-center">
-                <Button 
+                <Button
                   onClick={handleStopListening}
                   variant="secondary"
                   className="gap-2"
@@ -496,15 +496,15 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
             <Card className="p-8">
               <div className="space-y-4">
                 <div>
-                  <span className="text-xs font-medium text-muted-foreground uppercase">Your Answer</span>
+                  <span className="text-xs font-medium text-muted-foreground">Your Answer</span>
                   <p className="text-sm mt-1">{transcript[transcript.length - 1]?.answer}</p>
                 </div>
                 <div>
-                  <span className="text-xs font-medium text-primary uppercase">Feedback</span>
+                  <span className="text-xs font-medium text-primary">Feedback</span>
                   <p className="mt-1">{currentFeedback}</p>
                 </div>
               </div>
-              
+
               <div className="flex justify-center mt-6">
                 <Button onClick={moveToNextQuestion} className="gap-2">
                   {currentQuestionIndex < questions.length - 1 ? (
@@ -530,7 +530,7 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
               <p className="text-muted-foreground mb-6">
                 Great job! You've answered all {questions.length} questions.
               </p>
-              
+
               <div className="flex justify-center gap-3">
                 <Button variant="outline" onClick={onBack}>
                   <ArrowLeft className="w-4 h-4 mr-2" />
@@ -581,7 +581,7 @@ Be encouraging but provide one specific improvement tip. Keep it conversational 
                 </>
               )}
             </Button>
-            
+
             <Button
               variant="ghost"
               size="lg"

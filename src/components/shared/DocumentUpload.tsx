@@ -240,7 +240,7 @@ export function DocumentUpload({
         extractedText = result.text;
         extractedFileName = result.fileName;
       }
-      
+
       if (!extractedText || extractedText.trim().length === 0) {
         throw new Error("Could not extract text from this document. Please try pasting your resume text directly, or use a different file format.");
       }
@@ -286,7 +286,7 @@ export function DocumentUpload({
         title: "Resume ready",
         description: `Extracted ${extractedText.length.toLocaleString()} characters from ${file.name}`,
       });
-      
+
     } catch (error) {
       console.error("Upload error:", error);
       const operation = uploadedPath ? "document_process" : "document_upload";
@@ -385,10 +385,10 @@ export function DocumentUpload({
         onDrop={handleDrop}
         onClick={() => !isProcessing && fileInputRef.current?.click()}
         className={cn(
-          "relative border-2 border-dashed rounded-lg p-6 transition-all cursor-pointer",
+          "relative border-2 border-dashed rounded-lg p-6 transition-colors duration-state cursor-pointer",
           "flex flex-col items-center justify-center gap-2 text-center",
-          isDragOver 
-            ? "border-primary bg-primary/5" 
+          isDragOver
+            ? "border-primary bg-primary/5"
             : "border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/50",
           isProcessing && "pointer-events-none opacity-60"
         )}

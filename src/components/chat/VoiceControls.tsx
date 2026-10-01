@@ -41,7 +41,7 @@ export function VoiceControls({
                 onClick={onToggleListen}
                 disabled={isProcessing}
                 className={cn(
-                  "h-8 w-8 transition-all",
+                  "h-8 w-8 transition-colors duration-state",
                   isListening && "bg-destructive hover:bg-destructive/90 animate-pulse"
                 )}
               >
@@ -67,7 +67,7 @@ export function VoiceControls({
                 size="icon"
                 onClick={onToggleSpeech}
                 className={cn(
-                  "h-8 w-8 transition-all",
+                  "h-8 w-8 transition-colors duration-state",
                   isSpeaking && "bg-primary"
                 )}
               >

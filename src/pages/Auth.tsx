@@ -22,7 +22,7 @@ type AuthMode = "login" | "signup" | "forgot";
 export default function Auth() {
   const [searchParams] = useSearchParams();
   const initialMode = searchParams.get("mode") as AuthMode | null;
-  
+
   const [mode, setMode] = useState<AuthMode>(initialMode || "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -102,13 +102,13 @@ export default function Auth() {
   if (mode === "forgot" && resetSent) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm space-y-6 text-center">
-          <div className="w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center mx-auto">
-            <Mail className="w-8 h-8 text-primary" />
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm space-y-6 text-center">
+          <div className="w-12 h-12 rounded-lg border border-border bg-card flex items-center justify-center mx-auto">
+            <Mail className="w-5 h-5 text-muted-foreground" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Check your email</h1>
+          <h1 className="text-xl font-semibold text-foreground">Check your email</h1>
           <p className="text-muted-foreground">We've sent a password reset link to <strong className="text-foreground">{email}</strong></p>
-          <Button variant="outline" onClick={() => switchMode("login")} className="w-full h-12 gap-2 rounded-2xl">
+          <Button variant="outline" onClick={() => switchMode("login")} className="w-full h-10 gap-2">
             <ArrowLeft className="w-4 h-4" /> Back to sign in
           </Button>
         </motion.div>
@@ -127,16 +127,13 @@ export default function Auth() {
         {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>
       {/* Decorative side */}
-      <div className="hidden lg:flex lg:w-1/2 relative items-center justify-center p-12">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.06] via-transparent to-accent/[0.04]" />
-        <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-primary/[0.06] blur-3xl animate-blob" />
-        <div className="absolute bottom-20 right-20 w-48 h-48 rounded-full bg-accent/[0.05] blur-3xl animate-blob" style={{ animationDelay: "3s" }} />
-        <div className="relative text-center max-w-md">
-          <Logo size="xl" className="justify-center mb-8" />
-          <h2 className="text-4xl font-extrabold text-foreground mb-4 tracking-tight">
-            Your career,<br/><span className="gradient-text">supercharged.</span>
+      <div className="hidden lg:flex lg:w-1/2 relative items-center justify-center p-12 border-r border-border">
+        <div className="relative max-w-md">
+          <Logo size="lg" className="mb-10" />
+          <h2 className="text-5xl font-semibold text-foreground mb-4 text-balance">
+            Your career, supercharged.
           </h2>
-          <p className="text-muted-foreground text-lg leading-relaxed">
+          <p className="text-muted-foreground text-base">
             Résumé building, evidence-based job matching, application preparation, and verified tracking in one workspace.
           </p>
         </div>
@@ -152,25 +149,25 @@ export default function Auth() {
           </div>
 
           {/* Card */}
-          <div className="glass-card rounded-3xl shadow-xl overflow-hidden">
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
             {mode !== "forgot" && (
-              <div className="flex border-b border-border/30">
+              <div className="flex border-b border-border">
                 {(["login", "signup"] as AuthMode[]).map((m) => (
                   <button key={m} onClick={() => switchMode(m)}
                     className={`flex-1 py-4 text-center text-sm font-semibold transition-colors relative ${
                       mode === m ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                     }`}>
                     {m === "login" ? "Log In" : "Sign Up"}
-                    {mode === m && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-full" />}
+                    {mode === m && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />}
                   </button>
                 ))}
               </div>
             )}
 
-            <div className="p-8 space-y-5">
+            <div className="p-6 sm:p-8 space-y-5">
               {mode === "forgot" && (
                 <div className="text-center mb-2">
-                  <h2 className="text-lg font-bold text-foreground">Reset Password</h2>
+                  <h2 className="text-base font-semibold text-foreground">Reset Password</h2>
                   <p className="text-sm text-muted-foreground mt-1">Enter your email to receive a reset link</p>
                   <Button type="button" variant="ghost" size="sm" onClick={() => switchMode("login")} className="mt-2 gap-1 text-muted-foreground">
                     <ArrowLeft className="w-3.5 h-3.5" /> Back to login
@@ -181,7 +178,7 @@ export default function Auth() {
               {mode !== "forgot" && (
                 <>
                   <Button type="button" variant="outline" onClick={() => handleSocialLogin("google")} disabled={socialLoading !== null}
-                    className="w-full h-12 gap-2.5 font-medium rounded-2xl">
+                    className="w-full h-10 gap-2.5 font-medium">
                     {socialLoading === "google" ? <Loader2 className="w-4 h-4 animate-spin" /> : (
                       <svg className="w-4 h-4" viewBox="0 0 24 24">
                         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -193,8 +190,8 @@ export default function Auth() {
                     Continue with Google
                   </Button>
                   <div className="relative">
-                    <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border/50" /></div>
-                    <div className="relative flex justify-center text-[11px] uppercase"><span className="glass-card px-3 text-muted-foreground font-medium border-0 backdrop-blur-none bg-card">or</span></div>
+                    <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
+                    <div className="relative flex justify-center text-xs font-medium"><span className="px-3 text-muted-foreground bg-card">or</span></div>
                   </div>
                 </>
               )}
@@ -207,14 +204,14 @@ export default function Auth() {
                       <Input placeholder="First" value={fullName.split(" ")[0] || ""} onChange={(e) => {
                         const last = fullName.split(" ").slice(1).join(" ");
                         setFullName(last ? `${e.target.value} ${last}` : e.target.value);
-                      }} className="h-11 rounded-2xl" />
+                      }} className="h-10" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm font-medium">Last Name</Label>
                       <Input placeholder="Last" value={fullName.split(" ").slice(1).join(" ") || ""} onChange={(e) => {
                         const first = fullName.split(" ")[0] || "";
                         setFullName(e.target.value ? `${first} ${e.target.value}` : first);
-                      }} className="h-11 rounded-2xl" />
+                      }} className="h-10" />
                     </div>
                   </div>
                 )}
@@ -222,7 +219,7 @@ export default function Auth() {
                   <Label className="text-sm font-medium">Email</Label>
                   <Input type="email" placeholder="you@example.com" value={email}
                     onChange={(e) => { setEmail(e.target.value); setErrors((p) => ({ ...p, email: undefined })); }}
-                    className="h-11 rounded-2xl" />
+                    className="h-10" />
                   {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
                 </div>
                 {mode !== "forgot" && (
@@ -235,7 +232,7 @@ export default function Auth() {
                     </div>
                     <Input type="password" placeholder="••••••••" value={password}
                       onChange={(e) => { setPassword(e.target.value); setErrors((p) => ({ ...p, password: undefined })); }}
-                      className="h-11 rounded-2xl" />
+                      className="h-10" />
                     {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
                   </div>
                 )}
@@ -247,7 +244,7 @@ export default function Auth() {
                     </label>
                   </div>
                 )}
-                <Button type="submit" disabled={loading} className="w-full h-12 font-semibold rounded-2xl text-base shadow-lg shadow-primary/15">
+                <Button type="submit" disabled={loading} className="w-full h-10">
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : mode === "login" ? "Log In" : mode === "signup" ? "Create Account" : "Send Reset Link"}
                 </Button>
               </form>

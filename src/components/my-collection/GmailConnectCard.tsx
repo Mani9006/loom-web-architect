@@ -156,11 +156,11 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
           <div className="flex items-center gap-2 mb-1">
             <h4 className="font-medium text-sm">Connected application inbox</h4>
             {conn ? (
-              <Badge className="bg-green-100 text-green-800 border-green-300 text-[10px]">
+              <Badge className="bg-green-100 text-green-800 border-green-300 text-xs">
                 <CheckCircle2 className="w-3 h-3 mr-1" /> Connected
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-xs">
                 <AlertCircle className="w-3 h-3 mr-1" /> Not connected
               </Badge>
             )}
@@ -173,7 +173,7 @@ export default function GmailConnectCard({ sessionId, onConnectionChange, onPoll
                 statuses current. Access is read-only; ResumePreps cannot send or delete email.
               </p>
               {conn.last_polled_at && (
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Last checked {new Date(conn.last_polled_at).toLocaleString()}
                 </p>
               )}

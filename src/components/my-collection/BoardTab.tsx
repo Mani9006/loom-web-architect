@@ -393,7 +393,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 onDrop={() => draggedId && moveTo(draggedId, col.id)}
                 className="w-[260px] shrink-0"
               >
-                <div className={`px-3 py-1.5 rounded-md text-[11px] font-medium ${col.tone} flex items-center justify-between`}>
+                <div className={`px-3 py-1.5 rounded-md text-xs font-medium ${col.tone} flex items-center justify-between`}>
                   <span>{col.label}</span>
                   <span className="opacity-60">{items.length}</span>
                 </div>
@@ -405,7 +405,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       onDragStart={() => setDraggedId(job.id)}
                       onDragEnd={() => setDraggedId(null)}
                       onClick={() => setSelected(job)}
-                      className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
+                      className="group relative bg-card border rounded-md p-3 text-xs cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
                     >
                       <button
                         type="button"
@@ -417,18 +417,18 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                       <div className="font-medium leading-tight pr-6">{job.job_title}</div>
-                      <div className="text-muted-foreground text-[11px] mt-1 flex items-center gap-1">
+                      <div className="text-muted-foreground text-xs mt-1 flex items-center gap-1">
                         <Building2 className="w-3 h-3" />
                         {job.company}
                       </div>
                       {job.location && (
-                        <div className="text-muted-foreground text-[11px] mt-0.5 flex items-center gap-1">
+                        <div className="text-muted-foreground text-xs mt-0.5 flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
                           {job.location}
                         </div>
                       )}
                       {job.applied_at && (
-                        <div className="text-muted-foreground text-[10px] mt-1.5 flex items-center gap-1">
+                        <div className="text-muted-foreground text-xs mt-1.5 flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {new Date(job.applied_at).toLocaleDateString()}
                         </div>
@@ -460,7 +460,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       key={col.id}
                       variant={col.id === selected.status ? "default" : "outline"}
                       size="sm"
-                      className="text-[11px]"
+                      className="text-xs"
                       onClick={() => moveTo(selected.id, col.id)}
                     >
                       {col.label}

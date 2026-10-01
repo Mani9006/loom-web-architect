@@ -71,7 +71,7 @@ export function SectionNavigator({ data, activeSection, sectionOrder, onSelect, 
             onDrop={(e) => handleDrop(e, idx)}
             onClick={() => onSelect(section.id)}
             className={cn(
-              "flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-left w-full group",
+              "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors duration-state text-left w-full group",
               isActive
                 ? "bg-primary/10 text-primary shadow-sm"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
