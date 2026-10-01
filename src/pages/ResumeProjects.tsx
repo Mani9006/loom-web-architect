@@ -116,7 +116,7 @@ export default function ResumeProjects() {
         .select("*")
         .eq("user_id", user.id)
         .order("updated_at", { ascending: false }),
-      supabase
+      (supabase as any)
         .from("draft_applications")
         .select("tailored_resume_id")
         .eq("user_id", user.id),

@@ -68,10 +68,31 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function refresh() {
     setRefreshing(true);
     try {
-      const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+      const { data, error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
       if (error) throw error;
+      // mc-gmail-poll returns 200 even when the connection needs reconnecting
+      // or a poll failed, the failure shows up in the body, not `error`. Check
+      // it the same way GmailConnectCard's "Check now" does, otherwise this
+      // button silently reports "up to date" while nothing was actually checked.
+      const failureCodes = Array.isArray(data?.failure_codes) ? data.failure_codes.map(String) : [];
+      if (failureCodes.includes("INBOX_RECONNECT_REQUIRED")) {
+        await load();
+        toast({
+          title: "Reconnect Gmail",
+          description: "Your previous read-only Gmail permission can no longer be used. Connect it again above to continue application verification.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (Number(data?.failed || 0) > 0) {
+        throw new Error("Inbox check did not complete");
+      }
       await load();
-      toast({ title: "Inbox is up to date" });
+      const processed = Number(data?.processed || 0);
+      toast({
+        title: processed ? "Inbox checked" : "Inbox is up to date",
+        description: processed ? `${processed} relevant message${processed === 1 ? "" : "s"} found.` : undefined,
+      });
     } catch (error) {
       const safeError = toUserFacingError(error, {
         operation: "refresh_application_inbox",
