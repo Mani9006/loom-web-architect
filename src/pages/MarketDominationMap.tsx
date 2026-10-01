@@ -331,10 +331,10 @@ export default function MarketDominationMap() {
               <CardContent>
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={featureCoverageData} layout="vertical" margin={{ top: 4, right: 20, left: 10, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                    <XAxis type="number" domain={[0, 5]} tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" horizontal={false} />
+                    <XAxis type="number" domain={[0, 5]} tick={{ fontSize: 11 }} stroke="oklch(var(--muted-foreground))" />
+                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} stroke="oklch(var(--muted-foreground))" />
+                    <Tooltip contentStyle={{ background: "oklch(var(--card))", border: "1px solid oklch(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
                     <Bar dataKey="features" radius={[0, 6, 6, 0]} name="Features">
                       {featureCoverageData.map((_, i) => (
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />

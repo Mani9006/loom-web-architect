@@ -1,17 +1,13 @@
-/* ResumePreps design system — Product-first (Linear / Vercel language).
+/* ResumePreps design system: a calm operator's console for a stressful task.
  *
- * Neutral surfaces, one restrained indigo accent, hairline borders,
- * tight components, no page-load flourishes. Both themes share the same
- * spacing grid, radius scale, and type stack. The rendered CV surface
- * (surface-paper) is always white regardless of theme.
+ * All color tokens are OKLCH channel triples ("L C H"), consumed as
+ * `oklch(var(--token) / <alpha>)` by Tailwind. Token NAMES are the shadcn
+ * set plus the legacy rp-* set; only the values live here. Every text token
+ * clears 4.5:1 on canvas, surface and muted in both themes (see
+ * docs/design-system.md for the measured ratios).
  *
- * Existing components read `rp-*` tokens; those names are preserved so
- * the redesign lands without renaming across dozens of files. Only the
- * *values* changed. Editorial-era ornaments (grain, dot grid, ambient
- * halos, red signal ring) are gone.
+ * Fonts are loaded once from index.html (Geist + Geist Mono).
  */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -19,131 +15,123 @@
 
 @layer base {
   :root {
-    /* Light: paper white, near-black ink, indigo accent */
-    --background: 0 0% 100%;
-    --foreground: 220 15% 8%;
+    /* ---- Core palette (light) ------------------------------------- */
+    --canvas: 0.985 0.002 250;          /* page */
+    --surface: 1 0 0;                   /* cards, sheets, inputs */
+    --surface-2: 0.962 0.004 255;       /* wells, hover rows, muted fills */
+    --ink: 0.22 0.01 255;               /* primary text  17:1 */
+    --ink-muted: 0.5 0.012 255;         /* secondary text 5.9:1 */
+    --hairline: 0.905 0.005 255;
+    --accent-ink: 0.52 0.14 250;        /* ink-blue, primary actions + selection */
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 15% 8%;
+    /* ---- shadcn tokens --------------------------------------------- */
+    --background: var(--canvas);
+    --foreground: var(--ink);
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+    --primary: var(--accent-ink);
+    --primary-foreground: 1 0 0;        /* 5.5:1 on primary */
+    --secondary: var(--surface-2);
+    --secondary-foreground: var(--ink);
+    --muted: var(--surface-2);
+    --muted-foreground: var(--ink-muted);
+    --accent: var(--surface-2);
+    --accent-foreground: var(--ink);
+    --destructive: 0.53 0.19 27;        /* 5.6:1 */
+    --destructive-foreground: 1 0 0;
+    --border: var(--hairline);
+    --input: 0.86 0.006 255;
+    --ring: var(--accent-ink);
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 8%;
+    --radius: 0.625rem;                 /* 10px sheets/popovers; controls use 6px */
 
-    --primary: 239 84% 60%;             /* #6366F1 indigo */
-    --primary-foreground: 0 0% 100%;
+    --sidebar-background: var(--canvas);
+    --sidebar-foreground: 0.45 0.012 255;
+    --sidebar-primary: var(--accent-ink);
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: var(--surface-2);
+    --sidebar-accent-foreground: var(--ink);
+    --sidebar-border: var(--hairline);
+    --sidebar-ring: var(--accent-ink);
 
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 220 15% 8%;
+    /* ---- rp-* tokens (legacy names, new values) ------------------- */
+    --rp-canvas: var(--canvas);
+    --rp-paper: var(--surface);
+    --rp-paper-2: var(--surface-2);
+    --rp-ink: var(--ink);
+    --rp-ink-2: 0.45 0.012 255;         /* 7.1:1 */
+    --rp-ink-3: 0.535 0.012 255;        /* 4.6:1 on surface-2 (was 3.0:1) */
+    --rp-rule: var(--hairline);
+    --rp-rule-2: 0.86 0.006 255;
+    --rp-accent: var(--accent-ink);
+    --rp-accent-2: 0.47 0.14 250;       /* pressed / hover */
 
-    --muted: 240 5% 96%;
-    --muted-foreground: 220 8% 45%;
+    /* ---- Status: dots and text only, never fills ----------------- */
+    --status-applied: 0.52 0.12 250;    /* 4.9:1 on surface-2 */
+    --status-interview: 0.53 0.13 65;
+    --status-offer: 0.52 0.12 155;
+    --status-rejected: 0.53 0.16 25;
 
-    --accent: 240 5% 96%;
-    --accent-foreground: 220 15% 8%;
+    --chart-1: var(--accent-ink);
+    --chart-2: 0.6 0.1 185;
+    --chart-3: 0.68 0.13 70;
+    --chart-4: 0.55 0.09 290;
+    --chart-5: 0.6 0.14 20;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+    /* ---- Elevation: only floating layers get a shadow ------------- */
+    --shadow-none: 0 0 #0000;
+    --shadow-overlay: 0 0 0 1px oklch(0 0 0 / 0.06), 0 4px 12px -2px oklch(0.22 0.01 255 / 0.08),
+      0 16px 32px -8px oklch(0.22 0.01 255 / 0.12);
+    --scrim: 0 0 0 / 0.4;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 239 84% 60%;
+    /* ---- Type ------------------------------------------------------ */
+    --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-    --radius: 0.5rem;
-
-    --sidebar-background: 0 0% 99%;
-    --sidebar-foreground: 220 10% 30%;
-    --sidebar-primary: 239 84% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 5% 96%;
-    --sidebar-accent-foreground: 220 15% 8%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 239 84% 60%;
-
-    --shadow-glow: 0 0 0 0 transparent;
-    --shadow-subtle: 0 1px 2px 0 hsl(220 15% 8% / 0.04);
-    --shadow-card: 0 1px 2px 0 hsl(220 15% 8% / 0.04);
-    --shadow-card-hover: 0 1px 3px 0 hsl(220 15% 8% / 0.08);
-    --shadow-elevated: 0 8px 24px -8px hsl(220 15% 8% / 0.12);
-
-    /* rp-* tokens (preserved names, product-first values) */
-    --rp-canvas: 0 0% 100%;
-    --rp-paper: 0 0% 99%;
-    --rp-paper-2: 240 5% 96%;
-    --rp-ink: 220 15% 8%;
-    --rp-ink-2: 220 8% 40%;
-    --rp-ink-3: 220 6% 58%;
-    --rp-rule: 220 13% 91%;
-    --rp-rule-2: 220 13% 85%;
-    --rp-accent: 239 84% 60%;           /* indigo */
-    --rp-accent-2: 243 75% 54%;         /* indigo hover */
-
-    --chart-1: 239 84% 60%;
-    --chart-2: 173 58% 45%;
-    --chart-3: 27 87% 55%;
-    --chart-4: 262 60% 55%;
-    --chart-5: 340 75% 55%;
-
-    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
-    --font-serif: 'Inter', ui-sans-serif, system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* ---- Motion ---------------------------------------------------- */
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in: cubic-bezier(0.64, 0, 0.78, 0);
+    --duration-press: 90ms;
+    --duration-state: 150ms;
+    --duration-sheet: 280ms;
   }
 
   .dark {
-    /* Dark: Linear/Vercel neutral — near-black canvas, faint surfaces */
-    --background: 240 6% 4%;            /* #0A0A0A */
-    --foreground: 0 0% 93%;             /* #EDEDED */
+    --canvas: 0.17 0.006 255;
+    --surface: 0.21 0.007 255;
+    --surface-2: 0.25 0.008 255;
+    --ink: 0.95 0.004 255;              /* 15:1 on surface */
+    --ink-muted: 0.72 0.01 255;         /* 6.9:1 on surface */
+    --hairline: 0.29 0.008 255;
+    --accent-ink: 0.68 0.13 250;
 
-    --card: 240 5% 7%;                  /* #111113 */
-    --card-foreground: 0 0% 93%;
+    --primary-foreground: 0.17 0.006 255; /* 6.7:1 on primary */
+    --destructive: 0.68 0.17 25;
+    --destructive-foreground: 0.17 0.006 255;
+    --input: 0.34 0.01 255;
 
-    --popover: 240 5% 9%;
-    --popover-foreground: 0 0% 93%;
+    --sidebar-foreground: 0.78 0.008 255;
+    --sidebar-primary-foreground: 0.17 0.006 255;
 
-    --primary: 239 84% 67%;             /* slightly brighter indigo on dark */
-    --primary-foreground: 0 0% 100%;
+    --rp-ink-2: 0.78 0.008 255;         /* 8.9:1 */
+    --rp-ink-3: 0.68 0.01 255;          /* 5.7:1 on surface-2 (was 2.1:1) */
+    --rp-rule-2: 0.36 0.01 255;
+    --rp-accent-2: 0.74 0.12 250;
 
-    --secondary: 240 5% 10%;
-    --secondary-foreground: 0 0% 93%;
+    --status-applied: 0.74 0.11 250;
+    --status-interview: 0.8 0.13 75;
+    --status-offer: 0.76 0.13 155;
+    --status-rejected: 0.72 0.15 25;
 
-    --muted: 240 5% 10%;
-    --muted-foreground: 240 5% 65%;
+    --chart-2: 0.72 0.1 185;
+    --chart-3: 0.8 0.13 75;
+    --chart-4: 0.7 0.09 290;
+    --chart-5: 0.72 0.14 20;
 
-    --accent: 240 5% 12%;
-    --accent-foreground: 0 0% 93%;
-
-    --destructive: 0 72% 55%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 240 4% 14%;               /* #232326 hairline */
-    --input: 240 4% 16%;
-    --ring: 239 84% 67%;
-
-    --sidebar-background: 240 6% 4%;
-    --sidebar-foreground: 240 5% 65%;
-    --sidebar-primary: 239 84% 67%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 5% 10%;
-    --sidebar-accent-foreground: 0 0% 93%;
-    --sidebar-border: 240 4% 14%;
-    --sidebar-ring: 239 84% 67%;
-
-    --shadow-glow: 0 0 0 0 transparent;
-    --shadow-subtle: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
-    --shadow-card: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
-    --shadow-card-hover: 0 1px 3px 0 hsl(0 0% 0% / 0.6);
-    --shadow-elevated: 0 8px 24px -8px hsl(0 0% 0% / 0.6);
-
-    --rp-canvas: 240 6% 4%;
-    --rp-paper: 240 5% 7%;
-    --rp-paper-2: 240 5% 10%;
-    --rp-ink: 0 0% 93%;
-    --rp-ink-2: 240 5% 65%;
-    --rp-ink-3: 240 4% 42%;
-    --rp-rule: 240 4% 14%;
-    --rp-rule-2: 240 4% 20%;
-    --rp-accent: 239 84% 67%;
-    --rp-accent-2: 243 75% 60%;
+    --shadow-overlay: 0 0 0 1px oklch(1 0 0 / 0.06), 0 8px 24px -4px oklch(0 0 0 / 0.5);
+    --scrim: 0 0 0 / 0.6;
   }
 
   html { color-scheme: light; }
@@ -156,151 +144,110 @@
   }
 
   html {
-    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    font-feature-settings: "cv11", "ss01";
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   body {
     @apply text-foreground antialiased;
-    background-color: hsl(var(--background));
+    background-color: oklch(var(--background));
     font-family: var(--font-sans);
+    font-size: 0.875rem;                /* 14/20 base, scales with user font size */
+    line-height: 1.25rem;
   }
 
   #root { position: relative; }
 
-  .font-display { font-family: var(--font-display) !important; letter-spacing: -0.015em; }
-  .font-serif   { font-family: var(--font-serif) !important; }
-  .font-mono    { font-family: var(--font-mono) !important; }
+  table, [role="grid"], time { font-variant-numeric: tabular-nums; }
+
+  ::selection { background: oklch(var(--accent-ink) / 0.18); }
+
+  :focus-visible { outline-color: oklch(var(--ring)); }
+
+  .font-mono { font-family: var(--font-mono) !important; font-variant-numeric: tabular-nums; }
 }
 
 @layer utilities {
-  /* Print surface — the resume preview only. Always white. */
+  /* Print surface: the resume preview only. Always white. */
   .surface-paper {
     background: #ffffff;
     color: #0b0e14;
   }
 
-  /* Text tone helpers kept for legacy call sites */
-  .text-accent-amber { color: hsl(38 92% 50%); }
-
-  /* Standard product surface — hairline, subtle, no shadow */
-  .surface-card {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 10px;
-    transition: border-color 150ms ease;
-  }
-  .surface-card:hover { border-color: hsl(var(--rp-rule-2)); }
-
+  /* Hairline surface. No shadow: cards sit on the canvas, they do not float. */
   .glass-card {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
+    background: oklch(var(--card));
+    border: 1px solid oklch(var(--border));
     border-radius: 10px;
-    transition: border-color 150ms ease;
+    transition: border-color var(--duration-state) var(--ease-out);
   }
-  .glass-card:hover { border-color: hsl(var(--rp-rule-2)); }
-
-  .liquid-nav {
-    background: hsl(var(--background) / 0.85);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid hsl(var(--border));
-  }
-
-  .ink-panel {
-    background: hsl(var(--rp-accent));
-    color: hsl(var(--primary-foreground));
-    border-radius: 6px;
-  }
+  .glass-card:hover { border-color: oklch(var(--rp-rule-2)); }
 
   .feature-tile {
     position: relative;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
+    background: oklch(var(--card));
+    border: 1px solid oklch(var(--border));
     border-radius: 10px;
-    transition: border-color 150ms ease, background 150ms ease;
+    transition: border-color var(--duration-state) var(--ease-out), background-color var(--duration-state) var(--ease-out);
   }
   .feature-tile:hover {
-    border-color: hsl(var(--rp-rule-2));
-    background: hsl(var(--accent));
+    border-color: oklch(var(--rp-rule-2));
+    background: oklch(var(--accent));
   }
 
-  .glass-surface {
-    @apply bg-card border border-border;
+  /* Translucent chrome: marketing nav only (content scrolls beneath it). */
+  .material-bar {
+    background: oklch(var(--background) / 0.82);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
   }
 
-  .bento-card {
-    @apply rounded-[10px] border border-border bg-card p-6;
-    transition: border-color 150ms ease;
+  /* Press feedback for clickable cards and rows: responds on pointer-down. */
+  .pressable {
+    transition: transform var(--duration-press) var(--ease-out), background-color var(--duration-state) var(--ease-out),
+      border-color var(--duration-state) var(--ease-out);
   }
-  .bento-card:hover { border-color: hsl(var(--rp-rule-2)); }
+  .pressable:active { transform: scale(0.98); }
 
-  .dropzone-dark {
-    background: hsl(var(--card));
-    border: 1.5px dashed hsl(var(--rp-rule-2));
-    border-radius: 8px;
-    transition: border-color 150ms ease, background 150ms ease;
-  }
-  .dropzone-dark:hover,
-  .dropzone-dark.dragging {
-    border-color: hsl(var(--rp-accent));
-    background: hsl(var(--rp-accent) / 0.05);
+  /* Data: dates, salaries, IDs. */
+  .data { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+  /* Status dot (6px). Pair with text-status-* for the label. */
+  .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: currentColor;
+    flex: none;
   }
 
   /* Terminal-era classes kept as no-ops so legacy pages don't break */
   .terminal-cursor { display: none; }
   .scanlines { position: relative; }
   .terminal-frame {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 8px;
+    background: oklch(var(--card));
+    border: 1px solid oklch(var(--border));
+    border-radius: 6px;
     font-family: var(--font-mono);
-    color: hsl(var(--foreground));
+    color: oklch(var(--foreground));
   }
 
-  /* Motion — keep small, feedback-only */
-  @keyframes card-open {
-    0%   { opacity: 0; transform: translateY(4px); }
-    100% { opacity: 1; transform: translateY(0); }
-  }
-  .animate-card-open { animation: card-open 180ms ease-out forwards; }
-
+  /* Motion: small, feedback-only */
   @keyframes line-in {
     0%   { opacity: 0; transform: translateX(-2px); }
     100% { opacity: 1; transform: translateX(0); }
   }
-  .animate-line-in { animation: line-in 160ms ease-out forwards; }
+  .animate-line-in { animation: line-in 160ms var(--ease-out) forwards; }
 
-  @keyframes scanline-shimmer {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-  }
-
-  .chat-input-glow { box-shadow: 0 0 0 3px hsl(var(--rp-accent) / 0.12); }
-
-  /* Legacy no-ops (safe defaults, old pages call these classes) */
-  .aurora { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
-  .orb { position: absolute; opacity: 0; pointer-events: none; }
-  .mesh-bg { background-image: none; }
-
-  @keyframes gradient-flow {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-  }
-  @keyframes aurora-drift {
-    0%, 100% { background-position: 0% 0%; transform: none; }
-  }
-  @keyframes shimmer {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-  }
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  .animate-fade-in { animation: fade-in 180ms ease-out forwards; }
+  .animate-fade-in { animation: fade-in 180ms var(--ease-out) forwards; }
+
   @keyframes pulse-dot {
     0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
     40% { transform: scale(1); opacity: 1; }
@@ -308,28 +255,61 @@
   .thinking-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
   .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
   .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes scroll-logos {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
-  }
-  .animate-scroll-logos { animation: scroll-logos 30s linear infinite; }
-  @keyframes float {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-6px); }
-  }
-  .animate-float { animation: float 6s ease-in-out infinite; }
-  @keyframes slide-up {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .animate-slide-up { animation: slide-up 220ms ease-out forwards; }
-  @keyframes count-up {
-    from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
-  }
-  .animate-count-up { animation: count-up 220ms ease-out forwards; }
-  @keyframes blob {
-    0%, 100% { transform: none; }
-  }
+
   .animate-blob { animation: none; }
+}
+
+/* ---- Accessibility preferences ------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  /* No travel, no scale, no loops. Short opacity fades survive. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 120ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 120ms !important;
+    transition-property: opacity, color, background-color, border-color !important;
+    scroll-behavior: auto !important;
+  }
+  [data-state="open"],
+  [data-state="closed"] {
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+    --tw-enter-scale: 1 !important;
+    --tw-exit-scale: 1 !important;
+  }
+  .animate-spin { animation: spin 1s linear infinite !important; } /* spinners convey status */
+  .thinking-dot, .animate-pulse, .animate-bounce, .animate-ping { animation: none !important; }
+  .pressable:active, button:active { transform: none !important; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  *,
+  *::before,
+  *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .material-bar { background: oklch(var(--background)); }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --hairline: 0.7 0.01 255;
+    --input: 0.6 0.01 255;
+    --rp-rule-2: 0.6 0.01 255;
+    --ink-muted: 0.4 0.012 255;
+    --rp-ink-3: 0.42 0.012 255;
+  }
+  .dark {
+    --hairline: 0.5 0.01 255;
+    --input: 0.6 0.01 255;
+    --rp-rule-2: 0.6 0.01 255;
+    --ink-muted: 0.82 0.008 255;
+    --rp-ink-3: 0.8 0.01 255;
+  }
+  .material-bar { background: oklch(var(--background)); }
 }

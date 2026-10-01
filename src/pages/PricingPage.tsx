@@ -93,7 +93,7 @@ export default function PricingPage() {
                     <div
                       aria-hidden
                       className="absolute -top-12 -right-6 w-64 h-64 rounded-full blur-3xl pointer-events-none"
-                      style={{ background: "hsl(var(--rp-accent) / 0.10)" }}
+                      style={{ background: "oklch(var(--rp-accent) / 0.10)" }}
                     />
                   )}
 

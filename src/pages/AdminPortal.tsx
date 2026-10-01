@@ -640,7 +640,7 @@ function OverviewTab({
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={data.trends}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip />
@@ -714,7 +714,7 @@ function OverviewTab({
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={website.visitsTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip />

@@ -178,10 +178,10 @@ export default function Analytics() {
             ) : (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={jobStats} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="oklch(var(--muted-foreground))" />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="oklch(var(--muted-foreground))" />
+                  <Tooltip contentStyle={{ background: "oklch(var(--card))", border: "1px solid oklch(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                     {jobStats.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Bar>
@@ -201,10 +201,10 @@ export default function Analytics() {
           <CardContent>
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={activityData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="oklch(var(--muted-foreground))" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="oklch(var(--muted-foreground))" />
+                <Tooltip contentStyle={{ background: "oklch(var(--card))", border: "1px solid oklch(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
                 <Legend wrapperStyle={{ fontSize: "11px" }} />
                 <Area type="monotone" dataKey="prepared" stroke={COLORS[1]} fill={COLORS[1]} fillOpacity={0.15} strokeWidth={2} name="Prepared" />
                 <Area type="monotone" dataKey="submitted" stroke={COLORS[2]} fill={COLORS[2]} fillOpacity={0.15} strokeWidth={2} name="Verified submitted" />
@@ -223,10 +223,10 @@ export default function Analytics() {
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={weeklyApplied} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(var(--border))" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="oklch(var(--muted-foreground))" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="oklch(var(--muted-foreground))" />
+                <Tooltip contentStyle={{ background: "oklch(var(--card))", border: "1px solid oklch(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
                 <Bar dataKey="count" fill={COLORS[0]} radius={[6, 6, 0, 0]} name="Applied" />
               </BarChart>
             </ResponsiveContainer>

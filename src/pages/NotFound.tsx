@@ -12,7 +12,7 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[hsl(var(--primary)/0.95)] text-primary-foreground relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[oklch(var(--primary)/0.95)] text-primary-foreground relative overflow-hidden">
       {/* Decorative elements */}
       <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-white/5" />
       <div className="absolute -bottom-48 -left-48 w-[500px] h-[500px] rounded-full bg-white/5" />
