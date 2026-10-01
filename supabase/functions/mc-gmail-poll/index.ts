@@ -39,6 +39,12 @@ const STATUS_RANK: Record<string, number> = {
   discovered: 0, saved: 1, applied: 2, viewed: 3, interview: 4, take_home: 5, offer: 6, rejected: 6,
 };
 function isForwardStatusMove(from: string, to: string): boolean {
+  // hold/withdrawn are deliberate manual decisions and aren't in STATUS_RANK,
+  // so leaving them out here would fall through to the `?? -1` default below
+  // and let any classified email (even a low-signal one) treat the move as
+  // "forward" and silently reopen a job the user paused or withdrew from.
+  // Only a manual board action should move a job away from these statuses.
+  if (from === "hold" || from === "withdrawn") return false;
   if (to === "rejected" || to === "offer") return true;
   return (STATUS_RANK[to] ?? 0) > (STATUS_RANK[from] ?? -1);
 }
