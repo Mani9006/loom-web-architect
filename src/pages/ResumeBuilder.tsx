@@ -907,7 +907,7 @@ export default function ResumeBuilder() {
           <div className="flex items-center gap-2 mb-2">
             <Upload className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium">Import Resume</span>
-            <Badge variant="secondary" className="text-[10px] h-5">AI-Powered</Badge>
+            <Badge variant="secondary" className="text-xs h-5">AI-Powered</Badge>
           </div>
           <DocumentUpload onTextExtracted={handleResumeImported} isLoading={isParsingResume} persistToDocuments={true} label={isParsingResume ? "AI is parsing your resume..." : "Drop any file here - PDF, Word, Image, Text"} />
         </div>
@@ -930,7 +930,7 @@ export default function ResumeBuilder() {
               <Target className="h-4 w-4" />
               <span className="flex-1 text-left">Target a Job Description</span>
               {keywordMatches && (
-                <Badge variant="outline" className="text-[10px] h-5 border-orange-500/30">
+                <Badge variant="outline" className="text-xs h-5 border-orange-500/30">
                   {keywordMatches.matched.length}/{keywordMatches.matched.length + keywordMatches.missing.length} keywords
                 </Badge>
               )}
@@ -962,23 +962,23 @@ export default function ResumeBuilder() {
                     </div>
                     {keywordMatches.missing.length > 0 && (
                       <div>
-                        <span className="text-[10px] font-medium text-red-400 uppercase tracking-wider">Missing Keywords</span>
+                        <span className="text-xs font-medium text-red-400">Missing Keywords</span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {keywordMatches.missing.slice(0, 20).map((kw) => (
-                            <Badge key={kw} variant="outline" className="text-[10px] border-red-500/30 text-red-500">{kw}</Badge>
+                            <Badge key={kw} variant="outline" className="text-xs border-red-500/30 text-red-500">{kw}</Badge>
                           ))}
-                          {keywordMatches.missing.length > 20 && <span className="text-[10px] text-muted-foreground">+{keywordMatches.missing.length - 20} more</span>}
+                          {keywordMatches.missing.length > 20 && <span className="text-xs text-muted-foreground">+{keywordMatches.missing.length - 20} more</span>}
                         </div>
                       </div>
                     )}
                     {keywordMatches.matched.length > 0 && (
                       <div>
-                        <span className="text-[10px] font-medium text-green-500 uppercase tracking-wider">Matched</span>
+                        <span className="text-xs font-medium text-green-500">Matched</span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {keywordMatches.matched.slice(0, 15).map((kw) => (
-                            <Badge key={kw} variant="outline" className="text-[10px] border-green-500/30 text-green-500">{kw}</Badge>
+                            <Badge key={kw} variant="outline" className="text-xs border-green-500/30 text-green-500">{kw}</Badge>
                           ))}
-                          {keywordMatches.matched.length > 15 && <span className="text-[10px] text-muted-foreground">+{keywordMatches.matched.length - 15} more</span>}
+                          {keywordMatches.matched.length > 15 && <span className="text-xs text-muted-foreground">+{keywordMatches.matched.length - 15} more</span>}
                         </div>
                       </div>
                     )}
@@ -1008,7 +1008,7 @@ export default function ResumeBuilder() {
                     key={section.id}
                     value={section.id}
                     className={cn(
-                      "border-b border-border/40 transition-all",
+                      "border-b border-border/40 transition-colors",
                       dragOverSectionIdx === sectionIdx && dragOverSectionIdx !== dragSectionIdx && "border-t-2 border-t-primary",
                     )}
                     draggable
@@ -1065,7 +1065,7 @@ export default function ResumeBuilder() {
                               {section.label}
                             </span>
                           )}
-                          {count > 0 && <Badge variant="secondary" className="ml-auto text-[10px] h-5 shrink-0">{count}</Badge>}
+                          {count > 0 && <Badge variant="secondary" className="ml-auto text-xs h-5 shrink-0">{count}</Badge>}
                         </span>
                       </AccordionTrigger>
                       <div className="flex items-center shrink-0">
@@ -1110,14 +1110,14 @@ export default function ResumeBuilder() {
                           />
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-muted-foreground">{data.summary.length} chars</span>
+                              <span className="text-xs text-muted-foreground">{data.summary.length} chars</span>
                               {summaryWarning && (
                                 <span className="text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1 bg-yellow-500/10 rounded px-1.5 py-0.5">
                                   <AlertTriangle className="h-3 w-3 shrink-0" /> {summaryWarning}
                                 </span>
                               )}
                             </div>
-                            <Button type="button" variant="ghost" size="sm" onClick={enhanceSummaryWithAI} disabled={aiEnhancingSection === "summary"} className="h-6 text-[10px] gap-1 px-2">
+                            <Button type="button" variant="ghost" size="sm" onClick={enhanceSummaryWithAI} disabled={aiEnhancingSection === "summary"} className="h-6 text-xs gap-1 px-2">
                               {aiEnhancingSection === "summary" ? <><Loader2 className="h-3 w-3 animate-spin" /> Enhancing...</> : <><Sparkles className="h-3 w-3" /> {data.summary ? "Enhance" : "Generate"}</>}
                             </Button>
                           </div>
@@ -1140,7 +1140,7 @@ export default function ResumeBuilder() {
                                   <span className="text-xs font-medium truncate flex-1 min-w-0">
                                     {exp.role || exp.company_or_client ? `${exp.role || "Role"}${exp.company_or_client ? ` @ ${exp.company_or_client}` : ""}` : `Experience ${index + 1}`}
                                   </span>
-                                  {exp.start_date && <span className="text-[10px] text-muted-foreground shrink-0">{exp.start_date}{exp.end_date ? ` - ${exp.end_date}` : ""}</span>}
+                                  {exp.start_date && <span className="text-xs text-muted-foreground shrink-0">{exp.start_date}{exp.end_date ? ` - ${exp.end_date}` : ""}</span>}
                                   <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
                                     {exp.bullets.length > 0 && <button type="button" onClick={() => enhanceBulletsWithAI(exp.id)} disabled={aiEnhancingSection === `exp-${exp.id}`} className="p-0.5 rounded hover:bg-muted text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</button>}
                                     {data.experience.length > 1 && <button type="button" onClick={() => removeExperience(exp.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
@@ -1162,11 +1162,11 @@ export default function ResumeBuilder() {
                                     <div className="grid grid-cols-2 gap-1.5">
                                       <div>
                                         <Input placeholder="Start (e.g. Jan 2023)" value={exp.start_date} onChange={(e) => updateExperience(exp.id, "start_date", e.target.value)} onBlur={(e) => validateExpDateOnBlur(exp.id, "start_date", e.target.value)} className={cn("bg-background h-7 text-xs", fieldErrors[`exp.${exp.id}.start_date`] && "border-yellow-500")} />
-                                        {fieldErrors[`exp.${exp.id}.start_date`] && <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />{fieldErrors[`exp.${exp.id}.start_date`]}</p>}
+                                        {fieldErrors[`exp.${exp.id}.start_date`] && <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />{fieldErrors[`exp.${exp.id}.start_date`]}</p>}
                                       </div>
                                       <div>
                                         <Input placeholder="End (or Present)" value={exp.end_date} onChange={(e) => updateExperience(exp.id, "end_date", e.target.value)} onBlur={(e) => validateExpDateOnBlur(exp.id, "end_date", e.target.value)} className={cn("bg-background h-7 text-xs", fieldErrors[`exp.${exp.id}.end_date`] && "border-yellow-500")} />
-                                        {fieldErrors[`exp.${exp.id}.end_date`] && <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />{fieldErrors[`exp.${exp.id}.end_date`]}</p>}
+                                        {fieldErrors[`exp.${exp.id}.end_date`] && <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />{fieldErrors[`exp.${exp.id}.end_date`]}</p>}
                                       </div>
                                     </div>
                                     <Input placeholder="Location" value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} className="bg-background h-7 text-xs" />
@@ -1195,7 +1195,7 @@ export default function ResumeBuilder() {
                                   <span className="text-xs font-medium truncate flex-1 min-w-0">
                                     {edu.institution || edu.degree ? `${edu.degree || "Degree"}${edu.institution ? ` - ${edu.institution}` : ""}` : `Education ${eduIndex + 1}`}
                                   </span>
-                                  {edu.graduation_date && <span className="text-[10px] text-muted-foreground shrink-0">{edu.graduation_date}</span>}
+                                  {edu.graduation_date && <span className="text-xs text-muted-foreground shrink-0">{edu.graduation_date}</span>}
                                   <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
                                     {data.education.length > 1 && <button type="button" onClick={() => removeEducation(edu.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
                                   </div>
@@ -1214,7 +1214,7 @@ export default function ResumeBuilder() {
                                       <Input placeholder="Field of Study" value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} className="bg-background h-7 text-xs" />
                                       <div>
                                         <Input placeholder="Graduation (e.g. May 2024)" value={edu.graduation_date} onChange={(e) => updateEducation(edu.id, "graduation_date", e.target.value)} onBlur={(e) => { const s = getDateFormatSuggestion(e.target.value); setFieldErrors((prev) => ({ ...prev, [`edu.${edu.id}.graduation_date`]: s })); }} className={cn("bg-background h-7 text-xs", fieldErrors[`edu.${edu.id}.graduation_date`] && "border-yellow-500")} />
-                                        {fieldErrors[`edu.${edu.id}.graduation_date`] && <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />{fieldErrors[`edu.${edu.id}.graduation_date`]}</p>}
+                                        {fieldErrors[`edu.${edu.id}.graduation_date`] && <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5 shrink-0" />{fieldErrors[`edu.${edu.id}.graduation_date`]}</p>}
                                       </div>
                                     </div>
                                   </div>
@@ -1232,20 +1232,20 @@ export default function ResumeBuilder() {
                           {Object.entries(data.skills).map(([categoryKey, skills]) => (
                             <div key={categoryKey} className="space-y-1">
                               <div className="flex items-center gap-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex-1">{getSkillCategoryLabel(categoryKey)}</span>
+                                <span className="text-xs font-semibold text-muted-foreground flex-1">{getSkillCategoryLabel(categoryKey)}</span>
                                 <button type="button" onClick={() => { const s = { ...data.skills }; delete s[categoryKey]; setData((p) => ({ ...p, skills: s })); }} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
                               </div>
                               <div className="flex flex-wrap gap-1">
-                                {skills.map((skill) => <Badge key={skill} variant="secondary" className="text-[10px] h-5 gap-0.5 px-1.5">{skill}<button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)} className="hover:text-destructive ml-0.5"><X className="h-2 w-2" /></button></Badge>)}
-                                <Input placeholder="+ Add" value={currentSkillCategory === categoryKey ? skillInput : ""} onChange={(e) => { setCurrentSkillCategory(categoryKey); setSkillInput(e.target.value); }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkillToCategory(categoryKey, skillInput); setSkillInput(""); } }} className="bg-background h-5 text-[10px] w-20 min-w-0 px-1.5 border-dashed" />
+                                {skills.map((skill) => <Badge key={skill} variant="secondary" className="text-xs h-5 gap-0.5 px-1.5">{skill}<button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)} className="hover:text-destructive ml-0.5"><X className="h-2 w-2" /></button></Badge>)}
+                                <Input placeholder="+ Add" value={currentSkillCategory === categoryKey ? skillInput : ""} onChange={(e) => { setCurrentSkillCategory(categoryKey); setSkillInput(e.target.value); }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkillToCategory(categoryKey, skillInput); setSkillInput(""); } }} className="bg-background h-5 text-xs w-20 min-w-0 px-1.5 border-dashed" />
                               </div>
                             </div>
                           ))}
                           <div className="flex gap-1.5 items-center">
-                            <Input placeholder="New category name..." value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="bg-background h-6 text-[10px] flex-1" onKeyDown={(e) => { if (e.key === "Enter" && newCategoryName.trim()) { const key = normalizeSkillCategory(newCategoryName); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} />
+                            <Input placeholder="New category name..." value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} className="bg-background h-6 text-xs flex-1" onKeyDown={(e) => { if (e.key === "Enter" && newCategoryName.trim()) { const key = normalizeSkillCategory(newCategoryName); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} />
                             <button type="button" onClick={() => { if (newCategoryName.trim()) { const key = normalizeSkillCategory(newCategoryName); if (!data.skills[key]) setData((p) => ({ ...p, skills: { ...p.skills, [key]: [] } })); setNewCategoryName(""); } }} className="text-xs text-muted-foreground hover:text-foreground"><Plus className="h-3 w-3" /></button>
                           </div>
-                          {Object.keys(data.skills).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No skills yet. Upload a resume or add above.</p>}
+                          {Object.keys(data.skills).length === 0 && <p className="text-xs text-muted-foreground text-center py-1">No skills yet. Upload a resume or add above.</p>}
                         </div>
                       )}
 
@@ -1262,7 +1262,7 @@ export default function ResumeBuilder() {
                                   {data.projects.length > 1 && <div className="cursor-grab active:cursor-grabbing shrink-0 touch-none" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}><GripVertical className="h-3.5 w-3.5 text-muted-foreground" /></div>}
                                   <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedProjIdx === index && "rotate-180")} />
                                   <span className="text-xs font-medium truncate flex-1 min-w-0">{project.title || `Project ${index + 1}`}</span>
-                                  {project.date && <span className="text-[10px] text-muted-foreground shrink-0">{project.date}</span>}
+                                  {project.date && <span className="text-xs text-muted-foreground shrink-0">{project.date}</span>}
                                   <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
                                     <button type="button" onClick={() => removeProject(index)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                   </div>
@@ -1299,7 +1299,7 @@ export default function ResumeBuilder() {
                               >
                                 <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedCertId === cert.id && "rotate-180")} />
                                 <span className="text-xs font-medium truncate flex-1">{cert.name || "New Certification"}</span>
-                                {cert.date && <span className="text-[10px] text-muted-foreground shrink-0">{cert.date}</span>}
+                                {cert.date && <span className="text-xs text-muted-foreground shrink-0">{cert.date}</span>}
                                 <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
                                   <button type="button" onClick={() => removeCertification(cert.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
@@ -1322,7 +1322,7 @@ export default function ResumeBuilder() {
                               )}
                             </div>
                           ))}
-                          {data.certifications.length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No certifications added yet</p>}
+                          {data.certifications.length === 0 && <p className="text-xs text-muted-foreground text-center py-1">No certifications added yet</p>}
                           <button type="button" onClick={addCertification} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Certification</button>
                         </div>
                       )}
@@ -1337,7 +1337,7 @@ export default function ResumeBuilder() {
                               >
                                 <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedLangId === lang.id && "rotate-180")} />
                                 <span className="text-xs font-medium truncate flex-1">{lang.language || "New Language"}</span>
-                                {lang.proficiency && <Badge variant="secondary" className="text-[10px] h-5">{lang.proficiency}</Badge>}
+                                {lang.proficiency && <Badge variant="secondary" className="text-xs h-5">{lang.proficiency}</Badge>}
                                 <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
                                   <button type="button" onClick={() => removeLanguage(lang.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
@@ -1354,7 +1354,7 @@ export default function ResumeBuilder() {
                               )}
                             </div>
                           ))}
-                          {(data.languages || []).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No languages added yet</p>}
+                          {(data.languages || []).length === 0 && <p className="text-xs text-muted-foreground text-center py-1">No languages added yet</p>}
                           <button type="button" onClick={addLanguage} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Language</button>
                         </div>
                       )}
@@ -1372,7 +1372,7 @@ export default function ResumeBuilder() {
                                 <span className="text-xs font-medium truncate flex-1">
                                   {vol.role || vol.organization ? `${vol.role || "Role"}${vol.organization ? ` @ ${vol.organization}` : ""}` : "New Volunteer Experience"}
                                 </span>
-                                {vol.date && <span className="text-[10px] text-muted-foreground shrink-0">{vol.date}</span>}
+                                {vol.date && <span className="text-xs text-muted-foreground shrink-0">{vol.date}</span>}
                                 <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
                                   <button type="button" onClick={() => removeVolunteer(vol.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
@@ -1389,7 +1389,7 @@ export default function ResumeBuilder() {
                               )}
                             </div>
                           ))}
-                          {(data.volunteer || []).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No volunteer experience added yet</p>}
+                          {(data.volunteer || []).length === 0 && <p className="text-xs text-muted-foreground text-center py-1">No volunteer experience added yet</p>}
                           <button type="button" onClick={addVolunteer} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Volunteer Experience</button>
                         </div>
                       )}
@@ -1405,7 +1405,7 @@ export default function ResumeBuilder() {
                               >
                                 <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedAwardId === award.id && "rotate-180")} />
                                 <span className="text-xs font-medium truncate flex-1">{award.title || "New Award"}</span>
-                                {award.date && <span className="text-[10px] text-muted-foreground shrink-0">{award.date}</span>}
+                                {award.date && <span className="text-xs text-muted-foreground shrink-0">{award.date}</span>}
                                 <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
                                   <button type="button" onClick={() => removeAward(award.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
@@ -1425,7 +1425,7 @@ export default function ResumeBuilder() {
                               )}
                             </div>
                           ))}
-                          {(data.awards || []).length === 0 && <p className="text-[10px] text-muted-foreground text-center py-1">No awards or publications added yet</p>}
+                          {(data.awards || []).length === 0 && <p className="text-xs text-muted-foreground text-center py-1">No awards or publications added yet</p>}
                           <button type="button" onClick={addAward} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/50 rounded hover:bg-muted/30 transition-colors"><Plus className="h-3 w-3" /> Add Award/Publication</button>
                         </div>
                       )}
@@ -1444,7 +1444,7 @@ export default function ResumeBuilder() {
                                 >
                                   <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedCustomId === entry.id && "rotate-180")} />
                                   <span className="text-xs font-medium truncate flex-1">{entry.title || "New Entry"}</span>
-                                  {entry.date && <span className="text-[10px] text-muted-foreground shrink-0">{entry.date}</span>}
+                                  {entry.date && <span className="text-xs text-muted-foreground shrink-0">{entry.date}</span>}
                                   <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
                                     <button type="button" onClick={() => removeCustomEntry(section.id, entry.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                   </div>
@@ -1476,7 +1476,7 @@ export default function ResumeBuilder() {
                         return (
                           <div className="mt-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-1.5">
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                              <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
                                 <Shield className="h-3 w-3" /> ATS Issues ({sectionIssues.length})
                               </span>
                               {(atsName === "Professional Summary" || atsName === "Work Experience" || atsName === "Skills") && (
@@ -1486,14 +1486,14 @@ export default function ResumeBuilder() {
                                   size="sm"
                                   onClick={() => aiFixSection(atsName)}
                                   disabled={aiFixingSection === atsName}
-                                  className="h-5 text-[10px] gap-1 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                                  className="h-5 text-xs gap-1 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
                                 >
                                   {aiFixingSection === atsName ? <><Loader2 className="h-2.5 w-2.5 animate-spin" /> Fixing...</> : <><Wand2 className="h-2.5 w-2.5" /> AI Fix All</>}
                                 </Button>
                               )}
                             </div>
                             {sectionIssues.map((issue) => (
-                              <div key={issue.id} className="flex items-start gap-1.5 text-[10px]">
+                              <div key={issue.id} className="flex items-start gap-1.5 text-xs">
                                 {issue.severity === "critical" ? <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" /> :
                                  issue.severity === "warning" ? <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0 mt-0.5" /> :
                                  <Info className="h-3 w-3 text-blue-400 shrink-0 mt-0.5" />}
@@ -1522,7 +1522,7 @@ export default function ResumeBuilder() {
                 <button
                   type="button"
                   onClick={() => setShowAddSection(true)}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-medium text-primary hover:text-primary/80 border-2 border-dashed border-primary/20 rounded-lg hover:border-primary/40 hover:bg-primary/5 transition-all"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-medium text-primary hover:text-primary/80 border-2 border-dashed border-primary/20 rounded-lg hover:border-primary/40 hover:bg-primary/5 transition-colors duration-state"
                 >
                   <Plus className="h-4 w-4" /> Add Section
                 </button>
@@ -1535,7 +1535,7 @@ export default function ResumeBuilder() {
                   {/* Built-in sections not yet active */}
                   {ALL_BUILT_IN_SECTIONS.filter((s) => !activeSections.some((a) => a.id === s.id)).length > 0 && (
                     <div>
-                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Standard Sections</span>
+                      <span className="text-xs font-medium text-muted-foreground">Standard Sections</span>
                       <div className="flex flex-wrap gap-1.5 mt-1">
                         {ALL_BUILT_IN_SECTIONS.filter((s) => !activeSections.some((a) => a.id === s.id)).map((s) => (
                           <button
@@ -1553,7 +1553,7 @@ export default function ResumeBuilder() {
                   )}
                   {/* Custom section */}
                   <div>
-                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Custom Section</span>
+                    <span className="text-xs font-medium text-muted-foreground">Custom Section</span>
                     <div className="flex gap-1.5 mt-1">
                       <Input
                         placeholder="Section name (e.g., Hobbies, References, Publications...)"
@@ -1592,13 +1592,13 @@ export default function ResumeBuilder() {
           <div className="flex items-center gap-2">
             {!isMobile && <Button variant="outline" size="sm" onClick={() => setMobileView("editor")} className="h-7 text-xs lg:hidden">&larr; Editor</Button>}
             <h2 className="text-sm font-bold">Preview</h2>
-            {hiddenSections.size > 0 && <Badge variant="outline" className="text-[10px] h-5">{hiddenSections.size} hidden</Badge>}
+            {hiddenSections.size > 0 && <Badge variant="outline" className="text-xs h-5">{hiddenSections.size} hidden</Badge>}
             {/* ATS Score Badge */}
             <button
               type="button"
               onClick={() => setShowATSDetails(!showATSDetails)}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer",
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors duration-state cursor-pointer",
                 atsScore.overall >= 80 ? "bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400 hover:bg-green-500/20" :
                 atsScore.overall >= 60 ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/20" :
                 "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/20"
@@ -1606,7 +1606,7 @@ export default function ResumeBuilder() {
             >
               <Shield className="h-3.5 w-3.5" />
               ATS: {atsScore.overall}%
-              {atsScore.issues.length > 0 && <span className="text-[10px] font-normal opacity-70">({atsScore.issues.filter(i => i.severity === "critical").length} critical)</span>}
+              {atsScore.issues.length > 0 && <span className="text-xs font-normal opacity-70">({atsScore.issues.filter(i => i.severity === "critical").length} critical)</span>}
             </button>
           </div>
           <div className="flex items-center gap-1.5">
@@ -1647,7 +1647,7 @@ export default function ResumeBuilder() {
                 <div className={cn("text-3xl font-black", atsColor)}>{atsScore.overall}</div>
                 <div>
                   <div className="text-sm font-semibold">{atsScore.passesATS ? "ATS Compatible" : "Needs Improvement"}</div>
-                  <div className="text-[10px] text-muted-foreground">{atsScore.issues.length} issues found ({atsScore.issues.filter(i => i.severity === "critical").length} critical, {atsScore.issues.filter(i => i.severity === "warning").length} warnings)</div>
+                  <div className="text-xs text-muted-foreground">{atsScore.issues.length} issues found ({atsScore.issues.filter(i => i.severity === "critical").length} critical, {atsScore.issues.filter(i => i.severity === "warning").length} warnings)</div>
                 </div>
               </div>
               <button type="button" onClick={() => setShowATSDetails(false)} className="p-1 rounded hover:bg-muted"><X className="h-4 w-4" /></button>
@@ -1660,7 +1660,7 @@ export default function ResumeBuilder() {
                   <div className={cn("text-lg font-bold", s.score / s.maxScore >= 0.7 ? "text-green-500" : s.score / s.maxScore >= 0.4 ? "text-yellow-500" : "text-red-500")}>
                     {Math.round((s.score / s.maxScore) * 100)}%
                   </div>
-                  <div className="text-[10px] text-muted-foreground">{s.section}</div>
+                  <div className="text-xs text-muted-foreground">{s.section}</div>
                 </div>
               ))}
             </div>
@@ -1675,7 +1675,7 @@ export default function ResumeBuilder() {
                    <Info className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <Badge variant="outline" className="text-[9px] h-4">{issue.section}</Badge>
+                      <Badge variant="outline" className="text-xs h-4">{issue.section}</Badge>
                       <span className={cn("font-medium",
                         issue.severity === "critical" ? "text-red-600 dark:text-red-400" :
                         issue.severity === "warning" ? "text-yellow-600 dark:text-yellow-400" :

@@ -10,7 +10,7 @@ interface LogoProps {
 
 const sizes = {
   sm: { mark: "w-7 h-7", text: "text-sm" },
-  md: { mark: "w-8 h-8", text: "text-[15px]" },
+  md: { mark: "w-8 h-8", text: "text-sm" },
   lg: { mark: "w-10 h-10", text: "text-lg" },
   xl: { mark: "w-14 h-14", text: "text-2xl" },
 };

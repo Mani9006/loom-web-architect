@@ -54,7 +54,7 @@ export default function PrivacyPolicy() {
       <LegalSection title="4. Gmail integration (Google user data)">
         <p>
           When you choose to connect Gmail, ResumePreps requests read-only access to your mailbox
-          (the <span className="font-mono text-[13px]">gmail.readonly</span> scope). We use this access for exactly two
+          (the <span className="font-mono text-meta">gmail.readonly</span> scope). We use this access for exactly two
           purposes, and nothing else:
         </p>
         <LegalList

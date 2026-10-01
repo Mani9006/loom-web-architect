@@ -137,7 +137,7 @@ export function CoverLetterTemplateSelector({
               <button
                 key={template.id}
                 onClick={() => setPreviewTemplate(template.id)}
-                className={`w-full flex items-start gap-3 p-4 rounded-lg border transition-all text-left ${
+                className={`w-full flex items-start gap-3 p-4 rounded-lg border pressable text-left ${
                   previewTemplate === template.id
                     ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/30 hover:bg-accent/50"

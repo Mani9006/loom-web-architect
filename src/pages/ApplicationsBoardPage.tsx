@@ -242,7 +242,7 @@ export default function ApplicationsBoardPage() {
               >
                 {item.label}
                 <span className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                  "rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums",
                   active ? "bg-rp-accent/10 text-rp-accent" : "bg-rp-paper-2 text-rp-ink-3",
                 )}>
                   {counts[item.key]}
@@ -284,11 +284,11 @@ export default function ApplicationsBoardPage() {
           <Table>
             <TableHeader>
               <TableRow className="border-rp-rule hover:bg-transparent">
-                <TableHead className="text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Position</TableHead>
-                <TableHead className="w-[110px] text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Resume</TableHead>
-                <TableHead className="w-[110px] text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Cover letter</TableHead>
-                <TableHead className="w-[220px] text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Status</TableHead>
-                <TableHead className="w-[130px] text-right text-[10px] uppercase tracking-[0.14em] text-rp-ink-3">Applied</TableHead>
+                <TableHead className="text-xs text-rp-ink-3 font-medium">Position</TableHead>
+                <TableHead className="w-[110px] text-xs text-rp-ink-3 font-medium">Resume</TableHead>
+                <TableHead className="w-[110px] text-xs text-rp-ink-3 font-medium">Cover letter</TableHead>
+                <TableHead className="w-[220px] text-xs text-rp-ink-3 font-medium">Status</TableHead>
+                <TableHead className="w-[130px] text-right text-xs text-rp-ink-3 font-medium">Applied</TableHead>
                 <TableHead className="w-[40px]" />
               </TableRow>
             </TableHeader>
@@ -332,10 +332,10 @@ export default function ApplicationsBoardPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold", STATUS_TONES[row.status.key])}>
+                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold", STATUS_TONES[row.status.key])}>
                       {row.status.label}
                     </span>
-                    <p className="mt-1 line-clamp-1 text-[11px] text-rp-ink-2">{row.status.detail}</p>
+                    <p className="mt-1 line-clamp-1 text-xs text-rp-ink-2">{row.status.detail}</p>
                   </TableCell>
                   <TableCell className="text-right text-xs tabular-nums text-rp-ink-2">
                     {relativeTime(row.activityAt)}

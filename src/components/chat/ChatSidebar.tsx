@@ -515,7 +515,7 @@ export function ChatSidebar({
             {renderConversationGroup("Previous 7 Days", groupedConversations.previous7Days)}
             {renderConversationGroup("Previous 30 Days", groupedConversations.previous30Days)}
             {renderConversationGroup("Older", groupedConversations.older)}
-            
+
             {conversations.length === 0 && !isCollapsed && (
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                 No conversations yet.
@@ -541,8 +541,8 @@ export function ChatSidebar({
         </SidebarFooter>
       </Sidebar>
 
-      <SettingsDialog 
-        open={settingsOpen} 
+      <SettingsDialog
+        open={settingsOpen}
         onOpenChange={setSettingsOpen}
         onClearAllConversations={onClearAllConversations}
         conversationCount={conversations.length}
@@ -576,7 +576,7 @@ export function ChatSidebar({
                     key={color.value}
                     onClick={() => setNewFolderColor(color.value)}
                     className={cn(
-                      "w-8 h-8 rounded-full transition-all",
+                      "w-8 h-8 rounded-full transition-colors duration-state",
                       color.class,
                       newFolderColor === color.value
                         ? "ring-2 ring-offset-2 ring-foreground"

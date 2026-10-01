@@ -118,7 +118,7 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim animate-fade-in">
       <div className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -179,7 +179,7 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
                 <div
                   key={template.id}
                   className={cn(
-                    "group relative rounded-xl border-2 overflow-hidden cursor-pointer transition-all hover:border-primary/50 hover:shadow-lg",
+                    "group relative rounded-xl border-2 overflow-hidden cursor-pointer pressable hover:border-primary/50",
                     selectedTemplateId === template.id ? "border-primary" : "border-border"
                   )}
                 >

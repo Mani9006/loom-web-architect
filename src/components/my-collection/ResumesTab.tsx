@@ -152,7 +152,7 @@ export default function ResumesTab({
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{r.name}</div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-xs text-muted-foreground">
                 Updated {new Date(r.updated_at).toLocaleDateString()}
                 {r.ats_score !== null && (
                   <span className="ml-2">· ATS {Math.round(r.ats_score)}/100</span>
@@ -383,7 +383,7 @@ function CanvasEditor({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Input value={name} onChange={(e) => setName(e.target.value)} className="max-w-md font-medium" />
-            <Badge variant="outline" className="text-[10px]">Canvas</Badge>
+            <Badge variant="outline" className="text-xs">Canvas</Badge>
           </DialogTitle>
         </DialogHeader>
 
@@ -391,10 +391,10 @@ function CanvasEditor({
           {/* Editor */}
           <div className="flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              <span className="text-xs text-muted-foreground font-medium">
                 Markdown, click any line to enable AI suggestions
               </span>
-              <Button size="sm" variant="ghost" onClick={copyMarkdown} className="h-6 text-[10px]">
+              <Button size="sm" variant="ghost" onClick={copyMarkdown} className="h-6 text-xs">
                 {copied ? "Copied!" : "Copy .md"}
               </Button>
             </div>
@@ -429,13 +429,13 @@ function CanvasEditor({
               <Sparkles className="w-3.5 h-3.5 text-primary" /> Writing assistant
             </div>
             {!selectedLine && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Click a line in the editor to get AI rewrite suggestions.
               </p>
             )}
             {selectedLine && (
               <>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Selected</div>
+                <div className="text-xs text-muted-foreground mb-1 font-medium">Selected</div>
                 <div className="text-xs bg-muted rounded p-2 mb-3 max-h-24 overflow-y-auto">
                   {selectedLine}
                 </div>
@@ -445,7 +445,7 @@ function CanvasEditor({
                     variant="outline"
                     onClick={() => rewriteSelected("tighten")}
                     disabled={aiBusy}
-                    className="text-[10px] h-7"
+                    className="text-xs h-7"
                   >
                     Tighten
                   </Button>
@@ -454,7 +454,7 @@ function CanvasEditor({
                     variant="outline"
                     onClick={() => rewriteSelected("keywords")}
                     disabled={aiBusy}
-                    className="text-[10px] h-7"
+                    className="text-xs h-7"
                   >
                     +Keywords
                   </Button>
@@ -463,19 +463,19 @@ function CanvasEditor({
                     variant="outline"
                     onClick={() => rewriteSelected("voice")}
                     disabled={aiBusy}
-                    className="text-[10px] h-7"
+                    className="text-xs h-7"
                   >
                     My voice
                   </Button>
                 </div>
                 {aiBusy && (
-                  <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <Loader2 className="w-3 h-3 animate-spin" /> Generating…
                   </div>
                 )}
                 {aiSuggestions.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Suggestions</div>
+                    <div className="text-xs text-muted-foreground font-medium">Suggestions</div>
                     {aiSuggestions.map((s, i) => (
                       <button
                         key={i}

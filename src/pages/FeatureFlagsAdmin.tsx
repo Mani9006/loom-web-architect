@@ -66,11 +66,11 @@ export default function FeatureFlagsAdmin() {
           <CardTitle className="text-base">How this works</CardTitle>
           <CardDescription className="space-y-1 text-xs">
             <span className="block">
-              Toggles here are saved to <code className="text-[10.5px] bg-muted px-1 py-0.5 rounded">localStorage</code> for
+              Toggles here are saved to <code className="text-xs bg-muted px-1 py-0.5 rounded">localStorage</code> for
               <strong> this browser only</strong>. They don't affect other users.
             </span>
             <span className="block">
-              For permanent rollout to all users, set <code className="text-[10.5px] bg-muted px-1 py-0.5 rounded">VITE_ENABLE_&lt;NAME&gt;=true</code>{" "}
+              For permanent rollout to all users, set <code className="text-xs bg-muted px-1 py-0.5 rounded">VITE_ENABLE_&lt;NAME&gt;=true</code>{" "}
               in Vercel's Production env vars and redeploy.
             </span>
             <span className="block">
@@ -111,7 +111,7 @@ function FlagRow({ name, label, description }: { name: FlagName; label: string; 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-sm">{label}</h3>
-              <code className="text-[10.5px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{name}</code>
+              <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{name}</code>
               <SourceBadge resolved={resolved} />
             </div>
             <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{description}</p>
@@ -133,20 +133,20 @@ function FlagRow({ name, label, description }: { name: FlagName; label: string; 
 function SourceBadge({ resolved }: { resolved: ReturnType<typeof useResolvedFlag> }) {
   if (resolved.source === "local") {
     return (
-      <Badge variant={resolved.enabled ? "default" : "destructive"} className="text-[10px]">
+      <Badge variant={resolved.enabled ? "default" : "destructive"} className="text-xs">
         Local: {resolved.enabled ? "ON" : "OFF"}
       </Badge>
     );
   }
   if (resolved.source === "env") {
     return (
-      <Badge variant="secondary" className="text-[10px]">
+      <Badge variant="secondary" className="text-xs">
         Env: {resolved.enabled ? "ON" : "OFF"}
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="text-[10px]">
+    <Badge variant="outline" className="text-xs">
       Default: {resolved.enabled ? "ON" : "OFF"}
     </Badge>
   );

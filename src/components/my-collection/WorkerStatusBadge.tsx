@@ -50,12 +50,12 @@ export default function WorkerStatusBadge() {
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge variant="outline" className="gap-1.5 text-[10px] font-normal cursor-help">
+          <Badge variant="outline" className="gap-1.5 text-xs font-normal cursor-help">
             <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotColor}`} />
             {label}
           </Badge>
         </TooltipTrigger>
-        <TooltipContent className="max-w-[260px] text-[11px]">
+        <TooltipContent className="max-w-[260px] text-xs">
           {description}
           {state.lastSeen && (
             <div className="mt-1 opacity-60">

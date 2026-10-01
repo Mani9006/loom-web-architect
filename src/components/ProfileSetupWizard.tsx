@@ -312,7 +312,7 @@ export function ProfileSetupWizard() {
               key={s.label}
               onClick={() => { saveStep(); setStep(i); }}
               className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-all min-w-fit",
+                "flex items-center gap-2 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors duration-state min-w-fit",
                 i === step
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : i < step

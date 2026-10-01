@@ -775,7 +775,7 @@ export default function JobSearchPage() {
   return (
     <div className="bg-muted/30 h-full flex flex-col overflow-hidden">
       {/* Search Header - always visible */}
-      <div className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+      <div className="border-b bg-background sticky top-0 z-10">
         <div className="max-w-[1440px] mx-auto p-3 sm:p-4 space-y-3">
           {/* Tab row */}
           <div className="flex items-center gap-1">
@@ -803,7 +803,7 @@ export default function JobSearchPage() {
               <Sparkles className="w-4 h-4" />
               Matched For You
               {matchedJobs.length > 0 && (
-                <span className="ml-1 bg-primary-foreground/20 text-[10px] rounded-full px-1.5 py-0.5">
+                <span className="ml-1 bg-primary-foreground/20 text-xs rounded-full px-1.5 py-0.5">
                   {matchedJobs.length}
                 </span>
               )}
@@ -881,7 +881,7 @@ export default function JobSearchPage() {
               <Filter className="w-3 h-3" />
               Filters
               {activeFilters > 0 && (
-                <span className="ml-0.5 bg-primary-foreground text-primary rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold">
+                <span className="ml-0.5 bg-primary-foreground text-primary rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold">
                   {activeFilters}
                 </span>
               )}
@@ -894,25 +894,25 @@ export default function JobSearchPage() {
             )}
             {/* Active filter badges inline */}
             {!showAdvanced && salaryRange !== "any" && (
-              <Badge variant="secondary" className="text-[10px] gap-0.5 h-6">
+              <Badge variant="secondary" className="text-xs gap-0.5 h-6">
                 <DollarSign className="w-2.5 h-2.5" /> {salaryRange}
                 <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setSalaryRange("any")} />
               </Badge>
             )}
             {!showAdvanced && jobType !== "all" && (
-              <Badge variant="secondary" className="text-[10px] gap-0.5 h-6">
+              <Badge variant="secondary" className="text-xs gap-0.5 h-6">
                 {jobType}
                 <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setJobType("all")} />
               </Badge>
             )}
             {!showAdvanced && experienceLevel !== "all" && (
-              <Badge variant="secondary" className="text-[10px] gap-0.5 h-6">
+              <Badge variant="secondary" className="text-xs gap-0.5 h-6">
                 {experienceLevel}
                 <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setExperienceLevel("all")} />
               </Badge>
             )}
             {!showAdvanced && remoteFilter !== "all" && (
-              <Badge variant="secondary" className="text-[10px] gap-0.5 h-6">
+              <Badge variant="secondary" className="text-xs gap-0.5 h-6">
                 {remoteFilter}
                 <X className="w-2.5 h-2.5 cursor-pointer ml-0.5" onClick={() => setRemoteFilter("all")} />
               </Badge>
@@ -1109,7 +1109,7 @@ export default function JobSearchPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-[10px] h-6 text-muted-foreground"
+                    className="text-xs h-6 text-muted-foreground"
                     onClick={() => { setFromCache(false); searchJobs(); }}
                   >
                     🔄 Refresh
@@ -1145,7 +1145,7 @@ export default function JobSearchPage() {
                                 onClick={(e) => toggleSaveJob(job, e)}
                                 disabled={saving}
                                 className={cn(
-                                  "p-1 rounded-md transition-all shrink-0",
+                                  "p-1 rounded-md transition-colors duration-state shrink-0",
                                   saved
                                     ? "text-primary hover:text-primary/80"
                                     : "text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-primary"
@@ -1163,16 +1163,16 @@ export default function JobSearchPage() {
                             </div>
                             <p className="text-xs text-muted-foreground mt-0.5">{job.company}</p>
                             <div className="flex flex-wrap gap-1 mt-1.5">
-                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                              <span className="text-xs text-muted-foreground flex items-center gap-0.5">
                                 <MapPin className="w-2.5 h-2.5" /> {job.location}
                               </span>
                               {job.remote && (
-                                <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                <Badge variant="secondary" className="text-xs h-4 px-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                                   Remote
                                 </Badge>
                               )}
                               {job.salary && (
-                                <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                <span className="text-xs text-muted-foreground flex items-center gap-0.5">
                                   <DollarSign className="w-2.5 h-2.5" /> {job.salary}
                                 </span>
                               )}
@@ -1182,16 +1182,16 @@ export default function JobSearchPage() {
                             )}
                             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                               {job.role_category && job.role_category !== "Other" && (
-                                <Badge className="text-[10px] h-4 px-1.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{job.role_category}</Badge>
+                                <Badge className="text-xs h-4 px-1.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{job.role_category}</Badge>
                               )}
                               {job.experience_level && job.experience_level !== "Mid-Level" && (
-                                <Badge className="text-[10px] h-4 px-1.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">{job.experience_level}</Badge>
+                                <Badge className="text-xs h-4 px-1.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">{job.experience_level}</Badge>
                               )}
-                              {job.job_type && <Badge variant="outline" className="text-[10px] h-4 px-1.5">{job.job_type}</Badge>}
-                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                              {job.job_type && <Badge variant="outline" className="text-xs h-4 px-1.5">{job.job_type}</Badge>}
+                              <span className="text-xs text-muted-foreground flex items-center gap-0.5">
                                 <Clock className="w-2.5 h-2.5" /> {job.date_posted}
                               </span>
-                              <Badge variant="outline" className="text-[10px] h-4 px-1.5 capitalize">{job.source}</Badge>
+                              <Badge variant="outline" className="text-xs h-4 px-1.5 capitalize">{job.source}</Badge>
                             </div>
                           </div>
                         </div>
@@ -1437,18 +1437,18 @@ export default function JobSearchPage() {
                                   <Progress value={job.match_score} className="h-1.5 flex-1" aria-label={`${job.match_score}% career fit`} />
                                   <span className="w-10 text-right text-xs font-semibold tabular-nums">{job.match_score}%</span>
                                 </div>
-                                <p className="mt-1 text-[10px] font-medium text-muted-foreground">
+                                <p className="mt-1 text-xs font-medium text-muted-foreground">
                                   {job.match_score >= 80 ? "Strong fit" : job.match_score >= 65 ? "Good fit" : "Potential fit"}
                                 </p>
                                 <div className="flex flex-wrap gap-1 mt-1.5">
-                                  <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                  <span className="text-xs text-muted-foreground flex items-center gap-0.5">
                                     <MapPin className="w-2.5 h-2.5" /> {job.location}
                                   </span>
                                   {job.remote && (
-                                    <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Remote</Badge>
+                                    <Badge variant="secondary" className="text-xs h-4 px-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Remote</Badge>
                                   )}
                                   {job.salary && (
-                                    <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                    <span className="text-xs text-muted-foreground flex items-center gap-0.5">
                                       <DollarSign className="w-2.5 h-2.5" /> {job.salary}
                                     </span>
                                   )}
@@ -1460,7 +1460,7 @@ export default function JobSearchPage() {
                                       .sort(([,a], [,b]) => (b as number) - (a as number))
                                       .slice(0, 3)
                                       .map(([reason, score]) => (
-                                        <Badge key={reason} variant="outline" className="text-[10px] h-4 px-1.5 gap-0.5">
+                                        <Badge key={reason} variant="outline" className="text-xs h-4 px-1.5 gap-0.5">
                                           {reason.replace(/_/g, " ")}: {score}%
                                         </Badge>
                                       ))}
@@ -1598,7 +1598,7 @@ export default function JobSearchPage() {
                                   </div>
                                   <Progress value={dimension.score} className="h-1.5" />
                                   {dimension.evidence?.[0] && (
-                                    <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{dimension.evidence[0]}</p>
+                                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{dimension.evidence[0]}</p>
                                   )}
                                 </div>
                               ))}

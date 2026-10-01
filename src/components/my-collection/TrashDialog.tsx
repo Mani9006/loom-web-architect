@@ -119,11 +119,11 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
               {items.map((job) => (
                 <div
                   key={job.id}
-                  className="flex items-center justify-between gap-3 border rounded-md p-3 text-[12px]"
+                  className="flex items-center justify-between gap-3 border rounded-md p-3 text-xs"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="font-medium truncate">{job.job_title}</div>
-                    <div className="text-muted-foreground text-[11px] mt-0.5 flex items-center gap-3 flex-wrap">
+                    <div className="text-muted-foreground text-xs mt-0.5 flex items-center gap-3 flex-wrap">
                       <span className="flex items-center gap-1">
                         <Building2 className="w-3 h-3" /> {job.company}
                       </span>

@@ -155,7 +155,7 @@ export default function AIToolbox() {
             key={tool.id}
             onClick={() => { setSelectedTool(tool); setResult(""); }}
             className={cn(
-              "p-3 rounded-xl border text-left transition-all duration-200",
+              "p-3 rounded-lg border text-left pressable",
               selectedTool.id === tool.id
                 ? "border-primary bg-primary/5 shadow-[var(--shadow-card-hover)]"
                 : "border-border hover:border-primary/30 hover:bg-muted/50"

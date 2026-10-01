@@ -236,9 +236,9 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
               value={jdMd}
               onChange={(e) => setJdMd(e.target.value)}
               rows={9}
-              className="font-mono text-[12px]"
+              className="font-mono text-xs"
             />
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Required if you want to use the "Tailor to job" action on this card.
             </p>
           </div>

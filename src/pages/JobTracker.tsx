@@ -110,7 +110,7 @@ function JobDetailPanel({
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-scrim" onClick={onClose} />
       {/* Panel */}
       <div className="relative w-full max-w-lg bg-background shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
         {/* Header */}
@@ -464,7 +464,7 @@ export default function JobTracker() {
                         </div>
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteSavedJobDetail(job); }}
-                          className="p-1.5 rounded-md hover:bg-destructive/10 transition-all opacity-0 group-hover:opacity-100"
+                          className="p-1.5 rounded-md hover:bg-destructive/10 transition-[opacity,background-color] duration-state opacity-0 group-hover:opacity-100"
                           title="Remove from saved"
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />
@@ -501,7 +501,7 @@ export default function JobTracker() {
                       <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{job.description}</p>
                     )}
 
-                    <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1">
+                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                       <Clock className="w-2.5 h-2.5" />
                       Saved {formatDistanceToNow(new Date(job.saved_at), { addSuffix: true })}
                     </p>
@@ -577,7 +577,7 @@ export default function JobTracker() {
           { label: "Skipped", value: automationCounts.skipped },
         ].map((item) => (
           <div key={item.label} className="px-3 py-3 border-r border-rp-rule last:border-r-0">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-rp-ink/50">{item.label}</p>
+            <p className="text-xs text-rp-ink/50 font-medium">{item.label}</p>
             <p className="mt-1 text-xl font-semibold tabular-nums text-rp-ink">{item.value}</p>
           </div>
         ))}
@@ -607,7 +607,7 @@ export default function JobTracker() {
               <h2 id="application-packets-title" className="text-sm font-semibold text-rp-ink">Application packets</h2>
               <p className="mt-0.5 text-xs text-rp-ink-2">Every tailored résumé stays attached to its job and submission state.</p>
             </div>
-            <span className="text-[11px] tabular-nums text-rp-ink-3">{filteredApplicationPackets.length} shown</span>
+            <span className="text-xs tabular-nums text-rp-ink-3">{filteredApplicationPackets.length} shown</span>
           </div>
           <div className="grid gap-3 lg:grid-cols-2">
             {filteredApplicationPackets.map((packet) => {
@@ -619,8 +619,8 @@ export default function JobTracker() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className="rounded-none text-[10px]">{status.label}</Badge>
-                        <span className="text-[11px] font-semibold tabular-nums text-rp-accent">{fit}% career fit</span>
+                        <Badge variant="outline" className="rounded-none text-xs">{status.label}</Badge>
+                        <span className="text-xs font-semibold tabular-nums text-rp-accent">{fit}% career fit</span>
                       </div>
                       <h3 className="mt-2 truncate text-sm font-semibold text-rp-ink">{job.title}</h3>
                       <p className="mt-0.5 text-xs text-rp-ink-2">{job.company.name}</p>
@@ -639,7 +639,7 @@ export default function JobTracker() {
                         <a href={job.apply_url} target="_blank" rel="noreferrer noopener">Employer portal <ExternalLink className="h-3.5 w-3.5" /></a>
                       </Button>
                     )}
-                    <span className="ml-auto text-[10px] text-rp-ink-3">
+                    <span className="ml-auto text-xs text-rp-ink-3">
                       {packet.submitted_at ? `Submitted ${new Date(packet.submitted_at).toLocaleDateString()}` : formatDistanceToNow(new Date(packet.created_at), { addSuffix: true })}
                     </span>
                   </div>
@@ -697,7 +697,7 @@ export default function JobTracker() {
             >
               <div className="flex items-center justify-between mb-3 px-1">
                 <h3 className="text-sm font-semibold">{col.key}</h3>
-                <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-medium">
+                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-medium">
                   {colJobs.length}
                 </span>
               </div>
@@ -714,7 +714,7 @@ export default function JobTracker() {
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData("jobId", job.id)}
                     onClick={() => setSelectedKanbanJob(job)}
-                    className="p-3 cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow-card-hover)] transition-all group"
+                    className="p-3 cursor-grab active:cursor-grabbing hover:border-rp-rule-2 pressable group"
                   >
                     <div className="flex items-start gap-2.5">
                       <div className="w-8 h-8 rounded bg-muted flex items-center justify-center shrink-0">
@@ -725,7 +725,7 @@ export default function JobTracker() {
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                           <Building2 className="w-3 h-3" /><span className="truncate">{job.company || ","}</span>
                         </div>
-                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                           <Clock className="w-2.5 h-2.5" />
                           {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
                         </div>
@@ -733,7 +733,7 @@ export default function JobTracker() {
                       <button
                         onClick={(e) => { e.stopPropagation(); deleteJob(job.id); }}
                         aria-label={`Delete ${job.title}${job.company ? ` at ${job.company}` : ""}`}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 transition-all"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 transition-[opacity,background-color] duration-state"
                       >
                         <Trash2 className="w-3 h-3 text-destructive" />
                       </button>

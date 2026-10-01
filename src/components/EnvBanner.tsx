@@ -21,7 +21,7 @@ export function EnvBanner() {
   return (
     <div
       role="status"
-      className={`${palette} flex items-center justify-center gap-2 px-3 py-1 text-[11px] font-medium tracking-wide`}
+      className={`${palette} flex items-center justify-center gap-2 px-3 py-1 text-xs font-medium tracking-wide`}
     >
       <AlertTriangle className="size-3.5" />
       <span className="font-bold">{label}</span>

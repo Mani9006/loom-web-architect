@@ -68,8 +68,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 px-4 mt-6 mb-1.5">
       <span
-        className="text-[9.5px] font-medium uppercase tracking-[0.18em] text-rp-ink/45"
-        style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
+        className="text-xs font-medium text-rp-ink/45"
       >
         {children}
       </span>
@@ -161,17 +160,15 @@ export default function AppLayout() {
           <>
             <span
               className={cn(
-                "flex-1 text-left truncate text-[12.5px] tracking-[-0.01em] transition-[font-weight]",
+                "flex-1 text-left truncate text-xs tracking-[-0.01em] transition-[font-weight]",
                 active ? "font-semibold" : "font-normal",
               )}
-              style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
             >
               {item.label}
             </span>
             {item.badge && (
               <span
-                className="text-[9px] uppercase tracking-[0.12em] font-medium px-1.5 py-px rounded-sm bg-rp-ink/[0.06] text-rp-ink/70"
-                style={{ fontFamily: '"JetBrains Mono", monospace' }}
+                className="text-xs font-medium px-1.5 py-px rounded-sm bg-rp-ink/[0.06] text-rp-ink/70 font-mono"
               >
                 {item.badge}
               </span>
@@ -199,21 +196,15 @@ export default function AppLayout() {
         >
           <span
             aria-hidden
-            className="inline-flex items-center justify-center w-[26px] h-[26px] bg-rp-ink text-rp-paper rounded-[3px] font-semibold leading-none"
-            style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "16px", paddingTop: "1px" }}
+            className="inline-flex items-center justify-center w-[26px] h-[26px] bg-rp-ink text-rp-paper rounded-[3px] font-semibold leading-none text-base"
+            style={{ paddingTop: "1px" }}
           >
             R
           </span>
           {showText && (
             <span
-              className="text-rp-ink leading-none"
-              style={{
-                fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-                fontSize: "20px",
-                letterSpacing: "-0.005em",
-                fontStyle: "italic",
-                fontWeight: 500,
-              }}
+              className="text-rp-ink leading-none text-xl font-medium"
+              style={{ fontStyle: "italic" }}
             >
               ResumePreps
             </span>
@@ -255,32 +246,23 @@ export default function AppLayout() {
             }}
           >
             <div
-              className="text-[9px] uppercase tracking-[0.2em] text-rp-accent mb-1.5"
-              style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
+              className="text-xs text-rp-accent mb-1.5 font-medium"
             >
               Upgrade · No. 01
             </div>
             <div
-              className="text-rp-ink leading-tight"
-              style={{
-                fontFamily: '"Manrope", "Inter", system-ui, sans-serif',
-                fontSize: "16px",
-                fontWeight: 500,
-                letterSpacing: "-0.01em",
-              }}
+              className="text-rp-ink leading-tight text-base font-medium"
             >
               Let ResumePreps do the repetitive work.
             </div>
             <div
-              className="text-[11px] text-rp-ink/55 mt-1.5 leading-snug"
-              style={{ fontFamily: '"Source Serif 4", Georgia, serif' }}
+              className="text-xs text-rp-ink/55 mt-1.5 leading-snug"
             >
               Per-job tailoring, supervised auto-apply, and one application record.
             </div>
             <div className="mt-2.5 flex items-center justify-between">
               <span
-                className="text-[10.5px] uppercase tracking-[0.14em] text-rp-ink/70 font-medium"
-                style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
+                className="text-xs text-rp-ink/70 font-medium"
               >
                 See pricing
               </span>
@@ -291,7 +273,7 @@ export default function AppLayout() {
       )}
 
       <div className={cn("border-t border-rp-rule h-12 flex items-center", showText ? "px-4" : "justify-center")}>
-        <span className="inline-flex items-center gap-2 text-[11px] text-rp-ink/55" style={{ fontFamily: '"Inter", system-ui, sans-serif' }}>
+        <span className="inline-flex items-center gap-2 text-xs text-rp-ink/55">
           <span className="h-1.5 w-1.5 rounded-full bg-rp-accent" aria-hidden />
           {showText ? `${planLabel} plan` : <span className="sr-only">{planLabel} plan</span>}
         </span>
@@ -303,7 +285,7 @@ export default function AppLayout() {
     <div className="flex h-screen bg-rp-canvas">
       {isMobile && mobileOpen && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="fixed inset-0 bg-rp-ink/30 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <div className="fixed inset-0 bg-scrim" onClick={() => setMobileOpen(false)} />
           <div className="relative z-50">{sidebarContent}</div>
         </div>
       )}
@@ -311,7 +293,7 @@ export default function AppLayout() {
       {!isMobile && sidebarContent}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 flex items-center gap-3 px-4 sm:px-5 border-b border-rp-rule bg-rp-canvas/95 backdrop-blur-sm shrink-0">
+        <header className="h-16 flex items-center gap-3 px-4 sm:px-5 border-b border-rp-rule bg-rp-canvas shrink-0">
           {isMobile ? (
             <button
               onClick={() => setMobileOpen(true)}
@@ -333,8 +315,7 @@ export default function AppLayout() {
             <>
               <div className="w-px h-3.5 bg-rp-rule" />
               <span
-                className="text-[10px] uppercase tracking-[0.2em] text-rp-ink/55"
-                style={{ fontFamily: '"JetBrains Mono", monospace' }}
+                className="text-xs text-rp-ink/55 font-mono"
               >
                 {crumb}
               </span>
@@ -347,8 +328,7 @@ export default function AppLayout() {
             <a
               href={primaryAction.path}
               onClick={(e) => handleLinkClick(e, primaryAction.path)}
-              className="hidden md:inline-flex items-center gap-1.5 h-8 px-3 mr-1 rounded-md bg-rp-ink text-rp-canvas hover:opacity-85 transition-opacity no-underline text-[11.5px] font-medium"
-              style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
+              className="hidden md:inline-flex items-center gap-1.5 h-8 px-3 mr-1 rounded-md bg-rp-ink text-rp-canvas hover:opacity-85 transition-opacity no-underline text-xs font-medium"
             >
               {hasAutoApply ? <Sparkles className="w-3.5 h-3.5" /> : <Search className="w-3.5 h-3.5" />}
               {primaryAction.label}
@@ -357,12 +337,11 @@ export default function AppLayout() {
               onClick={() => setAnuOpen((v) => !v)}
               aria-pressed={anuOpen}
               className={cn(
-                "hidden sm:inline-flex items-center gap-1.5 h-7 px-2.5 text-[11.5px] transition-colors",
+                "hidden sm:inline-flex items-center gap-1.5 h-7 px-2.5 text-xs transition-colors",
                 anuOpen
                   ? "bg-rp-ink text-rp-paper"
                   : "text-rp-ink/55 hover:text-rp-ink",
               )}
-              style={{ fontFamily: '"Inter", system-ui, sans-serif' }}
             >
               <HelpCircle className="w-3.5 h-3.5" strokeWidth={1.6} />
               Ask
@@ -379,16 +358,16 @@ export default function AppLayout() {
               <DropdownMenuTrigger asChild>
                 <button
                   aria-label="Account menu"
-                  className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-rp-ink/15 text-rp-ink hover:border-rp-ink/45 transition-colors leading-none"
-                  style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif', fontSize: "12px", paddingTop: "1px" }}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-rp-ink/15 text-rp-ink hover:border-rp-ink/45 transition-colors leading-none text-xs"
+                  style={{ paddingTop: "1px" }}
                 >
                   {initials}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 rounded-md p-1.5">
                 <div className="px-3 py-2.5">
-                  <p className="text-[13px] font-semibold text-foreground leading-tight">{displayName}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{user.email}</p>
+                  <p className="text-meta font-semibold text-foreground leading-tight">{displayName}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{user.email}</p>
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer rounded-md gap-2">

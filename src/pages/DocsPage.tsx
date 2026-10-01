@@ -60,11 +60,11 @@ export default function DocsPage() {
 
   return (
     <div className="px-6 lg:px-10 pt-10 pb-16 max-w-[860px] mx-auto">
-      <p className="text-[12px] font-medium text-muted-foreground mb-1.5">Docs</p>
-      <h1 className="text-[28px] sm:text-[32px] font-bold text-foreground tracking-tight leading-tight">
+      <p className="text-xs font-medium text-muted-foreground mb-1.5">Docs</p>
+      <h1 className="text-3xl sm:text-3xl font-bold text-foreground tracking-tight leading-tight">
         Getting around ResumePreps
       </h1>
-      <p className="mt-2 text-[14px] text-muted-foreground max-w-[64ch] leading-relaxed">
+      <p className="mt-2 text-sm text-muted-foreground max-w-[64ch] leading-relaxed">
         A short guide to what each screen does, when to use it, and how the pieces fit together.
       </p>
 
@@ -82,18 +82,18 @@ export default function DocsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-3 mb-1">
-                    <h2 className="text-[15px] font-semibold text-foreground">{s.title}</h2>
+                    <h2 className="text-sm font-semibold text-foreground">{s.title}</h2>
                     {s.path && (
                       <button
                         onClick={() => navigate(s.path!)}
                         aria-label={`Open ${s.title}`}
-                        className="text-[12px] text-foreground hover:text-foreground/70 transition-colors shrink-0"
+                        className="text-xs text-foreground hover:text-foreground/70 transition-colors shrink-0"
                       >
                         Open →
                       </button>
                     )}
                   </div>
-                  <p className="text-[13px] text-muted-foreground leading-relaxed">{s.body}</p>
+                  <p className="text-meta text-muted-foreground leading-relaxed">{s.body}</p>
                 </div>
               </div>
             </div>

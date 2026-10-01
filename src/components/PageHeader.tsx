@@ -32,7 +32,7 @@ export function PageHeader({
     <div className="mb-6">
       <div className="flex items-baseline gap-2 mb-2">
         <span
-          className="text-[11px] uppercase tracking-[0.14em] text-rp-ink-3 font-mono"
+          className="text-xs text-rp-ink-3 font-mono"
         >
           {status || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}
         </span>

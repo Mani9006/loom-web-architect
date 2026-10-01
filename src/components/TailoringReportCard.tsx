@@ -89,23 +89,23 @@ function ChangeRow({ change }: { change: TailoringChange }) {
     <li className="border-t border-rp-rule/70 py-3 first:border-t-0 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-2">
         <span className={cn(
-          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+          "rounded-full px-2 py-0.5 text-xs font-semibold",
           change.type === "keyword_added" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-primary/10 text-primary",
         )}>
           {CHANGE_TYPE_LABEL[change.type]}
         </span>
         {change.jd_keywords.length > 0 && (
-          <span className="text-[10px] text-muted-foreground">+{change.jd_keywords.join(", ")}</span>
+          <span className="text-xs text-muted-foreground">+{change.jd_keywords.join(", ")}</span>
         )}
       </div>
       {diff && (
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <div className="border border-rp-rule/60 bg-background/60 p-2.5">
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Before</p>
+            <p className="mb-1 text-xs font-semibold text-muted-foreground">Before</p>
             {change.before ? <DiffText tokens={diff.before} highlight="removed" /> : <p className="text-xs italic text-muted-foreground">Not present in master résumé</p>}
           </div>
           <div className="border border-emerald-500/20 bg-emerald-500/5 p-2.5">
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">After</p>
+            <p className="mb-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">After</p>
             {change.after ? <DiffText tokens={diff.after} highlight="added" /> : <p className="text-xs italic text-muted-foreground">Removed</p>}
           </div>
         </div>
@@ -135,7 +135,7 @@ function ChangeGroup({ label, changes, defaultOpen }: { label: string; changes: 
 function KeywordChip({ keyword, tone }: { keyword: string; tone: "added" | "covered" | "missing" }) {
   return (
     <span className={cn(
-      "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]",
+      "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
       tone === "added" && "border-emerald-500/30 bg-emerald-500/10 font-medium text-emerald-800 dark:text-emerald-200",
       tone === "covered" && "border-rp-rule bg-background text-muted-foreground",
       tone === "missing" && "border-dashed border-muted-foreground/40 text-muted-foreground",
@@ -211,19 +211,19 @@ export default function TailoringReportCard({ report, loading }: { report: Tailo
         <div className="flex items-center gap-3">
           <div className="text-center">
             <Gauge value={before} tone="muted" />
-            <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">Master ATS</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">Master ATS</p>
           </div>
           <div className="flex flex-col items-center">
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
             {delta !== 0 && (
-              <span className={cn("mt-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums", delta > 0 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-rose-500/10 text-rose-600")}>
+              <span className={cn("mt-1 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums", delta > 0 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-rose-500/10 text-rose-600")}>
                 {delta > 0 ? `+${delta}` : delta}
               </span>
             )}
           </div>
           <div className="text-center">
             <Gauge value={after} tone="primary" delay={0.15} />
-            <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">Tailored ATS</p>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">Tailored ATS</p>
           </div>
         </div>
 
@@ -231,19 +231,19 @@ export default function TailoringReportCard({ report, loading }: { report: Tailo
           <div className="min-w-56 flex-1 space-y-2">
             {added.length > 0 && (
               <div>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Keywords added</p>
+                <p className="mb-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Keywords added</p>
                 <div className="flex flex-wrap gap-1.5">{added.map((keyword) => <KeywordChip key={keyword} keyword={keyword} tone="added" />)}</div>
               </div>
             )}
             {covered_now.length > 0 && (
               <div>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Already covered</p>
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">Already covered</p>
                 <div className="flex flex-wrap gap-1.5">{covered_now.map((keyword) => <KeywordChip key={keyword} keyword={keyword} tone="covered" />)}</div>
               </div>
             )}
             {still_missing.length > 0 && (
               <div>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Still missing</p>
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">Still missing</p>
                 <div className="flex flex-wrap gap-1.5">{still_missing.map((keyword) => <KeywordChip key={keyword} keyword={keyword} tone="missing" />)}</div>
               </div>
             )}

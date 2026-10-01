@@ -171,7 +171,7 @@ export function GeneralChatPanel({
       <div className="shrink-0 pb-4 pt-2 px-4">
         <div className="max-w-3xl mx-auto">
           <form onSubmit={handleSubmit}>
-            <div className="relative rounded-2xl border border-border bg-muted/50 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all shadow-sm">
+            <div className="relative rounded-2xl border border-border bg-muted/50 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-[border-color,box-shadow] duration-state">
               <Textarea
                 ref={textareaRef}
                 value={input}
@@ -207,7 +207,7 @@ export function GeneralChatPanel({
               </div>
             </div>
           </form>
-          <p className="text-[11px] text-muted-foreground/50 text-center mt-2">
+          <p className="text-xs text-muted-foreground/50 text-center mt-2">
             AI can make mistakes. Verify important information.
           </p>
         </div>

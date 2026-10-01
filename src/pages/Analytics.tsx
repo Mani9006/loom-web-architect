@@ -253,7 +253,7 @@ export default function Analytics() {
                     </div>
                     <div className="h-2 rounded-full bg-muted overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all duration-700"
+                        className="h-full rounded-full transition-[width] duration-700 ease-out"
                         style={{
                           width: `${Math.min(100, (s.count / Math.max(...skillData.map((d) => d.count))) * 100)}%`,
                           background: COLORS[i % COLORS.length],

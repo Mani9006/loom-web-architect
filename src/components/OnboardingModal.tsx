@@ -98,7 +98,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
           {STEPS.map((s, i) => (
             <div key={s.label} className="flex items-center gap-2 flex-1">
               <div className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all",
+                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors duration-state",
                 i < step ? "bg-primary text-primary-foreground" :
                 i === step ? "bg-primary/15 text-primary ring-2 ring-primary" :
                 "bg-muted text-muted-foreground"
@@ -157,7 +157,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                     <Badge
                       key={level}
                       variant={preferences.experienceLevel === level ? "default" : "outline"}
-                      className="cursor-pointer transition-all hover:scale-105"
+                      className="cursor-pointer pressable hover:border-rp-rule-2"
                       onClick={() => setPreferences((p) => ({ ...p, experienceLevel: level }))}
                     >
                       {level}
@@ -192,7 +192,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                     <Badge
                       key={type}
                       variant={preferences.jobTypes.includes(type) ? "default" : "outline"}
-                      className="cursor-pointer transition-all hover:scale-105"
+                      className="cursor-pointer pressable hover:border-rp-rule-2"
                       onClick={() => toggleJobType(type)}
                     >
                       {type}

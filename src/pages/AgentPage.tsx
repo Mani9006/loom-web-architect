@@ -776,7 +776,7 @@ export default function AgentPage() {
                 "h-2.5 w-2.5 rounded-full",
                 isRunning ? "bg-emerald-500 animate-pulse" : "bg-rp-ink-3",
               )} />
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rp-ink-3">
+              <p className="text-xs font-semibold text-rp-ink-3">
                 {isRunning ? "Running" : "Stopped"}
               </p>
             </div>
@@ -840,7 +840,7 @@ export default function AgentPage() {
         ].map((item) => (
           <div key={item.label} className="bg-rp-canvas p-4 min-h-28">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-rp-ink-3">{item.label}</p>
+              <p className="text-xs text-rp-ink-3 font-medium">{item.label}</p>
               <item.icon className="h-4 w-4 text-rp-accent" strokeWidth={1.7} />
             </div>
             <p className="mt-3 text-3xl font-semibold tracking-tight tabular-nums text-rp-ink">{item.value}</p>
@@ -856,7 +856,7 @@ export default function AgentPage() {
             <div className="flex items-center gap-2">
               <Radar className="h-4 w-4 text-rp-accent" />
               <h2 className="text-base font-semibold text-rp-ink">Top 5 right now</h2>
-              {plan !== "free" && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live</span>}
+              {plan !== "free" && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">Live</span>}
             </div>
             <p className="mt-1 text-xs text-rp-ink-2">
               We tailor your resume for each job, then apply for you. Watch it happen below.
@@ -924,7 +924,7 @@ export default function AgentPage() {
               return (
                 <div key={match.id} className="flex flex-col border border-rp-rule bg-rp-paper p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tabular-nums", fitChipClasses(score))}>
+                    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums", fitChipClasses(score))}>
                       {score}% fit
                     </span>
                     {(status.key === "matched" || status.key === "tailoring") && (
@@ -944,8 +944,8 @@ export default function AgentPage() {
                   <p className="mt-0.5 truncate text-xs text-rp-ink-2">{company}{match.scanned_job?.location ? ` · ${match.scanned_job.location}` : ""}</p>
                   <p className="mt-2 line-clamp-2 min-h-8 text-xs leading-relaxed text-rp-ink-2">{why}</p>
                   <div className="mt-3 flex items-center gap-2">
-                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", status.tone)}>{status.label}</span>
-                    <span className="truncate text-[11px] text-rp-ink-3" title={status.detail}>{status.detail}</span>
+                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold", status.tone)}>{status.label}</span>
+                    <span className="truncate text-xs text-rp-ink-3" title={status.detail}>{status.detail}</span>
                   </div>
                   <div className="mt-auto pt-3">
                     {status.key === "matched" && (
@@ -1044,7 +1044,7 @@ export default function AgentPage() {
           <div className="mt-6 grid md:grid-cols-[150px_1fr] gap-6 items-center">
             <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full border-[10px] border-rp-paper-2 bg-rp-canvas mx-auto">
               <span className={cn("text-3xl font-semibold tabular-nums", scoreTone(latestAts.overall))}>{Math.round(latestAts.overall)}</span>
-              <span className="text-[10px] uppercase tracking-wider text-rp-ink-3">ATS score</span>
+              <span className="text-xs text-rp-ink-3 font-medium">ATS score</span>
             </div>
             <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
               {ATS_DIMENSIONS.map((dimension) => {
@@ -1134,7 +1134,7 @@ export default function AgentPage() {
 
               <div className={cn("mt-6 space-y-6", !hasAutoApply && "opacity-50 pointer-events-none")}>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rp-ink-3">How should we apply?</p>
+                  <p className="text-xs font-semibold text-rp-ink-3">How should we apply?</p>
                   <div className="mt-3 grid sm:grid-cols-2 gap-3">
                     <button
                       type="button"
@@ -1174,7 +1174,7 @@ export default function AgentPage() {
                       onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_fit_score: Number(event.target.value) }))}
                       className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
                     />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">Only apply to jobs that fit you at least this well.</span>
+                    <span className="block text-xs leading-relaxed text-rp-ink-3">Only apply to jobs that fit you at least this well.</span>
                   </label>
                   <label className="space-y-2">
                     <span className="text-xs font-semibold text-rp-ink">Applications per day</span>
@@ -1186,7 +1186,7 @@ export default function AgentPage() {
                       onChange={(event) => setControls((current) => ({ ...current, daily_apply_cap: Number(event.target.value) }))}
                       className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
                     />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">The most we'll submit in one day.</span>
+                    <span className="block text-xs leading-relaxed text-rp-ink-3">The most we'll submit in one day.</span>
                   </label>
                   <label className="space-y-2">
                     <span className="text-xs font-semibold text-rp-ink">Checks per day</span>
@@ -1198,7 +1198,7 @@ export default function AgentPage() {
                       onChange={(event) => setControls((current) => ({ ...current, agent_max_actions_per_day: Number(event.target.value) }))}
                       className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
                     />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">How much background work we may do daily.</span>
+                    <span className="block text-xs leading-relaxed text-rp-ink-3">How much background work we may do daily.</span>
                   </label>
                   <label className="space-y-2">
                     <span className="text-xs font-semibold text-rp-ink">Minimum resume score</span>
@@ -1210,7 +1210,7 @@ export default function AgentPage() {
                       onChange={(event) => setControls((current) => ({ ...current, auto_apply_min_ats_score: Number(event.target.value) }))}
                       className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"
                     />
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">The tailored resume must score at least this (default 85).</span>
+                    <span className="block text-xs leading-relaxed text-rp-ink-3">The tailored resume must score at least this (default 85).</span>
                   </label>
                 </div>
 
@@ -1225,7 +1225,7 @@ export default function AgentPage() {
                       <option value="evidence_only">Strictly your real experience</option>
                       <option value="coverage_boost">Highlight matching keywords from your real experience</option>
                     </select>
-                    <span className="block text-[11px] leading-relaxed text-rp-ink-3">Either way, we never invent skills, employers, dates, or results.</span>
+                    <span className="block text-xs leading-relaxed text-rp-ink-3">Either way, we never invent skills, employers, dates, or results.</span>
                   </label>
                 </div>
 
@@ -1304,10 +1304,10 @@ export default function AgentPage() {
                   <>
                     <div className="mt-4 flex items-center justify-between gap-3">
                       <span className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                        "rounded-full px-2 py-0.5 text-xs font-semibold",
                         lastRun.status === "completed" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
                       )}>{lastRun.status}</span>
-                      <span className="text-[10px] text-rp-ink-3">{formatDistanceToNow(new Date(lastRun.started_at), { addSuffix: true })}</span>
+                      <span className="text-xs text-rp-ink-3">{formatDistanceToNow(new Date(lastRun.started_at), { addSuffix: true })}</span>
                     </div>
                     <p className="mt-3 text-xs leading-relaxed text-rp-ink-2">{lastRun.summary || "No summary was recorded."}</p>
                   </>

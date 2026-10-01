@@ -116,7 +116,7 @@ export function TerminalLines({
   }, [lines]);
 
   return (
-    <div className={cn("space-y-1", className)} style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "12.5px" }}>
+    <div className={cn("font-mono text-xs", "space-y-1", className)}>
       {lines.slice(0, activeIndex).map((l, i) => (
         <div key={i} className="text-rp-ink-2 animate-line-in">
           <span className="text-rp-accent mr-1.5">{prefix}</span>
@@ -174,11 +174,10 @@ export function TerminalLoader({
     >
       {title && (
         <div
-          className="flex items-center gap-2 mb-3 pb-2 border-b border-rp-rule/60"
-          style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", letterSpacing: "0.14em" }}
+          className="flex items-center gap-2 mb-3 pb-2 border-b border-rp-rule/60 text-xs font-medium"
         >
           <span className="size-2 rounded-full bg-rp-accent" />
-          <span className="text-rp-ink uppercase">{title}</span>
+          <span className="text-rp-ink font-medium">{title}</span>
         </div>
       )}
       <TerminalLines lines={lines} />

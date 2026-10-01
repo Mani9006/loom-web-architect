@@ -61,7 +61,7 @@ function ShimmerPreview() {
           <div key={i} className="h-2 animate-pulse rounded-sm bg-rp-paper-2" style={{ width: `${width}%`, animationDelay: `${i * 180}ms` }} />
         ))}
       </div>
-      <p className="mt-2.5 text-[11px] text-rp-ink-2">
+      <p className="mt-2.5 text-xs text-rp-ink-2">
         <TerminalText key={messageIndex} text={TAILOR_MESSAGES[messageIndex]} speed={18} startDelay={0} hideCursorWhenDone />
       </p>
     </div>
@@ -77,7 +77,7 @@ function ChangesPreview({ changes }: { changes: TailoringChange[] }) {
   if (lines.length === 0) return <ShimmerPreview />;
   return (
     <div className="border border-emerald-500/25 bg-emerald-500/[0.04] p-3" aria-label="Résumé edits for this job">
-      <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
         <FileText className="h-3 w-3" /> Editing your résumé, changes in green
       </p>
       <ul className="space-y-1.5">
@@ -87,7 +87,7 @@ function ChangesPreview({ changes }: { changes: TailoringChange[] }) {
             initial={{ opacity: 0, x: -6 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.25 + i * 0.45, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            className="line-clamp-1 rounded-sm bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800 dark:text-emerald-200"
+            className="line-clamp-1 rounded-sm bg-emerald-500/15 px-1.5 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-200"
           >
             {change.after}
           </motion.li>
@@ -112,7 +112,7 @@ function StepNode({ state, label }: { state: NodeState; label: string }) {
         <span className="h-3.5 w-3.5 rounded-full border border-rp-rule-2" />
       )}
       <span className={cn(
-        "text-[11px] font-medium",
+        "text-xs font-medium",
         state === "done" && "text-emerald-600 dark:text-emerald-400",
         state === "active" && "text-amber-600 dark:text-amber-400",
         state === "pending" && "text-rp-ink-3",
@@ -131,28 +131,28 @@ function ResultLine({ info }: { info: ApplyStepInfo }) {
   if (info.step === "applied") {
     const when = info.submittedAt ? formatDistanceToNow(new Date(info.submittedAt), { addSuffix: true }) : "just now";
     return (
-      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
+      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
         ✅ Applied · {when}
       </motion.p>
     );
   }
   if (info.step === "needs_you") {
     return (
-      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-medium text-orange-600 dark:text-orange-400">
+      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-xs font-medium text-orange-600 dark:text-orange-400">
         🟠 Needs you, {info.reason}
       </motion.p>
     );
   }
   if (info.step === "couldnt_apply") {
     return (
-      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-medium text-rose-600 dark:text-rose-400">
+      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-xs font-medium text-rose-600 dark:text-rose-400">
         🔴 Couldn't apply, {info.reason}
       </motion.p>
     );
   }
   if (info.step === "ready") {
     return (
-      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
+      <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
         ✓ Résumé tailored, ready for your review
       </motion.p>
     );
@@ -337,7 +337,7 @@ export default function ApplyProgressModal({
                       <button
                         type="button"
                         onClick={() => onOpenApplication(info.draftId as string)}
-                        className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-rp-ink-2 hover:text-rp-ink"
+                        className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-rp-ink-2 hover:text-rp-ink"
                       >
                         Open <ArrowUpRight className="h-3 w-3" />
                       </button>
@@ -369,14 +369,14 @@ export default function ApplyProgressModal({
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
                       </span>
-                      <p className="text-[12px] text-rp-ink-2">
+                      <p className="text-xs text-rp-ink-2">
                         {taskRunning ? "Filling the application…" : "In line, submission starts shortly."}
                         {taskRunning && logLine && <span className="text-rp-ink-3"> {shortReason(logLine, "")}</span>}
                       </p>
                     </div>
                   )}
                   {info.step === "needs_you" && (
-                    <p className="mt-2 flex items-center gap-1.5 text-[11px] text-rp-ink-3">
+                    <p className="mt-2 flex items-center gap-1.5 text-xs text-rp-ink-3">
                       <XCircle className="h-3 w-3 text-orange-500" /> Open the application to answer and we'll finish it.
                     </p>
                   )}
@@ -387,7 +387,7 @@ export default function ApplyProgressModal({
         </ul>
 
         <div className="flex items-center justify-between gap-3 border-t border-rp-rule bg-rp-paper px-5 py-3">
-          <p className="text-[11px] text-rp-ink-3">
+          <p className="text-xs text-rp-ink-3">
             {allDone
               ? closingIn !== null ? `Closing in ${closingIn}s…` : "Closing…"
               : "Live, updates every few seconds"}

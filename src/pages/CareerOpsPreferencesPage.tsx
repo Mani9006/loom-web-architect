@@ -92,13 +92,13 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
     <div className="space-y-3">
       {label || hint ? (
         <div>
-          {label ? <p className="text-[14px] font-semibold text-foreground">{label}</p> : null}
-          {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+          {label ? <p className="text-sm font-semibold text-foreground">{label}</p> : null}
+          {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
         </div>
       ) : null}
       <div className="flex flex-wrap gap-2">
         {values.map((v, i) => (
-          <span key={i} className="inline-flex items-center gap-2 h-8 pl-3 pr-2 rounded-full bg-foreground/5 text-[12px] text-foreground">
+          <span key={i} className="inline-flex items-center gap-2 h-8 pl-3 pr-2 rounded-full bg-foreground/5 text-xs text-foreground">
             {v}
             <button
               type="button"
@@ -116,13 +116,13 @@ function TagEditor({ label, hint, values, onChange, placeholder }: {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
           placeholder={placeholder}
-          className="flex-1 h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-foreground/25"
+          className="flex-1 h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-foreground/25"
         />
         <button
           type="button"
           onClick={add}
           aria-label={`Add ${label.toLowerCase()}`}
-          className="h-10 px-4 rounded-full text-[12px] font-medium border border-foreground/15 text-foreground hover:bg-foreground/5 transition-colors"
+          className="h-10 px-4 rounded-full text-xs font-medium border border-foreground/15 text-foreground hover:bg-foreground/5 transition-colors"
         >
           Add
         </button>
@@ -142,8 +142,8 @@ function ChoiceChips({ label, hint, values, choices, onChange }: {
     <div className="space-y-3">
       {label || hint ? (
         <div>
-          {label ? <p className="text-[14px] font-semibold text-foreground">{label}</p> : null}
-          {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+          {label ? <p className="text-sm font-semibold text-foreground">{label}</p> : null}
+          {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
         </div>
       ) : null}
       <div className="flex flex-wrap gap-2">
@@ -156,7 +156,7 @@ function ChoiceChips({ label, hint, values, choices, onChange }: {
               aria-pressed={active}
               onClick={() => onChange(active ? values.filter((value) => value !== choice.value) : [...values, choice.value])}
               className={cn(
-                "h-9 px-4 rounded-full text-[12px] font-medium transition-colors",
+                "h-9 px-4 rounded-full text-xs font-medium transition-colors",
                 active ? "bg-foreground text-background" : "border border-foreground/15 text-foreground hover:bg-foreground/5",
               )}
             >
@@ -220,14 +220,14 @@ export default function CareerOpsPreferencesPage() {
   return (
     <div className="px-6 lg:px-12 py-10 lg:py-12 max-w-[960px] mx-auto space-y-10">
       <motion.header initial="hidden" animate="visible" variants={fadeUp} custom={0}>
-        <button onClick={() => navigate("/matches")} className="text-[12px] text-muted-foreground hover:text-foreground transition-colors mb-3">
+        <button onClick={() => navigate("/matches")} className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-3">
           ← Matches
         </button>
-        <p className="text-[12px] font-medium text-muted-foreground mb-1.5">Preferences</p>
-        <h1 className="text-[28px] sm:text-[32px] font-bold text-foreground tracking-tight leading-tight">
+        <p className="text-xs font-medium text-muted-foreground mb-1.5">Preferences</p>
+        <h1 className="text-3xl sm:text-3xl font-bold text-foreground tracking-tight leading-tight">
           Tune the shortlist
         </h1>
-        <p className="mt-2 max-w-[64ch] text-[14px] text-muted-foreground leading-relaxed">
+        <p className="mt-2 max-w-[64ch] text-sm text-muted-foreground leading-relaxed">
           Control which jobs appear, how career fit is scored, and whether the Agent may prepare or submit supported applications.
         </p>
       </motion.header>
@@ -235,12 +235,12 @@ export default function CareerOpsPreferencesPage() {
       {/* Targeting */}
       <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={1} className="glass-card p-8 space-y-8">
         <div className="flex items-baseline justify-between">
-          <p className="text-[13px] font-semibold text-foreground">Targeting</p>
+          <p className="text-meta font-semibold text-foreground">Targeting</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-[1fr_180px] sm:items-end">
           <div>
-            <p className="text-[14px] font-semibold text-foreground">Confirmed total experience</p>
-            <p className="text-[12px] leading-relaxed text-muted-foreground">
+            <p className="text-sm font-semibold text-foreground">Confirmed total experience</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
               Enter your verified total once. Leave blank to calculate non-overlapping months across every client in the matching resume.
             </p>
           </div>
@@ -254,9 +254,9 @@ export default function CareerOpsPreferencesPage() {
               value={confirmedExperienceYears ?? ""}
               onChange={(event) => setConfirmedExperienceYears(event.target.value === "" ? null : Number(event.target.value))}
               placeholder="Auto from dates"
-              className="h-10 w-full rounded-md border border-foreground/15 bg-background px-3 pr-14 text-[13px] text-foreground focus:outline-none focus:border-foreground/30"
+              className="h-10 w-full rounded-md border border-foreground/15 bg-background px-3 pr-14 text-meta text-foreground focus:outline-none focus:border-foreground/30"
             />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">years</span>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">years</span>
           </div>
         </div>
         <TagEditor
@@ -334,17 +334,17 @@ export default function CareerOpsPreferencesPage() {
         />
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Work authorization</p>
+            <p className="text-meta font-semibold text-foreground mb-1">Work authorization</p>
             <input
               aria-label="Work authorization"
               value={prefs.work_authorization ?? ""}
               onChange={(e) => setPrefs({ ...prefs, work_authorization: e.target.value || null })}
               placeholder="US citizen, H-1B, OPT…"
-              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta focus:outline-none focus:border-foreground/25"
             />
           </div>
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Maximum experience stretch</p>
+            <p className="text-meta font-semibold text-foreground mb-1">Maximum experience stretch</p>
             <input
               aria-label="Maximum experience stretch in years"
               type="number"
@@ -353,14 +353,14 @@ export default function CareerOpsPreferencesPage() {
               step="0.5"
               value={prefs.max_stretch_years}
               onChange={(e) => setPrefs({ ...prefs, max_stretch_years: Number(e.target.value) })}
-              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta focus:outline-none focus:border-foreground/25"
             />
-            <p className="text-[11px] text-muted-foreground mt-1">Hold roles asking for more than this many extra years for your review.</p>
+            <p className="text-xs text-muted-foreground mt-1">Hold roles asking for more than this many extra years for your review.</p>
           </div>
         </div>
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Minimum job experience level</p>
+            <p className="text-meta font-semibold text-foreground mb-1">Minimum job experience level</p>
             <input
               aria-label="Minimum job experience in years"
               type="number"
@@ -370,11 +370,11 @@ export default function CareerOpsPreferencesPage() {
               value={prefs.min_years_experience ?? ""}
               onChange={(e) => setPrefs({ ...prefs, min_years_experience: e.target.value ? Number(e.target.value) : null })}
               placeholder="No minimum"
-              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta focus:outline-none focus:border-foreground/25"
             />
           </div>
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Maximum job experience level</p>
+            <p className="text-meta font-semibold text-foreground mb-1">Maximum job experience level</p>
             <input
               aria-label="Maximum job experience in years"
               type="number"
@@ -384,14 +384,14 @@ export default function CareerOpsPreferencesPage() {
               value={prefs.max_years_experience ?? ""}
               onChange={(e) => setPrefs({ ...prefs, max_years_experience: e.target.value ? Number(e.target.value) : null })}
               placeholder="No maximum"
-              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta focus:outline-none focus:border-foreground/25"
             />
           </div>
         </div>
         <div className="flex items-center justify-between gap-6">
           <div>
-            <p className="text-[14px] font-semibold text-foreground">I need sponsorship</p>
-            <p className="text-[12px] text-muted-foreground">Hold postings that explicitly cannot sponsor.</p>
+            <p className="text-sm font-semibold text-foreground">I need sponsorship</p>
+            <p className="text-xs text-muted-foreground">Hold postings that explicitly cannot sponsor.</p>
           </div>
           <button
             type="button"
@@ -408,32 +408,32 @@ export default function CareerOpsPreferencesPage() {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Comp min (USD)</p>
+            <p className="text-meta font-semibold text-foreground mb-1">Comp min (USD)</p>
             <input
               aria-label="Minimum compensation in US dollars"
               type="number"
               value={prefs.comp_target_usd_min ?? ""}
               onChange={(e) => setPrefs({ ...prefs, comp_target_usd_min: e.target.value ? Number(e.target.value) : null })}
               placeholder="120000"
-              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta focus:outline-none focus:border-foreground/25"
             />
           </div>
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Comp max (USD)</p>
+            <p className="text-meta font-semibold text-foreground mb-1">Comp max (USD)</p>
             <input
               aria-label="Maximum compensation in US dollars"
               type="number"
               value={prefs.comp_target_usd_max ?? ""}
               onChange={(e) => setPrefs({ ...prefs, comp_target_usd_max: e.target.value ? Number(e.target.value) : null })}
               placeholder="200000"
-              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta focus:outline-none focus:border-foreground/25"
             />
           </div>
         </div>
         <div className="flex items-center justify-between gap-6">
           <div>
-            <p className="text-[14px] font-semibold text-foreground">Require a disclosed salary</p>
-            <p className="text-[12px] text-muted-foreground">Hold roles without a usable compensation range.</p>
+            <p className="text-sm font-semibold text-foreground">Require a disclosed salary</p>
+            <p className="text-xs text-muted-foreground">Hold roles without a usable compensation range.</p>
           </div>
           <button
             type="button"
@@ -454,11 +454,11 @@ export default function CareerOpsPreferencesPage() {
       <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={2} className="glass-card p-8 space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[13px] font-semibold text-foreground">Auto-submit</p>
-            <p className="text-[14px] font-semibold text-foreground mt-2">
+            <p className="text-meta font-semibold text-foreground">Auto-submit</p>
+            <p className="text-sm font-semibold text-foreground mt-2">
               Submit supported simple-form applications <em className="italic font-normal">on your behalf.</em>
             </p>
-            <p className="text-[13px] text-muted-foreground mt-1 max-w-[60ch]">
+            <p className="text-meta text-muted-foreground mt-1 max-w-[60ch]">
               Greenhouse, Ashby, and Lever applications above your threshold can enter guarded submission checks.
               Multi-page or uncertain portals stay review-only until they pass receipt-level validation.
             </p>
@@ -479,8 +479,8 @@ export default function CareerOpsPreferencesPage() {
 
         <div className={cn("grid grid-cols-2 gap-6 pt-4 border-t border-foreground/10", !prefs.auto_apply_enabled && "opacity-50 pointer-events-none")}>
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Minimum career fit</p>
-            <p className="text-[12px] text-muted-foreground mb-2">0–100 evidence-based gate. Your non-negotiable rules still win.</p>
+            <p className="text-meta font-semibold text-foreground mb-1">Minimum career fit</p>
+            <p className="text-xs text-muted-foreground mb-2">0–100 evidence-based gate. Your non-negotiable rules still win.</p>
             <input
               aria-label="Minimum career fit score"
               type="number"
@@ -488,12 +488,12 @@ export default function CareerOpsPreferencesPage() {
               max="100"
               value={prefs.auto_apply_min_fit_score}
               onChange={(e) => setPrefs({ ...prefs, auto_apply_min_fit_score: Number(e.target.value) })}
-              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta focus:outline-none focus:border-foreground/25"
             />
           </div>
           <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Daily submit cap</p>
-            <p className="text-[12px] text-muted-foreground mb-2">Hard limit to protect your applicant reputation.</p>
+            <p className="text-meta font-semibold text-foreground mb-1">Daily submit cap</p>
+            <p className="text-xs text-muted-foreground mb-2">Hard limit to protect your applicant reputation.</p>
             <input
               aria-label="Daily submission cap"
               type="number"
@@ -501,14 +501,14 @@ export default function CareerOpsPreferencesPage() {
               max="75"
               value={prefs.daily_apply_cap}
               onChange={(e) => setPrefs({ ...prefs, daily_apply_cap: Number(e.target.value) })}
-              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+              className="w-full h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta focus:outline-none focus:border-foreground/25"
             />
           </div>
         </div>
 
         <div className="pt-4 border-t border-foreground/10">
-          <p className="text-[13px] font-semibold text-foreground mb-1">Review policy</p>
-          <p className="text-[12px] text-muted-foreground mb-3">Controls the last human checkpoint; roles outside your rules are never submitted.</p>
+          <p className="text-meta font-semibold text-foreground mb-1">Review policy</p>
+          <p className="text-xs text-muted-foreground mb-3">Controls the last human checkpoint; roles outside your rules are never submitted.</p>
           <ChoiceChips
             label=""
             hint=""
@@ -524,7 +524,7 @@ export default function CareerOpsPreferencesPage() {
 
         {prefs.auto_apply_enabled && (
           <div className="pt-4 border-t border-foreground/10">
-            <p className="text-[13px] font-semibold text-foreground mb-1">Enabled portals</p>
+            <p className="text-meta font-semibold text-foreground mb-1">Enabled portals</p>
             <div className="flex gap-2 flex-wrap mt-2">
               {(["greenhouse", "ashby", "lever"] as const).map((p) => {
                 const active = prefs.auto_apply_portals.includes(p);
@@ -541,7 +541,7 @@ export default function CareerOpsPreferencesPage() {
                         : [...prefs.auto_apply_portals, p],
                     })}
                     className={cn(
-                      "h-9 px-4 rounded-full text-[12px] font-medium transition-colors capitalize",
+                      "h-9 px-4 rounded-full text-xs font-medium transition-colors capitalize",
                       !available && "bg-foreground/5 text-muted-foreground/50 cursor-not-allowed",
                       available && active && "bg-foreground text-background",
                       available && !active && "border border-foreground/15 text-foreground hover:bg-foreground/5",
@@ -560,11 +560,11 @@ export default function CareerOpsPreferencesPage() {
       <motion.section initial="hidden" animate="visible" variants={fadeUp} custom={3} className="glass-card p-8 space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[13px] font-semibold text-foreground">Auto-pilot</p>
-            <p className="text-[14px] font-semibold text-foreground mt-2">
+            <p className="text-meta font-semibold text-foreground">Auto-pilot</p>
+            <p className="text-sm font-semibold text-foreground mt-2">
               Let the Job Hunter agent run for you.
             </p>
-            <p className="text-[13px] text-muted-foreground mt-1 max-w-[60ch]">
+            <p className="text-meta text-muted-foreground mt-1 max-w-[60ch]">
               Every ten minutes, the Agent scans new matches against your preferences, scores them, and prepares high-fit roles. In Continuous Apply mode, supported jobs can submit under your saved policy until you press Stop applying.
             </p>
           </div>
@@ -583,8 +583,8 @@ export default function CareerOpsPreferencesPage() {
         </div>
 
         <div className={cn("pt-4 border-t border-foreground/10", !prefs.agent_enabled && "opacity-50 pointer-events-none")}>
-          <p className="text-[13px] font-semibold text-foreground mb-1">Daily action budget</p>
-          <p className="text-[12px] text-muted-foreground mb-2">Hard cap on how many score + prepare actions the agent can take in 24 hours.</p>
+          <p className="text-meta font-semibold text-foreground mb-1">Daily action budget</p>
+          <p className="text-xs text-muted-foreground mb-2">Hard cap on how many score + prepare actions the agent can take in 24 hours.</p>
           <input
             aria-label="Daily Agent action budget"
             type="number"
@@ -592,18 +592,18 @@ export default function CareerOpsPreferencesPage() {
             max="100"
             value={prefs.agent_max_actions_per_day}
             onChange={(e) => setPrefs({ ...prefs, agent_max_actions_per_day: Number(e.target.value) })}
-            className="w-full max-w-[200px] h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-[13px] focus:outline-none focus:border-foreground/25"
+            className="w-full max-w-[200px] h-10 px-4 rounded-full bg-background/50 border border-foreground/10 text-meta focus:outline-none focus:border-foreground/25"
           />
         </div>
 
         {runs.length > 0 && (
           <div className="pt-4 border-t border-foreground/10">
-            <p className="text-[13px] font-semibold text-foreground mb-3">Recent activity</p>
+            <p className="text-meta font-semibold text-foreground mb-3">Recent activity</p>
             <ul className="divide-y divide-foreground/10">
               {runs.map((r) => (
                 <li key={r.id} className="grid grid-cols-[80px_1fr_auto] gap-3 items-start py-3">
                   <span className={cn(
-                    "text-[10.5px] font-mono font-medium uppercase tracking-wider px-2 py-0.5 rounded inline-block w-fit",
+                    "text-xs font-mono font-medium px-2 py-0.5 rounded inline-block w-fit",
                     r.status === "completed" ? "bg-emerald-100 text-emerald-700"
                       : r.status === "failed" ? "bg-rose-100 text-rose-700"
                       : r.status === "capped" ? "bg-amber-100 text-amber-700"
@@ -612,12 +612,12 @@ export default function CareerOpsPreferencesPage() {
                     {r.status}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-[13px] text-foreground leading-snug">{r.summary ?? "(no summary)"}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1">
+                    <p className="text-meta text-foreground leading-snug">{r.summary ?? "(no summary)"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
                       {r.actions.length} action{r.actions.length === 1 ? "" : "s"} · {r.iterations} iteration{r.iterations === 1 ? "" : "s"}
                     </p>
                   </div>
-                  <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
                     {new Date(r.started_at).toLocaleString()}
                   </span>
                 </li>
@@ -631,7 +631,7 @@ export default function CareerOpsPreferencesPage() {
         <button
           onClick={save}
           disabled={saving}
-          className="h-11 px-6 rounded-full text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
+          className="h-11 px-6 rounded-full text-meta font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save preferences"}
         </button>

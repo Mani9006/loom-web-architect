@@ -31,7 +31,7 @@ export function OptionsPanel({
                 key={option.id}
                 onClick={() => onSelectSummary(option.id)}
                 className={cn(
-                  "w-full text-left p-3 rounded-lg border text-xs transition-all",
+                  "w-full text-left p-3 rounded-lg border text-xs pressable",
                   option.isSelected
                     ? "border-primary bg-primary/10 ring-2 ring-primary/20"
                     : "border-border hover:border-primary/50 hover:bg-accent/50"
@@ -67,7 +67,7 @@ export function OptionsPanel({
                 key={option.id}
                 onClick={() => onSelectProject(clientData.clientId, option.id)}
                 className={cn(
-                  "w-full text-left p-3 rounded-lg border text-xs transition-all",
+                  "w-full text-left p-3 rounded-lg border text-xs pressable",
                   option.isSelected
                     ? "border-primary bg-primary/10 ring-2 ring-primary/20"
                     : "border-border hover:border-primary/50 hover:bg-accent/50"

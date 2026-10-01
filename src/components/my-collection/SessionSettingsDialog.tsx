@@ -177,7 +177,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               The AI tailor uses this as the source of truth for the candidate's experience.
             </p>
           </div>

@@ -19,7 +19,7 @@ const NotFound = () => {
 
       <div className="relative z-10 text-center space-y-6">
         <div className="flex items-center justify-center gap-2.5 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
             <Sparkles className="w-5 h-5" />
           </div>
           <span className="text-xl font-bold">ResumePreps</span>

@@ -84,7 +84,7 @@ export function ChatWelcome({
             <button
               key={action.label}
               onClick={() => navigate(action.route)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-border bg-background hover:bg-accent hover:border-primary/30 transition-all text-sm font-medium group"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-border bg-background hover:bg-accent hover:border-primary/30 pressable text-sm font-medium group"
             >
               <action.icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
               {action.label}
@@ -98,7 +98,7 @@ export function ChatWelcome({
             <button
               key={prompt}
               onClick={() => onSuggestionClick(prompt)}
-              className="px-4 py-3 rounded-xl border border-border bg-background hover:bg-accent hover:border-primary/30 transition-all text-sm text-left text-muted-foreground hover:text-foreground"
+              className="px-4 py-3 rounded-xl border border-border bg-background hover:bg-accent hover:border-primary/30 pressable text-sm text-left text-muted-foreground hover:text-foreground"
             >
               {prompt}
             </button>

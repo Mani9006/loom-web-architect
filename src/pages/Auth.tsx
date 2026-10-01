@@ -22,7 +22,7 @@ type AuthMode = "login" | "signup" | "forgot";
 export default function Auth() {
   const [searchParams] = useSearchParams();
   const initialMode = searchParams.get("mode") as AuthMode | null;
-  
+
   const [mode, setMode] = useState<AuthMode>(initialMode || "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -194,7 +194,7 @@ export default function Auth() {
                   </Button>
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border/50" /></div>
-                    <div className="relative flex justify-center text-[11px] uppercase"><span className="glass-card px-3 text-muted-foreground font-medium border-0 backdrop-blur-none bg-card">or</span></div>
+                    <div className="relative flex justify-center text-xs font-medium"><span className="glass-card px-3 text-muted-foreground font-medium border-0 bg-card">or</span></div>
                   </div>
                 </>
               )}

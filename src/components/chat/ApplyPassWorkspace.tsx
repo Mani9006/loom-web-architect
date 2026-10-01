@@ -1568,8 +1568,8 @@ export default function ApplyPassWorkspace({ jobs, resumeText, preferredResumeId
                               {typeof job.matchScore === "number" && (
                                 <Badge variant="secondary">{job.matchScore}% match</Badge>
                               )}
-                              <Badge variant="outline" className="text-[10px]">{domainFromUrl(job.url)}</Badge>
-                              <Badge variant={badgeVariantForStatus(state)} className="text-[10px]">{statusLabel(state)}</Badge>
+                              <Badge variant="outline" className="text-xs">{domainFromUrl(job.url)}</Badge>
+                              <Badge variant={badgeVariantForStatus(state)} className="text-xs">{statusLabel(state)}</Badge>
                             </div>
                           </button>
                         );

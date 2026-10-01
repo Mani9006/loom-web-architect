@@ -255,7 +255,7 @@ function SessionCard({
       onClick={onOpen}
     >
       <div className="flex items-start justify-between mb-3">
-        <h3 className="font-medium text-[15px] leading-tight pr-8 line-clamp-2">{session.name}</h3>
+        <h3 className="font-medium text-sm leading-tight pr-8 line-clamp-2">{session.name}</h3>
         <DropdownMenu>
           <DropdownMenuTrigger
             asChild
@@ -283,12 +283,12 @@ function SessionCard({
       {targetRoles.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3">
           {targetRoles.slice(0, 3).map((role) => (
-            <Badge key={role} variant="secondary" className="text-[10px] font-normal">
+            <Badge key={role} variant="secondary" className="text-xs font-normal">
               {role}
             </Badge>
           ))}
           {targetRoles.length > 3 && (
-            <Badge variant="outline" className="text-[10px] font-normal">
+            <Badge variant="outline" className="text-xs font-normal">
               +{targetRoles.length - 3}
             </Badge>
           )}
@@ -301,7 +301,7 @@ function SessionCard({
         <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
       </div>
 
-      <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
+      <div className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
         <Sparkles className="w-3 h-3" />
         Updated {new Date(session.updated_at).toLocaleDateString()}
       </div>
@@ -313,7 +313,7 @@ function SessionStat({ label, value }: { label: string; value: string | number }
   return (
     <div>
       <div className="text-base font-semibold">{value}</div>
-      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
+      <div className="text-xs text-muted-foreground font-medium">{label}</div>
     </div>
   );
 }

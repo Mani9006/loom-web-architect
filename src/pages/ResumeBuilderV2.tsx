@@ -255,7 +255,7 @@ export default function ResumeBuilderV2() {
         <div className="overflow-y-auto border-r border-rp-rule bg-rp-canvas">
           <div className="max-w-2xl mx-auto px-6 py-8">
             <Eyebrow>Edit your resume</Eyebrow>
-            <h2 className="text-2xl font-semibold tracking-tight mt-1 mb-1 text-rp-ink" style={{ fontFamily: '"Manrope", "Inter", system-ui, sans-serif' }}>
+            <h2 className="text-2xl font-semibold tracking-tight mt-1 mb-1 text-rp-ink">
               Everything updates live on the right
             </h2>
             <p className="text-sm text-rp-ink-2 mb-6">
@@ -278,7 +278,7 @@ export default function ResumeBuilderV2() {
                     <div className="flex items-baseline justify-between w-full pr-3">
                       <div className="text-left">
                         <div className="text-sm font-semibold text-rp-ink">{s.label}</div>
-                        <div className="text-[11px] text-rp-ink-2 mt-0.5">{s.description}</div>
+                        <div className="text-xs text-rp-ink-2 mt-0.5">{s.description}</div>
                       </div>
                       <SectionStatusDot id={s.id} resume={resume} />
                     </div>
@@ -449,16 +449,16 @@ function ViewToggle({
 
 function SaveStatusPill({ status }: { status: ReturnType<typeof useResumeStore.getState>["status"] }) {
   if (status === "loading") {
-    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rp-paper text-[11px] text-rp-ink-2"><Loader2 className="size-3 animate-spin" /> Loading…</span>;
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rp-paper text-xs text-rp-ink-2"><Loader2 className="size-3 animate-spin" /> Loading…</span>;
   }
   if (status === "saving") {
-    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rp-paper text-[11px] text-rp-ink-2"><Loader2 className="size-3 animate-spin" /> Saving…</span>;
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rp-paper text-xs text-rp-ink-2"><Loader2 className="size-3 animate-spin" /> Saving…</span>;
   }
   if (status === "saved") {
-    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rp-accent/10 text-[11px] text-rp-accent"><Check className="size-3" /> Saved</span>;
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rp-accent/10 text-xs text-rp-accent"><Check className="size-3" /> Saved</span>;
   }
   if (status === "error") {
-    return <Badge variant="destructive" className="text-[10px]">Save error</Badge>;
+    return <Badge variant="destructive" className="text-xs">Save error</Badge>;
   }
   return null;
 }
@@ -467,7 +467,7 @@ function SaveStatusPill({ status }: { status: ReturnType<typeof useResumeStore.g
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[11px] uppercase tracking-[0.18em] font-medium text-rp-ink-3">
+    <div className="text-xs font-medium text-rp-ink-3">
       {children}
     </div>
   );
@@ -502,7 +502,7 @@ function PaperFrame({ children }: { children: React.ReactNode }) {
 
   return (
     <div ref={hostRef} className="relative w-full flex flex-col items-center min-w-0">
-      <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-rp-rule bg-rp-paper px-3 py-1 text-[11px] text-rp-ink-2">
+      <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-rp-rule bg-rp-paper px-3 py-1 text-xs text-rp-ink-2">
         <span className="font-semibold text-rp-ink">{pageCount} {pageCount === 1 ? "page" : "pages"}</span>
         <span aria-hidden="true">·</span>
         <span>US Letter · selectable ATS text</span>
@@ -524,7 +524,7 @@ function PaperFrame({ children }: { children: React.ReactNode }) {
             className="absolute left-0 right-0 z-10 border-t border-dashed border-zinc-400/80 pointer-events-none"
             style={{ top: (index + 1) * 1056 * scale }}
           >
-            <span className="absolute right-2 -top-3 rounded bg-zinc-100 px-1.5 py-0.5 text-[9px] font-medium text-zinc-500 shadow-sm">
+            <span className="absolute right-2 -top-3 rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-500 shadow-sm">
               Page {index + 2}
             </span>
           </div>
@@ -539,8 +539,7 @@ function PaperFrame({ children }: { children: React.ReactNode }) {
 function JsonView({ resume }: { resume: ResumeJSON }) {
   return (
     <pre
-      className="bg-zinc-950 text-zinc-100 rounded-lg p-5 text-[12px] leading-relaxed overflow-x-auto max-w-3xl w-full ring-1 ring-zinc-200/60"
-      style={{ fontFamily: '"JetBrains Mono", ui-monospace, Menlo, monospace' }}
+      className="bg-zinc-950 text-zinc-100 rounded-lg p-5 text-xs leading-relaxed overflow-x-auto max-w-3xl w-full ring-1 ring-zinc-200/60 font-mono"
     >
       {JSON.stringify(resume, null, 2)}
     </pre>
@@ -610,11 +609,11 @@ function ParseQualityCard({ quality }: { quality: ResumeParseQuality }) {
             <p className="text-sm font-semibold text-rp-ink">
               Source coverage {quality.score}%
             </p>
-            <span className="text-[10px] uppercase tracking-[0.12em] text-rp-ink-3">
+            <span className="text-xs text-rp-ink-3 font-medium">
               {passed ? "Quality gate passed" : "Review required"}
             </span>
           </div>
-          <div className="mt-2 grid grid-cols-4 gap-2 text-[10.5px] text-rp-ink-2">
+          <div className="mt-2 grid grid-cols-4 gap-2 text-xs text-rp-ink-2">
             <span>Terms {quality.metrics.lexicalCoverage}%</span>
             <span>Bullets {quality.metrics.bulletCoverage}%</span>
             <span>Dates {quality.metrics.dateCoverage}%</span>
@@ -648,7 +647,7 @@ function FormatWorkflowCard({
               : "Exports use the recommended single-column ATS layout with selectable text and validated PDF, DOCX, and JSON output."}
           </p>
         </div>
-        <div className="inline-flex rounded-md border border-rp-rule bg-rp-canvas p-0.5 text-[11px]">
+        <div className="inline-flex rounded-md border border-rp-rule bg-rp-canvas p-0.5 text-xs">
           <button
             type="button"
             onClick={() => onChange("ats_recommended")}
