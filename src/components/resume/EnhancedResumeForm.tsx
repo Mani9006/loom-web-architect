@@ -12,6 +12,8 @@ import { DocumentUpload } from "@/components/shared/DocumentUpload";
 import { ResumeFormSkeleton } from "./ResumeFormSkeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { mergeResumeSkills } from "@/lib/resume-skills";
+import { BulletLinesTextarea } from "@/components/shared/BulletLinesTextarea";
 
 const replaceControlCharacters = (value: string) => Array.from(value, (character) => {
   const code = character.charCodeAt(0);
@@ -268,16 +270,20 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
+      let buffer = "";
 
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (!done) buffer += decoder.decode(value, { stream: true });
+          else buffer += decoder.decode();
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
+          // Only process complete lines; keep a partial trailing line for the next chunk.
+          const lines = buffer.split("\n");
+          buffer = done ? "" : lines.pop() ?? "";
 
-          for (const line of lines) {
+          for (const rawLine of lines) {
+            const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
             if (line.startsWith("data: ") && line !== "data: [DONE]") {
               try {
                 const parsed = JSON.parse(line.slice(6));
@@ -287,10 +293,11 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                                parsed.text;
                 if (content) fullContent += content;
               } catch {
-                // Ignore parse errors for incomplete chunks
+                // Ignore non-JSON data lines
               }
             }
           }
+          if (done) break;
         }
       }
 
@@ -304,7 +311,10 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
       }
 
       // Map parsed data to ResumeJSON structure
+      // Spread existing data first so optional sections (section_order,
+      // languages, volunteer, awards, custom sections) survive the import.
       const newData: ResumeJSON = {
+        ...data,
         header: {
           name: parsedData.header?.name || data.header.name,
           title: parsedData.header?.title || data.header.title,
@@ -322,6 +332,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
               start_date: e.start_date || "",
               end_date: e.end_date || "",
               location: e.location || "",
+              environment: e.environment || "",
               bullets: Array.isArray(e.bullets) ? e.bullets : formatResponsibilitiesAsBullets(e.bullets || ""),
             }))
           : data.experience,
@@ -344,10 +355,8 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
               date: c.date || "",
             }))
           : data.certifications,
-        skills: {
-          ...data.skills,
-          ...parsedData.skills,
-        },
+        // Coerce AI skills (strings, arrays, odd keys) into canonical string-array buckets.
+        skills: mergeResumeSkills(data.skills, parsedData.skills),
         projects: parsedData.projects?.length > 0
           ? parsedData.projects.map((p: any) => ({
               id: crypto.randomUUID(),
@@ -660,6 +669,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                         type="button"
                         variant="ghost"
                         size="icon"
+                        aria-label={`Remove experience ${index + 1}`}
                         onClick={() => removeExperience(exp.id)}
                         className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"
                       >
@@ -716,10 +726,10 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Bullet Points (one per line)</Label>
-                      <Textarea
+                      <BulletLinesTextarea
                         placeholder="• Designed ETL pipelines using Python and SQL&#10;• Led data migration efforts&#10;• Developed automated quality checks"
-                        value={exp.bullets.join('\n')}
-                        onChange={(e) => updateExperience(exp.id, "bullets", e.target.value.split('\n').filter(b => b.trim()))}
+                        bullets={exp.bullets}
+                        onBulletsChange={(bullets) => updateExperience(exp.id, "bullets", bullets)}
                         className="bg-background text-sm min-h-[80px]"
                       />
                     </div>
@@ -748,6 +758,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                         type="button"
                         variant="ghost"
                         size="icon"
+                        aria-label={`Remove education ${index + 1}`}
                         onClick={() => removeEducation(edu.id)}
                         className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"
                       >
@@ -810,12 +821,13 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-3">
-                {data.certifications.map((cert) => (
+                {data.certifications.map((cert, index) => (
                   <div key={cert.id} className="p-3 bg-muted/50 rounded-lg space-y-2 relative">
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
+                      aria-label={`Remove certification ${cert.name || index + 1}`}
                       onClick={() => removeCertification(cert.id)}
                       className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"
                     >
@@ -879,6 +891,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                         type="button"
                         variant="ghost"
                         size="sm"
+                        aria-label={`Remove ${getSkillCategoryLabel(categoryKey)} category`}
                         onClick={() => {
                           const newSkills = { ...data.skills };
                           delete newSkills[categoryKey];
@@ -892,6 +905,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                     <div className="flex gap-2">
                       <Input
                         placeholder={`Add skill...`}
+                        aria-label={`Add skill to ${getSkillCategoryLabel(categoryKey)}`}
                         value={currentSkillCategory === categoryKey ? skillInput : ""}
                         onChange={(e) => {
                           setCurrentSkillCategory(categoryKey);
@@ -927,7 +941,11 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                             className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs"
                           >
                             {skill}
-                            <button type="button" onClick={() => removeSkillFromCategory(categoryKey, skill)}>
+                            <button
+                              type="button"
+                              aria-label={`Remove skill ${skill}`}
+                              onClick={() => removeSkillFromCategory(categoryKey, skill)}
+                            >
                               <X className="h-2 w-2" />
                             </button>
                           </span>
@@ -942,6 +960,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                   <div className="flex gap-2">
                     <Input
                       placeholder="Category name (e.g., Cloud Platforms)"
+                      aria-label="New skill category name"
                       value={newCategoryName}
                       onChange={(e) => setNewCategoryName(e.target.value)}
                       className="bg-background h-8 text-sm"
@@ -966,6 +985,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                         }
                       }}
                       className="h-8"
+                      aria-label="Add skill category"
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
@@ -998,6 +1018,7 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                         type="button"
                         variant="ghost"
                         size="sm"
+                        aria-label={`Remove project ${index + 1}`}
                         onClick={() => {
                           onChange({
                             ...data,
@@ -1087,12 +1108,14 @@ export function EnhancedResumeForm({ data, onChange, onGenerate, isGenerating }:
                                   onChange({ ...data, projects: updated });
                                 }}
                                 placeholder="Describe what you built, technologies used, and impact..."
+                                aria-label={`Project ${index + 1} point ${bulletIdx + 1}`}
                                 className="min-h-[60px] text-sm"
                               />
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
+                                aria-label={`Remove point ${bulletIdx + 1} from project ${index + 1}`}
                                 onClick={() => {
                                   const updated = [...data.projects];
                                   const newBullets = project.bullets.filter((_, i) => i !== bulletIdx);

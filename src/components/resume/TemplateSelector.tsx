@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { X, Check, Eye } from "lucide-react";
+import { Check, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { TEMPLATES, type TemplateConfig } from "@/config/resume-templates";
 
@@ -115,20 +116,15 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
   const [previewTemplate, setPreviewTemplate] = useState<TemplateDisplay | null>(null);
   const templates = getTemplateDisplayList();
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="block w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-2xl sm:rounded-2xl">
+        {/* Header (Radix supplies focus trap, Escape and a labelled Close button) */}
+        <div className="flex items-center justify-between border-b border-border px-6 py-4 pr-12">
           <div>
-            <h2 className="text-xl font-semibold">Choose a Template</h2>
-            <p className="text-sm text-muted-foreground">Select a resume template to get started</p>
+            <DialogTitle className="text-xl font-semibold leading-normal tracking-normal">Choose a Template</DialogTitle>
+            <DialogDescription>Select a resume template to get started</DialogDescription>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
-            <X className="h-5 w-5" />
-          </Button>
         </div>
 
         {/* Template Grid */}
@@ -188,7 +184,7 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
                   </div>
 
                   {/* Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-20">
+                  <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-end justify-center pb-20">
                     <div className="flex gap-2">
                       <Button
                         variant="secondary"
@@ -233,7 +229,7 @@ export function TemplateSelector({ isOpen, onClose, onSelect, selectedTemplateId
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
