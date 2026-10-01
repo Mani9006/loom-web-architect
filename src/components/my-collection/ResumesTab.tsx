@@ -239,10 +239,14 @@ function downloadAsMarkdown(r: TailoredResume) {
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
+  // Open the tab synchronously, while the click's user activation is still
+  // valid, so popup blockers don't swallow it after the async render.
+  const popup = window.open("", "_blank");
   const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "pdf" },
   });
   if (error || !data?.url) {
+    popup?.close();
     toast({
       title: "PDF export failed",
       description: error?.message ?? "The server didn't return a download URL.",
@@ -250,7 +254,12 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
     });
     return;
   }
-  window.open(data.url, "_blank");
+  if (popup) {
+    popup.opener = null;
+    popup.location.href = data.url;
+  } else {
+    window.open(data.url, "_blank");
+  }
 }
 
 // Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness
@@ -343,7 +352,7 @@ function CanvasEditor({
     setAiSuggestions([]);
     try {
       const { data, error } = await (supabase as any).functions.invoke("enhance-bullet", {
-        body: { line: selectedLine, mode, context: { full_resume: cv } },
+        body: { bullet: selectedLine, line: selectedLine, mode, context: { full_resume: cv } },
       });
       if (error) throw error;
       setAiSuggestions(data?.suggestions ?? []);

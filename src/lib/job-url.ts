@@ -47,6 +47,23 @@ const DIRECT_JOB_PATTERNS = [
 ];
 
 /**
+ * Returns the URL only when it parses as an absolute http(s) URL; otherwise
+ * undefined. Use before rendering untrusted URLs as hrefs so javascript:,
+ * data: and other schemes can never reach an anchor.
+ */
+export function safeHttpUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  const trimmed = String(url).trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? trimmed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Checks if a URL appears to be broken, fake, or a placeholder.
  */
 export function looksLikelyBrokenUrl(url: string | null | undefined): boolean {
