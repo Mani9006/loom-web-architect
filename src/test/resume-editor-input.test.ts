@@ -9,6 +9,12 @@ describe("applySkillCategoryText", () => {
     expect(next.programming_languages).toEqual(["Python"]);
   });
 
+  it("keeps other existing empty categories when committing a different one", () => {
+    const next = applySkillCategoryText({ cloud_devops: [], databases: [] }, "databases", "PostgreSQL");
+    expect(next.cloud_devops).toEqual([]);
+    expect(next.databases).toEqual(["PostgreSQL"]);
+  });
+
   it("splits comma-separated text and keeps multi-word skills intact", () => {
     const next = applySkillCategoryText({}, "programming_languages", "Python, Java");
     expect(next.programming_languages).toEqual(expect.arrayContaining(["Python", "Java"]));
