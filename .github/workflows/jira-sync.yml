@@ -33,9 +33,10 @@ jobs:
             -H "Content-Type: application/json" \
             "$JIRA_URL/rest/api/3/search/jql?jql=$JQL&maxResults=10&fields=summary,status,updated")
 
-          echo "review_tickets<<EOF" >> "$GITHUB_OUTPUT"
+          DELIM="EOF_$(openssl rand -hex 16)"
+          echo "review_tickets<<$DELIM" >> "$GITHUB_OUTPUT"
           echo "$RESPONSE" | jq -r '.issues[]? | "\(.key): \(.fields.summary)"' >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "$DELIM" >> "$GITHUB_OUTPUT"
 
           COUNT=$(echo "$RESPONSE" | jq '.total // 0')
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
@@ -44,9 +45,12 @@ jobs:
         if: env.JIRA_URL != '' && steps.jira.outputs.count != '0' && vars.SLACK_WEBHOOK_URL != ''
         env:
           SLACK_WEBHOOK_URL: ${{ vars.SLACK_WEBHOOK_URL }}
+          # Jira summaries are untrusted: pass via env and build JSON with jq.
+          TICKET_COUNT: ${{ steps.jira.outputs.count }}
+          REVIEW_TICKETS: ${{ steps.jira.outputs.review_tickets }}
         run: |
-          curl -s -X POST "$SLACK_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"text\": \"📋 *ResumePreps Review Alert*\n${{ steps.jira.outputs.count }} ticket(s) need review:\n\`\`\`\n${{ steps.jira.outputs.review_tickets }}\n\`\`\`\nAction: Review commits and deploy evidence before promotion.\"
-            }"
+          jq -n --arg count "$TICKET_COUNT" --arg tickets "$REVIEW_TICKETS" \
+            '{text: ("📋 *ResumePreps Review Alert*\n" + $count + " ticket(s) need review:\n```\n" + $tickets + "\n```\nAction: Review commits and deploy evidence before promotion.")}' \
+            | curl -s -X POST "$SLACK_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              --data @-
