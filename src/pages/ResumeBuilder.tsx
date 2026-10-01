@@ -319,6 +319,7 @@ export default function ResumeBuilder() {
         experience: resumeJson.experience as any, education: resumeJson.education as any,
         skills: resumeJson.skills as any, projects: resumeJson.projects as any,
         certifications: resumeJson.certifications as any, languages: resumeJson.languages as any,
+        volunteer: (resumeJson.volunteer ?? []) as any, awards: (resumeJson.awards ?? []) as any,
         section_order: resumeJson.section_order as any,
         template: selectedTemplate,
       };
@@ -326,12 +327,12 @@ export default function ResumeBuilder() {
       // checking it, a failed write still marked the resume "Saved" below,
       // so users could lose edits with no warning.
       if (currentResumeId) {
-        const { error } = await supabase.from("resumes" as any).update(payload).eq("id", currentResumeId);
+        const { error } = await supabase.from("resumes").update(payload).eq("id", currentResumeId);
         if (error) throw error;
       } else {
-        const { data: newResume, error } = await supabase.from("resumes" as any).insert(payload).select("id").single();
+        const { data: newResume, error } = await supabase.from("resumes").insert(payload).select("id").single();
         if (error) throw error;
-        if (newResume) setCurrentResumeId((newResume as any).id);
+        if (newResume) setCurrentResumeId(newResume.id);
       }
       setLastSaved(new Date());
     } catch (err) {
