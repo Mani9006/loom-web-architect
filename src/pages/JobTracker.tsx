@@ -13,6 +13,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Plus, Search, Briefcase, Building2, Clock, Target, Trash2, Loader2,
   Bookmark, MapPin, DollarSign, Globe, X, FileText, Sparkles, Zap, BarChart3, ExternalLink,
 } from "lucide-react";
@@ -103,9 +106,13 @@ const PACKET_STATUS: Record<DraftApplicationStatus, { label: string; note: strin
 function JobDetailPanel({
   job,
   onClose,
+  status,
+  onStatusChange,
 }: {
   job: { title: string; company: string; location?: string | null; description?: string | null; apply_url?: string | null; salary?: string | null; job_type?: string | null; remote?: boolean; date_posted?: string | null; source?: string | null };
   onClose: () => void;
+  status?: string;
+  onStatusChange?: (status: string) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -159,6 +166,23 @@ function JobDetailPanel({
               )}
               {job.source && <Badge variant="outline" className="text-xs capitalize">{job.source}</Badge>}
             </div>
+
+            {/* Status: keyboard/touch alternative to dragging between columns */}
+            {status && onStatusChange && (
+              <div className="space-y-1.5">
+                <Label htmlFor="job-detail-status" className="text-xs text-muted-foreground">Status</Label>
+                <Select value={status} onValueChange={onStatusChange}>
+                  <SelectTrigger id="job-detail-status" className="h-9 w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COLUMNS.map((col) => (
+                      <SelectItem key={col.key} value={col.key}>{col.key}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Apply button */}
             <JobApplyButton
@@ -714,7 +738,17 @@ export default function JobTracker() {
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData("jobId", job.id)}
                     onClick={() => setSelectedKanbanJob(job)}
-                    className="p-3 cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow-card-hover)] transition-all group"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open ${job.title}${job.company ? ` at ${job.company}` : ""} (${job.status})`}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedKanbanJob(job);
+                      }
+                    }}
+                    className="p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow-card-hover)] transition-all group"
                   >
                     <div className="flex items-start gap-2.5">
                       <div className="w-8 h-8 rounded bg-muted flex items-center justify-center shrink-0">
@@ -733,7 +767,7 @@ export default function JobTracker() {
                       <button
                         onClick={(e) => { e.stopPropagation(); deleteJob(job.id); }}
                         aria-label={`Delete ${job.title}${job.company ? ` at ${job.company}` : ""}`}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 transition-all"
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 rounded hover:bg-destructive/10 transition-all"
                       >
                         <Trash2 className="w-3 h-3 text-destructive" />
                       </button>
@@ -765,6 +799,8 @@ export default function JobTracker() {
             company: selectedKanbanJob.company,
           }}
           onClose={() => setSelectedKanbanJob(null)}
+          status={jobs.find((j) => j.id === selectedKanbanJob.id)?.status ?? selectedKanbanJob.status}
+          onStatusChange={(newStatus) => void moveJob(selectedKanbanJob.id, newStatus)}
         />
       )}
     </div>

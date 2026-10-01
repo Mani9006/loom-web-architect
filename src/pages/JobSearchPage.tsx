@@ -97,6 +97,10 @@ interface MatchedJob extends SearchJob {
   fit_confidence: number | null;
 }
 
+function isMatchedJob(job: SearchJob | null | undefined): job is MatchedJob {
+  return !!job && "match_id" in job && Array.isArray((job as Partial<MatchedJob>).match_dimensions);
+}
+
 const QUICK_ROLES = [
   "Software Engineer", "Data Scientist", "Product Manager",
   "UX Designer", "DevOps Engineer", "Frontend Developer",
@@ -163,6 +167,12 @@ export default function JobSearchPage() {
   const [fromCache, setFromCache] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Bumped on every new search so an in-flight background prefetch for an
+  // older result set can detect it is stale and drop its results.
+  const searchGenerationRef = useRef(0);
+  // Query + filters that produced the current result set; prefetch pages
+  // continue this search rather than whatever is typed in the inputs now.
+  const executedSearchRef = useRef<Record<string, any> | null>(null);
 
   // Pagination
   const JOBS_PER_PAGE = 15;
@@ -178,6 +188,9 @@ export default function JobSearchPage() {
 
   // Split view: selected job for detail panel, persisted across refresh
   const [selectedJob, setSelectedJob] = usePersistedState<SearchJob | null>("jobSearch.selectedJob", null, "sessionStorage");
+  // The selection is shared between tabs; the matched view must only render
+  // a real MatchedJob (a plain SearchJob has no match_dimensions etc.).
+  const selectedMatch = isMatchedJob(selectedJob) ? selectedJob : null;
 
   // Saved jobs tracking
   const [savedJobKeys, setSavedJobKeys] = useState<Set<string>>(new Set());
@@ -232,8 +245,9 @@ export default function JobSearchPage() {
 
     try {
       if (savedJobKeys.has(key)) {
-        // Unsave from both tables
-        await Promise.all([
+        // Unsave from both tables. supabase-js resolves with { error }
+        // instead of throwing, so check both results explicitly.
+        const [trackedDelete, savedDelete] = await Promise.all([
           supabase
             .from("tracked_jobs")
             .delete()
@@ -248,6 +262,7 @@ export default function JobSearchPage() {
             .eq("job_title", job.title)
             .eq("company", job.company),
         ]);
+        if (trackedDelete.error || savedDelete.error) throw trackedDelete.error || savedDelete.error;
         setSavedJobKeys((prev) => {
           const next = new Set(prev);
           next.delete(key);
@@ -256,7 +271,7 @@ export default function JobSearchPage() {
         toast({ title: "Job removed from saved" });
       } else {
         // Save to both: tracked_jobs (for Applications Kanban) + saved_jobs (for full details)
-        await Promise.all([
+        const [trackedInsert, savedInsert] = await Promise.all([
           supabase.from("tracked_jobs").insert({
             user_id: user.id,
             title: job.title,
@@ -278,6 +293,7 @@ export default function JobSearchPage() {
             source: job.source || null,
           }),
         ]);
+        if (trackedInsert.error || savedInsert.error) throw trackedInsert.error || savedInsert.error;
         setSavedJobKeys((prev) => new Set(prev).add(key));
         toast({ title: "Job saved!", description: "View it in Applications → Saved" });
       }
@@ -335,11 +351,14 @@ export default function JobSearchPage() {
       return;
     }
 
-    if (abortControllerRef.current) abortControllerRef.current.abort();
+    // Distinct reason so the superseded request does not toast "timed out".
+    if (abortControllerRef.current) abortControllerRef.current.abort("superseded");
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    searchGenerationRef.current += 1;
+    executedSearchRef.current = null;
 
     setLoading(true);
     setHasSearched(true);
@@ -364,7 +383,7 @@ export default function JobSearchPage() {
     setSearchStatus(statusMessages[0].msg);
     setSearchProgress(statusMessages[0].pct);
 
-    progressIntervalRef.current = setInterval(() => {
+    const progressInterval = setInterval(() => {
       const elapsed = Date.now() - searchStart;
       for (let i = statusMessages.length - 1; i >= 0; i--) {
         if (elapsed >= statusMessages[i].at) {
@@ -374,6 +393,7 @@ export default function JobSearchPage() {
         }
       }
     }, 500);
+    progressIntervalRef.current = progressInterval;
 
     try {
       const session = await supabase.auth.getSession();
@@ -381,15 +401,16 @@ export default function JobSearchPage() {
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
       const userId = session.data.session?.user?.id;
-      const payload: Record<string, any> = { query: q };
+      const searchParams: Record<string, any> = { query: q };
+      if (location.trim()) searchParams.location = location.trim();
+      if (salaryRange !== "any") searchParams.salary_range = salaryRange;
+      if (jobType !== "all") searchParams.job_type = jobType;
+      if (datePosted) searchParams.date_posted = datePosted;
+      if (experienceLevel !== "all") searchParams.experience_level = experienceLevel;
+      if (remoteFilter !== "all") searchParams.remote_filter = remoteFilter;
+      searchParams.search_source = "direct";
+      const payload: Record<string, any> = { ...searchParams };
       if (userId) payload.user_id = userId;
-      if (location.trim()) payload.location = location.trim();
-      if (salaryRange !== "any") payload.salary_range = salaryRange;
-      if (jobType !== "all") payload.job_type = jobType;
-      if (datePosted) payload.date_posted = datePosted;
-      if (experienceLevel !== "all") payload.experience_level = experienceLevel;
-      if (remoteFilter !== "all") payload.remote_filter = remoteFilter;
-      payload.search_source = "direct";
 
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -422,6 +443,7 @@ export default function JobSearchPage() {
         description: cleanJobDescription(job.description),
       }));
       const resultJobs = filterJobsForSearchIntent(providerJobs, q);
+      executedSearchRef.current = searchParams;
       setJobs(resultJobs);
       setSearchProgress(100);
       setSearchStatus(data.from_db ? `Found ${data.db_total || resultJobs.length} matching jobs!` : data.from_cache ? "Loaded from cache!" : "Done!");
@@ -439,9 +461,12 @@ export default function JobSearchPage() {
       }
     } catch (err: any) {
       if (err.name === "AbortError") {
-        if (controller.signal.reason !== "user-cancel") {
+        const reason = controller.signal.reason;
+        if (reason !== "user-cancel" && reason !== "superseded") {
           toast({ title: "Search timed out", description: "Try a simpler search query", variant: "destructive" });
         }
+      } else if (abortControllerRef.current !== controller) {
+        // A newer search (or a cancel) replaced this one; ignore its failure.
       } else {
         console.error("Search failed:", err);
         void captureIncident(err, { source: "manual", operation: "job_search" });
@@ -452,6 +477,7 @@ export default function JobSearchPage() {
           const fallbackJobs = filterJobsForSearchIntent(await fetchDirectFeedJobs(q), q);
           if (fallbackJobs.length > 0) {
             recovered = true;
+            executedSearchRef.current = { query: q, search_source: "direct" };
             setJobs(fallbackJobs);
             setSelectedJob(fallbackJobs[0]);
             setSearchProgress(100);
@@ -478,12 +504,13 @@ export default function JobSearchPage() {
         }
       }
     } finally {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
+      clearInterval(progressInterval);
+      // Only tear down shared state if no newer search has taken over.
+      if (abortControllerRef.current === controller) {
         progressIntervalRef.current = null;
+        abortControllerRef.current = null;
+        setLoading(false);
       }
-      abortControllerRef.current = null;
-      setLoading(false);
     }
   }, [
     datePosted,
@@ -505,7 +532,10 @@ export default function JobSearchPage() {
   // Prefetch runs silently, no loading spinner shown to user
   const prefetchRef = useRef(false); // tracks if a prefetch is in-flight
   const fetchMoreJobs = useCallback(async () => {
-    if (prefetchRef.current || !query.trim()) return;
+    const executed = executedSearchRef.current;
+    const searchQuery: string = executed?.query ?? query;
+    if (prefetchRef.current || !searchQuery.trim()) return;
+    const generation = searchGenerationRef.current;
     prefetchRef.current = true;
     // Don't set isFetchingMore to true, we want SILENT prefetch with no loading UI
     try {
@@ -518,7 +548,7 @@ export default function JobSearchPage() {
       const nextPage = Math.ceil(jobs.length / JOBS_PER_PAGE) + 1;
 
       const payload: Record<string, any> = {
-        query,
+        query: searchQuery,
         page: nextPage,
       };
 
@@ -529,13 +559,17 @@ export default function JobSearchPage() {
       // signals.
 
       if (userId) payload.user_id = userId;
-      if (location.trim()) payload.location = location.trim();
-      if (salaryRange !== "any") payload.salary_range = salaryRange;
-      if (jobType !== "all") payload.job_type = jobType;
-      if (datePosted) payload.date_posted = datePosted;
-      if (experienceLevel !== "all") payload.experience_level = experienceLevel;
-      if (remoteFilter !== "all") payload.remote_filter = remoteFilter;
-      payload.search_source = "direct";
+      if (executed) {
+        Object.assign(payload, executed, { query: searchQuery, page: nextPage });
+      } else {
+        if (location.trim()) payload.location = location.trim();
+        if (salaryRange !== "any") payload.salary_range = salaryRange;
+        if (jobType !== "all") payload.job_type = jobType;
+        if (datePosted) payload.date_posted = datePosted;
+        if (experienceLevel !== "all") payload.experience_level = experienceLevel;
+        if (remoteFilter !== "all") payload.remote_filter = remoteFilter;
+        payload.search_source = "direct";
+      }
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/perplexity-job-search`,
@@ -551,11 +585,14 @@ export default function JobSearchPage() {
 
       if (response.ok) {
         const data = await response.json();
+        // A new search started while this prefetch was in flight; its
+        // results belong to a different result set.
+        if (generation !== searchGenerationRef.current) return;
         const providerJobs = ((data.jobs || []) as SearchJob[]).map((job) => ({
           ...job,
           description: cleanJobDescription(job.description),
         }));
-        const newJobs = filterJobsForSearchIntent(providerJobs, query);
+        const newJobs = filterJobsForSearchIntent(providerJobs, searchQuery);
         if (newJobs.length > 0) {
           // Deduplicate, don't add jobs already in the list
           const existingKeys = new Set(jobs.map((j) => `${j.title}:::${j.company}`.toLowerCase()));
@@ -1405,7 +1442,7 @@ export default function JobSearchPage() {
                 {/* LEFT PANE: Matched job list */}
                 <div className={cn(
                   "border-r bg-background flex flex-col",
-                  selectedJob ? "hidden md:flex md:w-[420px] lg:w-[460px]" : "w-full md:w-[420px] lg:w-[460px]"
+                  selectedMatch ? "hidden md:flex md:w-[420px] lg:w-[460px]" : "w-full md:w-[420px] lg:w-[460px]"
                 )}>
                   <div className="px-4 py-2.5 border-b flex items-center justify-between bg-muted/30">
                     <p className="text-xs text-muted-foreground">
@@ -1415,7 +1452,7 @@ export default function JobSearchPage() {
                   <ScrollArea className="flex-1">
                     <div className="divide-y">
                       {matchedJobs.map((job) => {
-                        const selected = selectedJob?.id === job.id;
+                        const selected = selectedMatch?.id === job.id;
                         const saved = isJobSaved(job);
                         const saving = savingJobs.has(job.id);
                         return (
@@ -1477,7 +1514,7 @@ export default function JobSearchPage() {
                 </div>
 
                 {/* RIGHT PANE: reuse the same detail panel as search */}
-                {selectedJob ? (
+                {selectedMatch ? (
                   <div className={cn("flex-1 flex flex-col bg-background overflow-hidden", "w-full md:w-auto")}>
                     <div className="md:hidden px-4 py-2 border-b">
                       <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setSelectedJob(null)}>
@@ -1487,27 +1524,27 @@ export default function JobSearchPage() {
                     <ScrollArea className="flex-1">
                       <div className="max-w-3xl p-6 space-y-5">
                         {/* Match score banner, single accent palette */}
-                        {"match_score" in selectedJob && (
+                        {"match_score" in selectedMatch && (
                           <div className={cn(
                             "rounded-lg p-3 flex items-center gap-3 border",
-                            (selectedJob as MatchedJob).match_score >= 80 ? "bg-rp-accent/10 border-rp-accent/30" :
-                            (selectedJob as MatchedJob).match_score >= 60 ? "bg-rp-paper border-rp-rule-2" :
+                            selectedMatch.match_score >= 80 ? "bg-rp-accent/10 border-rp-accent/30" :
+                            selectedMatch.match_score >= 60 ? "bg-rp-paper border-rp-rule-2" :
                             "bg-rp-paper border-rp-rule"
                           )}>
                             <div className={cn(
                               "w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg tabular-nums",
-                              (selectedJob as MatchedJob).match_score >= 80 ? "bg-rp-accent/20 text-rp-accent" :
-                              (selectedJob as MatchedJob).match_score >= 60 ? "bg-rp-paper-2 text-rp-ink" :
+                              selectedMatch.match_score >= 80 ? "bg-rp-accent/20 text-rp-accent" :
+                              selectedMatch.match_score >= 60 ? "bg-rp-paper-2 text-rp-ink" :
                               "bg-rp-paper-2 text-rp-ink-2"
                             )}>
-                              {(selectedJob as MatchedJob).match_score}%
+                              {selectedMatch.match_score}%
                             </div>
                             <div>
                               <p className="text-sm font-medium text-rp-ink">Career fit</p>
                               <p className="text-xs text-rp-ink-2">
                                 Resume evidence + hard preferences
-                                {(selectedJob as MatchedJob).fit_confidence != null
-                                  ? ` · ${Math.round(((selectedJob as MatchedJob).fit_confidence ?? 0) * 100)}% confidence`
+                                {selectedMatch.fit_confidence != null
+                                  ? ` · ${Math.round((selectedMatch.fit_confidence ?? 0) * 100)}% confidence`
                                   : ""}
                               </p>
                             </div>
@@ -1521,28 +1558,28 @@ export default function JobSearchPage() {
                               <Building2 className="w-7 h-7 text-muted-foreground" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h2 className="text-xl font-bold leading-tight">{selectedJob.title}</h2>
-                              <p className="text-sm text-muted-foreground mt-0.5">{selectedJob.company}</p>
+                              <h2 className="text-xl font-bold leading-tight">{selectedMatch.title}</h2>
+                              <p className="text-sm text-muted-foreground mt-0.5">{selectedMatch.company}</p>
                               <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {selectedJob.location}</span>
-                                {selectedJob.date_posted && (
-                                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {selectedJob.date_posted}</span>
+                                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {selectedMatch.location}</span>
+                                {selectedMatch.date_posted && (
+                                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {selectedMatch.date_posted}</span>
                                 )}
                               </div>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1.5">
-                            {selectedJob.role_category && selectedJob.role_category !== "Other" && (
-                              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs">{selectedJob.role_category}</Badge>
+                            {selectedMatch.role_category && selectedMatch.role_category !== "Other" && (
+                              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs">{selectedMatch.role_category}</Badge>
                             )}
-                            {selectedJob.remote && (
+                            {selectedMatch.remote && (
                               <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs gap-1">
                                 <Globe className="w-3 h-3" /> Remote
                               </Badge>
                             )}
-                            {selectedJob.salary && (
+                            {selectedMatch.salary && (
                               <Badge variant="secondary" className="text-xs gap-1">
-                                <DollarSign className="w-3 h-3" /> {selectedJob.salary}
+                                <DollarSign className="w-3 h-3" /> {selectedMatch.salary}
                               </Badge>
                             )}
                           </div>
@@ -1550,47 +1587,47 @@ export default function JobSearchPage() {
                             <Button
                               size="sm"
                               className="h-8 gap-1.5"
-                              disabled={preparingMatch === (selectedJob as MatchedJob).match_id}
-                              onClick={() => void prepareMatchedApplication(selectedJob as MatchedJob)}
+                              disabled={preparingMatch === selectedMatch.match_id}
+                              onClick={() => void prepareMatchedApplication(selectedMatch)}
                             >
-                              {preparingMatch === (selectedJob as MatchedJob).match_id
+                              {preparingMatch === selectedMatch.match_id
                                 ? <Loader2 className="h-4 w-4 animate-spin" />
                                 : <WandSparkles className="h-4 w-4" />}
                               Tailor + ATS
                             </Button>
                             <JobApplyButton
                               job={{
-                                id: selectedJob.id,
-                                title: selectedJob.title,
-                                company: selectedJob.company,
-                                location: selectedJob.location,
-                                apply_url: selectedJob.apply_url,
-                                source: selectedJob.source,
-                                description: selectedJob.description,
+                                id: selectedMatch.id,
+                                title: selectedMatch.title,
+                                company: selectedMatch.company,
+                                location: selectedMatch.location,
+                                apply_url: selectedMatch.apply_url,
+                                source: selectedMatch.source,
+                                description: selectedMatch.description,
                               }}
                               variant="compact"
                             />
                             <Button
-                              variant={isJobSaved(selectedJob) ? "secondary" : "outline"}
+                              variant={isJobSaved(selectedMatch) ? "secondary" : "outline"}
                               size="sm"
                               className="gap-1.5 h-8"
-                              onClick={() => toggleSaveJob(selectedJob)}
-                              disabled={savingJobs.has(selectedJob.id)}
+                              onClick={() => toggleSaveJob(selectedMatch)}
+                              disabled={savingJobs.has(selectedMatch.id)}
                             >
-                              {isJobSaved(selectedJob) ? <BookmarkCheck className="w-4 h-4 fill-current" /> : <Bookmark className="w-4 h-4" />}
-                              {isJobSaved(selectedJob) ? "Saved" : "Save"}
+                              {isJobSaved(selectedMatch) ? <BookmarkCheck className="w-4 h-4 fill-current" /> : <Bookmark className="w-4 h-4" />}
+                              {isJobSaved(selectedMatch) ? "Saved" : "Save"}
                             </Button>
                           </div>
                         </div>
-                        {(selectedJob as MatchedJob).match_dimensions.length > 0 && (
+                        {selectedMatch.match_dimensions.length > 0 && (
                           <div className="border-t pt-5">
                             <div className="flex items-center gap-2">
                               <ShieldCheck className="h-4 w-4 text-rp-accent" />
                               <h3 className="font-semibold text-base">Why this role fits</h3>
                             </div>
-                            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{(selectedJob as MatchedJob).match_summary}</p>
+                            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{selectedMatch.match_summary}</p>
                             <div className="mt-4 grid sm:grid-cols-2 gap-x-6 gap-y-3">
-                              {(selectedJob as MatchedJob).match_dimensions.map((dimension) => (
+                              {selectedMatch.match_dimensions.map((dimension) => (
                                 <div key={dimension.key}>
                                   <div className="mb-1.5 flex items-center justify-between text-xs">
                                     <span className="text-muted-foreground">{dimension.label}</span>
@@ -1603,15 +1640,15 @@ export default function JobSearchPage() {
                                 </div>
                               ))}
                             </div>
-                            {((selectedJob as MatchedJob).matched_keywords.length > 0 || (selectedJob as MatchedJob).gaps.length > 0) && (
+                            {(selectedMatch.matched_keywords.length > 0 || selectedMatch.gaps.length > 0) && (
                               <div className="mt-5 grid sm:grid-cols-2 gap-4">
                                 <div className="border border-emerald-500/20 bg-emerald-500/5 p-3">
                                   <p className="flex items-center gap-1.5 text-xs font-semibold"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Evidence found</p>
-                                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{(selectedJob as MatchedJob).matched_keywords.slice(0, 8).join(" · ") || "No explicit keyword evidence recorded."}</p>
+                                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{selectedMatch.matched_keywords.slice(0, 8).join(" · ") || "No explicit keyword evidence recorded."}</p>
                                 </div>
                                 <div className="border border-amber-500/20 bg-amber-500/5 p-3">
                                   <p className="text-xs font-semibold">Gaps to review</p>
-                                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{(selectedJob as MatchedJob).gaps.slice(0, 4).join(" · ") || "No material gaps recorded."}</p>
+                                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{selectedMatch.gaps.slice(0, 4).join(" · ") || "No material gaps recorded."}</p>
                                 </div>
                               </div>
                             )}
@@ -1619,8 +1656,8 @@ export default function JobSearchPage() {
                         )}
                         <div className="border-t pt-5">
                           <h3 className="font-semibold text-base mb-3">About the job</h3>
-                          {selectedJob.description ? (
-                            <JobDescription value={selectedJob.description} />
+                          {selectedMatch.description ? (
+                            <JobDescription value={selectedMatch.description} />
                           ) : (
                             <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
                               <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
