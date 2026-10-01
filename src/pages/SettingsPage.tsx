@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bot, CreditCard, FileCheck2, Inbox, Loader2, LogOut, Mail, Save, Settings2, ShieldCheck } from "lucide-react";
+import { AtSign, Bot, CreditCard, FileCheck2, Inbox, Loader2, LogOut, Mail, Save, Settings2, ShieldCheck } from "lucide-react";
 
+import { GetAddressCard, MailboxSettings } from "@/components/inbox/MailboxSettings";
 import { PageHeader } from "@/components/PageHeader";
 import { ApplicationProfileCard } from "@/components/settings/ApplicationProfileCard";
 import { useSubscription } from "@/components/SubscriptionGate";
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
+import { useHostedMailbox } from "@/hooks/use-hosted-mailbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -45,6 +47,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState(defaults);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const hostedMailbox = useHostedMailbox();
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -134,6 +137,13 @@ export default function SettingsPage() {
         </Card>
 
         <ApplicationProfileCard />
+
+        {hostedMailbox.available && !hostedMailbox.loading && (hostedMailbox.mailbox ? (
+          <Card>
+            <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><AtSign className="h-5 w-5 text-primary" />Application address</CardTitle><CardDescription>Employers reach you here. Their mail is saved in your inbox and forwarded to you.</CardDescription></CardHeader>
+            <CardContent className="max-w-xl"><MailboxSettings controller={hostedMailbox} /></CardContent>
+          </Card>
+        ) : <GetAddressCard controller={hostedMailbox} />)}
 
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><FileCheck2 className="h-5 w-5 text-primary" />Résumé optimization</CardTitle><CardDescription>All modes remain grounded in your real experience. ResumePreps never invents employers, dates, skills, or outcomes.</CardDescription></CardHeader>

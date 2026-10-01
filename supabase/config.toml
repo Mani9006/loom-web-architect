@@ -107,3 +107,10 @@ verify_jwt = false
 
 [functions.mc-render-resume]
 verify_jwt = false
+
+# Resend Inbound webhook for the hosted application mailbox. Requests carry a
+# Svix signature (verified in the handler with RESEND_WEBHOOK_SECRET), not a
+# Supabase JWT. mailbox-provision, mailbox-settings and mailbox-send keep the
+# default gateway JWT verification.
+[functions.inbound-email-webhook]
+verify_jwt = false
