@@ -219,6 +219,9 @@ export default function AgentPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
+  // When the prefs read fails, controls hold DEFAULT_CONTROLS; starting or
+  // saving would overwrite the user's real thresholds with those defaults.
+  const [prefsLoadFailed, setPrefsLoadFailed] = useState(false);
   const [batchPreparing, setBatchPreparing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [preparingIds, setPreparingIds] = useState<string[]>([]);
@@ -304,6 +307,7 @@ export default function AgentPage() {
       if (showSpinner) toast.error("Some Agent data could not be refreshed.");
     }
 
+    setPrefsLoadFailed(Boolean(prefsRes.error));
     if (prefsRes.data && !('error' in prefsRes.data)) {
       const row = prefsRes.data as unknown as Partial<AgentControls>;
       setControls({
@@ -573,6 +577,7 @@ export default function AgentPage() {
       navigate("/pricing");
       return;
     }
+    if (action === "start" && prefsLoadFailed) return;
     setControlBusy(true);
     try {
       const { data, error } = await supabase.functions.invoke("career-agent-control", {
@@ -624,7 +629,7 @@ export default function AgentPage() {
   };
 
   const saveControls = async () => {
-    if (!user) return;
+    if (!user || prefsLoadFailed) return;
     if (!hasAutoApply) {
       navigate("/pricing");
       return;
@@ -634,7 +639,7 @@ export default function AgentPage() {
     const normalized: AgentControls = {
       ...controls,
       auto_apply_enabled: controls.auto_apply_enabled,
-      review_mode: controls.review_mode === "eligible_only" ? "eligible_only" : "always",
+      review_mode: ["always", "low_confidence", "eligible_only"].includes(controls.review_mode) ? controls.review_mode : "always",
       auto_apply_min_fit_score: Math.min(100, Math.max(60, controls.auto_apply_min_fit_score)),
       auto_apply_min_ats_score: Math.min(95, Math.max(70, controls.auto_apply_min_ats_score)),
       tailoring_mode: controls.tailoring_mode === "coverage_boost" ? "coverage_boost" : "evidence_only",
@@ -651,7 +656,6 @@ export default function AgentPage() {
       tailoring_mode: normalized.tailoring_mode,
       daily_apply_cap: normalized.daily_apply_cap,
       agent_max_actions_per_day: normalized.agent_max_actions_per_day,
-      auto_apply_portals: ["greenhouse", "ashby", "lever"],
     }, { onConflict: "user_id" });
     setSaving(false);
 
@@ -791,10 +795,15 @@ export default function AgentPage() {
             {!hasAutoApply && (
               <p className="mt-2 text-xs text-rp-ink-3">Auto-applying is part of the Autopilot plan, the button takes you to the options.</p>
             )}
+            {prefsLoadFailed && (
+              <p role="alert" className="mt-2 text-xs text-red-600">
+                Your saved auto-apply settings could not be loaded. Refresh before starting or saving so they are not replaced with defaults.
+              </p>
+            )}
           </div>
           <Button
             size="lg"
-            disabled={controlBusy}
+            disabled={controlBusy || (!isRunning && prefsLoadFailed)}
             onClick={() => void setContinuousApply(isRunning ? "stop" : "start")}
             className={cn(
               "min-w-[220px] shrink-0 text-base",
@@ -1237,7 +1246,7 @@ export default function AgentPage() {
                     <Button variant="outline" size="sm" onClick={() => navigate("/career-ops/preferences")}>
                       <Settings2 className="mr-2 h-4 w-4" /> Job preferences
                     </Button>
-                    <Button size="sm" onClick={saveControls} disabled={saving}>
+                    <Button size="sm" onClick={saveControls} disabled={saving || prefsLoadFailed}>
                       {saving ? "Saving…" : "Save settings"}
                     </Button>
                   </div>

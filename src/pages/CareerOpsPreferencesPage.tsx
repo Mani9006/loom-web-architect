@@ -177,16 +177,21 @@ export default function CareerOpsPreferencesPage() {
   const [saving, setSaving] = useState(false);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [confirmedExperienceYears, setConfirmedExperienceYears] = useState<number | null>(null);
+  // Saving after a failed read would overwrite the user's real settings with defaults.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
+      setLoading(true);
       const [prefsRes, runsRes, profileRes] = await Promise.all([
         supabase.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
         supabase.from("agent_runs").select("*").eq("user_id", user.id)
           .order("started_at", { ascending: false }).limit(8),
         supabase.from("profiles").select("years_of_experience").eq("user_id", user.id).maybeSingle(),
       ]);
+      setLoadFailed(Boolean(prefsRes.error || profileRes.error));
       if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as unknown as Prefs) });
       setConfirmedExperienceYears(typeof profileRes.data?.years_of_experience === "number" ? profileRes.data.years_of_experience : null);
       setRuns((runsRes.data || []).map((run) => ({
@@ -195,17 +200,23 @@ export default function CareerOpsPreferencesPage() {
       })));
       setLoading(false);
     })();
-  }, [user]);
+  }, [user, reloadKey]);
 
   const save = async () => {
-    if (!user) return;
+    if (!user || loadFailed) return;
     setSaving(true);
-    const normalized = {
+    const normalized: Prefs = {
       ...prefs,
       remote_only: prefs.work_modes.length === 1 && prefs.work_modes[0] === "remote",
     };
+    // Only write the fields this page edits; state also holds server-managed
+    // columns (agent_actions_today, last_agent_run_at, ...) from select("*")
+    // that must not be reverted to the values read when the page loaded.
+    const editable = Object.fromEntries(
+      (Object.keys(DEFAULT) as Array<keyof Prefs>).map((key) => [key, normalized[key]]),
+    ) as Partial<Prefs>;
     const [prefsResult, profileResult] = await Promise.all([
-      supabase.from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
+      supabase.from("user_job_prefs").upsert({ user_id: user.id, ...editable }, { onConflict: "user_id" }),
       supabase.from("profiles").update({ years_of_experience: confirmedExperienceYears } as never).eq("user_id", user.id),
     ]);
     setSaving(false);
@@ -627,10 +638,18 @@ export default function CareerOpsPreferencesPage() {
         )}
       </motion.section>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {loadFailed ? (
+          <p role="alert" className="text-[12px] text-destructive">
+            Your saved settings could not be loaded, so saving is disabled.{" "}
+            <button type="button" onClick={() => setReloadKey((k) => k + 1)} className="underline underline-offset-2">
+              Try again
+            </button>
+          </p>
+        ) : null}
         <button
           onClick={save}
-          disabled={saving}
+          disabled={saving || loadFailed}
           className="h-11 px-6 rounded-full text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save preferences"}
