@@ -242,9 +242,15 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
   // Open the tab synchronously, while the click's user activation is still
   // valid, so popup blockers don't swallow it after the async render.
   const popup = window.open("", "_blank");
-  const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
-    body: { resume_id: r.id, format: "pdf" },
-  });
+  let data: any;
+  let error: any;
+  try {
+    ({ data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
+      body: { resume_id: r.id, format: "pdf" },
+    }));
+  } catch (e) {
+    error = e;
+  }
   if (error || !data?.url) {
     popup?.close();
     toast({
