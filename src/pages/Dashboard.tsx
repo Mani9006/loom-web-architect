@@ -52,67 +52,68 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { navigate("/auth"); return; }
-      setUserEmail(user.email || null);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { navigate("/auth"); return; }
+        setUserEmail(user.email || null);
 
-      const [profileResult, conversationsResult, coverLettersResult] = await Promise.all([
-        // NOTE: profiles has no `phone` column, selecting it makes PostgREST
-        // reject the whole query. Phone lives in job_preferences.applypass.
-        supabase.from("profiles").select("full_name, email, location, avatar_url, job_preferences" as any).eq("user_id", user.id).maybeSingle() as any,
-        supabase.from("conversations").select("id, title, chat_mode, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
-        supabase.from("cover_letters").select("id, title, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
-      ]);
+        const [profileResult, conversationsResult, coverLettersResult, messagesCountResult] = await Promise.all([
+          // NOTE: profiles has no `phone` column, selecting it makes PostgREST
+          // reject the whole query. Phone lives in job_preferences.applypass.
+          supabase.from("profiles").select("full_name, email, location, avatar_url, job_preferences" as any).eq("user_id", user.id).maybeSingle() as any,
+          supabase.from("conversations").select("id, title, chat_mode, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
+          supabase.from("cover_letters").select("id, title, updated_at", { count: "exact" }).eq("user_id", user.id).order("updated_at", { ascending: false }).limit(3),
+          // Count server-side via the conversations join instead of downloading
+          // every message row with a huge `in.(...)` filter.
+          supabase.from("messages").select("id, conversations!inner(user_id)", { count: "exact", head: true }).eq("conversations.user_id", user.id),
+        ]);
 
-      // Fetch messages only for this user's conversations
-      const convIds = (conversationsResult.data || []).map((c: any) => c.id);
-      const messagesResult = convIds.length > 0
-        ? await supabase.from("messages").select("id, conversation_id, created_at").in("conversation_id", convIds)
-        : { data: [] };
+        if (profileResult.data) {
+          const row = profileResult.data as Profile & { job_preferences?: Record<string, any> };
+          const application = (row.job_preferences?.applypass?.profile ?? {}) as Record<string, unknown>;
+          setProfile({
+            full_name: row.full_name,
+            email: row.email,
+            location: row.location,
+            avatar_url: row.avatar_url,
+            phone: typeof application.phone === "string" && application.phone ? application.phone : null,
+          });
+        }
 
-      if (profileResult.data) {
-        const row = profileResult.data as Profile & { job_preferences?: Record<string, any> };
-        const application = (row.job_preferences?.applypass?.profile ?? {}) as Record<string, unknown>;
-        setProfile({
-          full_name: row.full_name,
-          email: row.email,
-          location: row.location,
-          avatar_url: row.avatar_url,
-          phone: typeof application.phone === "string" && application.phone ? application.phone : null,
+        const conversations = conversationsResult.data || [];
+        const coverLetters = coverLettersResult.data || [];
+
+        const conversationsByMode: Record<string, number> = {};
+        conversations.forEach((conv) => {
+          const mode = conv.chat_mode || "general";
+          conversationsByMode[mode] = (conversationsByMode[mode] || 0) + 1;
         });
+
+        setStats({
+          totalConversations: conversations.length,
+          totalMessages: messagesCountResult.count ?? 0,
+          totalCoverLetters: coverLettersResult.count ?? coverLetters.length,
+          conversationsByMode,
+        });
+
+        const activities: RecentActivity[] = [
+          ...conversations.slice(0, 5).map((conv) => ({
+            id: conv.id, type: "conversation" as const,
+            title: conv.title || "Untitled Conversation",
+            timestamp: conv.updated_at, mode: conv.chat_mode,
+          })),
+          ...coverLetters.slice(0, 3).map((cl) => ({
+            id: cl.id, type: "cover_letter" as const,
+            title: cl.title, timestamp: cl.updated_at,
+          })),
+        ];
+        activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        setRecentActivity(activities.slice(0, 8));
+      } catch (error) {
+        console.error("Failed to load dashboard data", error);
+      } finally {
+        setLoading(false);
       }
-
-      const conversations = conversationsResult.data || [];
-      const messages = messagesResult.data || [];
-      const coverLetters = coverLettersResult.data || [];
-
-      const conversationsByMode: Record<string, number> = {};
-      conversations.forEach((conv) => {
-        const mode = conv.chat_mode || "general";
-        conversationsByMode[mode] = (conversationsByMode[mode] || 0) + 1;
-      });
-
-      setStats({
-        totalConversations: conversations.length,
-        totalMessages: messages.length,
-        totalCoverLetters: coverLetters.length,
-        conversationsByMode,
-      });
-
-      const activities: RecentActivity[] = [
-        ...conversations.slice(0, 5).map((conv) => ({
-          id: conv.id, type: "conversation" as const,
-          title: conv.title || "Untitled Conversation",
-          timestamp: conv.updated_at, mode: conv.chat_mode,
-        })),
-        ...coverLetters.slice(0, 3).map((cl) => ({
-          id: cl.id, type: "cover_letter" as const,
-          title: cl.title, timestamp: cl.updated_at,
-        })),
-      ];
-      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setRecentActivity(activities.slice(0, 8));
-      setLoading(false);
     };
     fetchDashboardData();
   }, [navigate]);

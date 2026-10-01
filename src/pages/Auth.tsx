@@ -12,6 +12,7 @@ import Logo from "@/components/shared/Logo";
 import { trackProductEvent } from "@/lib/product-analytics";
 import { sendWelcomeEmail } from "@/lib/email";
 import { useTheme } from "@/hooks/use-theme";
+import { buildFullName } from "@/lib/full-name";
 
 const emailSchema = z.string().email("Please enter a valid email address");
 const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
@@ -26,7 +27,8 @@ export default function Auth() {
   const [mode, setMode] = useState<AuthMode>(initialMode || "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<Provider | null>(null);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
@@ -76,6 +78,7 @@ export default function Auth() {
         if (error) toast({ title: "Login failed", description: error.message.includes("Invalid login credentials") ? "Invalid email or password." : error.message, variant: "destructive" });
         else void trackProductEvent("auth_login_success", { provider: "email" });
       } else {
+        const fullName = buildFullName(firstName, lastName);
         const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/home`, data: { full_name: fullName } } });
         if (error) toast({ title: error.message.includes("already registered") ? "Account exists" : "Sign up failed", description: error.message.includes("already registered") ? "This email is already registered." : error.message, variant: "destructive" });
         else {
@@ -203,24 +206,18 @@ export default function Auth() {
                 {mode === "signup" && (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="text-sm font-medium">First Name</Label>
-                      <Input placeholder="First" value={fullName.split(" ")[0] || ""} onChange={(e) => {
-                        const last = fullName.split(" ").slice(1).join(" ");
-                        setFullName(last ? `${e.target.value} ${last}` : e.target.value);
-                      }} className="h-11 rounded-2xl" />
+                      <Label htmlFor="auth-first-name" className="text-sm font-medium">First Name</Label>
+                      <Input id="auth-first-name" autoComplete="given-name" placeholder="First" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="h-11 rounded-2xl" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-sm font-medium">Last Name</Label>
-                      <Input placeholder="Last" value={fullName.split(" ").slice(1).join(" ") || ""} onChange={(e) => {
-                        const first = fullName.split(" ")[0] || "";
-                        setFullName(e.target.value ? `${first} ${e.target.value}` : first);
-                      }} className="h-11 rounded-2xl" />
+                      <Label htmlFor="auth-last-name" className="text-sm font-medium">Last Name</Label>
+                      <Input id="auth-last-name" autoComplete="family-name" placeholder="Last" value={lastName} onChange={(e) => setLastName(e.target.value)} className="h-11 rounded-2xl" />
                     </div>
                   </div>
                 )}
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-medium">Email</Label>
-                  <Input type="email" placeholder="you@example.com" value={email}
+                  <Label htmlFor="auth-email" className="text-sm font-medium">Email</Label>
+                  <Input id="auth-email" type="email" autoComplete="email" placeholder="you@example.com" value={email}
                     onChange={(e) => { setEmail(e.target.value); setErrors((p) => ({ ...p, email: undefined })); }}
                     className="h-11 rounded-2xl" />
                   {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
@@ -228,12 +225,12 @@ export default function Auth() {
                 {mode !== "forgot" && (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <Label className="text-sm font-medium">Password</Label>
+                      <Label htmlFor="auth-password" className="text-sm font-medium">Password</Label>
                       {mode === "login" && (
                         <button type="button" onClick={() => switchMode("forgot")} className="text-xs text-primary hover:underline font-medium">Forgot?</button>
                       )}
                     </div>
-                    <Input type="password" placeholder="••••••••" value={password}
+                    <Input id="auth-password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} placeholder="••••••••" value={password}
                       onChange={(e) => { setPassword(e.target.value); setErrors((p) => ({ ...p, password: undefined })); }}
                       className="h-11 rounded-2xl" />
                     {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}

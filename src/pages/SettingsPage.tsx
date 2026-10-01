@@ -74,7 +74,12 @@ export default function SettingsPage() {
   async function save() {
     if (!user) return;
     setSaving(true);
-    const { data: profile } = await supabase.from("profiles").select("job_preferences").eq("user_id", user.id).maybeSingle();
+    const { data: profile, error: readError } = await supabase.from("profiles").select("job_preferences").eq("user_id", user.id).maybeSingle();
+    if (readError) {
+      setSaving(false);
+      toast({ title: "Settings weren't saved", description: "Your previous settings are unchanged. Try again.", variant: "destructive" });
+      return;
+    }
     const current = (profile?.job_preferences || {}) as Record<string, unknown>;
     const profileResult = await supabase.from("profiles").upsert({
         user_id: user.id,
@@ -94,17 +99,16 @@ export default function SettingsPage() {
         },
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
-    void supabase.from("user_job_prefs").upsert({
+    const prefsResult = await supabase.from("user_job_prefs").upsert({
         user_id: user.id,
         agent_enabled: hasAutoApply ? settings.agent_enabled : false,
         auto_apply_enabled: hasAutoApply ? settings.auto_apply_enabled : false,
         review_mode: settings.review_mode,
         auto_apply_min_fit_score: Math.min(100, Math.max(50, settings.auto_apply_min_fit_score)),
         daily_apply_cap: Math.min(75, Math.max(1, settings.daily_apply_cap)),
-        auto_apply_portals: ["greenhouse", "ashby", "lever"],
       }, { onConflict: "user_id" });
     setSaving(false);
-    if (profileResult.error) {
+    if (profileResult.error || prefsResult.error) {
       toast({ title: "Settings weren't saved", description: "Your previous settings are unchanged. Try again.", variant: "destructive" });
       return;
     }
@@ -127,8 +131,8 @@ export default function SettingsPage() {
               <button onClick={() => hasAutoApply ? setSettings((value) => ({ ...value, review_mode: "eligible_only", auto_apply_enabled: true, agent_enabled: true })) : navigate("/pricing")} className={`border p-4 text-left ${settings.review_mode === "eligible_only" ? "border-primary bg-primary/5" : "border-border"}`}><Bot className="h-4 w-4 text-primary" /><p className="mt-3 text-sm font-semibold">Apply strong matches automatically</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Queue supported jobs above your threshold. Missing or sensitive answers require review.</p></button>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label>Minimum career fit</Label><Input type="number" min={50} max={100} value={settings.auto_apply_min_fit_score} onChange={(event) => setSettings((value) => ({ ...value, auto_apply_min_fit_score: Number(event.target.value) }))} /></div>
-              <div className="space-y-2"><Label>Daily submission limit</Label><Input type="number" min={1} max={75} value={settings.daily_apply_cap} onChange={(event) => setSettings((value) => ({ ...value, daily_apply_cap: Number(event.target.value) }))} /></div>
+              <div className="space-y-2"><Label htmlFor="settings-min-fit">Minimum career fit</Label><Input id="settings-min-fit" type="number" min={50} max={100} value={settings.auto_apply_min_fit_score} onChange={(event) => setSettings((value) => ({ ...value, auto_apply_min_fit_score: Number(event.target.value) }))} /></div>
+              <div className="space-y-2"><Label htmlFor="settings-daily-cap">Daily submission limit</Label><Input id="settings-daily-cap" type="number" min={1} max={75} value={settings.daily_apply_cap} onChange={(event) => setSettings((value) => ({ ...value, daily_apply_cap: Number(event.target.value) }))} /></div>
             </div>
           </CardContent>
         </Card>
@@ -138,7 +142,7 @@ export default function SettingsPage() {
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><FileCheck2 className="h-5 w-5 text-primary" />Résumé optimization</CardTitle><CardDescription>All modes remain grounded in your real experience. ResumePreps never invents employers, dates, skills, or outcomes.</CardDescription></CardHeader>
           <CardContent className="grid gap-5 sm:grid-cols-[240px_1fr]">
-            <div className="space-y-2"><Label>Tailoring strength</Label><Select value={settings.optimization_mode} onValueChange={(value: OptimizationMode) => setSettings((current) => ({ ...current, optimization_mode: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="off">Keep source wording</SelectItem><SelectItem value="honest">Truthful optimization</SelectItem><SelectItem value="aggressive">Maximum truthful alignment</SelectItem></SelectContent></Select></div>
+            <div className="space-y-2"><Label htmlFor="settings-tailoring-strength">Tailoring strength</Label><Select value={settings.optimization_mode} onValueChange={(value: OptimizationMode) => setSettings((current) => ({ ...current, optimization_mode: value }))}><SelectTrigger id="settings-tailoring-strength"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="off">Keep source wording</SelectItem><SelectItem value="honest">Truthful optimization</SelectItem><SelectItem value="aggressive">Maximum truthful alignment</SelectItem></SelectContent></Select></div>
             <div className="space-y-2"><Label htmlFor="memory">What the Agent should always remember</Label><textarea id="memory" value={settings.memory} onChange={(event) => setSettings((value) => ({ ...value, memory: event.target.value }))} placeholder="Example: Never apply to staffing agencies. Prefer healthcare data roles. Always ask before answering clearance questions." className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /><p className="text-xs text-muted-foreground">Use durable “always” and “never” rules. Job-specific choices still appear in the application record.</p></div>
           </CardContent>
         </Card>
