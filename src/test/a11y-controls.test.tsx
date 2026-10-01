@@ -62,7 +62,9 @@ describe("TemplateSelector dialog semantics", () => {
     expect(dialog).not.toBeNull();
     const labelledBy = dialog.getAttribute("aria-labelledby");
     expect(labelledBy && document.getElementById(labelledBy)?.textContent).toBe("Choose a Template");
-    expect(document.querySelector('button[aria-label="Close template picker"]')).not.toBeNull();
+    // Close button comes from the shared DialogContent (visually hidden "Close" label).
+    const closeButton = Array.from(dialog.querySelectorAll("button")).find((b) => b.textContent?.trim() === "Close");
+    expect(closeButton).toBeTruthy();
     keyDown(dialog, "Escape");
     expect(onClose).toHaveBeenCalled();
   });
