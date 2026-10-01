@@ -132,6 +132,8 @@ Agent work can be triggered by creating a GitHub issue with the `agent-task` lab
 
 ## Documentation index
 
+- `docs/architecture.md` — system map, where each component runs, apply pipeline data flow, scaling path
+- `docs/adr/` — architecture decision records
 - `CONTRIBUTING.md` — branches, PRs, quality gates, regenerating Supabase types
 - `docs/env-inventory.md` — every environment variable and where it is read (generated: `npm run env:inventory`)
 - `docs/CAREER_OPS_RUNBOOK.md` — career operations workflows
