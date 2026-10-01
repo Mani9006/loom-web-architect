@@ -484,7 +484,18 @@ async function enqueueSubmit(userId: string, draftId: string) {
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (asString(gmailConnection?.gmail_email)) {
+  // Candidate email priority: active hosted application mailbox > connected
+  // Gmail > profile email. The hosted address keeps the user's login email off
+  // applications while employer mail still reaches them (forwarded).
+  const { data: hostedMailbox } = await svc
+    .from("user_mailboxes")
+    .select("local_part,domain")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (asString(hostedMailbox?.local_part) && asString(hostedMailbox?.domain)) {
+    candidateProfile.email = `${asString(hostedMailbox?.local_part)}@${asString(hostedMailbox?.domain)}`;
+  } else if (asString(gmailConnection?.gmail_email)) {
     candidateProfile.email = asString(gmailConnection?.gmail_email);
   }
   let applicationSession: { id: string } | null = gmailConnection?.session_id
