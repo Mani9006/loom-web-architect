@@ -133,7 +133,7 @@ export default function ControlCenter() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ShieldCheck className="w-6 h-6 text-primary" /> Executive Control Center
+            <ShieldCheck className="w-6 h-6 text-muted-foreground" /> Control center
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Real-time command surface for deployment, execution, quality, and growth.

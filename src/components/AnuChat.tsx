@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { X, Send, Loader2, Sparkles } from "lucide-react";
+import { X, Send, Loader2, HelpCircle } from "lucide-react";
 
 interface Msg {
   role: "user" | "assistant";
@@ -16,7 +16,7 @@ interface Props {
 
 const INTRO: Msg = {
   role: "assistant",
-  content: "Hi, I'm ANU. Ask me anything about ResumePreps, what a screen does, how to get started, tips for writing a better résumé. I can't take actions for you, but I'll point you to the right button.",
+  content: "Ask how a screen works, how to get started, or how to improve your résumé. I can't take actions for you, but I can point you to the right place.",
 };
 
 export default function AnuChat({ open, onClose }: Props) {
@@ -80,19 +80,17 @@ export default function AnuChat({ open, onClose }: Props) {
 
   const node = (
     <div
-      className="fixed bottom-5 right-5 z-[100] w-[380px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl bg-background border border-border shadow-[0_20px_48px_-12px_hsl(0_0%_0%/0.18)]"
+      className="fixed bottom-5 right-5 z-[100] w-[380px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[calc(100vh-2rem)] flex flex-col rounded-lg bg-card border border-border shadow-overlay"
       role="dialog"
-      aria-label="Ask ANU"
+      aria-label="Ask for help"
     >
       {/* Header */}
       <div className="h-12 px-4 flex items-center justify-between border-b border-border shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center">
-            <Sparkles className="w-3 h-3 text-white" strokeWidth={2.5} />
-          </div>
+          <HelpCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} aria-hidden />
           <div>
-            <div className="text-meta font-semibold text-foreground leading-tight">ANU</div>
-            <div className="text-xs text-muted-foreground leading-tight">ResumePreps helper</div>
+            <div className="text-meta font-semibold text-foreground leading-tight">Ask</div>
+            <div className="text-xs text-muted-foreground leading-tight">Questions about using ResumePreps</div>
           </div>
         </div>
         <button
@@ -122,7 +120,7 @@ export default function AnuChat({ open, onClose }: Props) {
         {loading && (
           <div className="bg-muted max-w-[85%] px-3 py-2 rounded-lg text-meta text-muted-foreground inline-flex items-center gap-2">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ANU is thinking
+            Thinking
           </div>
         )}
       </div>

@@ -9,10 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { DocumentUpload } from "@/components/shared/DocumentUpload";
-import {
-  FileText, Target, MapPin, Briefcase, ArrowRight, ArrowLeft,
-  CheckCircle2, Sparkles, Upload,
-} from "lucide-react";
+import { FileText, Target, MapPin, Briefcase, ArrowLeft, CheckCircle2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 
@@ -22,13 +19,13 @@ interface OnboardingModalProps {
 }
 
 const STEPS = [
-  { icon: Upload, label: "Upload Resume", desc: "Let AI extract your experience" },
-  { icon: Target, label: "Target Role", desc: "What role are you pursuing?" },
+  { icon: Upload, label: "Upload resume", desc: "We read your experience from it" },
+  { icon: Target, label: "Target role", desc: "What role are you pursuing?" },
   { icon: MapPin, label: "Preferences", desc: "Where and how do you want to work?" },
 ];
 
 const JOB_TYPES = ["Full-time", "Part-time", "Contract", "Internship", "Remote"];
-const EXPERIENCE_LEVELS = ["Entry Level", "Mid Level", "Senior", "Lead", "Executive"];
+const EXPERIENCE_LEVELS = ["Entry level", "Mid level", "Senior", "Lead", "Executive"];
 
 export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const { user } = useAuth();
@@ -56,20 +53,29 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     }));
   };
 
-  const handleComplete = async () => {
+  /**
+   * Persist the answers so far and mark onboarding done. Skipping uses the
+   * same flag as finishing, so the modal does not come back on every load;
+   * empty answers are left out rather than overwriting existing values.
+   */
+  const persist = async () => {
     if (!user) return;
+    const update: Record<string, unknown> = { onboarding_completed: true };
+    if (targetRole.trim()) update.target_role = targetRole.trim();
+    if (preferences.location || preferences.jobTypes.length || preferences.experienceLevel) {
+      update.job_preferences = preferences;
+    }
+    await supabase
+      .from("profiles")
+      .update(update as never)
+      .eq("user_id", user.id);
+  };
+
+  const handleComplete = async () => {
     setSaving(true);
     try {
-      await supabase
-        .from("profiles")
-        .update({
-          onboarding_completed: true,
-          target_role: targetRole,
-          job_preferences: preferences as any,
-        } as any)
-        .eq("user_id", user.id);
+      await persist();
       onComplete();
-      // Redirect to comprehensive profile setup
       navigate("/profile-setup");
     } catch {
       onComplete();
@@ -78,18 +84,22 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     }
   };
 
-  const canProceed = step === 0 ? true : step === 1 ? targetRole.trim().length > 0 : true;
+  const handleSkip = async () => {
+    onComplete();
+    try {
+      await persist();
+    } catch {
+      /* Closing should never be blocked by a failed save. */
+    }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-lg [&>button]:hidden" onPointerDownOutside={(e) => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) void handleSkip(); }}>
+      <DialogContent className="sm:max-w-lg" onPointerDownOutside={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl">
-            <Sparkles className="w-5 h-5 text-primary" />
-            Welcome to ResumePreps
-          </DialogTitle>
+          <DialogTitle className="text-xl">Set up ResumePreps</DialogTitle>
           <DialogDescription>
-            Let's set up your profile in 3 quick steps
+            Three optional steps. Skip any of them and finish later in Profile.
           </DialogDescription>
         </DialogHeader>
 
@@ -124,12 +134,9 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
               <DocumentUpload onTextExtracted={handleResumeImported} label="Drop your resume here" />
               {resumeUploaded && (
                 <div className="flex items-center gap-2 text-sm text-primary font-medium justify-center">
-                  <CheckCircle2 className="w-4 h-4" /> Resume uploaded successfully!
+                  <CheckCircle2 className="w-4 h-4" /> Resume uploaded
                 </div>
               )}
-              <p className="text-xs text-center text-muted-foreground">
-                You can skip this step and upload later
-              </p>
             </div>
           )}
 
@@ -142,7 +149,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                 <p className="text-sm text-muted-foreground">This helps us tailor job recommendations</p>
               </div>
               <div className="space-y-2">
-                <Label>Target Job Title</Label>
+                <Label>Target job title</Label>
                 <Input
                   placeholder="e.g. Senior Software Engineer"
                   value={targetRole}
@@ -151,7 +158,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Experience Level</Label>
+                <Label>Experience level</Label>
                 <div className="flex flex-wrap gap-2">
                   {EXPERIENCE_LEVELS.map((level) => (
                     <Badge
@@ -177,7 +184,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                 <p className="text-sm text-muted-foreground">Help us find the right opportunities</p>
               </div>
               <div className="space-y-2">
-                <Label>Preferred Location</Label>
+                <Label>Preferred location</Label>
                 <Input
                   placeholder="e.g. San Francisco, CA or Remote"
                   value={preferences.location}
@@ -186,7 +193,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Job Type</Label>
+                <Label>Job type</Label>
                 <div className="flex flex-wrap gap-2">
                   {JOB_TYPES.map((type) => (
                     <Badge
@@ -205,24 +212,27 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
         </div>
 
         {/* Navigation */}
-        <div className="flex items-center justify-between pt-2 border-t border-border/50">
+        <div className="flex items-center justify-between gap-2 pt-3 border-t border-border">
           <Button
             variant="ghost"
             onClick={() => setStep((s) => s - 1)}
             disabled={step === 0}
             className="gap-2"
           >
-            <ArrowLeft className="w-4 h-4" /> Back
+            <ArrowLeft className="w-4 h-4" aria-hidden /> Back
           </Button>
-          {step < 2 ? (
-            <Button onClick={() => setStep((s) => s + 1)} disabled={!canProceed} className="gap-2">
-              {step === 0 ? (resumeUploaded ? "Next" : "Skip") : "Next"} <ArrowRight className="w-4 h-4" />
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={handleSkip} disabled={saving}>
+              Skip for now
             </Button>
-          ) : (
-            <Button onClick={handleComplete} disabled={saving} className="gap-2">
-              {saving ? "Setting up..." : "Get Started"} <Sparkles className="w-4 h-4" />
-            </Button>
-          )}
+            {step < 2 ? (
+              <Button onClick={() => setStep((s) => s + 1)}>Next</Button>
+            ) : (
+              <Button onClick={handleComplete} disabled={saving}>
+                {saving ? "Saving" : "Finish setup"}
+              </Button>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

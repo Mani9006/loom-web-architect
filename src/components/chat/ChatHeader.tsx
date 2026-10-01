@@ -43,11 +43,11 @@ export function ChatHeader({ user, displayName, onSignOut }: ChatHeaderProps) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate("/dashboard")}
+          onClick={() => navigate("/home")}
           className="hidden sm:flex items-center gap-2 text-muted-foreground hover:text-foreground"
         >
           <LayoutDashboard className="w-4 h-4" />
-          Dashboard
+          Today
         </Button>
 
         <DropdownMenu>
@@ -78,8 +78,8 @@ export function ChatHeader({ user, displayName, onSignOut }: ChatHeaderProps) {
             <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer gap-2">
               <Sparkles className="w-4 h-4" /> Profile Settings
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate("/dashboard")} className="cursor-pointer gap-2">
-              <LayoutDashboard className="w-4 h-4" /> Dashboard
+            <DropdownMenuItem onClick={() => navigate("/home")} className="cursor-pointer gap-2">
+              <LayoutDashboard className="w-4 h-4" /> Today
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onSignOut} className="cursor-pointer text-destructive gap-2">
