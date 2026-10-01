@@ -892,7 +892,7 @@ export default function ResumeBuilder() {
           )}
         </div>
           {!isMobile && <Button variant="outline" size="sm" onClick={() => setMobileView("preview")} className="h-7 text-xs lg:hidden">Preview</Button>}
-          <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={resetResume} className="h-8 w-8 shrink-0 text-muted-foreground"><RotateCcw className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Reset all fields</TooltipContent></Tooltip>
+          <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={resetResume} aria-label="Reset all fields" className="h-8 w-8 shrink-0 text-muted-foreground"><RotateCcw className="h-3.5 w-3.5" /></Button></TooltipTrigger><TooltipContent>Reset all fields</TooltipContent></Tooltip>
         </div>
 
         <div className="px-4 py-2.5 border-b border-border bg-card">
@@ -1136,14 +1136,17 @@ export default function ResumeBuilder() {
                                   onClick={() => setExpandedExpId(expandedExpId === exp.id ? null : exp.id)}
                                 >
                                   {data.experience.length > 1 && <div className="cursor-grab active:cursor-grabbing shrink-0 touch-none" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}><GripVertical className="h-3.5 w-3.5 text-muted-foreground" /></div>}
-                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedExpId === exp.id && "rotate-180")} />
-                                  <span className="text-xs font-medium truncate flex-1 min-w-0">
+                                  {/* Row toggle: keyboard-focusable; click bubbles to the row onClick */}
+                                  <button type="button" aria-expanded={expandedExpId === exp.id} className="flex flex-1 min-w-0 items-center gap-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                    <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedExpId === exp.id && "rotate-180")} />
+                                    <span className="text-xs font-medium truncate flex-1 min-w-0">
                                     {exp.role || exp.company_or_client ? `${exp.role || "Role"}${exp.company_or_client ? ` @ ${exp.company_or_client}` : ""}` : `Experience ${index + 1}`}
                                   </span>
+                                  </button>
                                   {exp.start_date && <span className="text-[10px] text-muted-foreground shrink-0">{exp.start_date}{exp.end_date ? ` - ${exp.end_date}` : ""}</span>}
                                   <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                    {exp.bullets.length > 0 && <button type="button" onClick={() => enhanceBulletsWithAI(exp.id)} disabled={aiEnhancingSection === `exp-${exp.id}`} className="p-0.5 rounded hover:bg-muted text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</button>}
-                                    {data.experience.length > 1 && <button type="button" onClick={() => removeExperience(exp.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
+                                    {exp.bullets.length > 0 && <button type="button" onClick={() => enhanceBulletsWithAI(exp.id)} aria-label={`Enhance bullets for ${exp.role || `experience ${index + 1}`} with AI`} disabled={aiEnhancingSection === `exp-${exp.id}`} className="p-0.5 rounded hover:bg-muted text-primary">{aiEnhancingSection === `exp-${exp.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}</button>}
+                                    {data.experience.length > 1 && <button type="button" onClick={() => removeExperience(exp.id)} aria-label={`Remove ${exp.role || `experience ${index + 1}`}`} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
                                   </div>
                                 </div>
                                 {/* Expanded form */}
@@ -1191,13 +1194,16 @@ export default function ResumeBuilder() {
                                   onClick={() => setExpandedEduId(expandedEduId === edu.id ? null : edu.id)}
                                 >
                                   {data.education.length > 1 && <div className="cursor-grab active:cursor-grabbing shrink-0 touch-none" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}><GripVertical className="h-3.5 w-3.5 text-muted-foreground" /></div>}
-                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedEduId === edu.id && "rotate-180")} />
-                                  <span className="text-xs font-medium truncate flex-1 min-w-0">
+                                  {/* Row toggle: keyboard-focusable; click bubbles to the row onClick */}
+                                  <button type="button" aria-expanded={expandedEduId === edu.id} className="flex flex-1 min-w-0 items-center gap-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                    <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedEduId === edu.id && "rotate-180")} />
+                                    <span className="text-xs font-medium truncate flex-1 min-w-0">
                                     {edu.institution || edu.degree ? `${edu.degree || "Degree"}${edu.institution ? ` - ${edu.institution}` : ""}` : `Education ${eduIndex + 1}`}
                                   </span>
+                                  </button>
                                   {edu.graduation_date && <span className="text-[10px] text-muted-foreground shrink-0">{edu.graduation_date}</span>}
                                   <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                    {data.education.length > 1 && <button type="button" onClick={() => removeEducation(edu.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
+                                    {data.education.length > 1 && <button type="button" onClick={() => removeEducation(edu.id)} aria-label={`Remove ${edu.degree || edu.institution || `education ${eduIndex + 1}`}`} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
                                   </div>
                                 </div>
                                 {expandedEduId === edu.id && (
@@ -1260,11 +1266,14 @@ export default function ResumeBuilder() {
                                   onClick={() => setExpandedProjIdx(expandedProjIdx === index ? null : index)}
                                 >
                                   {data.projects.length > 1 && <div className="cursor-grab active:cursor-grabbing shrink-0 touch-none" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}><GripVertical className="h-3.5 w-3.5 text-muted-foreground" /></div>}
-                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedProjIdx === index && "rotate-180")} />
-                                  <span className="text-xs font-medium truncate flex-1 min-w-0">{project.title || `Project ${index + 1}`}</span>
+                                  {/* Row toggle: keyboard-focusable; click bubbles to the row onClick */}
+                                  <button type="button" aria-expanded={expandedProjIdx === index} className="flex flex-1 min-w-0 items-center gap-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                    <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedProjIdx === index && "rotate-180")} />
+                                    <span className="text-xs font-medium truncate flex-1 min-w-0">{project.title || `Project ${index + 1}`}</span>
+                                  </button>
                                   {project.date && <span className="text-[10px] text-muted-foreground shrink-0">{project.date}</span>}
                                   <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                    <button type="button" onClick={() => removeProject(index)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                    <button type="button" onClick={() => removeProject(index)} aria-label={`Remove ${project.title || `project ${index + 1}`}`} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                   </div>
                                 </div>
                                 {expandedProjIdx === index && (
@@ -1297,11 +1306,14 @@ export default function ResumeBuilder() {
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedCertId === cert.id && "bg-muted/40")}
                                 onClick={() => setExpandedCertId(expandedCertId === cert.id ? null : cert.id)}
                               >
-                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedCertId === cert.id && "rotate-180")} />
-                                <span className="text-xs font-medium truncate flex-1">{cert.name || "New Certification"}</span>
+                                {/* Row toggle: keyboard-focusable; click bubbles to the row onClick */}
+                                <button type="button" aria-expanded={expandedCertId === cert.id} className="flex flex-1 min-w-0 items-center gap-1.5 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedCertId === cert.id && "rotate-180")} />
+                                  <span className="text-xs font-medium truncate flex-1">{cert.name || "New Certification"}</span>
+                                </button>
                                 {cert.date && <span className="text-[10px] text-muted-foreground shrink-0">{cert.date}</span>}
                                 <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  <button type="button" onClick={() => removeCertification(cert.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                  <button type="button" onClick={() => removeCertification(cert.id)} aria-label={`Remove ${cert.name || "certification"}`} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
                               </div>
                               {expandedCertId === cert.id && (
@@ -1335,11 +1347,14 @@ export default function ResumeBuilder() {
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedLangId === lang.id && "bg-muted/40")}
                                 onClick={() => setExpandedLangId(expandedLangId === lang.id ? null : lang.id)}
                               >
-                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedLangId === lang.id && "rotate-180")} />
-                                <span className="text-xs font-medium truncate flex-1">{lang.language || "New Language"}</span>
+                                {/* Row toggle: keyboard-focusable; click bubbles to the row onClick */}
+                                <button type="button" aria-expanded={expandedLangId === lang.id} className="flex flex-1 min-w-0 items-center gap-1.5 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedLangId === lang.id && "rotate-180")} />
+                                  <span className="text-xs font-medium truncate flex-1">{lang.language || "New Language"}</span>
+                                </button>
                                 {lang.proficiency && <Badge variant="secondary" className="text-[10px] h-5">{lang.proficiency}</Badge>}
                                 <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  <button type="button" onClick={() => removeLanguage(lang.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                  <button type="button" onClick={() => removeLanguage(lang.id)} aria-label={`Remove ${lang.language || "language"}`} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
                               </div>
                               {expandedLangId === lang.id && (
@@ -1368,13 +1383,16 @@ export default function ResumeBuilder() {
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedVolId === vol.id && "bg-muted/40")}
                                 onClick={() => setExpandedVolId(expandedVolId === vol.id ? null : vol.id)}
                               >
-                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedVolId === vol.id && "rotate-180")} />
-                                <span className="text-xs font-medium truncate flex-1">
+                                {/* Row toggle: keyboard-focusable; click bubbles to the row onClick */}
+                                <button type="button" aria-expanded={expandedVolId === vol.id} className="flex flex-1 min-w-0 items-center gap-1.5 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedVolId === vol.id && "rotate-180")} />
+                                  <span className="text-xs font-medium truncate flex-1">
                                   {vol.role || vol.organization ? `${vol.role || "Role"}${vol.organization ? ` @ ${vol.organization}` : ""}` : "New Volunteer Experience"}
                                 </span>
+                                </button>
                                 {vol.date && <span className="text-[10px] text-muted-foreground shrink-0">{vol.date}</span>}
                                 <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  <button type="button" onClick={() => removeVolunteer(vol.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                  <button type="button" onClick={() => removeVolunteer(vol.id)} aria-label={`Remove ${vol.role || vol.organization || "volunteer experience"}`} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
                               </div>
                               {expandedVolId === vol.id && (
@@ -1403,11 +1421,14 @@ export default function ResumeBuilder() {
                                 className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedAwardId === award.id && "bg-muted/40")}
                                 onClick={() => setExpandedAwardId(expandedAwardId === award.id ? null : award.id)}
                               >
-                                <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedAwardId === award.id && "rotate-180")} />
-                                <span className="text-xs font-medium truncate flex-1">{award.title || "New Award"}</span>
+                                {/* Row toggle: keyboard-focusable; click bubbles to the row onClick */}
+                                <button type="button" aria-expanded={expandedAwardId === award.id} className="flex flex-1 min-w-0 items-center gap-1.5 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedAwardId === award.id && "rotate-180")} />
+                                  <span className="text-xs font-medium truncate flex-1">{award.title || "New Award"}</span>
+                                </button>
                                 {award.date && <span className="text-[10px] text-muted-foreground shrink-0">{award.date}</span>}
                                 <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  <button type="button" onClick={() => removeAward(award.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                  <button type="button" onClick={() => removeAward(award.id)} aria-label={`Remove ${award.title || "award"}`} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                 </div>
                               </div>
                               {expandedAwardId === award.id && (
@@ -1442,11 +1463,14 @@ export default function ResumeBuilder() {
                                   className={cn("flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors", expandedCustomId === entry.id && "bg-muted/40")}
                                   onClick={() => setExpandedCustomId(expandedCustomId === entry.id ? null : entry.id)}
                                 >
-                                  <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedCustomId === entry.id && "rotate-180")} />
-                                  <span className="text-xs font-medium truncate flex-1">{entry.title || "New Entry"}</span>
+                                  {/* Row toggle: keyboard-focusable; click bubbles to the row onClick */}
+                                  <button type="button" aria-expanded={expandedCustomId === entry.id} className="flex flex-1 min-w-0 items-center gap-1.5 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                    <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", expandedCustomId === entry.id && "rotate-180")} />
+                                    <span className="text-xs font-medium truncate flex-1">{entry.title || "New Entry"}</span>
+                                  </button>
                                   {entry.date && <span className="text-[10px] text-muted-foreground shrink-0">{entry.date}</span>}
                                   <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-                                    <button type="button" onClick={() => removeCustomEntry(section.id, entry.id)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                                    <button type="button" onClick={() => removeCustomEntry(section.id, entry.id)} aria-label={`Remove ${entry.title || "entry"}`} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
                                   </div>
                                 </div>
                                 {expandedCustomId === entry.id && (

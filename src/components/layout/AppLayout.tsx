@@ -15,6 +15,7 @@
  */
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Home, FileText, Search, Bot, Columns3, Sparkles, Map, Inbox,
@@ -305,11 +306,16 @@ export default function AppLayout() {
 
   return (
     <div className="flex h-screen bg-rp-canvas">
-      {isMobile && mobileOpen && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="fixed inset-0 bg-rp-ink/30 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <div className="relative z-50">{sidebarContent}</div>
-        </div>
+      {isMobile && (
+        <DialogPrimitive.Root open={mobileOpen} onOpenChange={setMobileOpen}>
+          <DialogPrimitive.Portal>
+            <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-rp-ink/30 backdrop-blur-sm" />
+            <DialogPrimitive.Content aria-describedby={undefined} className="fixed inset-y-0 left-0 z-50 flex focus:outline-none">
+              <DialogPrimitive.Title className="sr-only">Navigation</DialogPrimitive.Title>
+              {sidebarContent}
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
       )}
 
       {!isMobile && sidebarContent}

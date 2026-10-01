@@ -1176,7 +1176,7 @@ export default function JobSearchPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-1">
-                              <h3 className="font-semibold text-sm leading-tight line-clamp-1">{job.title}</h3>
+                              <h3 className="font-semibold text-sm leading-tight line-clamp-1"><button type="button" aria-current={selected || undefined} className="text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{job.title}</button></h3>
                               {/* Save button */}
                               <button
                                 onClick={(e) => toggleSaveJob(job, e)}
@@ -1185,7 +1185,7 @@ export default function JobSearchPage() {
                                   "p-1 rounded-md transition-all shrink-0",
                                   saved
                                     ? "text-primary hover:text-primary/80"
-                                    : "text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-primary"
+                                    : "text-muted-foreground/40 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-primary"
                                 )}
                                 title={saved ? "Remove from saved" : "Save job"}
                               >
@@ -1467,7 +1467,7 @@ export default function JobSearchPage() {
                             <div className="flex gap-3">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-start justify-between gap-1">
-                                  <h3 className="font-semibold text-sm leading-tight line-clamp-1">{job.title}</h3>
+                                  <h3 className="font-semibold text-sm leading-tight line-clamp-1"><button type="button" aria-current={selected || undefined} className="text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{job.title}</button></h3>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">{job.company}</p>
                                 <div className="mt-2 flex items-center gap-2">
