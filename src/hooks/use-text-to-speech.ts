@@ -36,10 +36,18 @@ export function useTextToSpeech({
 
   const isSupported = typeof window !== "undefined" && "speechSynthesis" in window;
 
-  // Stop any speech still playing when the component using this hook unmounts.
+  // Stop this hook's speech if it is still playing when the component unmounts.
+  // Detach the handlers first so cancel() does not fire onEnd/onError into an
+  // unmounted component (e.g. the voice interview starting to listen again).
   useEffect(() => {
     if (!isSupported) return;
     return () => {
+      const utterance = utteranceRef.current;
+      if (!utterance) return;
+      utterance.onstart = null;
+      utterance.onend = null;
+      utterance.onerror = null;
+      utteranceRef.current = null;
       window.speechSynthesis.cancel();
     };
   }, [isSupported]);
@@ -93,12 +101,14 @@ export function useTextToSpeech({
     };
 
     utterance.onend = () => {
+      if (utteranceRef.current === utterance) utteranceRef.current = null;
       setIsSpeaking(false);
       onEndRef.current?.();
     };
 
     utterance.onerror = (event) => {
       console.error("Speech synthesis error:", event);
+      if (utteranceRef.current === utterance) utteranceRef.current = null;
       setIsSpeaking(false);
       onErrorRef.current?.(event.error);
     };
