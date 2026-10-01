@@ -16,11 +16,13 @@
  *   standard  →  resume tailoring, scoring, cover letter drafts
  *   hard      →  rare — reasoning-heavy, multi-step planning
  *
- * Models are picked from env-overridable defaults so we can swap without
- * code changes when a new model ships.
+ * Concrete model IDs live in _shared/models.ts (env-overridable via
+ * MODEL_<TIER>[_<PROVIDER>]) so we can swap without code changes when a new
+ * model ships.
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callClaude, type Tier as AnthropicTier } from "./ai.ts";
+import { type ModelTier, resolveModel } from "./models.ts";
 import { logAiUsage, type UsageKind } from "./guards.ts";
 import {
   type FreeProviderId,
@@ -45,16 +47,19 @@ const ANTHROPIC_TIER_MAP: Record<Tier, AnthropicTier> = {
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
-function envModel(key: string, fallback: string): string {
-  return Deno.env.get(key) ?? fallback;
-}
+/** Router tier → registry tier (see _shared/models.ts). */
+export const LLM_TO_MODEL_TIER: Record<Tier, ModelTier> = {
+  cheap: "fast",
+  standard: "balanced",
+  hard: "deep",
+};
 
 function openaiModelFor(tier: Tier): string {
-  switch (tier) {
-    case "cheap":    return envModel("OPENAI_MODEL_CHEAP", "gpt-5.4-nano");
-    case "standard": return envModel("OPENAI_MODEL_STANDARD", "gpt-5.4-mini");
-    case "hard":     return envModel("OPENAI_MODEL_HARD", "gpt-5.4-mini");
-  }
+  // OPENAI_MODEL_<TIER> is the pre-registry override name; still honored.
+  return resolveModel(LLM_TO_MODEL_TIER[tier], (k) => Deno.env.get(k), {
+    provider: "openai",
+    legacyEnvKeys: [`OPENAI_MODEL_${tier.toUpperCase()}`],
+  }).model;
 }
 
 function defaultProvider(): Provider {

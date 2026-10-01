@@ -1,9 +1,9 @@
 /**
  * Shared AI client with tiered model routing + prompt caching.
  *
- * Policy (set by product):
- *   - Simple tasks       → claude-haiku-4-5-20251001
- *   - Complex / research → claude-sonnet-4-6
+ * Policy (set by product; concrete IDs live in _shared/models.ts):
+ *   - Simple tasks       → registry tier "fast"     (Haiku 4.5 default)
+ *   - Complex / research → registry "balanced"/"deep" (Sonnet 4.6 default)
  *   - Opus 4.7 is reserved for auto-apply form-filling only and MUST be
  *     opted into explicitly via `model: "opus-4-7-auto-apply"`.
  *
@@ -22,16 +22,28 @@
  *   });
  */
 
+import { resolveModel, resolvePinnedModel } from "./models.ts";
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
 export type Tier = "simple" | "complex" | "research" | "opus-4-7-auto-apply";
 
-export const MODELS: Record<Tier, string> = {
-  simple:                  "claude-haiku-4-5-20251001",
-  complex:                 "claude-sonnet-4-6",
-  research:                "claude-sonnet-4-6",
-  "opus-4-7-auto-apply":   "claude-opus-4-7",
-};
+/**
+ * Resolve the concrete Claude model for a tier via the model registry
+ * (_shared/models.ts). Defaults are unchanged: simple → Haiku 4.5,
+ * complex/research → Sonnet 4.6, auto-apply → Opus 4.7. Override with
+ * MODEL_FAST_ANTHROPIC / MODEL_BALANCED_ANTHROPIC / MODEL_DEEP_ANTHROPIC /
+ * MODEL_AUTO_APPLY.
+ */
+export function modelFor(tier: Tier): string {
+  const env = (k: string) => Deno.env.get(k);
+  switch (tier) {
+    case "simple":   return resolveModel("fast", env, { provider: "anthropic" }).model;
+    case "complex":  return resolveModel("balanced", env, { provider: "anthropic" }).model;
+    case "research": return resolveModel("deep", env, { provider: "anthropic" }).model;
+    case "opus-4-7-auto-apply": return resolvePinnedModel("autoApply", env).model;
+  }
+}
 
 export interface CallOptions {
   tier: Tier;
@@ -73,7 +85,7 @@ export async function callClaude<T = string>(opts: CallOptions): Promise<CallRes
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
 
-  const model = MODELS[opts.tier];
+  const model = modelFor(opts.tier);
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX[opts.tier];
   const temperature = opts.temperature ?? 0.2;
 
