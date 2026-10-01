@@ -29,6 +29,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "env:inventory": "node scripts/env-inventory.mjs",
+    "env:check": "node scripts/env-inventory.mjs --check",
     "test:adapters": "node --test \"scripts/ats-adapters/*.test.mjs\"",
     "qa:execute": "bash ./qa-execute.sh",
     "qa:e2e": "npx playwright test",
