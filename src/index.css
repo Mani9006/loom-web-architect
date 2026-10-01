@@ -20,7 +20,7 @@
     --surface: 1 0 0;                   /* cards, sheets, inputs */
     --surface-2: 0.962 0.004 255;       /* wells, hover rows, muted fills */
     --ink: 0.22 0.01 255;               /* primary text  17:1 */
-    --ink-muted: 0.5 0.012 255;         /* secondary text 5.9:1 */
+    --ink-muted: 0.5 0.012 255;         /* secondary text, 5.4:1 worst case */
     --hairline: 0.905 0.005 255;
     --accent-ink: 0.52 0.14 250;        /* ink-blue, primary actions + selection */
 
@@ -61,7 +61,7 @@
     --rp-paper: var(--surface);
     --rp-paper-2: var(--surface-2);
     --rp-ink: var(--ink);
-    --rp-ink-2: 0.45 0.012 255;         /* 7.1:1 */
+    --rp-ink-2: 0.45 0.012 255;         /* 6.7:1 worst case */
     --rp-ink-3: 0.535 0.012 255;        /* 4.6:1 on surface-2 (was 3.0:1) */
     --rp-rule: var(--hairline);
     --rp-rule-2: 0.86 0.006 255;
@@ -69,7 +69,7 @@
     --rp-accent-2: 0.47 0.14 250;       /* pressed / hover */
 
     /* ---- Status: dots and text only, never fills ----------------- */
-    --status-applied: 0.52 0.12 250;    /* 4.9:1 on surface-2 */
+    --status-applied: 0.52 0.12 250;    /* all four >= 4.6:1 on surface-2 */
     --status-interview: 0.53 0.13 65;
     --status-offer: 0.52 0.12 155;
     --status-rejected: 0.53 0.16 25;
@@ -103,7 +103,7 @@
     --surface: 0.21 0.007 255;
     --surface-2: 0.25 0.008 255;
     --ink: 0.95 0.004 255;              /* 15:1 on surface */
-    --ink-muted: 0.72 0.01 255;         /* 6.9:1 on surface */
+    --ink-muted: 0.72 0.01 255;         /* 6.5:1 worst case */
     --hairline: 0.29 0.008 255;
     --accent-ink: 0.68 0.13 250;
 
@@ -115,8 +115,8 @@
     --sidebar-foreground: 0.78 0.008 255;
     --sidebar-primary-foreground: 0.17 0.006 255;
 
-    --rp-ink-2: 0.78 0.008 255;         /* 8.9:1 */
-    --rp-ink-3: 0.68 0.01 255;          /* 5.7:1 on surface-2 (was 2.1:1) */
+    --rp-ink-2: 0.78 0.008 255;         /* 8.0:1 worst case */
+    --rp-ink-3: 0.68 0.01 255;          /* 5.6:1 on surface-2 (was 2.1:1) */
     --rp-rule-2: 0.36 0.01 255;
     --rp-accent-2: 0.74 0.12 250;
 
