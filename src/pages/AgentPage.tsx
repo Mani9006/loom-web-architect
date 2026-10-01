@@ -583,6 +583,9 @@ export default function AgentPage() {
           tailoring_mode: controls.tailoring_mode,
           daily_apply_cap: controls.daily_apply_cap,
           agent_max_actions_per_day: controls.agent_max_actions_per_day,
+          // Starting must never widen what the user agreed to: send their
+          // chosen review mode so the server keeps it instead of defaulting.
+          review_mode: controls.review_mode === "eligible_only" ? "eligible_only" : "always",
         },
       });
       if (error) throw error;
@@ -590,11 +593,12 @@ export default function AgentPage() {
         ...current,
         agent_enabled: action === "start",
         auto_apply_enabled: action === "start",
-        review_mode: action === "start" ? "eligible_only" : current.review_mode,
       }));
       await loadWorkspace();
       if (action === "start") {
-        toast.success("Auto-apply is on. We'll match, tailor, and apply for you in the background.");
+        toast.success(controls.review_mode === "eligible_only"
+          ? "Auto-apply is on. Strong matches are tailored and sent in the background."
+          : "Auto-apply is on. We'll tailor strong matches and ask you before each one is sent.");
       } else {
         toast.success(`${Number(data?.canceled || 0)} application${Number(data?.canceled || 0) === 1 ? " was" : "s were"} stopped before submission.`);
       }
