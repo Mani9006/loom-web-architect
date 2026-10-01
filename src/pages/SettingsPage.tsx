@@ -32,7 +32,7 @@ const defaults: SettingsState = {
   auto_apply_enabled: false,
   review_mode: "always",
   auto_apply_min_fit_score: 82,
-  daily_apply_cap: 60,
+  daily_apply_cap: 15,
   optimization_mode: "honest",
   memory: "",
 };
@@ -88,7 +88,7 @@ export default function SettingsPage() {
               auto_apply_enabled: hasAutoApply ? settings.auto_apply_enabled : false,
               review_mode: settings.review_mode,
               auto_apply_min_fit_score: Math.min(100, Math.max(50, settings.auto_apply_min_fit_score)),
-              daily_apply_cap: Math.min(75, Math.max(1, settings.daily_apply_cap)),
+              daily_apply_cap: Math.min(25, Math.max(1, settings.daily_apply_cap)),
             },
           },
         },
@@ -100,7 +100,7 @@ export default function SettingsPage() {
         auto_apply_enabled: hasAutoApply ? settings.auto_apply_enabled : false,
         review_mode: settings.review_mode,
         auto_apply_min_fit_score: Math.min(100, Math.max(50, settings.auto_apply_min_fit_score)),
-        daily_apply_cap: Math.min(75, Math.max(1, settings.daily_apply_cap)),
+        daily_apply_cap: Math.min(25, Math.max(1, settings.daily_apply_cap)),
         auto_apply_portals: ["greenhouse", "ashby", "lever"],
       }, { onConflict: "user_id" });
     setSaving(false);
@@ -128,7 +128,7 @@ export default function SettingsPage() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2"><Label>Minimum career fit</Label><Input type="number" min={50} max={100} value={settings.auto_apply_min_fit_score} onChange={(event) => setSettings((value) => ({ ...value, auto_apply_min_fit_score: Number(event.target.value) }))} /></div>
-              <div className="space-y-2"><Label>Daily submission limit</Label><Input type="number" min={1} max={75} value={settings.daily_apply_cap} onChange={(event) => setSettings((value) => ({ ...value, daily_apply_cap: Number(event.target.value) }))} /></div>
+              <div className="space-y-2"><Label>Daily submission limit</Label><Input type="number" min={1} max={25} value={settings.daily_apply_cap} onChange={(event) => setSettings((value) => ({ ...value, daily_apply_cap: Number(event.target.value) }))} /></div>
             </div>
           </CardContent>
         </Card>

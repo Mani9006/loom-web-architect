@@ -101,7 +101,14 @@ serve(async (req) => {
       let queueNotice: string | null = null;
       // Queue every portal career-ops-submit accepts (greenhouse, ashby,
       // lever). Workday/Oracle/iCIMS stay review-only (supported = false).
-      if (body.queue_if_supported && portal.supported) {
+      // One click prepares the packet; it only submits when the user has
+      // opted into unattended submission. Otherwise they review it first.
+      const { data: prefs } = await db.from("user_job_prefs")
+        .select("review_mode")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const userAllowsAutoSubmit = prefs?.review_mode === "eligible_only";
+      if (body.queue_if_supported && portal.supported && userAllowsAutoSubmit) {
         try {
           const submitResult = await callAsUser("career-ops-submit", authorization, {
             draft_application_id: draft.id,

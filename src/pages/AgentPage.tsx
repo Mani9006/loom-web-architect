@@ -162,7 +162,7 @@ const DEFAULT_CONTROLS: AgentControls = {
   auto_apply_min_fit_score: 82,
   auto_apply_min_ats_score: 85,
   tailoring_mode: "evidence_only",
-  daily_apply_cap: 60,
+  daily_apply_cap: 15,
   agent_max_actions_per_day: 240,
   agent_actions_today: 0,
   last_agent_run_at: null,
@@ -583,6 +583,9 @@ export default function AgentPage() {
           tailoring_mode: controls.tailoring_mode,
           daily_apply_cap: controls.daily_apply_cap,
           agent_max_actions_per_day: controls.agent_max_actions_per_day,
+          // Starting must never widen what the user agreed to: send their
+          // chosen review mode so the server keeps it instead of defaulting.
+          review_mode: controls.review_mode === "eligible_only" ? "eligible_only" : "always",
         },
       });
       if (error) throw error;
@@ -590,11 +593,12 @@ export default function AgentPage() {
         ...current,
         agent_enabled: action === "start",
         auto_apply_enabled: action === "start",
-        review_mode: action === "start" ? "eligible_only" : current.review_mode,
       }));
       await loadWorkspace();
       if (action === "start") {
-        toast.success("Auto-apply is on. We'll match, tailor, and apply for you in the background.");
+        toast.success(controls.review_mode === "eligible_only"
+          ? "Auto-apply is on. Strong matches are tailored and sent in the background."
+          : "Auto-apply is on. We'll tailor strong matches and ask you before each one is sent.");
       } else {
         toast.success(`${Number(data?.canceled || 0)} application${Number(data?.canceled || 0) === 1 ? " was" : "s were"} stopped before submission.`);
       }
@@ -638,7 +642,7 @@ export default function AgentPage() {
       auto_apply_min_fit_score: Math.min(100, Math.max(60, controls.auto_apply_min_fit_score)),
       auto_apply_min_ats_score: Math.min(95, Math.max(70, controls.auto_apply_min_ats_score)),
       tailoring_mode: controls.tailoring_mode === "coverage_boost" ? "coverage_boost" : "evidence_only",
-      daily_apply_cap: Math.min(75, Math.max(1, controls.daily_apply_cap)),
+      daily_apply_cap: Math.min(25, Math.max(1, controls.daily_apply_cap)),
       agent_max_actions_per_day: Math.min(300, Math.max(30, controls.agent_max_actions_per_day)),
     };
     const { error } = await supabase.from("user_job_prefs").upsert({
@@ -1181,7 +1185,7 @@ export default function AgentPage() {
                     <input
                       type="number"
                       min="1"
-                      max="75"
+                      max="25"
                       value={controls.daily_apply_cap}
                       onChange={(event) => setControls((current) => ({ ...current, daily_apply_cap: Number(event.target.value) }))}
                       className="h-10 w-full rounded-md border border-rp-rule bg-rp-canvas px-3 text-sm text-rp-ink"

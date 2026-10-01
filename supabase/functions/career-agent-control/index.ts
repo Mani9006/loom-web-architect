@@ -17,6 +17,7 @@ interface ControlBody {
   tailoring_mode?: "evidence_only" | "coverage_boost";
   daily_apply_cap?: number;
   agent_max_actions_per_day?: number;
+  review_mode?: "always" | "eligible_only";
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -99,20 +100,22 @@ serve(async (req) => {
     if (action !== "start") return jsonResponse({ error: "Choose start or stop." }, 400);
 
     await enforceAutoApplyEntitlement(client, user.id);
-    // Default daily cap of 25: research-backed anti-flag pacing. Callers can
-    // still raise it explicitly (clamped to 75), but the out-of-box default
-    // keeps submission volume inside normal human application patterns.
-    const dailyCap = clamp(body.daily_apply_cap, 1, 75, 25);
+    // Hard ceiling of 25 a day (default 15): a few strong, reviewed matches
+    // beat volume, and bursts from one worker read as spam to ATS fraud checks.
+    const dailyCap = clamp(body.daily_apply_cap, 1, 25, 15);
     const dailyActions = clamp(body.agent_max_actions_per_day, 30, 300, 240);
     const minFit = clamp(body.auto_apply_min_fit_score, 50, 100, 82);
     const minAts = clamp(body.auto_apply_min_ats_score, 70, 95, 85);
     const tailoringMode = body.tailoring_mode === "coverage_boost" ? "coverage_boost" : "evidence_only";
+    // Keep the user's approval choice. Unattended submission only happens when
+    // the caller explicitly asks for it; anything else means "ask me first".
+    const reviewMode = body.review_mode === "eligible_only" ? "eligible_only" : "always";
 
     const { error: prefsError } = await client.from("user_job_prefs").upsert({
       user_id: user.id,
       agent_enabled: true,
       auto_apply_enabled: true,
-      review_mode: "eligible_only",
+      review_mode: reviewMode,
       auto_apply_min_fit_score: minFit,
       auto_apply_min_ats_score: minAts,
       tailoring_mode: tailoringMode,

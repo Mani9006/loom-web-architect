@@ -254,7 +254,7 @@ async function runAgent(userId: string, runId: string) {
     .eq("user_id", userId)
     .in("status", ["queued", "submitted"])
     .gte("updated_at", dayStart.toISOString());
-  let submissionsRemaining = Math.max(0, (prefs.daily_apply_cap ?? 10) - (queuedToday ?? 0));
+  let submissionsRemaining = Math.max(0, Math.min(prefs.daily_apply_cap ?? 10, 25) - (queuedToday ?? 0));
 
   if (remaining > 0) {
     const unprepared = await listUnpreparedEvaluations(

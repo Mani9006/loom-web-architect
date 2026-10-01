@@ -299,7 +299,7 @@ function serviceClient(): SupabaseClient {
   );
 }
 
-async function enqueueSubmit(userId: string, draftId: string) {
+async function enqueueSubmit(userId: string, draftId: string, approvalSource: "user_request" | "eligible_only_policy") {
   const svc = serviceClient();
 
   // Load draft + evaluation + job + company
@@ -339,11 +339,17 @@ async function enqueueSubmit(userId: string, draftId: string) {
   // Load prefs
   const { data: prefs } = await svc
     .from("user_job_prefs")
-    .select("auto_apply_enabled, auto_apply_portals, daily_apply_cap, requires_sponsorship, work_authorization")
+    .select("auto_apply_enabled, auto_apply_portals, daily_apply_cap, review_mode, requires_sponsorship, work_authorization")
     .eq("user_id", userId)
     .maybeSingle();
   if (!prefs?.auto_apply_enabled) {
     const e = new Error("auto-apply is not enabled in your preferences"); (e as any).status = 403; throw e;
+  }
+  // Agents (service callers) may only submit for users who chose unattended
+  // submission. A signed-in user queueing their own reviewed draft is the
+  // approval itself.
+  if (approvalSource === "eligible_only_policy" && prefs.review_mode !== "eligible_only") {
+    const e = new Error("This application is waiting for the applicant's approval."); (e as any).status = 403; throw e;
   }
   if (!prefs.auto_apply_portals?.includes(portal)) {
     const e = new Error("This employer portal is not enabled in your application rules."); (e as any).status = 403; throw e;
@@ -377,8 +383,11 @@ async function enqueueSubmit(userId: string, draftId: string) {
     .eq("user_id", userId)
     .eq("task_type", "career_ops_submit")
     .gte("created_at", todayStart.toISOString());
-  if ((todaysCount ?? 0) >= (prefs.daily_apply_cap ?? 5)) {
-    const e = new Error(`daily submit cap reached (${prefs.daily_apply_cap})`); (e as any).status = 429; throw e;
+  // Stored caps above 25 (older defaults allowed 75) are clamped here, the
+  // single choke point every submission passes through.
+  const dailyCap = Math.min(prefs.daily_apply_cap ?? 5, 25);
+  if ((todaysCount ?? 0) >= dailyCap) {
+    const e = new Error(`daily submit cap reached (${dailyCap})`); (e as any).status = 429; throw e;
   }
 
   const [{ data: profile }, { data: tailoredResume }] = await Promise.all([
@@ -558,7 +567,7 @@ async function enqueueSubmit(userId: string, draftId: string) {
       approvalReceipt: {
         approved: true,
         reviewedAt: queuedAt,
-        source: "eligible_only_policy",
+        source: approvalSource,
       },
     }],
     resumeId: draft.tailored_resume_id,
@@ -633,7 +642,14 @@ serve(async (req) => {
 
     if (!body.draft_application_id) return jsonResponse({ error: "draft_application_id required" }, 400);
 
-    const result = await enqueueSubmit(user.id, body.draft_application_id);
+    const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const isServiceCaller = Boolean(serviceKey) && bearer === serviceKey;
+    const result = await enqueueSubmit(
+      user.id,
+      body.draft_application_id,
+      isServiceCaller ? "eligible_only_policy" : "user_request",
+    );
     return jsonResponse(result);
   } catch (e) {
     const status = (e as any)?.status ?? 500;
