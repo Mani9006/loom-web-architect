@@ -267,7 +267,7 @@ export default function InboxPage() {
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 lg:px-10 pt-10 pb-16">
-      <PageHeader title="Application inbox." status={`${unread} unread`} description="Confirmations, verification codes, interviews, assessments, offers, and status changes,separated from personal email." />
+      <PageHeader title="Application inbox." status={`${unread} unread`} description="Confirmations, verification codes, interviews, assessments, offers, and status changes, separated from personal email." />
 
       <div className="mt-7 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {sessionId ? <GmailConnectCard

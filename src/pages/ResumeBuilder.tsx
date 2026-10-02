@@ -563,9 +563,12 @@ export default function ResumeBuilder() {
       lines.push("", "SKILLS");
       Object.entries(data.skills).forEach(([k, v]) => { if (v.length > 0) lines.push(`${getSkillCategoryLabel(k)}: ${v.join(", ")}`); });
     }
-    navigator.clipboard.writeText(lines.join("\n"));
-    setCopiedField("resume");
-    setTimeout(() => setCopiedField(null), 2000);
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopiedField("resume");
+      setTimeout(() => setCopiedField(null), 2000);
+    }).catch(() => {
+      toast({ title: "Couldn't copy", description: "Select and copy the text manually.", variant: "destructive" });
+    });
   };
 
   // ── Data mutation helpers ──────────────────────────────────────────────
