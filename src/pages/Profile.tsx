@@ -114,7 +114,7 @@ export default function Profile() {
       job_preferences: { ...jobPreferences, applypass: { ...oldApplypass, profile: applicationProfile } },
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" });
-    void supabase.from("user_job_prefs").upsert({
+    void (supabase as any).from("user_job_prefs").upsert({
       user_id: user.id,
       requires_sponsorship: profile.requires_sponsorship,
       work_authorization: profile.work_authorization || null,

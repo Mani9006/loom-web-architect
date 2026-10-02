@@ -68,8 +68,21 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function refresh() {
     setRefreshing(true);
     try {
-      const { error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
+      const { data, error } = await (supabase as any).functions.invoke("mc-gmail-poll", {});
       if (error) throw error;
+      const failureCodes = Array.isArray(data?.failure_codes) ? data.failure_codes.map(String) : [];
+      if (failureCodes.includes("INBOX_RECONNECT_REQUIRED")) {
+        await load();
+        toast({
+          title: "Reconnect Gmail",
+          description: "Your previous read-only Gmail permission can no longer be used. Connect it again to continue application verification.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (Number(data?.failed || 0) > 0) {
+        throw new Error("Inbox check did not complete");
+      }
       await load();
       toast({ title: "Inbox is up to date" });
     } catch (error) {
