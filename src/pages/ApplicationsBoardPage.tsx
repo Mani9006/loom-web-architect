@@ -321,7 +321,7 @@ export default function ApplicationsBoardPage() {
                         <Loader2 className="h-3.5 w-3.5 animate-spin" /> Tailoring…
                       </span>
                     ) : (
-                      <span className="text-xs text-rp-ink-3">,</span>
+                      <span className="text-xs text-rp-ink-3">–</span>
                     )}
                   </TableCell>
                   <TableCell>
