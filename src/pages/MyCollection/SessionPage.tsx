@@ -26,6 +26,9 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = ["discover", "resumes", "board", "inbox", "stats"];
+const safeTab = (t: string | null | undefined) => (t && VALID_TABS.includes(t) ? t : "discover");
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -33,17 +36,18 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (fromQuery) return safeTab(fromQuery);
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return safeTab(stored);
     } catch {
       return "discover";
     }
@@ -68,7 +72,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (fromQuery && safeTab(fromQuery) !== tab) setTab(safeTab(fromQuery));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -98,6 +102,7 @@ export default function SessionPage() {
           });
           toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
         }
+        if (!hadInitialLoad) setLoadFailed(true);
         setLoading(false);
         return;
       }
@@ -109,6 +114,7 @@ export default function SessionPage() {
         return;
       }
       hadInitialLoad = true;
+      setLoadFailed(false);
       setSession(data as unknown as MCSession);
       setLoading(false);
     })();
@@ -121,6 +127,21 @@ export default function SessionPage() {
     // can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  if (loadFailed && !session) {
+    return (
+      <div className="container max-w-3xl mx-auto py-16 px-4 text-center space-y-4">
+        <h1 className="text-xl font-semibold">Couldn't load this workspace</h1>
+        <p className="text-sm text-muted-foreground">Check your connection and try again.</p>
+        <div className="flex justify-center gap-2">
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+          <Button asChild variant="outline">
+            <Link to="/my-collection">Back to My Collection</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
@@ -142,7 +163,7 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
@@ -168,21 +189,21 @@ export default function SessionPage() {
           if (searchParams.toString()) setSearchParams({}, { replace: true });
         }}
       >
-        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
-          <TabsTrigger value="discover" className="gap-2">
-            <Search className="w-4 h-4" /> Discover
+        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5 [&_svg]:shrink-0">
+          <TabsTrigger value="discover" className="gap-2" aria-label="Discover">
+            <Search className="w-4 h-4" /> <span className="hidden sm:inline">Discover</span>
           </TabsTrigger>
-          <TabsTrigger value="resumes" className="gap-2">
-            <FileText className="w-4 h-4" /> Resumes
+          <TabsTrigger value="resumes" className="gap-2" aria-label="Resumes">
+            <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Resumes</span>
           </TabsTrigger>
-          <TabsTrigger value="board" className="gap-2">
-            <Columns3 className="w-4 h-4" /> Board
+          <TabsTrigger value="board" className="gap-2" aria-label="Board">
+            <Columns3 className="w-4 h-4" /> <span className="hidden sm:inline">Board</span>
           </TabsTrigger>
-          <TabsTrigger value="inbox" className="gap-2">
-            <Inbox className="w-4 h-4" /> Inbox
+          <TabsTrigger value="inbox" className="gap-2" aria-label="Inbox">
+            <Inbox className="w-4 h-4" /> <span className="hidden sm:inline">Inbox</span>
           </TabsTrigger>
-          <TabsTrigger value="stats" className="gap-2">
-            <BarChart3 className="w-4 h-4" /> Stats
+          <TabsTrigger value="stats" className="gap-2" aria-label="Stats">
+            <BarChart3 className="w-4 h-4" /> <span className="hidden sm:inline">Stats</span>
           </TabsTrigger>
         </TabsList>
 
