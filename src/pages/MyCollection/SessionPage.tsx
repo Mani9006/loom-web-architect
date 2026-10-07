@@ -26,6 +26,10 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = ["discover", "resumes", "board", "inbox", "stats"];
+const validTab = (t: string | null | undefined): string =>
+  t && VALID_TABS.includes(t) ? t : "discover";
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -37,13 +41,13 @@ export default function SessionPage() {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (fromQuery && VALID_TABS.includes(fromQuery)) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return validTab(stored);
     } catch {
       return "discover";
     }
@@ -68,7 +72,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (fromQuery && VALID_TABS.includes(fromQuery) && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 

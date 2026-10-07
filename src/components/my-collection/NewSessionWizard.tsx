@@ -148,6 +148,11 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
       toast({ title: "Session needs a name" });
       return;
     }
+    const comp = compTarget.trim() ? Number(compTarget.replace(/[,$\s]/g, "")) : null;
+    if (comp !== null && (!Number.isFinite(comp) || comp < 0)) {
+      toast({ title: "Compensation target must be a number", variant: "destructive" });
+      return;
+    }
     setSubmitting(true);
 
     // Always include user_id explicitly. The RLS policy on mc_sessions is
@@ -175,7 +180,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
         .map((s) => s.trim())
         .filter(Boolean),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: comp,
       visa_status: visa,
     };
 
