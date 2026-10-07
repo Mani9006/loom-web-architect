@@ -80,14 +80,29 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         .from("resumes")
         .select("id,title,updated_at")
         .order("updated_at", { ascending: false })
-        .limit(20);
-      setResumes((data as Resume[]) ?? []);
+        .limit(50);
+      let list = (data as Resume[]) ?? [];
+      // Make sure the current master resume is selectable even if it's older than the limit.
+      if (session.master_resume_id && !list.some((r) => r.id === session.master_resume_id)) {
+        const { data: master } = await supabase
+          .from("resumes")
+          .select("id,title,updated_at")
+          .eq("id", session.master_resume_id)
+          .maybeSingle();
+        if (master) list = [...list, master as Resume];
+      }
+      setResumes(list);
     })();
   }, [open, session]);
 
   async function save() {
     if (!name.trim()) {
       toast({ title: "Session needs a name", variant: "destructive" });
+      return;
+    }
+    const comp = compTarget.trim() ? Number(compTarget.replace(/[,$\s]/g, "")) : null;
+    if (comp !== null && (!Number.isFinite(comp) || comp < 0)) {
+      toast({ title: "Compensation target must be a number", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -102,7 +117,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         .map((s) => s.trim())
         .filter(Boolean),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: comp,
       visa_status: visa,
     };
     const updates = {
