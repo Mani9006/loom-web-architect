@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { computePipelineStats } from "@/lib/collection-stats";
 
 interface StatusCounts {
   total: number;
@@ -53,12 +54,13 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         const rows: { status: string }[] = jobsResult.data ?? [];
         const tally = (s: string) => rows.filter((r) => r.status === s).length;
+        const pipeline = computePipelineStats(rows.map((r) => r.status));
 
         setCounts({
           total: rows.length,
           saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
+          applied: pipeline.applied,
+          interview: pipeline.interviews,
           offer: tally("offer"),
           rejected: tally("rejected"),
           resumes: resumesResult.count ?? 0,
@@ -80,9 +82,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
   }, [sessionId]);
 
   const responseRate =
-    counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
-      : null;
+    counts.applied > 0 ? Math.min(100, Math.round((counts.interview / counts.applied) * 100)) : null;
 
   return (
     <div className="space-y-4">

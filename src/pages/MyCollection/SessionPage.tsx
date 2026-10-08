@@ -26,6 +26,9 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = ["discover", "resumes", "board", "inbox", "stats"];
+const normalizeTab = (t: string | null | undefined) => (t && VALID_TABS.includes(t) ? t : null);
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -36,14 +39,14 @@ export default function SessionPage() {
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
-    const fromQuery = searchParams.get("tab");
+    const fromQuery = normalizeTab(searchParams.get("tab"));
     if (fromQuery) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return normalizeTab(stored) ?? "discover";
     } catch {
       return "discover";
     }
@@ -67,7 +70,7 @@ export default function SessionPage() {
   // remount, pick up the change here instead of only reading it once at
   // mount via useState's initializer.
   useEffect(() => {
-    const fromQuery = searchParams.get("tab");
+    const fromQuery = normalizeTab(searchParams.get("tab"));
     if (fromQuery && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -77,6 +80,7 @@ export default function SessionPage() {
     let cancelled = false;
     let hadInitialLoad = false;
     (async () => {
+      setSession(null);
       setLoading(true);
       const { data, error } = await supabase
         .from("mc_sessions")
