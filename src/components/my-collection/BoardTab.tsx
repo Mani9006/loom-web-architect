@@ -210,10 +210,13 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       if (insertErr || !tailoredRow) {
         throw new Error(insertErr?.message || "Couldn't save tailored resume");
       }
-      await (supabase as any)
+      const { error: linkErr } = await (supabase as any)
         .from("mc_tracked_jobs")
         .update({ tailored_resume_id: tailoredRow.id })
         .eq("id", job.id);
+      if (linkErr) {
+        throw new Error(`Saved the tailored resume but couldn't link it to this card: ${linkErr.message}`);
+      }
       setJobs((arr) =>
         arr.map((j) => (j.id === job.id ? { ...j, tailored_resume_id: tailoredRow.id } : j))
       );
@@ -230,8 +233,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     }
   }
 
-  async function load() {
-    setLoading(true);
+  async function load(showSpinner = false) {
+    if (showSpinner) setLoading(true);
     // Filter out soft-deleted cards (deleted_at IS NULL). The Trash dialog
     // surfaces deleted_at IS NOT NULL rows separately.
     const { data, error } = await (supabase as any)
@@ -300,7 +303,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   }
 
   useEffect(() => {
-    load();
+    load(true);
   }, [sessionId]);
 
   async function moveTo(jobId: string, status: TrackedStatus) {
@@ -412,7 +415,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                         aria-label="Move to trash"
                         title="Move to trash"
                         onClick={(e) => trashJob(job, e)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

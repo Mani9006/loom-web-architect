@@ -26,6 +26,10 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = ["discover", "resumes", "board", "inbox", "stats"] as const;
+const isValidTab = (v: string | null | undefined): v is (typeof VALID_TABS)[number] =>
+  !!v && (VALID_TABS as readonly string[]).includes(v);
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -37,13 +41,13 @@ export default function SessionPage() {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (isValidTab(fromQuery)) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return isValidTab(stored) ? stored : "discover";
     } catch {
       return "discover";
     }
@@ -68,7 +72,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (isValidTab(fromQuery) && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -142,12 +146,12 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight truncate">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <WorkerStatusBadge />
           <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
             <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash
@@ -168,21 +172,21 @@ export default function SessionPage() {
           if (searchParams.toString()) setSearchParams({}, { replace: true });
         }}
       >
-        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
+        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5 [&>button]:px-1 sm:[&>button]:px-3">
           <TabsTrigger value="discover" className="gap-2">
-            <Search className="w-4 h-4" /> Discover
+            <Search className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Discover</span>
           </TabsTrigger>
           <TabsTrigger value="resumes" className="gap-2">
-            <FileText className="w-4 h-4" /> Resumes
+            <FileText className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Resumes</span>
           </TabsTrigger>
           <TabsTrigger value="board" className="gap-2">
-            <Columns3 className="w-4 h-4" /> Board
+            <Columns3 className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Board</span>
           </TabsTrigger>
           <TabsTrigger value="inbox" className="gap-2">
-            <Inbox className="w-4 h-4" /> Inbox
+            <Inbox className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Inbox</span>
           </TabsTrigger>
           <TabsTrigger value="stats" className="gap-2">
-            <BarChart3 className="w-4 h-4" /> Stats
+            <BarChart3 className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Stats</span>
           </TabsTrigger>
         </TabsList>
 
