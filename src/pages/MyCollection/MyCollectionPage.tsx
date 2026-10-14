@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,10 +39,13 @@ export default function MyCollectionPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const navigate = useNavigate();
+  const hasLoadedRef = useRef(false);
   const { toast } = useToast();
 
   async function loadSessions() {
-    setLoading(true);
+    // Only show the full-page loader on the first load; later refreshes
+    // (archive/reactivate/delete) update in place instead of flashing.
+    if (!hasLoadedRef.current) setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
@@ -55,6 +58,7 @@ export default function MyCollectionPage() {
       // Load per-session job counts in parallel, non-blocking.
       void loadStats(rows.map((s) => s.id));
     }
+    hasLoadedRef.current = true;
     setLoading(false);
   }
 
