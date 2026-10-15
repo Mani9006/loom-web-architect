@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,11 +38,14 @@ export default function MyCollectionPage() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const hasLoadedRef = useRef(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   async function loadSessions() {
-    setLoading(true);
+    // Only show the full-page loader on first load; later refreshes (archive,
+    // reactivate, delete) update in place instead of flashing the page.
+    if (!hasLoadedRef.current) setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
@@ -55,17 +58,19 @@ export default function MyCollectionPage() {
       // Load per-session job counts in parallel, non-blocking.
       void loadStats(rows.map((s) => s.id));
     }
+    hasLoadedRef.current = true;
     setLoading(false);
   }
 
   async function loadStats(sessionIds: string[]) {
     if (sessionIds.length === 0) return;
     try {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from("mc_tracked_jobs")
         .select("session_id,status")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
+      if (error) return;
       const rows: { session_id: string; status: string }[] = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
@@ -80,7 +85,7 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "–" if this fails.
     }
   }
 
@@ -262,7 +267,7 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button variant="ghost" size="icon" aria-label="Session actions" className="h-7 w-7 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +301,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
