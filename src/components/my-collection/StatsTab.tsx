@@ -1,3 +1,4 @@
+import { computeFunnel } from "@/lib/mc-stats";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
@@ -53,13 +54,14 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         const rows: { status: string }[] = jobsResult.data ?? [];
         const tally = (s: string) => rows.filter((r) => r.status === s).length;
+        const funnel = computeFunnel(rows.map((r) => r.status));
 
         setCounts({
           total: rows.length,
           saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
-          offer: tally("offer"),
+          applied: funnel.applied,
+          interview: funnel.interviews,
+          offer: funnel.offers,
           rejected: tally("rejected"),
           resumes: resumesResult.count ?? 0,
         });

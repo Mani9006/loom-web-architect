@@ -1,3 +1,4 @@
+import { computeFunnel } from "@/lib/mc-stats";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
@@ -42,7 +43,6 @@ export default function MyCollectionPage() {
   const { toast } = useToast();
 
   async function loadSessions() {
-    setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
@@ -69,23 +69,18 @@ export default function MyCollectionPage() {
       const rows: { session_id: string; status: string }[] = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
-        const jobRows = rows.filter((r) => r.session_id === sid);
-        map[sid] = {
-          discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
-          interviews:
-            jobRows.filter((r) => r.status === "interview").length +
-            jobRows.filter((r) => r.status === "take_home").length,
-        };
+        const f = computeFunnel(rows.filter((r) => r.session_id === sid).map((r) => r.status));
+        map[sid] = { discovered: f.total, applied: f.applied, interviews: f.interviews };
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "–" if this fails.
     }
   }
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeSessions = sessions.filter((s) => s.status === "active");
@@ -156,6 +151,7 @@ export default function MyCollectionPage() {
         <Badge variant="outline" className="font-normal">
           {activeSessions.length}/{ACTIVE_LIMIT} active
         </Badge>
+        {atCap && <span>Limit reached, archive a session to start a new one.</span>}
         {archivedSessions.length > 0 && (
           <button
             onClick={() => setShowArchived((s) => !s)}
@@ -296,9 +292,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
