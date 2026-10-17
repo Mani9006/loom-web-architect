@@ -16,6 +16,8 @@ import TrashDialog from "@/components/my-collection/TrashDialog";
 import ApplicationInboxTab from "@/components/my-collection/ApplicationInboxTab";
 import { toUserFacingError } from "@/lib/user-facing-error";
 
+const VALID_TABS = ["discover", "resumes", "board", "inbox", "stats"];
+
 interface MCSession {
   id: string;
   name: string;
@@ -33,17 +35,19 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (fromQuery && VALID_TABS.includes(fromQuery)) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return stored && VALID_TABS.includes(stored) ? stored : "discover";
     } catch {
       return "discover";
     }
@@ -68,7 +72,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (fromQuery && VALID_TABS.includes(fromQuery) && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -78,6 +82,7 @@ export default function SessionPage() {
     let hadInitialLoad = false;
     (async () => {
       setLoading(true);
+      setLoadFailed(false);
       const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
@@ -99,6 +104,7 @@ export default function SessionPage() {
           toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
         }
         setLoading(false);
+        if (!hadInitialLoad) setLoadFailed(true);
         return;
       }
       if (!data) {
@@ -120,7 +126,23 @@ export default function SessionPage() {
     // re-fire on every render, which on tab focus produces a flash and
     // can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, reloadKey]);
+
+  if (loadFailed && !session) {
+    return (
+      <div className="container max-w-7xl mx-auto py-16 px-4 md:px-8 text-center space-y-3">
+        <p className="font-medium">We couldn't load this session.</p>
+        <div className="flex justify-center gap-2">
+          <Button variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+            Try again
+          </Button>
+          <Button asChild variant="ghost">
+            <Link to="/my-collection">Back to My Collection</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
@@ -142,7 +164,7 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>

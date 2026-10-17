@@ -38,6 +38,7 @@ export default function MyCollectionPage() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -48,8 +49,10 @@ export default function MyCollectionPage() {
       .select("*")
       .order("updated_at", { ascending: false });
     if (error) {
+      setLoadError(error.message);
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
     } else {
+      setLoadError(null);
       const rows: MCSession[] = data ?? [];
       setSessions(rows);
       // Load per-session job counts in parallel, non-blocking.
@@ -61,11 +64,12 @@ export default function MyCollectionPage() {
   async function loadStats(sessionIds: string[]) {
     if (sessionIds.length === 0) return;
     try {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from("mc_tracked_jobs")
         .select("session_id,status")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
+      if (error) return;
       const rows: { session_id: string; status: string }[] = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
@@ -80,12 +84,13 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show a dash if this fails.
     }
   }
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeSessions = sessions.filter((s) => s.status === "active");
@@ -100,6 +105,7 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Archive failed", description: error.message, variant: "destructive" });
     } else {
+      toast({ title: "Session archived" });
       await loadSessions();
     }
   }
@@ -120,16 +126,19 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Reactivate failed", description: error.message, variant: "destructive" });
     } else {
+      toast({ title: "Session reactivated" });
       await loadSessions();
     }
   }
 
   async function deleteSession(id: string) {
-    if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
+    const name = sessions.find((x) => x.id === id)?.name ?? "this session";
+    if (!confirm(`Delete "${name}"? This removes all jobs, resumes, and history inside it. Cannot be undone.`)) return;
     const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {
+      toast({ title: "Session deleted" });
       await loadSessions();
     }
   }
@@ -168,6 +177,14 @@ export default function MyCollectionPage() {
 
       {loading ? (
         <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
+      ) : loadError && sessions.length === 0 ? (
+        <Card className="p-12 text-center border-dashed">
+          <h3 className="font-medium mb-1">Couldn't load your sessions</h3>
+          <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+          <Button variant="outline" onClick={() => loadSessions()}>
+            Try again
+          </Button>
+        </Card>
       ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
@@ -181,6 +198,16 @@ export default function MyCollectionPage() {
         </Card>
       ) : (
         <>
+          {activeSessions.length === 0 && (
+            <Card className="p-8 text-center border-dashed mb-4">
+              <p className="text-sm text-muted-foreground mb-3">
+                No active sessions. Create a new one or reactivate an archived session.
+              </p>
+              <Button size="sm" onClick={() => setWizardOpen(true)}>
+                <Plus className="w-4 h-4 mr-1" /> New Session
+              </Button>
+            </Card>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeSessions.map((s) => (
               <SessionCard
@@ -253,6 +280,14 @@ function SessionCard({
     <Card
       className="p-5 hover:border-primary/40 transition-colors cursor-pointer relative group"
       onClick={onOpen}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-medium text-[15px] leading-tight pr-8 line-clamp-2">{session.name}</h3>
@@ -262,7 +297,7 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button variant="ghost" size="icon" className="h-7 w-7 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100" aria-label="Session actions">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +331,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">

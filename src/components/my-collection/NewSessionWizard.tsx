@@ -53,6 +53,10 @@ const EMPTY_DRAFT: Draft = {
   visa: "us_citizen",
 };
 
+function splitList(text: string): string[] {
+  return Array.from(new Set(text.split(",").map((s) => s.trim()).filter(Boolean)));
+}
+
 function readDraft(): Draft {
   try {
     const raw = sessionStorage.getItem(DRAFT_KEY);
@@ -93,6 +97,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   const [compTarget, setCompTarget] = useState<string>(initial.current.compTarget);
   const [visa, setVisa] = useState<string>(initial.current.visa);
   const [submitting, setSubmitting] = useState(false);
+  const canCreate = name.trim().length > 0 && (!compTarget || Number(compTarget) >= 0);
 
   // Load resumes whenever the dialog opens. We do NOT reset form state here ,
   // the whole point of the persisted draft is that values survive tab-switches
@@ -166,14 +171,8 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     }
 
     const targetProfile = {
-      target_roles: targetRolesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      target_locations: locationsText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      target_roles: splitList(targetRolesText),
+      target_locations: splitList(locationsText),
       remote_only: remoteOnly,
       comp_target: compTarget ? Number(compTarget) : null,
       visa_status: visa,
@@ -200,7 +199,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && handleCancel()}>
+    <Dialog open={open} onOpenChange={(v) => !v && !submitting && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>New Session</DialogTitle>
@@ -274,6 +273,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
               <Label htmlFor="mc-comp">Target total comp ($, optional)</Label>
               <Input
                 id="mc-comp"
+                min={0}
                 placeholder="120000"
                 type="number"
                 value={compTarget}
@@ -318,7 +318,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
               Next
             </Button>
           ) : (
-            <Button onClick={createSession} disabled={submitting}>
+            <Button onClick={createSession} disabled={submitting || !canCreate}>
               {submitting ? "Creating..." : "Create session"}
             </Button>
           )}
