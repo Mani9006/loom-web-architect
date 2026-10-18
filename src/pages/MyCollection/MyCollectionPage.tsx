@@ -42,7 +42,6 @@ export default function MyCollectionPage() {
   const { toast } = useToast();
 
   async function loadSessions() {
-    setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
@@ -61,11 +60,12 @@ export default function MyCollectionPage() {
   async function loadStats(sessionIds: string[]) {
     if (sessionIds.length === 0) return;
     try {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from("mc_tracked_jobs")
         .select("session_id,status")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
+      if (error) return;
       const rows: { session_id: string; status: string }[] = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
@@ -80,12 +80,13 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show an em dash if this fails.
     }
   }
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeSessions = sessions.filter((s) => s.status === "active");
@@ -296,9 +297,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
