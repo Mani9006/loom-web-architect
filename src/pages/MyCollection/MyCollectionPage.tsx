@@ -52,6 +52,7 @@ export default function MyCollectionPage() {
     } else {
       const rows: MCSession[] = data ?? [];
       setSessions(rows);
+      if (rows.length === 0) setStatsMap({});
       // Load per-session job counts in parallel, non-blocking.
       void loadStats(rows.map((s) => s.id));
     }
@@ -80,7 +81,7 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "—" if this fails.
     }
   }
 
@@ -125,7 +126,8 @@ export default function MyCollectionPage() {
   }
 
   async function deleteSession(id: string) {
-    if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
+    const name = sessions.find((s) => s.id === id)?.name ?? "this session";
+    if (!confirm(`Delete "${name}"? This removes all jobs, resumes, and history inside it. Cannot be undone.`)) return;
     const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
@@ -136,14 +138,14 @@ export default function MyCollectionPage() {
 
   return (
     <div className="container max-w-6xl mx-auto py-8 px-4 md:px-8">
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <FolderOpen className="w-6 h-6 text-primary" />
             My Collection
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Each session is a self-contained job search, its own resume, target profile, board, and tailored
+            Each session is a self-contained job search with its own resume, target profile, board, and tailored
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
@@ -193,6 +195,16 @@ export default function MyCollectionPage() {
               />
             ))}
           </div>
+          {activeSessions.length === 0 && (
+            <Card className="p-8 text-center border-dashed">
+              <p className="text-sm text-muted-foreground mb-3">
+                No active sessions. Start a new one or reactivate an archived session.
+              </p>
+              <Button onClick={() => setWizardOpen(true)}>
+                <Plus className="w-4 h-4 mr-1" /> New Session
+              </Button>
+            </Card>
+          )}
 
           {showArchived && archivedSessions.length > 0 && (
             <>
@@ -262,7 +274,12 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Session actions"
+              className="h-7 w-7 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+            >
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +313,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
