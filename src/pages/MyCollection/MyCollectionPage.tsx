@@ -31,6 +31,9 @@ interface SessionStats {
 }
 
 const ACTIVE_LIMIT = 5;
+const INTERVIEW_STATUSES = new Set(["interview", "take_home", "offer"]);
+const APPLIED_STATUSES = new Set(["applied", "viewed", ...INTERVIEW_STATUSES]);
+const NO_VALUE = "\u2014";
 
 export default function MyCollectionPage() {
   const [sessions, setSessions] = useState<MCSession[]>([]);
@@ -42,7 +45,6 @@ export default function MyCollectionPage() {
   const { toast } = useToast();
 
   async function loadSessions() {
-    setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
@@ -72,15 +74,14 @@ export default function MyCollectionPage() {
         const jobRows = rows.filter((r) => r.session_id === sid);
         map[sid] = {
           discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
-          interviews:
-            jobRows.filter((r) => r.status === "interview").length +
-            jobRows.filter((r) => r.status === "take_home").length,
+          // Jobs that moved past "applied" were still applied to.
+          applied: jobRows.filter((r) => APPLIED_STATUSES.has(r.status)).length,
+          interviews: jobRows.filter((r) => INTERVIEW_STATUSES.has(r.status)).length,
         };
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "\u2014" if this fails.
     }
   }
 
@@ -262,7 +263,7 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button variant="ghost" size="icon" className="h-7 w-7 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
