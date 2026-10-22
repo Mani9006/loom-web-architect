@@ -162,7 +162,10 @@ export async function waitForJob(
       if (pollHandle) clearInterval(pollHandle);
       opts.signal?.removeEventListener("abort", onAbort);
       try {
-        channel.unsubscribe();
+        // removeChannel() both unsubscribes the socket and drops the channel
+        // from the client's internal registry; unsubscribe() alone leaves it
+        // registered, leaking one entry per search/tailor run over a session.
+        supabase.removeChannel(channel);
       } catch { /* Realtime cleanup is best-effort. */ }
       if (err) reject(err);
       else if (job) resolve(job);
