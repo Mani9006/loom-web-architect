@@ -316,7 +316,7 @@ export default function AutoApplyPage() {
         comp_target_usd_max: salary?.max ?? null,
         updated_at: new Date().toISOString(),
       };
-      const { error: prefsErr } = await supabase
+      const { error: prefsErr } = await (supabase as any)
         .from("user_job_prefs")
         .upsert(prefsUpsert, { onConflict: "user_id" });
       if (prefsErr) console.error("user_job_prefs mirror:", prefsErr);
@@ -403,7 +403,7 @@ export default function AutoApplyPage() {
       ).catch(() => {});
 
       // Load matched jobs
-      const { data: matches } = await supabase
+      const { data: matches } = await (supabase as any)
         .from("job_matches")
         .select(`match_score, match_reasons, job_id, dismissed, jobs (*)`)
         .eq("user_id", user.id)
@@ -437,7 +437,7 @@ export default function AutoApplyPage() {
 
   const loadApplied = async () => {
     if (!user) return;
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("job_applications")
       .select("job_id, title, company, status, applied_at")
       .eq("user_id", user.id)

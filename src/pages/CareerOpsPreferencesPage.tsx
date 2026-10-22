@@ -182,10 +182,10 @@ export default function CareerOpsPreferencesPage() {
     if (!user) return;
     (async () => {
       const [prefsRes, runsRes, profileRes] = await Promise.all([
-        supabase.from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
-        supabase.from("agent_runs").select("*").eq("user_id", user.id)
+        (supabase as any).from("user_job_prefs").select("*").eq("user_id", user.id).maybeSingle(),
+        (supabase as any).from("agent_runs").select("*").eq("user_id", user.id)
           .order("started_at", { ascending: false }).limit(8),
-        supabase.from("profiles").select("years_of_experience").eq("user_id", user.id).maybeSingle(),
+        (supabase as any).from("profiles").select("years_of_experience").eq("user_id", user.id).maybeSingle(),
       ]);
       if (prefsRes.data) setPrefs({ ...DEFAULT, ...(prefsRes.data as unknown as Prefs) });
       setConfirmedExperienceYears(typeof profileRes.data?.years_of_experience === "number" ? profileRes.data.years_of_experience : null);
@@ -205,8 +205,8 @@ export default function CareerOpsPreferencesPage() {
       remote_only: prefs.work_modes.length === 1 && prefs.work_modes[0] === "remote",
     };
     const [prefsResult, profileResult] = await Promise.all([
-      supabase.from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
-      supabase.from("profiles").update({ years_of_experience: confirmedExperienceYears } as never).eq("user_id", user.id),
+      (supabase as any).from("user_job_prefs").upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" }),
+      (supabase as any).from("profiles").update({ years_of_experience: confirmedExperienceYears } as never).eq("user_id", user.id),
     ]);
     setSaving(false);
     if (prefsResult.error || profileResult.error) toast.error("Your matching settings could not be saved. Try again in a moment.");
