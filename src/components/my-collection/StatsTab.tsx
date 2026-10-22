@@ -12,6 +12,11 @@ interface StatusCounts {
   offer: number;
   rejected: number;
   resumes: number;
+  // Jobs that have reached "applied" or any later pipeline stage, including
+  // ones auto-classified straight to interview/offer by mc-gmail-poll
+  // without ever passing through "applied". Always a superset of
+  // interview + offer, so it's the correct response-rate denominator.
+  engaged: number;
 }
 
 const EMPTY_COUNTS: StatusCounts = {
@@ -22,6 +27,7 @@ const EMPTY_COUNTS: StatusCounts = {
   offer: 0,
   rejected: 0,
   resumes: 0,
+  engaged: 0,
 };
 
 export default function StatsTab({ sessionId }: { sessionId: string }) {
@@ -53,6 +59,9 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
         const rows: { status: string }[] = jobsResult.data ?? [];
         const tally = (s: string) => rows.filter((r) => r.status === s).length;
+        const ENGAGED_STATUSES = new Set([
+          "applied", "viewed", "interview", "take_home", "offer", "rejected", "withdrawn",
+        ]);
 
         setCounts({
           total: rows.length,
@@ -62,6 +71,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
           offer: tally("offer"),
           rejected: tally("rejected"),
           resumes: resumesResult.count ?? 0,
+          engaged: rows.filter((r) => ENGAGED_STATUSES.has(r.status)).length,
         });
       } catch (e) {
         if (cancelled) return;
@@ -80,8 +90,8 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
   }, [sessionId]);
 
   const responseRate =
-    counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
+    counts.engaged > 0
+      ? Math.round(((counts.interview + counts.offer) / counts.engaged) * 100)
       : null;
 
   return (
@@ -109,7 +119,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
       </div>
 
-      {!loading && counts.applied > 0 && (
+      {!loading && counts.engaged > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <StatCard
             label="Offers"

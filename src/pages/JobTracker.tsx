@@ -541,7 +541,7 @@ export default function JobTracker() {
       <PageHeader
         title="Applications."
         status="kanban · pipeline"
-        description="One record for every opportunity,from match and tailored resume through application, interview, and offer."
+        description="One record for every opportunity, from match and tailored resume through application, interview, and offer."
       />
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-px bg-rp-rule border border-rp-rule mb-6">
         <button onClick={() => navigate("/matches")} className="bg-rp-canvas p-3.5 text-left hover:bg-rp-paper transition-colors">
@@ -723,7 +723,7 @@ export default function JobTracker() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{job.title}</p>
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                          <Building2 className="w-3 h-3" /><span className="truncate">{job.company || ","}</span>
+                          <Building2 className="w-3 h-3" /><span className="truncate">{job.company || "Unknown company"}</span>
                         </div>
                         <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1">
                           <Clock className="w-2.5 h-2.5" />

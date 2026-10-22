@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
 
 interface OnboardingModalProps {
   open: boolean;
@@ -33,6 +34,7 @@ const EXPERIENCE_LEVELS = ["Entry Level", "Mid Level", "Senior", "Lead", "Execut
 export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [step, setStep] = useState(0);
   const [resumeUploaded, setResumeUploaded] = useState(false);
   const [targetRole, setTargetRole] = useState("");
@@ -60,7 +62,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     if (!user) return;
     setSaving(true);
     try {
-      await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           onboarding_completed: true,
@@ -68,10 +70,23 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
           job_preferences: preferences as any,
         } as any)
         .eq("user_id", user.id);
+      if (error) {
+        // Supabase resolves with { error } rather than throwing, so this must
+        // be checked explicitly, otherwise a failed save (e.g. an RLS
+        // rejection) looks identical to success and onboarding_completed
+        // silently stays false, popping this modal again on the next visit.
+        console.error("[OnboardingModal] failed to save onboarding state:", error.message);
+        toast({
+          title: "Couldn't save your preferences",
+          description: "You can update them later from Settings.",
+          variant: "destructive",
+        });
+      }
       onComplete();
       // Redirect to comprehensive profile setup
       navigate("/profile-setup");
-    } catch {
+    } catch (error) {
+      console.error("[OnboardingModal] failed to save onboarding state:", error);
       onComplete();
     } finally {
       setSaving(false);
