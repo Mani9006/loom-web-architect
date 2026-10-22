@@ -129,6 +129,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
+  // Tracks which session the currently-loaded Discover state belongs to.
+  // SessionPage doesn't remount when the user navigates from one session
+  // straight to another (React Router keeps the same route element mounted
+  // across a :sessionId param change), so without this guard the results,
+  // clarification questions, and in-flight search from the PREVIOUS session
+  // would keep showing under the new one.
+  const loadedSessionIdRef = useRef(sessionId);
+
   // Ties every waitForJob/runOnLocalWorker call below to this component
   // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
   // Tabs unmounts inactive content) tears down the realtime subscription
@@ -152,56 +160,78 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     });
   }, [sessionId, foundJobs, clarification, conversation, savedTitles, activeJobId, activeJobHistory]);
 
-  // Auto-reattach to an in-flight search on mount. If the user clicked
-  // "Find jobs with AI" and switched apps/tabs/refreshed before the worker
-  // finished, this effect picks back up where they left off.
-  const reattachedRef = useRef(false);
-  useEffect(() => {
-    if (reattachedRef.current) return;
-    if (!activeJobId) return;
-    // If we already have results loaded for this jobId, no need to reattach.
-    if (foundJobs.length > 0 || clarification) {
-      reattachedRef.current = true;
+  // Hydrates all Discover state for `sid` from `persisted` (read fresh from
+  // storage rather than from component state) and, if it has an in-flight
+  // search with no results yet, reattaches to it. Used both on mount and
+  // whenever `sessionId` changes. Every state update, and every guard on
+  // the async reattach below, is keyed to `sid` so a slow reattach from a
+  // session the user has since navigated away from can never clobber the
+  // state of the session now on screen.
+  function loadSession(sid: string, persisted: PersistedDiscover | null) {
+    setFoundJobs(persisted?.foundJobs ?? []);
+    setClarification(persisted?.clarification ?? null);
+    setConversation(persisted?.conversation ?? []);
+    setSavedTitles(new Set(persisted?.savedKeys ?? []));
+    setActiveJobId(persisted?.activeJobId ?? null);
+    setActiveJobHistory(persisted?.activeJobHistory ?? []);
+    setTailoringKey(null);
+    setTailoringStatus(null);
+
+    const jobId = persisted?.activeJobId ?? null;
+    const history = persisted?.activeJobHistory ?? [];
+    // Nothing in-flight, or we already have results/clarification for it.
+    if (!jobId || (persisted?.foundJobs?.length ?? 0) > 0 || persisted?.clarification) {
+      setBusy(false);
+      setProgress(null);
       return;
     }
-    reattachedRef.current = true;
 
-    let cancelled = false;
+    setBusy(true);
+    setProgress("running");
     (async () => {
-      setBusy(true);
-      setProgress("running");
       try {
-        const job: AIJob = await waitForJob(activeJobId, {
+        const job: AIJob = await waitForJob(jobId, {
           timeoutMs: 5 * 60 * 1000,
           onProgress: (s) => {
-            if (!cancelled) setProgress(s);
+            if (loadedSessionIdRef.current === sid) setProgress(s);
           },
           signal: abortRef.current?.signal,
         });
-        if (cancelled) return;
-        await handleSearchResult(job, activeJobHistory);
+        if (loadedSessionIdRef.current !== sid) return;
+        await handleSearchResult(job, history);
       } catch (e) {
-        if (cancelled) return;
+        if (loadedSessionIdRef.current !== sid) return;
         // Job is gone or timed out, clear so the user can re-trigger.
         setActiveJobId(null);
         setActiveJobHistory([]);
         // Don't toast on transient mount-time failures; the user might not
         // have triggered this run themselves (page was just rehydrated).
-
         console.warn("[Discover] couldn't reattach to previous search:", e);
       } finally {
-        if (!cancelled) {
+        if (loadedSessionIdRef.current === sid) {
           setBusy(false);
           setProgress(null);
         }
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-    // Run once per mount with the persisted activeJobId
+  }
+
+  // Auto-reattach to an in-flight search on mount. If the user clicked
+  // "Find jobs with AI" and switched apps/tabs/refreshed before the worker
+  // finished, this picks back up where they left off.
+  useEffect(() => {
+    loadSession(sessionId, initial.current);
+    // Run once per mount with the persisted state read at construction time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reset (and reattach) Discover state whenever the session itself changes.
+  useEffect(() => {
+    if (loadedSessionIdRef.current === sessionId) return;
+    loadedSessionIdRef.current = sessionId;
+    loadSession(sessionId, readPersisted(sessionId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   const tp = (session.target_profile ?? {}) as Record<string, unknown>;
   const targetRoles = (tp.target_roles as string[]) ?? [];
