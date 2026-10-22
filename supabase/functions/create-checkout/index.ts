@@ -73,7 +73,8 @@ serve(async (req: Request) => {
       });
     }
 
-    const { planType: requestedPlan } = await req.json();
+    const body = await req.json();
+    const requestedPlan = body.planType || body.plan;
     if (typeof requestedPlan !== "string" || !(requestedPlan in PLAN_CATALOG)) {
       return new Response(JSON.stringify({ error: "Unknown subscription plan" }), {
         status: 400,
@@ -116,6 +117,14 @@ serve(async (req: Request) => {
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
 
+      const grant = planType === "autopilot" ? 400 : 100;
+      await adminClient.rpc("grant_credits", {
+        p_user_id: user.id,
+        p_delta: grant,
+        p_reason: "plan_grant",
+        p_metadata: { plan_type: planType, source: "test_subscription" },
+      });
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -142,8 +151,9 @@ serve(async (req: Request) => {
         "line_items[0][price_data][unit_amount]": plan.amount,
         "line_items[0][price_data][recurring][interval]": "month",
         "line_items[0][quantity]": "1",
-        "success_url": `${returnOrigin}/job-search?checkout=success`,
-        "cancel_url": `${returnOrigin}/pricing?checkout=canceled`,
+        "success_url": `${returnOrigin}/home?checkout=success`,
+        "cancel_url": `${returnOrigin}/plans?checkout=canceled`,
+        "allow_promotion_codes": "true",
         "metadata[user_id]": user.id,
         "metadata[plan_type]": planType,
       }),

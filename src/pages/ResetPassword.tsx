@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Lock, Loader2, CheckCircle, ShieldCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { z } from "zod";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { Field } from "@/product/ui/Field";
+import { AuthChrome } from "@/product/marketing/AuthChrome";
 
 const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
 
@@ -59,83 +58,50 @@ export default function ResetPassword() {
     }
   };
 
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="w-full max-w-md space-y-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-            <CheckCircle className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold">Password Reset Successful</h1>
-          <p className="text-muted-foreground">Your password has been updated. Redirecting you...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <div className="flex items-center justify-center gap-2.5 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold">
-              Resume<span className="text-primary">Preps</span>
-            </span>
-          </div>
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <ShieldCheck className="w-7 h-7 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold">Create new password</h1>
-          <p className="text-muted-foreground mt-1">Your new password must be at least 6 characters</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <Label htmlFor="password">New Password</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setErrors((p) => ({ ...p, password: undefined }));
-                }}
-                className="pl-10 h-12"
-              />
-            </div>
-            {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                id="confirmPassword"
-                type="password"
-                placeholder="••••••••"
-                value={confirmPassword}
-                onChange={(e) => {
-                  setConfirmPassword(e.target.value);
-                  setErrors((p) => ({ ...p, confirm: undefined }));
-                }}
-                className="pl-10 h-12"
-              />
-            </div>
-            {errors.confirm && <p className="text-sm text-destructive">{errors.confirm}</p>}
-          </div>
-
-          <Button type="submit" disabled={loading} className="w-full h-12 font-semibold text-base">
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Reset Password"}
-          </Button>
+    <AuthChrome
+      kicker="Account recovery"
+      title={success ? "Password updated" : "Create a new password"}
+      body={success ? "Redirecting you to the desk." : "Your new password must be at least 6 characters. This screen uses the same chrome as sign in."}
+      formId="reset-form"
+    >
+      {success ? (
+        <div className="rp-panel p-6 text-[13px] text-muted-foreground">You can close this tab if the desk already opened.</div>
+      ) : (
+        <form id="reset-form" onSubmit={handleSubmit} className="rp-panel space-y-4 p-6">
+          <Field label="New password" htmlFor="password">
+            <input
+              id="password"
+              type="password"
+              className="rp-input"
+              placeholder="At least 6 characters"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setErrors((p) => ({ ...p, password: undefined }));
+              }}
+            />
+            {errors.password && <span className="text-[12px] text-destructive">{errors.password}</span>}
+          </Field>
+          <Field label="Confirm password" htmlFor="confirmPassword">
+            <input
+              id="confirmPassword"
+              type="password"
+              className="rp-input"
+              placeholder="Repeat password"
+              value={confirmPassword}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                setErrors((p) => ({ ...p, confirm: undefined }));
+              }}
+            />
+            {errors.confirm && <span className="text-[12px] text-destructive">{errors.confirm}</span>}
+          </Field>
+          <button type="submit" disabled={loading} className="rp-btn rp-btn-primary rp-btn-lg w-full">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Reset password"}
+          </button>
         </form>
-      </div>
-    </div>
+      )}
+    </AuthChrome>
   );
 }

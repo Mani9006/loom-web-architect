@@ -14,59 +14,46 @@ import OwnerProtectedRoute from "@/components/OwnerProtectedRoute";
 import RouteAnalyticsTracker from "@/components/RouteAnalyticsTracker";
 import GlobalAuthRedirect from "@/components/GlobalAuthRedirect";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
-import RPIconSprite from "@/components/shared/RPIconSprite";
 import { EnvBanner } from "@/components/EnvBanner";
 
-// Eager-loaded routes (critical path)
-import Landing from "./pages/Landing";
-import Auth from "./pages/Auth";
-// Public legal pages, eager so Google OAuth reviewers (and users) always get
-// a fast, working document at /privacy and /terms.
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import TermsOfService from "./pages/TermsOfService";
+import LandingPage from "./product/marketing/LandingPage";
+import AuthPage from "./product/marketing/AuthPage";
+import { PrivacyPage, TermsPage } from "./product/marketing/LegalPages";
 
-// Lazy-loaded routes
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const PrintResume = lazy(() => import("./pages/PrintResume"));
-const AppLayout = lazy(() => import("./components/layout/AppLayout"));
-const HomePage = lazy(() => import("./pages/HomePage"));
-const JobTracker = lazy(() => import("./pages/JobTracker"));
-const Documents = lazy(() => import("./pages/Documents"));
-const ResumeProjects = lazy(() => import("./pages/ResumeProjects"));
-const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
-const ResumeBuilderV2 = lazy(() => import("./pages/ResumeBuilderV2"));
-const JobSearchPage = lazy(() => import("./pages/JobSearchPage"));
-// Legacy application routes redirect into the consolidated Agent workspace.
-const CoverLettersPage = lazy(() => import("./pages/CoverLettersPage"));
-const ATSCheckerPage = lazy(() => import("./pages/ATSCheckerPage"));
-const AIToolbox = lazy(() => import("./pages/AIToolbox"));
-const Analytics = lazy(() => import("./pages/Analytics"));
-const Chat = lazy(() => import("./pages/Chat"));
-const Profile = lazy(() => import("./pages/Profile"));
-const InboxPage = lazy(() => import("./pages/InboxPage"));
-const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
+const ProductShell = lazy(() => import("./product/shell/ProductShell"));
+const HomePage = lazy(() => import("./product/pages/HomePage"));
+const MatchesPage = lazy(() => import("./product/pages/MatchesPage"));
+const ApplicationsPage = lazy(() => import("./product/pages/ApplicationsPage"));
+const ApplicationDetailPage = lazy(() => import("./product/pages/ApplicationDetailPage"));
+const InboxPage = lazy(() => import("./product/pages/InboxPage"));
+const PipelinePage = lazy(() => import("./product/pages/PipelinePage"));
+const HandsOffPage = lazy(() => import("./product/pages/HandsOffPage"));
+const ResumePage = lazy(() => import("./product/pages/ResumePage"));
+const PeoplePage = lazy(() => import("./product/pages/PeoplePage"));
+const NotesPage = lazy(() => import("./product/pages/NotesPage"));
+const SettingsPage = lazy(() => import("./product/pages/SettingsPage"));
+const HowItWorksPage = lazy(() => import("./product/marketing/HowItWorksPage"));
+const PlansPage = lazy(() => import("./product/marketing/PlansPage"));
+const FaqPage = lazy(() => import("./product/marketing/FaqPage"));
+const StatusPage = lazy(() => import("./product/marketing/StatusPage"));
+const InvitePage = lazy(() => import("./product/marketing/InvitePage"));
+const NotFoundPage = lazy(() => import("./product/marketing/NotFoundPage"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const MarketDominationMap = lazy(() => import("./pages/MarketDominationMap"));
-const AdminPortal = lazy(() => import("./pages/AdminPortal"));
-const AgentPage = lazy(() => import("./pages/AgentPage"));
-const MatchesPage = lazy(() => import("./pages/MatchesPage"));
-const ApplicationReviewPage = lazy(() => import("./pages/ApplicationReviewPage"));
-const ApplicationsBoardPage = lazy(() => import("./pages/ApplicationsBoardPage"));
-const CareerOpsPreferencesPage = lazy(() => import("./pages/CareerOpsPreferencesPage"));
 const FeedbackPage = lazy(() => import("./pages/FeedbackPage"));
-const DocsPage = lazy(() => import("./pages/DocsPage"));
-const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
-const PricingPage = lazy(() => import("./pages/PricingPage"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const MyCollectionPage = lazy(() => import("@/pages/MyCollection/MyCollectionPage"));
-const SessionPage = lazy(() => import("@/pages/MyCollection/SessionPage"));
-const FeatureFlagsAdmin = lazy(() => import("./pages/FeatureFlagsAdmin"));
+const OperatorProtectedRoute = lazy(() => import("./components/OperatorProtectedRoute"));
+const AdminShell = lazy(() => import("./product/admin/AdminShell"));
+const AdminHome = lazy(() => import("./product/admin/AdminHome"));
+const TeamPage = lazy(() => import("./product/admin/TeamPage"));
+const AdminUsersPage = lazy(() => import("./product/admin/UsersPage"));
+const AdminErrorsPage = lazy(() => import("./product/admin/ErrorsPage"));
+const AdminHealthPage = lazy(() => import("./product/admin/HealthPage"));
+const AdminCodesPage = lazy(() => import("./product/admin/CodesPage"));
+const AdminFlagsPage = lazy(() => import("./product/admin/FlagsPage"));
+const AdminAuditPage = lazy(() => import("./product/admin/AuditPage"));
 
-// Disable refetch-on-window-focus globally. Users were seeing pages flicker
-// to loading states every time they switched away and came back; the data
-// hadn't gone stale, the cache was just being invalidated by the default
-// behavior. Pages that genuinely need fresh-on-focus can opt in per-query.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -78,104 +65,106 @@ const queryClient = new QueryClient({
 });
 
 const SuspenseFallback = () => (
-  <LoadingSpinner fullScreen message="Loading..." />
+  <LoadingSpinner fullScreen message="Loading ResumePreps…" />
 );
 
-const App = () => {
-  return (
+const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <SubscriptionProvider>
-        <TooltipProvider>
-          <RPIconSprite />
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <RouteAnalyticsTracker />
-            <GlobalAuthRedirect />
-            <EnvBanner />
-            <Suspense fallback={<SuspenseFallback />}>
-              <Routes>
-                {/* Public routes */}
-                <Route path="/" element={<Landing />} />
-                <Route path="/auth" element={<Auth />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/print-resume" element={<PrintResume />} />
-                <Route path="/privacy" element={<PrivacyPolicy />} />
-                <Route path="/terms" element={<TermsOfService />} />
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <RouteAnalyticsTracker />
+              <GlobalAuthRedirect />
+              <EnvBanner />
+              <Suspense fallback={<SuspenseFallback />}>
+                <Routes>
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/auth" element={<AuthPage />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/print-resume" element={<PrintResume />} />
+                  <Route path="/privacy" element={<PrivacyPage />} />
+                  <Route path="/terms" element={<TermsPage />} />
+                  <Route path="/how-it-works" element={<HowItWorksPage />} />
+                  <Route path="/plans" element={<PlansPage />} />
+                  <Route path="/faq" element={<FaqPage />} />
+                  <Route path="/status" element={<StatusPage />} />
+                  <Route path="/invite/:token" element={<InvitePage />} />
+                  <Route path="/pricing" element={<Navigate to="/plans" replace />} />
 
-                {/* Protected app routes with sidebar layout */}
-                <Route element={<ProtectedRoute />}>
-                  <Route element={<AppLayout />}>
-                    <Route path="/home" element={<HomePage />} />
-                    <Route path="/my-collection" element={<MyCollectionPage />} />
-                    <Route path="/my-collection/:sessionId" element={<SessionPage />} />
-                    <Route path="/job-search" element={<JobSearchPage />} />
-                    <Route path="/applypass" element={<Navigate to="/agent" replace />} />
-                    <Route path="/resume-builder" element={<ResumeProjects />} />
-                    {/* v2 is now the default editor everywhere. v1 still
-                        accessible at /resume-builder/legacy/:id as a fallback
-                        in case anything's missing during the cutover. */}
-                    <Route path="/resume-builder/v2" element={<ResumeBuilderV2 />} />
-                    <Route path="/resume-builder/v2/:resumeId" element={<ResumeBuilderV2 />} />
-                    <Route path="/resume-builder/legacy/:resumeId" element={<ResumeBuilder />} />
-                    <Route path="/resume-builder/:resumeId" element={<ResumeBuilderV2 />} />
-                    <Route path="/ats-checker" element={<ATSCheckerPage />} />
-                    <Route path="/job-tracker" element={<JobTracker />} />
-                    <Route path="/inbox" element={<InboxPage />} />
-                    <Route path="/matches" element={<MatchesPage />} />
-                    <Route path="/applications" element={<ApplicationsBoardPage />} />
-                    <Route path="/applications/:id" element={<ApplicationReviewPage />} />
-                    <Route path="/career-ops/preferences" element={<CareerOpsPreferencesPage />} />
-                    <Route path="/feedback" element={<FeedbackPage />} />
-                    <Route path="/docs" element={<DocsPage />} />
-                    <Route path="/auto-apply" element={<Navigate to="/agent" replace />} />
-                    <Route path="/agent" element={<AgentPage />} />
-                    <Route path="/profile-setup" element={<ProfileSetupPage />} />
-                    <Route path="/pricing" element={<PricingPage />} />
-                    <Route path="/interview-prep" element={<Navigate to="/agent" replace />} />
-                    <Route path="/cover-letters" element={<CoverLettersPage />} />
-                    <Route path="/chat" element={<Chat />} />
-                    <Route path="/c/:conversationId" element={<Chat />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/control-center" element={<ControlCenter />} />
-                    <Route path="/market-domination-map" element={<MarketDominationMap />} />
-                    <Route
-                      path="/admin"
-                      element={
-                        <OwnerProtectedRoute>
-                          <AdminPortal />
-                        </OwnerProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/admin/flags"
-                      element={
-                        <OwnerProtectedRoute>
-                          <FeatureFlagsAdmin />
-                        </OwnerProtectedRoute>
-                      }
-                    />
-                    <Route path="/profile" element={<Profile />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="/documents" element={<Documents />} />
-                    <Route path="/ai-toolbox" element={<AIToolbox />} />
-                    <Route path="/analytics" element={<Analytics />} />
+                  <Route element={<ProtectedRoute />}>
+                    <Route element={<OperatorProtectedRoute />}>
+                      <Route element={<AdminShell />}>
+                        <Route path="/admin" element={<AdminHome />} />
+                        <Route path="/admin/team" element={<TeamPage />} />
+                        <Route path="/admin/users" element={<AdminUsersPage />} />
+                        <Route path="/admin/errors" element={<AdminErrorsPage />} />
+                        <Route path="/admin/health" element={<AdminHealthPage />} />
+                        <Route path="/admin/codes" element={<AdminCodesPage />} />
+                        <Route path="/admin/flags" element={<AdminFlagsPage />} />
+                        <Route path="/admin/audit" element={<AdminAuditPage />} />
+                      </Route>
+                    </Route>
+                    <Route element={<ProductShell />}>
+                      <Route path="/home" element={<HomePage />} />
+                      <Route path="/matches" element={<MatchesPage />} />
+                      <Route path="/applications" element={<ApplicationsPage />} />
+                      <Route path="/applications/:id" element={<ApplicationDetailPage />} />
+                      <Route path="/inbox" element={<InboxPage />} />
+                      <Route path="/pipeline" element={<PipelinePage />} />
+                      <Route path="/hands-off" element={<HandsOffPage />} />
+                      <Route path="/apply" element={<HandsOffPage />} />
+                      <Route path="/resume" element={<ResumePage />} />
+                      <Route path="/people" element={<PeoplePage />} />
+                      <Route path="/notes" element={<NotesPage />} />
+                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="/feedback" element={<FeedbackPage />} />
+                      <Route
+                        path="/control-center"
+                        element={<OwnerProtectedRoute><ControlCenter /></OwnerProtectedRoute>}
+                      />
+                      <Route
+                        path="/market-domination-map"
+                        element={<OwnerProtectedRoute><MarketDominationMap /></OwnerProtectedRoute>}
+                      />
+
+                      <Route path="/job-search" element={<Navigate to="/matches" replace />} />
+                      <Route path="/job-tracker" element={<Navigate to="/pipeline" replace />} />
+                      <Route path="/agent" element={<Navigate to="/hands-off" replace />} />
+                      <Route path="/auto-apply" element={<Navigate to="/hands-off" replace />} />
+                      <Route path="/applypass" element={<Navigate to="/hands-off" replace />} />
+                      <Route path="/resume-builder" element={<Navigate to="/resume" replace />} />
+                      <Route path="/resume-builder/:resumeId" element={<Navigate to="/resume" replace />} />
+                      <Route path="/profile" element={<Navigate to="/resume" replace />} />
+                      <Route path="/profile-setup" element={<Navigate to="/resume" replace />} />
+                      <Route path="/career-ops/preferences" element={<Navigate to="/hands-off" replace />} />
+                      <Route path="/chat" element={<Navigate to="/home?assistant=1" replace />} />
+                      <Route path="/c/:conversationId" element={<Navigate to="/home?assistant=1" replace />} />
+                      <Route path="/dashboard" element={<Navigate to="/home" replace />} />
+                      <Route path="/my-collection" element={<Navigate to="/pipeline" replace />} />
+                      <Route path="/ats-checker" element={<Navigate to="/resume" replace />} />
+                      <Route path="/cover-letters" element={<Navigate to="/resume" replace />} />
+                      <Route path="/documents" element={<Navigate to="/resume" replace />} />
+                      <Route path="/ai-toolbox" element={<Navigate to="/home?assistant=1" replace />} />
+                      <Route path="/analytics" element={<Navigate to="/pipeline" replace />} />
+                      <Route path="/docs" element={<Navigate to="/how-it-works" replace />} />
+                      <Route path="/interview-prep" element={<Navigate to="/notes" replace />} />
+                    </Route>
                   </Route>
-                </Route>
 
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-          </BrowserRouter>
-          <VercelAnalytics />
-        </TooltipProvider>
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </Suspense>
+            </BrowserRouter>
+            <VercelAnalytics />
+          </TooltipProvider>
         </SubscriptionProvider>
       </AuthProvider>
     </QueryClientProvider>
   </ErrorBoundary>
-  );
-};
+);
 
 export default App;

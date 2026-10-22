@@ -48,7 +48,7 @@ export const COUNTRIES = [
 ];
 
 export const YEARS_EXPERIENCE_OPTIONS = ["0-1", "1-3", "3-5", "5-8", "8+"];
-export const WORK_AUTHORIZATION_OPTIONS = ["US Citizen", "Green Card", "EAD", "Need sponsorship"];
+export const WORK_AUTHORIZATION_OPTIONS = ["US Citizen", "Green Card", "F-1", "H-1B", "EAD", "Need sponsorship"];
 
 export const EEO_OPTIONS: Record<keyof EeoAnswers, string[]> = {
   gender: ["Male", "Female", "Non-binary", DECLINE],

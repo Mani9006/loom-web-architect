@@ -107,3 +107,12 @@ verify_jwt = false
 
 [functions.mc-render-resume]
 verify_jwt = false
+
+[functions.ops-assistant]
+verify_jwt = false
+
+[functions.company-ops]
+verify_jwt = false
+
+[functions.platform-health]
+verify_jwt = false
