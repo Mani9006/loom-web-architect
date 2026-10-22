@@ -483,7 +483,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                     variant="default"
                     size="sm"
                     onClick={() => tailorJob(selected)}
-                    disabled={tailoring?.jobId === selected.id}
+                    disabled={tailoring !== null}
                   >
                     {tailoring?.jobId === selected.id ? (
                       <>
