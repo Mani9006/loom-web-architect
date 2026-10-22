@@ -343,7 +343,7 @@ function CanvasEditor({
     setAiSuggestions([]);
     try {
       const { data, error } = await (supabase as any).functions.invoke("enhance-bullet", {
-        body: { line: selectedLine, mode, context: { full_resume: cv } },
+        body: { bullet: selectedLine, mode },
       });
       if (error) throw error;
       setAiSuggestions(data?.suggestions ?? []);

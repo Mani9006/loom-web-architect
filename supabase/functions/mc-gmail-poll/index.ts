@@ -301,6 +301,13 @@ async function pollOne(admin: any, connection: any, encryptionKey: string) {
         source: "email",
         email_id: emailRow?.id,
       });
+      // Keep the in-memory record current: multiple messages about the same
+      // job can be processed within a single poll (Gmail returns newest
+      // first), and isForwardStatusMove() below must compare against the
+      // status just written, not the pre-poll snapshot, or a later
+      // (older/lower-signal) email can regress a status a newer email just
+      // advanced.
+      matched.status = newStatus;
       statusUpdates += 1;
       // Best-effort status-change alert. Fires only on an actual forward
       // transition, so the guards above already make it idempotent; a failed

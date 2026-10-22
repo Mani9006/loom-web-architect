@@ -203,7 +203,7 @@ export default function ApplyProgressModal({
   const poll = useCallback(async () => {
     if (!user || jobs.length === 0) return;
     const ids = jobs.map((job) => job.evaluationId);
-    const { data: drafts } = await supabase
+    const { data: drafts } = await (supabase as any)
       .from("draft_applications")
       .select("id,evaluation_id,status,error_message,submitted_at,applypass_task_id")
       .eq("user_id", user.id)
@@ -217,7 +217,7 @@ export default function ApplyProgressModal({
 
     const taskIds = rows.map((row) => row.applypass_task_id).filter((id): id is string => Boolean(id));
     if (taskIds.length > 0) {
-      const { data: tasks } = await supabase
+      const { data: tasks } = await (supabase as any)
         .from("applypass_tasks")
         .select("id,status,error_message,run_log")
         .in("id", taskIds);

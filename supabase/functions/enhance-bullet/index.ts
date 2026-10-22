@@ -35,7 +35,7 @@ serve(async (req) => {
       });
     }
 
-    const { bullet, jobTitle, company } = await req.json();
+    const { bullet, jobTitle, company, mode } = await req.json();
 
     if (!bullet) {
       return new Response(JSON.stringify({ error: "Bullet text is required" }), {
@@ -44,17 +44,25 @@ serve(async (req) => {
       });
     }
 
+    const modeInstructions: Record<string, string> = {
+      tighten: "Make each version as concise as possible without losing meaning. Cut filler words and prefer shorter, punchier phrasing (aim for under 15 words where possible).",
+      keywords: "Weave in relevant industry and ATS keywords for the target role/title, without keyword-stuffing or losing readability.",
+      voice: "Rewrite in a natural, first-person-adjacent professional voice (no 'I', but conversational and confident) rather than a stiff, generic tone.",
+    };
+    const modeInstruction = modeInstructions[mode] || "";
+
     const result = await chatFree(
       "lite",
       [
         {
           role: "system",
-          content: `You are an expert resume writer. Given a resume bullet point, generate exactly 3 improved versions using the STAR method (Situation, Task, Action, Result). 
+          content: `You are an expert resume writer. Given a resume bullet point, generate exactly 3 improved versions using the STAR method (Situation, Task, Action, Result).
 Each version should:
 - Start with a strong action verb
 - Include quantifiable metrics where possible
 - Be concise (under 25 words)
 - Be ATS-optimized with relevant keywords
+${modeInstruction ? `- ${modeInstruction}` : ""}
 
 Return ONLY a JSON object: {"suggestions": ["improved bullet 1", "improved bullet 2", "improved bullet 3"]}`,
         },
