@@ -15,6 +15,7 @@
  * fetches career-ops-tailor-report once per draft for the green lines.
  * Status logic lives in ./apply-progress-core (unit-tested).
  */
+/* eslint-disable @typescript-eslint/no-explicit-any -- draft_applications/applypass_tasks are not yet in the generated client types */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
@@ -203,7 +204,7 @@ export default function ApplyProgressModal({
   const poll = useCallback(async () => {
     if (!user || jobs.length === 0) return;
     const ids = jobs.map((job) => job.evaluationId);
-    const { data: drafts } = await supabase
+    const { data: drafts } = await (supabase as any)
       .from("draft_applications")
       .select("id,evaluation_id,status,error_message,submitted_at,applypass_task_id")
       .eq("user_id", user.id)
@@ -217,7 +218,7 @@ export default function ApplyProgressModal({
 
     const taskIds = rows.map((row) => row.applypass_task_id).filter((id): id is string => Boolean(id));
     if (taskIds.length > 0) {
-      const { data: tasks } = await supabase
+      const { data: tasks } = await (supabase as any)
         .from("applypass_tasks")
         .select("id,status,error_message,run_log")
         .in("id", taskIds);
