@@ -13,11 +13,18 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Newspaper } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
+import { AIMessageContent } from "@/components/chat/AIMessageContent";
+
+function slugifyCompany(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "company";
+}
+
+type ResearchState = { status: "loading" | "error" } | { status: "done"; md: string };
 
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "discovered", label: "Discovered", tone: "bg-rp-paper text-slate-700" },
@@ -68,6 +75,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [research, setResearch] = useState<Record<string, ResearchState>>({});
 
   // Ties the tailor pipeline's waitForJob subscription to this component
   // instance's lifetime, so switching away from the Board tab mid-tailor
@@ -227,6 +235,31 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       toast({ title: "Tailoring failed", description: msg, variant: "destructive" });
     } finally {
       setTailoring(null);
+    }
+  }
+
+  // Cheap (Gemini Flash) company brief, cached server-side per session+company
+  // for 30 days by the mc-research-company edge function. Kept in local state
+  // here too so re-opening the same card within this mount doesn't re-fetch.
+  async function researchCompany(job: TrackedJob) {
+    setResearch((r) => ({ ...r, [job.id]: { status: "loading" } }));
+    try {
+      const { data, error } = await supabase.functions.invoke("mc-research-company", {
+        body: {
+          session_id: sessionId,
+          company_slug: slugifyCompany(job.company),
+          company_name: job.company,
+          job_title: job.job_title,
+        },
+      });
+      if (error) throw error;
+      const md = data?.research?.research_md;
+      if (!md) throw new Error("No research returned");
+      setResearch((r) => ({ ...r, [job.id]: { status: "done", md } }));
+    } catch (e) {
+      setResearch((r) => ({ ...r, [job.id]: { status: "error" } }));
+      const msg = e instanceof Error ? e.message : String(e);
+      toast({ title: "Couldn't research company", description: msg, variant: "destructive" });
     }
   }
 
@@ -480,6 +513,23 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                     <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
                   </Button>
                   <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => researchCompany(selected)}
+                    disabled={research[selected.id]?.status === "loading"}
+                  >
+                    {research[selected.id]?.status === "loading" ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Researching…
+                      </>
+                    ) : (
+                      <>
+                        <Newspaper className="w-3.5 h-3.5 mr-1" />
+                        {research[selected.id]?.status === "done" ? "Refresh research" : "Research company"}
+                      </>
+                    )}
+                  </Button>
+                  <Button
                     variant="default"
                     size="sm"
                     onClick={() => tailorJob(selected)}
@@ -506,6 +556,17 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       <FileText className="w-3.5 h-3.5 mr-1" /> View tailored resume
                     </Link>
                   </Button>
+                )}
+
+                {research[selected.id]?.status === "done" && (
+                  <div>
+                    <h4 className="font-medium text-sm mb-2 flex items-center gap-1.5">
+                      <Newspaper className="w-3.5 h-3.5" /> Company research
+                    </h4>
+                    <div className="bg-muted rounded p-3 max-h-96 overflow-y-auto">
+                      <AIMessageContent content={(research[selected.id] as { status: "done"; md: string }).md} />
+                    </div>
+                  </div>
                 )}
 
                 {selected.jd_md && (
