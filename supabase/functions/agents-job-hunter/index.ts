@@ -31,6 +31,8 @@ interface UserPrefs {
   daily_apply_cap: number;
   agent_max_actions_per_day: number;
   agent_actions_today: number;
+  agent_enabled?: boolean;
+  hands_off_cadence?: "off" | "hourly" | "daily";
 }
 
 interface AgentAction {
@@ -215,7 +217,7 @@ async function runAgent(userId: string, runId: string) {
   }
 
   const SCORE_BUDGET = Number(Deno.env.get("AGENT_SCORE_BUDGET") || 8);
-  const PREPARE_BUDGET = Number(Deno.env.get("AGENT_PREPARE_BUDGET") || 4);
+  const PREPARE_BUDGET = Number(Deno.env.get("AGENT_PREPARE_BUDGET") || 20);
   const candidates = await listUnscoredMatches(client, userId, prefs, Math.min(SCORE_BUDGET, remaining));
   for (const job of candidates) {
     if (remaining <= 0) break;
@@ -249,23 +251,74 @@ async function runAgent(userId: string, runId: string) {
 
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
-  const { count: queuedToday } = await client.from("draft_applications")
+  const { data: snapshotRaw } = await client.rpc("get_apply_credit_snapshot", { p_user_id: userId });
+  const snapshot = asRecord(snapshotRaw);
+  let submissionsRemaining = Math.max(0, Math.min(
+    Number(prefs.daily_apply_cap ?? snapshot.daily_cap ?? 10),
+    Number(snapshot.daily_remaining ?? 0),
+  ));
+
+  const dayStartIso = dayStart.toISOString();
+  const { count: handsOffQueuedToday } = await client.from("applypass_tasks")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
-    .in("status", ["queued", "submitted"])
-    .gte("updated_at", dayStart.toISOString());
-  let submissionsRemaining = Math.max(0, (prefs.daily_apply_cap ?? 10) - (queuedToday ?? 0));
+    .eq("task_type", "apply_engine")
+    .contains("payload", { intent: "hands_off" })
+    .gte("created_at", dayStartIso);
+  const cadence = prefs.hands_off_cadence === "off" || prefs.hands_off_cadence === "daily"
+    ? prefs.hands_off_cadence
+    : "hourly";
+  const schedulerMayEnqueue = Boolean(prefs.auto_apply_enabled)
+    && Boolean(prefs.agent_enabled ?? true)
+    && cadence !== "off"
+    && !(cadence === "daily" && (handsOffQueuedToday ?? 0) > 0);
 
   if (remaining > 0) {
+    const { data: recipeRows } = await client.from("search_recipes").select("enabled,min_fit_score").eq("user_id", userId);
+    const activeFloors = ((recipeRows ?? []) as Array<{ enabled: boolean; min_fit_score: number }>)
+      .filter((recipe) => recipe.enabled)
+      .map((recipe) => Number(recipe.min_fit_score) || 82);
+    const recipeFloor = activeFloors.length > 0 ? Math.min(...activeFloors) : (prefs.auto_apply_min_fit_score ?? 82);
     const unprepared = await listUnpreparedEvaluations(
       client,
       userId,
-      prefs.auto_apply_min_fit_score ?? 82,
+      recipeFloor,
       Math.min(PREPARE_BUDGET, remaining),
     );
     alreadyPrepared = unprepared.alreadyPrepared;
     const evaluations = unprepared.evaluations;
-    for (const evaluation of evaluations) {
+    if (
+      evaluations.length > 0
+      && schedulerMayEnqueue
+      && prefs.review_mode === "eligible_only"
+    ) {
+      try {
+        const fanout = asRecord(await callEdgeFunction("apply-engine-enqueue", {
+          user_id: userId,
+          evaluation_ids: evaluations.map((evaluation) => evaluation.id),
+          intent: "hands_off",
+        }));
+        const batchCount = Number(fanout.count || evaluations.length);
+        prepared += batchCount;
+        queued += Number(fanout.queued || 0);
+        remaining = Math.max(0, remaining - batchCount);
+        actions.push({
+          tool: "queue_submit",
+          input: { evaluation_ids: evaluations.map((evaluation) => evaluation.id), intent: "hands_off" },
+          result: fanout,
+          ts: new Date().toISOString(),
+        });
+      } catch (error) {
+        actions.push({
+          tool: "queue_submit",
+          input: { evaluation_ids: evaluations.map((evaluation) => evaluation.id) },
+          result: { error: error instanceof Error ? error.message : String(error) },
+          ts: new Date().toISOString(),
+        });
+        failed += 1;
+      }
+    } else {
+      for (const evaluation of evaluations) {
       if (remaining <= 0) break;
       const input = { user_id: userId, evaluation_id: evaluation.id };
       try {
@@ -324,7 +377,7 @@ async function runAgent(userId: string, runId: string) {
           && prefs.review_mode === "eligible_only"
           && tailoredAtsScore >= (prefs.auto_apply_min_ats_score ?? 85)
           && typeof evaluation.portal === "string"
-          && ["greenhouse", "ashby", "lever", "workable"].includes(evaluation.portal)
+          && ["greenhouse", "ashby", "lever", "workable", "workday"].includes(evaluation.portal)
           && prefs.auto_apply_portals.includes(evaluation.portal);
         if (remaining > 0 && shouldAutoQueue && draftId) {
           try {
@@ -369,28 +422,21 @@ async function runAgent(userId: string, runId: string) {
         remaining -= 1;
       }
     }
+    }
   }
 
-  // "Eligible only" must not depend on when a packet was tailored: ready
-  // drafts from earlier runs (or prepared from the Agent page) that already
-  // pass the fit and tailored-ATS gates are queued here, so no per-job click
-  // is ever required. career-ops-submit re-checks every guard and is
-  // idempotent, so overlap with the in-run leg above resolves to one task.
+  // Ready drafts from earlier runs use the same apply-engine-enqueue path.
   if (remaining > 0
-    && submissionsRemaining > 0
-    && prefs.auto_apply_enabled
+    && schedulerMayEnqueue
     && prefs.review_mode === "eligible_only") {
     const minFit = prefs.auto_apply_min_fit_score ?? 82;
     const minAts = prefs.auto_apply_min_ats_score ?? 85;
-    const supportedPortals = new Set(["greenhouse", "ashby", "lever", "workable"]);
+    const supportedPortals = new Set(["greenhouse", "ashby", "lever", "workable", "workday"]);
     const enabledPortals = new Set(prefs.auto_apply_portals ?? []);
     const { data: readyDrafts } = await client.from("draft_applications")
       .select("id,tailored_resume_id,error_message,evaluation:job_evaluations(fit_score,eligible,dismissed_at,scanned_jobs(id,company:scan_companies(api_type)))")
       .eq("user_id", userId)
       .eq("status", "ready")
-      // Actionable drafts first, then highest-fit first: with 30+ ready
-      // drafts, recency ordering starves the batch with below-gate packets
-      // and the best applications never get queued.
       .order("error_message", { ascending: true, nullsFirst: true })
       .limit(100);
 
@@ -416,7 +462,6 @@ async function runAgent(userId: string, runId: string) {
         && !/employer verification is required|complete the final check|required field\(s\) still need review|flagged as possible spam|couldn.t submit your application/i.test(draft.error_message ?? "");
     });
 
-    // Highest-fit applications first so daily caps go to the best matches.
     backlog.sort((a, b) => Number(b.evaluation?.fit_score ?? 0) - Number(a.evaluation?.fit_score ?? 0));
     const resumeIds = [...new Set(backlog.map((draft) => String(draft.tailored_resume_id)))];
     const { data: atsRows } = resumeIds.length > 0
@@ -426,45 +471,45 @@ async function runAgent(userId: string, runId: string) {
         .in("resume_id", resumeIds)
         .order("created_at", { ascending: false })
       : { data: [] };
-    // Rows arrive newest-first; the first row per resume+job pair is the
-    // latest tailored ATS result.
     const latestAtsByPair = new Map<string, number>();
     for (const row of (atsRows ?? []) as Array<{ resume_id: string; scanned_job_id: string; overall: number | null }>) {
       const key = `${row.resume_id}:${row.scanned_job_id}`;
       if (!latestAtsByPair.has(key)) latestAtsByPair.set(key, Number(row.overall ?? 0));
     }
 
+    const readyIds: string[] = [];
     for (const draft of backlog) {
-      if (remaining <= 0 || submissionsRemaining <= 0) break;
-      const portal = String(draft.evaluation?.scanned_jobs?.company?.api_type ?? "");
+      if (readyIds.length >= Math.min(PREPARE_BUDGET, remaining)) break;
       const jobId = String(draft.evaluation?.scanned_jobs?.id ?? "");
       const atsOverall = latestAtsByPair.get(`${draft.tailored_resume_id}:${jobId}`) ?? 0;
-      // Below-threshold packets stay ready for human review; they are not
-      // failures and must not flood the action log every run.
       if (atsOverall < minAts) continue;
+      readyIds.push(draft.id);
+    }
+
+    if (readyIds.length > 0) {
       try {
-        const submitResponse = await callEdgeFunction("career-ops-submit", {
+        const fanout = asRecord(await callEdgeFunction("apply-engine-enqueue", {
           user_id: userId,
-          draft_application_id: draft.id,
-        });
+          draft_ids: readyIds,
+          intent: "hands_off",
+        }));
+        queued += Number(fanout.queued || 0);
+        remaining = Math.max(0, remaining - readyIds.length);
         actions.push({
           tool: "queue_submit",
-          input: { draft_application_id: draft.id, portal, source: "ready_backlog" },
-          result: asRecord(submitResponse.task),
+          input: { draft_ids: readyIds, source: "ready_backlog", intent: "hands_off" },
+          result: fanout,
           ts: new Date().toISOString(),
         });
-        queued += 1;
-        submissionsRemaining -= 1;
       } catch (error) {
         actions.push({
           tool: "queue_submit",
-          input: { draft_application_id: draft.id, portal, source: "ready_backlog" },
+          input: { draft_ids: readyIds, source: "ready_backlog" },
           result: { error: error instanceof Error ? error.message : String(error) },
           ts: new Date().toISOString(),
         });
         failed += 1;
       }
-      remaining -= 1;
     }
   }
 

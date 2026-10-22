@@ -9,10 +9,46 @@ const corsHeaders = {
 };
 
 const PLAN_LABELS: Record<string, string> = {
+  starter: "Starter ($19/mo)",
   pro: "Pro ($39/mo)",
   autopilot: "Autopilot ($99/mo)",
   premium: "Legacy Premium",
 };
+
+const PAID_PLANS = new Set(["starter", "pro", "autopilot"]);
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** Promo codes discount the invoice. Credits still deduct 1:1 on successful submit. */
+function stripeDiscount(session: Record<string, unknown>): { promotion_code: string | null; discount_percent: number } {
+  const discounts = Array.isArray(session.discounts) ? session.discounts : [];
+  const first = asRecord(discounts[0]);
+  const promo = first.promotion_code;
+  let code: string | null = null;
+  if (typeof promo === "string") code = promo;
+  else {
+    const rec = asRecord(promo);
+    code = asString(rec.code) || asString(rec.id) || null;
+  }
+  const subtotal = Number(session.amount_subtotal ?? 0);
+  const total = Number(session.amount_total ?? subtotal);
+  const discount_percent = subtotal > 0 ? Math.max(0, Math.round(((subtotal - total) / subtotal) * 100)) : 0;
+  return { promotion_code: code, discount_percent };
+}
+
+async function grantPeriodCredits(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+) {
+  const { error } = await supabase.rpc("ensure_apply_credit_grant", { p_user_id: userId });
+  if (error) console.error("[StripeWebhook] credit grant failed:", error.message);
+}
 
 // ── Email helper ─────────────────────────────────────────────────────
 async function sendEmailNotification(
@@ -81,7 +117,8 @@ serve(async (req: Request) => {
         const userId = session.metadata?.user_id;
         const planType = session.metadata?.plan_type;
 
-        if (userId && ["pro", "autopilot"].includes(planType) && session.mode === "subscription") {
+        if (userId && PAID_PLANS.has(planType) && session.mode === "subscription") {
+          const discount = stripeDiscount(session as Record<string, unknown>);
           await supabase.from("subscription_plans").upsert({
             user_id: userId,
             plan_type: planType,
@@ -90,6 +127,8 @@ serve(async (req: Request) => {
             stripe_subscription_id: session.subscription,
             current_period_start: new Date().toISOString(),
             current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            promotion_code: discount.promotion_code,
+            discount_percent: discount.discount_percent,
             updated_at: new Date().toISOString(),
           }, { onConflict: "user_id" });
 
@@ -101,7 +140,9 @@ serve(async (req: Request) => {
             updated_at: new Date().toISOString(),
           }, { onConflict: "user_id" });
 
-          console.log(`[StripeWebhook] Activated ${planType} for ${userId}`);
+          await grantPeriodCredits(supabase, userId);
+
+          console.log(`[StripeWebhook] Activated ${planType} for ${userId} promo=${discount.promotion_code || "none"} off=${discount.discount_percent}%`);
 
           // Send subscription confirmation email
           const email = session.customer_email || await getUserEmail(supabase, userId);
@@ -174,13 +215,27 @@ serve(async (req: Request) => {
 
       case "invoice.payment_succeeded": {
         const invoice = event.data.object;
+        const subscriptionId = typeof invoice.subscription === "string"
+          ? invoice.subscription
+          : invoice.subscription?.id;
+        if (subscriptionId) {
+          const { data: planRow } = await supabase
+            .from("subscription_plans")
+            .select("user_id, plan_type")
+            .eq("stripe_subscription_id", subscriptionId)
+            .maybeSingle();
+          if (planRow?.user_id) {
+            // Grant the plan bucket even when a 100% promo makes amount_paid = 0.
+            await grantPeriodCredits(supabase, planRow.user_id);
+          }
+        }
         const customerEmail = invoice.customer_email;
         if (customerEmail && invoice.amount_paid > 0) {
           const amount = `$${(invoice.amount_paid / 100).toFixed(2)}`;
           const invoiceDate = new Date(invoice.created * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
           void sendEmailNotification(supabaseUrl, serviceKey, "billing-receipt", customerEmail, {
             amount,
-            plan_name: "Premium",
+            plan_name: "ResumePreps",
             invoice_date: invoiceDate,
             invoice_url: invoice.hosted_invoice_url,
           });
@@ -200,7 +255,7 @@ serve(async (req: Request) => {
           if (invoice.customer_email) {
             void sendEmailNotification(supabaseUrl, serviceKey, "account-change", invoice.customer_email, {
               change_type: "Payment Failed",
-              details: "Your latest payment failed. Please update your payment method to keep your Premium subscription active.",
+              details: "Your latest payment failed. Please update your payment method to keep your apply credits active.",
             });
           }
         }

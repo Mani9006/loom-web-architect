@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { CreditBalance } from "@/components/apply/CreditBalance";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -27,6 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { captureIncident } from "@/lib/incidents";
 import { cn } from "@/lib/utils";
+import { useApplyCredits } from "@/hooks/use-apply-credits";
 import {
   rowMatchesTab,
   tabCounts,
@@ -40,9 +42,13 @@ import {
 
 const TABS: Array<{ key: BoardTab; label: string }> = [
   { key: "all", label: "All" },
+  { key: "submitted", label: "Submitted" },
   { key: "in_flight", label: "In flight" },
   { key: "needs_you", label: "Needs you" },
+  { key: "review_required", label: "Review required" },
+  { key: "queued", label: "Queued" },
   { key: "failed", label: "Failed" },
+  { key: "expired", label: "Job expired" },
   { key: "skipped", label: "Skipped" },
 ];
 
@@ -74,6 +80,7 @@ function relativeTime(iso: string): string {
 export default function ApplicationsBoardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { snapshot: credits } = useApplyCredits();
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -182,8 +189,8 @@ export default function ApplicationsBoardPage() {
         return {
           icon: BriefcaseBusiness,
           title: "No applications yet",
-          body: "Once auto-apply starts working for you, every tailored resume, submission, and receipt shows up here.",
-          actionLabel: "Open auto-apply",
+          body: "Select jobs on Job matches and hit Apply selected. Each one becomes an independent cloud job with a receipt.",
+          actionLabel: "Open job matches",
         };
     }
   }, [tab]);
@@ -200,13 +207,13 @@ export default function ApplicationsBoardPage() {
       case "in_flight":
       case "all":
       default:
-        navigate("/agent");
+        navigate("/matches");
     }
   };
 
   if (loading) {
     return (
-      <div className="max-w-[1100px] mx-auto px-6 lg:px-10 py-10 space-y-5">
+      <div className="space-y-5">
         <div className="h-20 rounded-lg bg-rp-paper animate-pulse" />
         <div className="h-10 rounded-lg bg-rp-paper animate-pulse" />
         <div className="h-96 rounded-lg bg-rp-paper animate-pulse" />
@@ -215,11 +222,12 @@ export default function ApplicationsBoardPage() {
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto px-6 lg:px-10 pt-10 pb-16">
+    <div>
       <PageHeader
-        title="All applications."
-        status={`auto-apply · ${counts.all} total`}
-        description="Every application we're preparing, sending, or have sent for you, with a receipt for each step."
+        title="Applications"
+        status={`cloud queue · ${counts.all}`}
+        description="All, Submitted, In flight, Needs you, Failed, Skipped, Review required, Queued, Job expired. Submitted only after a portal receipt."
+        action={<CreditBalance snapshot={credits} />}
       />
 
       {/* Tabs with counts */}

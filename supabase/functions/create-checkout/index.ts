@@ -8,14 +8,19 @@ const corsHeaders = {
 };
 
 const PLAN_CATALOG = {
+  starter: {
+    name: "ResumePreps Starter",
+    description: "30 successful apply credits per month. Failed system-side submits do not consume credit.",
+    amount: "1900",
+  },
   pro: {
     name: "ResumePreps Pro",
-    description: "30 tailored application packets and 100 fit evaluations per month",
+    description: "80 successful apply credits per month. 1 credit = 1 portal receipt.",
     amount: "3900",
   },
   autopilot: {
     name: "ResumePreps Autopilot",
-    description: "Continuous Apply with up to 400 supported attempts per week and verified status receipts",
+    description: "250 successful apply credits per month plus hands-off enqueue. Promo codes discount price, not credits.",
     amount: "9900",
   },
 } as const;
@@ -116,6 +121,8 @@ serve(async (req: Request) => {
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
 
+      await adminClient.rpc("ensure_apply_credit_grant", { p_user_id: user.id });
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -142,6 +149,7 @@ serve(async (req: Request) => {
         "line_items[0][price_data][unit_amount]": plan.amount,
         "line_items[0][price_data][recurring][interval]": "month",
         "line_items[0][quantity]": "1",
+        "allow_promotion_codes": "true",
         "success_url": `${returnOrigin}/job-search?checkout=success`,
         "cancel_url": `${returnOrigin}/pricing?checkout=canceled`,
         "metadata[user_id]": user.id,

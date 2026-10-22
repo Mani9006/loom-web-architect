@@ -2,15 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 
 export type Theme = "light" | "dark";
 
-const STORAGE_KEY = "theme";
+const STORAGE_KEY = "harbor-theme";
 const THEME_EVENT = "resumepreps:theme-change";
 
 function preferredTheme(): Theme {
-  if (typeof window === "undefined") return "dark";
+  if (typeof window === "undefined") return "light";
   const saved = window.localStorage.getItem(STORAGE_KEY);
   if (saved === "light" || saved === "dark") return saved;
-  // Default to the noir-and-gold editorial dark aesthetic.
-  return "dark";
+  return "light";
 }
 
 function applyTheme(theme: Theme) {

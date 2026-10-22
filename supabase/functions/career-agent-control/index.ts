@@ -102,7 +102,7 @@ serve(async (req) => {
     // Default daily cap of 25: research-backed anti-flag pacing. Callers can
     // still raise it explicitly (clamped to 75), but the out-of-box default
     // keeps submission volume inside normal human application patterns.
-    const dailyCap = clamp(body.daily_apply_cap, 1, 75, 25);
+    const dailyCap = clamp(body.daily_apply_cap, 1, 40, 25);
     const dailyActions = clamp(body.agent_max_actions_per_day, 30, 300, 240);
     const minFit = clamp(body.auto_apply_min_fit_score, 50, 100, 82);
     const minAts = clamp(body.auto_apply_min_ats_score, 70, 95, 85);

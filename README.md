@@ -1,15 +1,61 @@
-# ResumePrep
+# ResumePreps
 
-ResumePrep is an AI-powered career platform for building ATS-ready resumes, creating tailored cover letters, practicing interviews, tracking job applications, and managing career workflows from one workspace.
+ResumePreps is a United States job-application desk: matches, per-job tailoring, cloud apply, receipts, recruiter inbox, and hands-off scheduling. Submitted is only true with a portal receipt.
 
 ## What this project includes
 
+- **Apply engine**: Cloud application queue. Detect ATS from a job URL, enqueue independent workers, tailor per job, submit only through live adapters (Greenhouse, Lever, Ashby, Workable, Workday). Unsupported ATS stay in Needs you with a tailored packet. Never fake submitted.
 - **Resume Builder**: Structured resume editing, templates, previews, exports, and ATS quality checks.
 - **AI Career Workspace**: Chat-driven support for resumes, cover letters, interviews, and job search workflows.
 - **Job Search & Tracking**: Saved jobs, application tracking, matching, analytics, and collection workflows.
-- **Auto Apply / ApplyPass**: Assisted application flows and browser-worker automation support.
 - **Admin & Control Center**: Owner-only operational views, executive brief generation, governance checks, and release monitoring.
 - **Supabase Backend**: Auth, PostgreSQL, RLS-backed data access, migrations, and Deno edge functions.
+
+## Apply engine (core product)
+
+ResumePreps is an apply engine. The dashboard sends job URLs and match IDs to the cloud. Playwright workers fill and submit. The browser tab never submits the ATS form.
+
+### Live vs stubbed adapters
+
+| Status | ATS |
+| --- | --- |
+| **Live submit** | greenhouse, lever, ashby, workable, workday |
+| **Detected only** (Needs you + tailored packet) | icims, smartrecruiters, jobvite, successfactors, oraclecloud, rippling, phenom, bamboohr, jazzhr, breezyhr, recruitee, teamtailor, pinpoint, polymer, dover, gem, brassring, dayforce, hireology, join, paylocity, ultipro, adp, zohorecruit |
+| **Account required** (never API-submittable) | indeed, naukri, linkedin |
+
+Workday is best-effort multi-page. Login walls, SSO, and CAPTCHA return Needs you. Detection of an ATS is not the same as ability to submit.
+
+### How to try it
+
+1. Open **Job matches**. Paste a Greenhouse / Lever / Ashby URL, or multi-select rows and hit **Apply selected**.
+2. Watch **Applications**: queued → sending → submitted or needs you. Open a row for the receipt.
+3. **Hands-off apply** (Autopilot): set cadence (hourly / daily / off), match floor, daily cap. Start applying. Stop applying is the kill switch for in-flight hands-off jobs. Apply selected does not require Autopilot.
+4. Run the worker: `npm run applypass:worker` with `APPLYPASS_AUTO_SUBMIT=true` only when you intend real submits.
+
+Job matches come from an hourly career-page scan of Greenhouse, Ashby, and Lever. This is not a 50k-watcher aggregator.
+
+### Edge functions
+
+- `POST ats-detect` `{ url }` → `{ ats, detected, submittable, mode, reason }`
+- `POST apply-engine-enqueue` `{ evaluation_ids?, apply_url?, intent: "user_selected" \| "hands_off" }` — fans out independent `applypass_tasks` (`task_type: apply_engine`)
+- `applypass-agent-queue` `ensure-packet` — tailor + PDF in the worker, skip browser when the ATS is not live
+
+### Credits and rate limits
+
+1 successful portal submit = **1 credit**. Failed system-side submits do not consume credit. Stripe promotion codes (including 50% influencer codes) discount the invoice, not the monthly bucket.
+
+| Plan | Price | Credits / month | Live submits / day | In-flight | Hands-off |
+| --- | --- | --- | --- | --- | --- |
+| Free | $0 | 0 | 0 | 0 | no |
+| Starter | $19 | 30 | 10 | 8 | no |
+| Pro | $39 | 80 | 20 | 12 | no |
+| Autopilot | $99 | 250 | 40 | 16 | yes |
+
+These are not 500–600 applies/day. Live jobs occupy a reserved credit slot until they terminate without a receipt so you cannot queue 60 live jobs on 5 credits. Unsupported ATS still enqueue as Needs you and do not occupy credits.
+
+Apply selected on 60 jobs enqueues 60 independent `applypass_tasks` immediately (batch cap 60). Worker default concurrency is 16 (max 20 per process). DB claim caps: 12 running / user, 120 global, 8 live jobs / ATS / user / hour. Operators override via `apply_engine_limits`. Idempotency key `ae1:{evaluation_id}` among pending/running rows; retries after fail are allowed; a submitted receipt refuses a second submit.
+
+Ledger: `apply_credit_ledger`. Snapshot RPC: `get_apply_credit_snapshot`. Consume on receipt only (`consume_apply_credit`).
 
 ## Tech stack
 

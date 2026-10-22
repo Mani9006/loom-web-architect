@@ -7,12 +7,13 @@ import { greenhouseAdapter } from "./greenhouse.mjs";
 import { leverAdapter } from "./lever.mjs";
 import { ashbyAdapter } from "./ashby.mjs";
 import { workableAdapter } from "./workable.mjs";
+import { workdayAdapter } from "./workday.mjs";
 import { genericAdapter } from "./generic.mjs";
 
-export { greenhouseAdapter, leverAdapter, ashbyAdapter, workableAdapter, genericAdapter };
+export { greenhouseAdapter, leverAdapter, ashbyAdapter, workableAdapter, workdayAdapter, genericAdapter };
 export { defineAdapter, submitRefusal } from "./contract.mjs";
 
-export const adapters = [greenhouseAdapter, leverAdapter, ashbyAdapter, workableAdapter, genericAdapter];
+export const adapters = [greenhouseAdapter, leverAdapter, ashbyAdapter, workableAdapter, workdayAdapter, genericAdapter];
 
 /**
  * Pick the first adapter whose detect() matches. `page` may be null (URL-only

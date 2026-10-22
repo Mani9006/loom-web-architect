@@ -4,6 +4,8 @@
 // dependencies so it can be unit-tested with `node --test` (see
 // adapters.test.mjs). Browser-touching routines live in the adapter modules.
 
+import { detectAts } from "./catalog.mjs";
+
 export function normalizeText(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -111,20 +113,12 @@ export function looksLikeConsentLabel(label) {
 }
 
 /**
- * URL-only ATS classification. Returns "greenhouse", "lever", or null.
- * Kept pure so detect() logic is unit-testable without a browser.
+ * URL-only ATS classification. Returns the catalog slug or null.
+ * Detection is not a submit capability. Kept pure for unit tests.
  */
 export function detectAtsFromUrl(url) {
-  let parsed;
-  try {
-    parsed = new URL(String(url || ""));
-  } catch {
-    return null;
-  }
-  const host = parsed.hostname.toLowerCase();
-  if (host === "greenhouse.io" || host.endsWith(".greenhouse.io")) return "greenhouse";
-  if (host === "lever.co" || host.endsWith(".lever.co")) return "lever";
-  return null;
+  const detection = detectAts(url);
+  return detection.ats || null;
 }
 
 /**

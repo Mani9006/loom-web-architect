@@ -48,7 +48,16 @@ export const COUNTRIES = [
 ];
 
 export const YEARS_EXPERIENCE_OPTIONS = ["0-1", "1-3", "3-5", "5-8", "8+"];
-export const WORK_AUTHORIZATION_OPTIONS = ["US Citizen", "Green Card", "EAD", "Need sponsorship"];
+export const WORK_AUTHORIZATION_OPTIONS = [
+  "US citizen",
+  "Permanent resident (Green Card)",
+  "F-1",
+  "OPT",
+  "H-1B",
+  "EAD",
+  "Need sponsorship",
+  "Other",
+];
 
 export const EEO_OPTIONS: Record<keyof EeoAnswers, string[]> = {
   gender: ["Male", "Female", "Non-binary", DECLINE],
@@ -234,7 +243,9 @@ export function formFromApplypass(applypass: UnknownRecord): ApplicationProfileF
   base.currentCompany = text(stored.currentCompany);
   base.currentTitle = text(stored.currentTitle);
   base.yearsExperience = YEARS_EXPERIENCE_OPTIONS.includes(text(stored.yearsExperience)) ? text(stored.yearsExperience) : "";
-  base.workAuthorization = WORK_AUTHORIZATION_OPTIONS.includes(text(stored.workAuthorization)) ? text(stored.workAuthorization) : "";
+  const storedAuth = text(stored.workAuthorization);
+  const authAlias = storedAuth.toLowerCase() === "us citizen" ? "US citizen" : storedAuth;
+  base.workAuthorization = WORK_AUTHORIZATION_OPTIONS.includes(authAlias) ? authAlias : "";
   if (typeof stored.requiresSponsorship === "boolean") base.requiresSponsorship = stored.requiresSponsorship ? "yes" : "no";
   base.expectedSalary = text(stored.expectedSalary);
   base.discoverySource = text(stored.discoverySource) || "Job board";

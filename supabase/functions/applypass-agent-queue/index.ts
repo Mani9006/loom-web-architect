@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { detectAtsFromUrl } from "../_shared/ats-detect.ts";
 import {
   enforceAutoApplyEntitlement,
   enforceMonthlyAutoApplyExecutionCap,
@@ -18,6 +19,7 @@ type QueueAction =
   | "heartbeat"
   | "authorization-status"
   | "verification-code"
+  | "ensure-packet"
   | "complete"
   | "fail";
 
@@ -134,7 +136,7 @@ async function syncCareerDraft(
   result: unknown,
   errorMessage?: string,
 ) {
-  if (!taskContext || taskContext.task_type !== "career_ops_submit") return;
+  if (!taskContext || (taskContext.task_type !== "career_ops_submit" && taskContext.task_type !== "apply_engine")) return;
   const payload = asRecord(taskContext.payload);
   const draftId = typeof payload.draft_application_id === "string" ? payload.draft_application_id : "";
   const trackedJobId = typeof payload.tracked_job_id === "string" ? payload.tracked_job_id : "";
@@ -151,6 +153,68 @@ async function syncCareerDraft(
     .eq("user_id", userId)
     .maybeSingle();
   const previousStatus = asString(existingDraft?.status);
+
+  const taskId = asString(taskContext.id) || null;
+
+  const persistReceipt = async (input: {
+    submitted: boolean;
+    firstJob?: Record<string, unknown>;
+    errorMessage?: string;
+    refundIfConsumed?: boolean;
+  }) => {
+    const firstJob = input.firstJob || {};
+    const { data: inserted, error: receiptError } = await serviceClient.from("application_receipts").insert({
+      user_id: userId,
+      draft_application_id: draftId,
+      applypass_task_id: taskId,
+      ats: asString(payload.detected_ats) || asString(payload.portal) || null,
+      submitted: input.submitted === true,
+      fields: {
+        filledCount: firstJob.filledCount ?? null,
+        totalFields: firstJob.totalFields ?? null,
+        requiredMissing: firstJob.requiredMissing ?? [],
+        answers: payload.answers ?? payload.answerMemory ?? {},
+      },
+      evidence: {
+        adapter: firstJob.adapter ?? null,
+        status: firstJob.status ?? null,
+        receipt: firstJob.receipt ?? null,
+        handoffReason: firstJob.handoffReason ?? null,
+        error: firstJob.error ?? input.errorMessage ?? null,
+        durationMs: firstJob.durationMs ?? null,
+      },
+    }).select("id").maybeSingle();
+
+    let receiptId = asString(inserted?.id);
+    if ((!receiptId || receiptError) && taskId) {
+      const { data: existing } = await serviceClient
+        .from("application_receipts")
+        .select("id")
+        .eq("applypass_task_id", taskId)
+        .maybeSingle();
+      receiptId = asString(existing?.id);
+    }
+
+    if (input.submitted && receiptId && taskId) {
+      const { error: consumeError } = await serviceClient.rpc("consume_apply_credit", {
+        p_user_id: userId,
+        p_task_id: taskId,
+        p_draft_id: draftId,
+        p_receipt_id: receiptId,
+      });
+      if (consumeError) {
+        console.error("[applypass-agent-queue] consume_apply_credit failed:", consumeError.message);
+      }
+    } else if (input.refundIfConsumed && taskId) {
+      // No-op unless a prior attempt already consumed. System-side failures
+      // must not leave the user charged.
+      await serviceClient.rpc("refund_apply_credit", {
+        p_user_id: userId,
+        p_task_id: taskId,
+        p_reason: "system_failure",
+      });
+    }
+  };
 
   if (outcome === "fail") {
     // Supabase query errors resolve on `error`, they don't throw — capture and
@@ -169,6 +233,7 @@ async function syncCareerDraft(
         errorMessage: errorMessage || "Worker execution failed",
       });
     }
+    await persistReceipt({ submitted: false, errorMessage, refundIfConsumed: true });
     return;
   }
 
@@ -185,6 +250,20 @@ async function syncCareerDraft(
     error_message: submitted ? null : typeof firstIssue === "string" ? firstIssue.slice(0, 1500) : null,
   }).eq("id", draftId).eq("user_id", userId);
   if (draftSyncError) console.error("[applypass-agent-queue] draft_applications complete-sync failed:", draftSyncError.message);
+
+  if (submitted) {
+    const title = asString(payload.job_title) || "Application";
+    const company = asString(payload.company_name) || "";
+    const url = asString(payload.apply_url) || null;
+    if (url) {
+      const { data: existingCard } = await serviceClient.from("tracked_jobs").select("id").eq("user_id", userId).eq("url", url).maybeSingle();
+      if (existingCard?.id) {
+        await serviceClient.from("tracked_jobs").update({ status: "Applied", updated_at: new Date().toISOString() }).eq("id", existingCard.id);
+      } else {
+        await serviceClient.from("tracked_jobs").insert({ user_id: userId, title, company, status: "Applied", url });
+      }
+    }
+  }
 
   if (submitted && trackedJobId) {
     await serviceClient.from("mc_tracked_jobs").update({
@@ -205,6 +284,13 @@ async function syncCareerDraft(
       submittedAt: submittedAt || new Date().toISOString(),
     });
   }
+
+  const firstJob = jobs.length > 0 ? asRecord(jobs[0]) : {};
+  await persistReceipt({
+    submitted,
+    firstJob,
+    errorMessage: typeof firstIssue === "string" ? firstIssue : errorMessage,
+  });
 }
 
 serve(async (req: Request) => {
@@ -216,7 +302,7 @@ serve(async (req: Request) => {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const action = String(body?.action || "enqueue") as QueueAction;
 
-    const workerActions = new Set<QueueAction>(["claim-next", "heartbeat", "authorization-status", "verification-code", "complete", "fail"]);
+    const workerActions = new Set<QueueAction>(["claim-next", "heartbeat", "authorization-status", "verification-code", "ensure-packet", "complete", "fail"]);
     if (workerActions.has(action)) {
       if (!workerAuthorized(req, body)) {
         return jsonResponse({ error: "Unauthorized worker action." }, 401);
@@ -246,7 +332,7 @@ serve(async (req: Request) => {
       if (action === "authorization-status") {
         const { data: task } = await serviceClient
           .from("applypass_tasks")
-          .select("id,user_id,status,task_type")
+          .select("id,user_id,status,task_type,payload")
           .eq("id", taskId)
           .maybeSingle();
         if (!task) return jsonResponse({ ok: true, authorized: false, reason: "task_not_active" });
@@ -256,18 +342,119 @@ serve(async (req: Request) => {
           .select("agent_enabled,auto_apply_enabled,review_mode")
           .eq("user_id", task.user_id)
           .maybeSingle();
-        const continuousTask = task.task_type === "career_ops_submit";
+        const payload = asRecord(task.payload);
+        const intent = asString(payload.intent);
+        const engineTask = task.task_type === "apply_engine";
+        const continuousTask = task.task_type === "career_ops_submit" || (engineTask && intent === "hands_off");
         const authorized = task.status === "running" && (
-          !continuousTask || (
-            prefs?.agent_enabled === true
-            && prefs?.auto_apply_enabled === true
-            && prefs?.review_mode === "eligible_only"
-          )
+          engineTask && intent === "user_selected"
+            ? true
+            : !continuousTask || (
+              prefs?.agent_enabled === true
+              && prefs?.auto_apply_enabled === true
+              && prefs?.review_mode === "eligible_only"
+            )
         );
         return jsonResponse({
           ok: true,
           authorized,
           reason: authorized ? "authorized" : task.status !== "running" ? "task_stopped" : "agent_stopped",
+        });
+      }
+
+      if (action === "ensure-packet") {
+        const { data: task } = await serviceClient
+          .from("applypass_tasks")
+          .select("id,user_id,status,task_type,payload")
+          .eq("id", taskId)
+          .maybeSingle();
+        if (!task || !["pending", "running"].includes(String(task.status))) {
+          return jsonResponse({ error: "Active task not found" }, 404);
+        }
+        const payload = asRecord(task.payload);
+        const evaluationId = asString(payload.evaluation_id);
+        const draftId = asString(payload.draft_application_id);
+        const applyUrl = asString(payload.apply_url);
+        const detection = detectAtsFromUrl(applyUrl);
+        const userId = asString(task.user_id);
+
+        if (evaluationId) {
+          try {
+            const tailorResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/career-ops-tailor`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SERVICE_ROLE_KEY")}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ user_id: userId, evaluation_id: evaluationId }),
+            });
+            const tailorBody = await tailorResponse.json().catch(() => ({}));
+            const draft = asRecord(asRecord(tailorBody).draft);
+            if (tailorResponse.ok && asString(draft.id)) {
+              payload.draft_application_id = asString(draft.id);
+              payload.resumeId = asString(draft.tailored_resume_id) || payload.resumeId;
+              payload.tailoredResumeMarkdown = draft.tailored_cv_md ?? payload.tailoredResumeMarkdown;
+              payload.answers = draft.answers ?? payload.answers;
+            }
+          } catch (error) {
+            console.error("[applypass-agent-queue] ensure-packet tailor", error);
+          }
+        }
+
+        const { data: profile } = await serviceClient.from("profiles")
+          .select("email,full_name,job_preferences")
+          .eq("user_id", userId)
+          .maybeSingle();
+        const applypass = asRecord(asRecord(profile?.job_preferences).applypass);
+        const storedProfile = asRecord(applypass.profile);
+        payload.candidateProfile = {
+          fullName: asString(storedProfile.fullName) || asString(profile?.full_name),
+          email: asString(storedProfile.email) || asString(profile?.email),
+          phone: asString(storedProfile.phone),
+          location: asString(storedProfile.location),
+          linkedinUrl: asString(storedProfile.linkedinUrl),
+          portfolioUrl: asString(storedProfile.portfolioUrl),
+          workAuthorization: asString(storedProfile.workAuthorization),
+        };
+        payload.detected_ats = detection.ats;
+        payload.submittable = detection.submittable;
+        payload.portal = detection.ats;
+
+        const resolvedDraftId = asString(payload.draft_application_id) || draftId;
+        if (asString(payload.resumeId)) {
+          try {
+            const renderResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/mc-render-resume`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SERVICE_ROLE_KEY")}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ resume_id: payload.resumeId, format: "pdf", user_id: userId }),
+            });
+            const renderBody = await renderResponse.json().catch(() => ({}));
+            if (renderResponse.ok && asString(asRecord(renderBody).url)) {
+              payload.resumeFileUrl = asString(asRecord(renderBody).url);
+            }
+          } catch (error) {
+            console.error("[applypass-agent-queue] ensure-packet render", error);
+          }
+        }
+
+        await serviceClient.from("applypass_tasks").update({ payload }).eq("id", taskId);
+        if (resolvedDraftId) {
+          await serviceClient.from("draft_applications").update({
+            detected_ats: detection.ats,
+            ats_submittable: detection.submittable,
+            error_message: detection.submittable ? null : detection.reason,
+          }).eq("id", resolvedDraftId).eq("user_id", userId);
+        }
+
+        return jsonResponse({
+          ok: true,
+          payload,
+          skipBrowser: !detection.submittable,
+          handoffReason: detection.submittable ? null : (detection.mode === "account_required" ? "account_required" : "unsupported_ats"),
+          reason: detection.reason,
         });
       }
 
@@ -384,7 +571,7 @@ serve(async (req: Request) => {
       if (action === "complete") {
         const { data: taskContext } = await serviceClient
           .from("applypass_tasks")
-          .select("task_type,payload,user_id")
+          .select("id,task_type,payload,user_id")
           .eq("id", taskId)
           .maybeSingle();
         const { data, error } = await serviceClient

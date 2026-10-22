@@ -9,6 +9,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { chromium } from "patchright";
 import { pickAdapter } from "./ats-adapters/index.mjs";
 import { detectPostingExpired } from "./ats-adapters/generic.mjs";
+import { detectAts } from "./ats-adapters/catalog.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY
@@ -19,7 +20,9 @@ const WORKER_TOKEN = process.env.APPLYPASS_WORKER_TOKEN || process.env.WORKER_AU
 const WORKER_ID = process.env.APPLYPASS_WORKER_ID || `applypass-worker-${os.hostname()}`;
 const POLL_MS = Number(process.env.APPLYPASS_WORKER_POLL_MS || 5000);
 const IDLE_EXIT_MS = Number(process.env.APPLYPASS_IDLE_EXIT_MS || 120000);
-const CONFIGURED_CONCURRENCY = Math.min(12, Math.max(1, Number(process.env.APPLYPASS_WORKER_CONCURRENCY || 4)));
+// Process slots on this worker. Per-user and global running caps live in
+// apply_engine_limits (defaults 12 / user, 120 global) via claim_applypass_task.
+const CONFIGURED_CONCURRENCY = Math.min(20, Math.max(1, Number(process.env.APPLYPASS_WORKER_CONCURRENCY || 16)));
 const AUTO_SUBMIT = String(process.env.APPLYPASS_AUTO_SUBMIT || "false").toLowerCase() === "true";
 const SCREENSHOT_DIR = process.env.APPLYPASS_SCREENSHOT_DIR || "";
 
@@ -121,6 +124,10 @@ async function queueCall(payload, workerId = WORKER_ID) {
 async function claimNextTask(workerId) {
   const payload = await queueCall({ action: "claim-next", workerId }, workerId);
   return payload?.task || null;
+}
+
+async function ensurePacket(taskId, workerId) {
+  return await queueCall({ action: "ensure-packet", taskId, workerId }, workerId);
 }
 
 async function heartbeat(taskId, log, workerId) {
@@ -298,6 +305,16 @@ async function processJob(browser, taskId, job, payload, resumeFilePath, workerI
 // returned normally and are never retried.
 async function runJobAttempt(page, result, job, taskId, payload, resumeFilePath, workerId, startedAt) {
   const url = result.url;
+  const detection = detectAts(url);
+  result.adapter = detection.ats || "unknown";
+  if (!detection.submittable) {
+    result.status = "needs_review";
+    result.handoffReason = detection.mode === "account_required" ? "account_required" : "unsupported_ats";
+    result.error = detection.reason || "This ATS cannot be submitted automatically. Your tailored packet is ready.";
+    result.durationMs = Date.now() - startedAt;
+    return result;
+  }
+
   const navResponse = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForTimeout(1200);
 
@@ -474,6 +491,40 @@ async function processTask(task, workerId) {
   const started = nowIso();
   const jobResults = [];
   let resumeFile = { directory: null, filePath: null };
+
+  if (payload?.engine === "apply_engine") {
+    try {
+      const prepared = await ensurePacket(taskId, workerId);
+      if (prepared?.payload && typeof prepared.payload === "object") {
+        Object.assign(payload, prepared.payload);
+        task.payload = payload;
+      }
+      if (prepared?.skipBrowser) {
+        const job = Array.isArray(payload.jobs) ? payload.jobs[0] || {} : {};
+        await completeTask(taskId, {
+          jobs: [{
+            jobId: String(job.id || ""),
+            title: String(job.title || payload.job_title || ""),
+            company: String(job.company || payload.company_name || ""),
+            url: String(job.url || payload.apply_url || ""),
+            status: "needs_review",
+            submitted: false,
+            adapter: prepared.payload?.detected_ats || null,
+            handoffReason: prepared.handoffReason || "unsupported_ats",
+            error: prepared.reason || "This ATS cannot be submitted automatically. Your tailored packet is ready.",
+          }],
+        }, {
+          level: "info",
+          workerId,
+          at: nowIso(),
+          message: prepared.reason || "Packet ready; ATS is not live-submittable",
+        }, workerId);
+        return;
+      }
+    } catch (error) {
+      console.warn(`[ApplyPass Worker] ensure-packet failed for ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
   // Heartbeat is only accepted while the task is still 'running'. When the
   // queue reaper (or a cancel) moves the task on, the next heartbeat is

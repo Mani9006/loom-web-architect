@@ -17,9 +17,7 @@ import { captureIncident } from "@/lib/incidents";
 import { toUserFacingError, withSupportReference } from "@/lib/user-facing-error";
 import { PageHeader } from "@/components/PageHeader";
 
-const URBAN = { fontFamily: '"Urbanist", "Manrope", system-ui, sans-serif' } as const;
-const EPI = { fontFamily: '"Epilogue", "Inter", system-ui, sans-serif' } as const;
-const MONO = { fontFamily: '"JetBrains Mono", ui-monospace, monospace' } as const;
+const MONO = { fontFamily: "var(--font-mono)" } as const;
 
 export default function PricingPage() {
   const { user } = useAuth();
@@ -70,14 +68,14 @@ export default function PricingPage() {
     <div className="min-h-full bg-rp-canvas text-rp-ink">
       <div className="max-w-[1280px] mx-auto px-8 lg:px-12 pt-12 pb-24">
         <PageHeader
-          title="Choose your edition."
-          status="pricing · three tiers"
-          description="Choose how much of the job search you want ResumePreps to run for you. Cancel any time."
+          title="Billing"
+          status="credits · stripe"
+          description="1 successful portal submit = 1 credit. System-side failures do not consume credit. Promo codes discount the invoice, not the bucket."
         />
 
         {/* Three-column ledger, separated by hairline rules */}
         <section className="mt-4 border-y border-rp-rule">
-          <div className="grid grid-cols-1 lg:grid-cols-3 lg:divide-x lg:divide-rp-rule">
+          <div className="grid grid-cols-1 lg:grid-cols-4 lg:divide-x lg:divide-rp-rule">
             {BILLING_PLANS.map((plan, i) => {
               const isFeatured = plan.popular;
               const isCurrent = currentPlan === plan.id;
@@ -109,14 +107,14 @@ export default function PricingPage() {
                         className={cn(
                           isFeatured ? "text-rp-accent" : "text-rp-ink-3",
                         )}
-                        style={{ ...URBAN, fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+                        style={{ fontFamily: "var(--font-mono)", fontSize: "10.5px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
                       >
                         {isFeatured ? "Featured tier" : plan.id === "free" ? "Get started" : "Full autonomy"}
                       </span>
                     </div>
                     <h2
                       className="text-rp-ink"
-                      style={{ ...URBAN, fontSize: "38px", lineHeight: 1.05, letterSpacing: "-0.02em", fontWeight: 400 }}
+                      style={{ fontFamily: "var(--font-display)", fontSize: "38px", lineHeight: 1.05, letterSpacing: "-0.02em", fontWeight: 500, fontStyle: "italic" }}
                     >
                       {plan.name}
                     </h2>
@@ -124,13 +122,13 @@ export default function PricingPage() {
                     <div className="mt-6 flex items-baseline gap-2">
                       <span
                         className={cn("tabular-nums", isFeatured ? "text-rp-accent-2" : "text-rp-ink")}
-                        style={{ ...URBAN, fontSize: "56px", lineHeight: 1, letterSpacing: "-0.03em", fontWeight: 200 }}
+                        style={{ fontFamily: "var(--font-display)", fontSize: "56px", lineHeight: 1, letterSpacing: "-0.03em", fontWeight: 500, fontStyle: "italic" }}
                       >
                         {formatPlanPrice(plan.price)}
                       </span>
                       <span
                         className="text-rp-ink-3"
-                        style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}
+                        style={{ fontSize: "13px", fontWeight: 400 }}
                       >
                         {plan.period}
                       </span>
@@ -138,7 +136,7 @@ export default function PricingPage() {
 
                     <p
                       className="text-rp-ink-2 mt-4 max-w-sm leading-relaxed"
-                      style={{ ...EPI, fontSize: "14px", fontWeight: 300 }}
+                      style={{ fontSize: "14px", fontWeight: 400 }}
                     >
                       {plan.description}
                     </p>
@@ -155,7 +153,7 @@ export default function PricingPage() {
                         />
                         <span
                           className="text-rp-ink-2"
-                          style={{ ...EPI, fontSize: "13.5px", lineHeight: 1.55, fontWeight: 300 }}
+                          style={{ fontSize: "13.5px", lineHeight: 1.55, fontWeight: 400 }}
                         >
                           {feature}
                         </span>
@@ -173,7 +171,7 @@ export default function PricingPage() {
                         : "border-rp-rule-2 text-rp-ink hover:border-rp-accent hover:text-rp-accent",
                       (isCurrent || plan.id === "free") && "opacity-60 cursor-not-allowed",
                     )}
-                    style={{ ...URBAN, fontSize: "11.5px", fontWeight: 600, letterSpacing: "0.22em", textTransform: "uppercase" }}
+                    style={{ fontFamily: "var(--font-mono)", fontSize: "11.5px", fontWeight: 600, letterSpacing: "0.22em", textTransform: "uppercase" }}
                   >
                     <span className="inline-flex items-center gap-2">
                       {loadingPlan === plan.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -190,14 +188,13 @@ export default function PricingPage() {
         </section>
 
         <footer className="mt-12 flex flex-wrap items-baseline justify-between gap-6 border-t border-rp-rule pt-6">
-          <p className="text-rp-ink-3 max-w-2xl leading-relaxed" style={{ ...EPI, fontSize: "13px", fontWeight: 300 }}>
-            Monthly limits are deliberate. They exist so every application stays worth reading, and so you never see a
-            surprise usage charge at the end of the month.
+          <p className="text-rp-ink-3 max-w-2xl leading-relaxed" style={{ fontSize: "13px", fontWeight: 400 }}>
+            Monthly limits are credit buckets, not marketing volume. Starter is $19 / 30 credits / 10 live submits a day — not 500–600 applies/day. A 50% Stripe promo still deducts one credit per successful submit.
           </p>
           <a
             href="mailto:support@resumepreps.com"
             className="text-rp-ink-2 hover:text-rp-accent transition-colors inline-flex items-center gap-2"
-            style={{ ...URBAN, fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
+            style={{ fontFamily: "var(--font-mono)", fontSize: "11px", letterSpacing: "0.22em", textTransform: "uppercase", fontWeight: 600 }}
           >
             Talk to us
             <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.75} />

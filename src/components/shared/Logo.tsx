@@ -4,40 +4,37 @@ interface LogoProps {
   size?: "sm" | "md" | "lg" | "xl";
   className?: string;
   dark?: boolean;
-  /** When true, renders just the circled R mark without wordmark. */
   markOnly?: boolean;
 }
 
 const sizes = {
-  sm: { mark: "w-7 h-7", text: "text-sm" },
-  md: { mark: "w-8 h-8", text: "text-[15px]" },
-  lg: { mark: "w-10 h-10", text: "text-lg" },
-  xl: { mark: "w-14 h-14", text: "text-2xl" },
+  sm: { mark: "h-7 w-7 text-[11px]", text: "text-[15px]" },
+  md: { mark: "h-8 w-8 text-[12px]", text: "text-[17px]" },
+  lg: { mark: "h-10 w-10 text-[14px]", text: "text-[20px]" },
+  xl: { mark: "h-14 w-14 text-[18px]", text: "text-[28px]" },
 };
 
 export function LogoIcon({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "rounded-full flex items-center justify-center font-semibold select-none",
-        "bg-foreground text-background",
+        "flex items-center justify-center rounded-md bg-primary text-primary-foreground font-display font-semibold select-none",
         className,
       )}
       aria-hidden="true"
     >
-      <span className="leading-none" style={{ fontSize: "0.56em", letterSpacing: "-0.03em" }}>R</span>
+      <span className="leading-none">rp</span>
     </div>
   );
 }
 
-export default function Logo({ size = "md", className, dark, markOnly }: LogoProps) {
+export default function Logo({ size = "md", className, markOnly }: LogoProps) {
   const s = sizes[size];
-  const textCls = dark ? "text-sidebar-accent-foreground" : "text-foreground";
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
       <LogoIcon className={s.mark} />
       {!markOnly && (
-        <span className={cn(s.text, "font-medium tracking-tight", textCls)}>
+        <span className={cn(s.text, "font-display font-semibold tracking-tight text-rp-ink")}>
           ResumePreps
         </span>
       )}

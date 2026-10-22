@@ -33,10 +33,15 @@ get portal-level reliability):
 - `lever.mjs` — `jobs.lever.co` postings (`/apply` form, `name`/`email`/
   `phone`/`org`/`urls[...]` fields, custom cards, `/thanks` or
   `.confirmation` receipt detection).
-- `generic.mjs` — the original generic autofill/submit-detection behavior,
-  unchanged, used for every unknown ATS.
-- `index.mjs` — `pickAdapter(url, page)` tries Greenhouse, then Lever, then
-  falls back to generic. Next per the capability matrix: Ashby.
+- `ashby.mjs` — Ashby job boards (`jobs.ashbyhq.com`).
+- `workable.mjs` — Workable apply forms (`apply.workable.com`).
+- `workday.mjs` — Workday career sites (`*.myworkdayjobs.com`). Multi-page,
+  best-effort. Login/SSO/CAPTCHA → Needs you. Never reports submitted without
+  a portal receipt.
+- `generic.mjs` — last-resort fill for unrecognized hosts. The apply engine
+  refuses to submit when the catalog says the ATS is not live.
+- `catalog.mjs` — URL detector used by the worker. Detection ≠ submit.
+- `index.mjs` — `pickAdapter(url, page)` tries live adapters, then generic.
 
 Adapter policies (enforced in code, see `scripts/ats-adapters/adapters.test.mjs`):
 
@@ -68,7 +73,7 @@ node --test scripts/ats-adapters/adapters.test.mjs
 
 ## Optional environment variables
 - `APPLYPASS_WORKER_ID` (default: `applypass-worker-<hostname>`)
-- `APPLYPASS_WORKER_CONCURRENCY` (default: `4`, maximum: `12`)
+- `APPLYPASS_WORKER_CONCURRENCY` (default: `16`, maximum: `20`)
 - `APPLYPASS_WORKER_POLL_MS` (default: `5000`)
 - `APPLYPASS_AUTO_SUBMIT` (`true` or `false`, default `false`)
 - `APPLYPASS_SCREENSHOT_DIR` (save screenshots for each processed job)

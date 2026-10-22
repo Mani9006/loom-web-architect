@@ -32,6 +32,7 @@ import {
   enforceMonthlyAutoApplyExecutionCap,
   getAuthedUserOrService,
 } from "../_shared/guards.ts";
+import { detectAtsFromUrl } from "../_shared/ats-detect.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -329,8 +330,9 @@ async function enqueueSubmit(userId: string, draftId: string) {
   const job = (draft as any).evaluation?.scanned_job;
   const company = job?.company;
   if (!job || !company) throw new Error("associated job missing");
-  const portal = asString(company.api_type).toLowerCase();
-  const supportedPortals = new Set(["greenhouse", "ashby", "lever", "workable"]);
+  const portal = detectAtsFromUrl(asString(job.apply_url)).ats
+    || asString(company.api_type).toLowerCase();
+  const supportedPortals = new Set(["greenhouse", "ashby", "lever", "workable", "workday"]);
   if (!supportedPortals.has(portal)) {
     const e = new Error("This employer portal still needs review before submission.");
     (e as any).status = 422; throw e;

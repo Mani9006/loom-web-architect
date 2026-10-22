@@ -19,7 +19,7 @@ function fullForm(): ApplicationProfileForm {
   form.currentCompany = "Acme Corp";
   form.currentTitle = "Senior Analyst";
   form.yearsExperience = "3-5";
-  form.workAuthorization = "US Citizen";
+  form.workAuthorization = "US citizen";
   form.requiresSponsorship = "no";
   form.expectedSalary = "$140,000";
   form.discoverySource = "Job board";
@@ -108,7 +108,7 @@ describe("buildApplypassPayload", () => {
     expect(profile.yearsExperience).toBe("3-5");
     expect(profile.linkedinUrl).toBe("https://www.linkedin.com/in/jane");
     expect(profile.expectedSalary).toBe("$140,000");
-    expect(profile.workAuthorization).toBe("US Citizen");
+    expect(profile.workAuthorization).toBe("US citizen");
     expect(profile.requiresSponsorship).toBe(false);
     expect(profile.discoverySource).toBe("Job board");
   });
@@ -121,7 +121,7 @@ describe("buildApplypassPayload", () => {
     expect(eeo.gender).toBe("Decline to self identify");
     expect(eeo.ethnicity).toBe("Decline to self identify");
     const screening = payload.screening as Record<string, unknown>;
-    expect(screening.workAuthorization).toBe("US Citizen");
+    expect(screening.workAuthorization).toBe("US citizen");
     expect(screening.requiresSponsorship).toBe(false);
     expect(screening.updatedAt).toBe("2026-07-21T00:00:00.000Z");
   });
@@ -144,7 +144,7 @@ describe("formFromApplypass round-trip", () => {
     expect(restored.city).toBe("Austin");
     expect(restored.country).toBe("United States");
     expect(restored.requiresSponsorship).toBe("no");
-    expect(restored.workAuthorization).toBe("US Citizen");
+    expect(restored.workAuthorization).toBe("US citizen");
     expect(restored.privacyConsent).toBe(true);
     expect(restored.eeo.gender).toBe("Female");
     expect(computeCompleteness(restored).percent).toBe(100);

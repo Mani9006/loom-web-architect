@@ -3,19 +3,23 @@
  * (draft_applications + applypass_tasks) to the board's display taxonomy.
  *
  * Display taxonomy (owner-specified):
- *   Queued · Tailoring · Applying · Submitted · Needs you (reason) ·
+ *   Queued · Tailoring · Sending · Submitted · Needs you (reason) ·
  *   Couldn't apply (reason) · Job expired · Failed · Skipped
  *
- * Board tabs: All / In flight / Needs you / Failed / Skipped.
- *   - In flight  = the live pipeline: Tailoring, Queued, Applying, Submitted
- *     (Submitted stays here because the application is out with the employer
- *     awaiting their decision, the flight is not over until they respond.)
- *   - Needs you  = blocked on the user (review, employer verification, fix)
- *   - Failed     = did not go through (Couldn't apply, Job expired, Failed)
- *   - Skipped    = deliberately held back (Skipped)
+ * Board tabs: All / Submitted / In flight / Needs you / Failed / Skipped /
+ *   Review required / Queued / Job expired.
  */
 
-export type BoardTab = "all" | "in_flight" | "needs_you" | "failed" | "skipped";
+export type BoardTab =
+  | "all"
+  | "submitted"
+  | "in_flight"
+  | "needs_you"
+  | "failed"
+  | "skipped"
+  | "review_required"
+  | "queued"
+  | "expired";
 
 export type BoardStatusKey =
   | "queued"
@@ -77,7 +81,7 @@ export interface BoardRow {
 const STATUS_LABELS: Record<BoardStatusKey, string> = {
   queued: "Queued",
   tailoring: "Tailoring",
-  applying: "Applying",
+  applying: "Sending",
   submitted: "Submitted",
   needs_you: "Needs you",
   cant_apply: "Couldn't apply",
@@ -152,13 +156,13 @@ export function deriveBoardStatus(draft: BoardDraft, task: BoardTask | null | un
 
     case "queued": {
       if (task?.status === "running") {
-        return makeStatus("applying", "We're on the employer's form right now.", "in_flight");
+        return makeStatus("applying", "Cloud worker is on the employer's form.", "in_flight");
       }
       return makeStatus("queued", "In line, submission starts shortly.", "in_flight");
     }
 
     case "submitted":
-      return makeStatus("submitted", "Receipt confirmed by the employer.", "in_flight");
+      return makeStatus("submitted", "Receipt confirmed by the employer.", "submitted");
 
     case "skipped": {
       if (isExpired(reason, job)) {
@@ -244,13 +248,37 @@ export function toBoardRow(draft: BoardDraft, taskById: Map<string, BoardTask>):
 
 export function rowMatchesTab(row: BoardRow, tab: BoardTab): boolean {
   if (tab === "all") return true;
+  if (tab === "submitted") return row.status.key === "submitted";
+  if (tab === "in_flight") return ["queued", "tailoring", "applying"].includes(row.status.key);
+  if (tab === "queued") return row.status.key === "queued";
+  if (tab === "expired") return row.status.key === "expired";
+  if (tab === "review_required") {
+    return row.status.key === "needs_you" && /review your tailored application/i.test(row.status.detail);
+  }
   return row.status.tab === tab;
 }
 
 export function tabCounts(rows: BoardRow[]): Record<BoardTab, number> {
-  const counts: Record<BoardTab, number> = { all: rows.length, in_flight: 0, needs_you: 0, failed: 0, skipped: 0 };
+  const counts: Record<BoardTab, number> = {
+    all: rows.length,
+    submitted: 0,
+    in_flight: 0,
+    needs_you: 0,
+    failed: 0,
+    skipped: 0,
+    review_required: 0,
+    queued: 0,
+    expired: 0,
+  };
   for (const row of rows) {
-    counts[row.status.tab] += 1;
+    if (rowMatchesTab(row, "submitted")) counts.submitted += 1;
+    if (rowMatchesTab(row, "in_flight")) counts.in_flight += 1;
+    if (rowMatchesTab(row, "needs_you")) counts.needs_you += 1;
+    if (rowMatchesTab(row, "failed")) counts.failed += 1;
+    if (rowMatchesTab(row, "skipped")) counts.skipped += 1;
+    if (rowMatchesTab(row, "review_required")) counts.review_required += 1;
+    if (rowMatchesTab(row, "queued")) counts.queued += 1;
+    if (rowMatchesTab(row, "expired")) counts.expired += 1;
   }
   return counts;
 }
