@@ -86,7 +86,10 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function markRead(id: string, isRead: boolean) {
     setMessages((current) => current.map((message) => message.id === id ? { ...message, is_read: isRead } : message));
     const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
-    if (error) await load().catch(() => undefined);
+    if (error) {
+      await load().catch(() => undefined);
+      toast({ title: "Couldn't update message", description: "Try again in a moment.", variant: "destructive" });
+    }
   }
 
   async function markAllRead() {
