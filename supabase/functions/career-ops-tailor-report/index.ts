@@ -20,74 +20,39 @@
  * Returns: { report: TailoringReport }
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { truncate } from "../_shared/ai.ts";
-import { callLlmWithFallback } from "../_shared/llm.ts";
 import {
   corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, serviceClient, HttpError,
 } from "../_shared/guards.ts";
-import { jdHash, readJdKeywordCache, writeJdKeywordCache } from "../_shared/jd-cache.ts";
+import { loadAtsJdKeywords } from "../_shared/jd-cache.ts";
 import { resumeToPlainText, scoreResumeDeterministic } from "../_shared/ats-deterministic.ts";
+import { isApplicationSnapshot, snapshotSourceId } from "../_shared/keyword-aliases.ts";
 import {
   buildTailoringChanges, computeKeywordDelta, TailoringReport,
   TailoringReportRequestError, validateTailorReportRequest,
 } from "../_shared/tailoring-report-core.ts";
 
-// Same extraction contract as career-ops-ats: identical system prompt and
-// "ats-kw" cache scope, so both functions share one cache entry per JD.
-const KW_SYSTEM = `You are an ATS keyword extractor. You get a job description. Return the 15 most important terms a résumé should demonstrate to pass ATS screening AND human review. Mix hard skills, tools, domains, and seniority indicators. Use standard 1-4 word ATS phrases. Split bundled requirements into separate terms instead of returning a long sentence or slash-separated list. No fluff words.
-
-Then propose 5 crisp suggestions to close the gap, prioritised high/medium/low.
-
-Return ONLY JSON:
-{"jd_keywords": string[15], "suggestions": [{"priority":"high"|"medium"|"low","action":"string"}, ...]}`;
-
-interface KeywordPayload {
-  jd_keywords: string[];
-  suggestions?: Array<{ priority: string; action: string }>;
-}
-
 type ServiceClient = ReturnType<typeof serviceClient>;
 
-async function loadJdKeywords(
-  svc: ServiceClient,
-  jdText: string,
-): Promise<{ keywords: string[]; model: string }> {
-  if (jdText.trim().length <= 100) return { keywords: [], model: "no-jd" };
-  const hash = jdHash(jdText, "ats-kw");
-  const cached = await readJdKeywordCache<KeywordPayload>(svc, hash);
-  if (cached && Array.isArray((cached.keywords as KeywordPayload | null)?.jd_keywords)) {
-    return { keywords: cached.keywords.jd_keywords, model: `cache:${cached.model || "unknown"}` };
-  }
-  const result = await callLlmWithFallback<KeywordPayload>({
-    tier: "cheap",
-    system: KW_SYSTEM,
-    user: `Job description:\n${truncate(jdText, 10_000)}`,
-    maxTokens: 600,
-    parseJson: true,
-    temperature: 0.1,
-  });
-  const keywords = Array.isArray(result.text?.jd_keywords) ? result.text.jd_keywords : [];
-  await writeJdKeywordCache(svc, hash, { jd_keywords: keywords, suggestions: result.text?.suggestions ?? [] }, result.model);
-  return { keywords, model: result.model };
-}
-
-// deno-lint-ignore no-explicit-any
-function asRecord(value: unknown): Record<string, any> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-/** Resolve the master resume via the tailored resume's stored lineage, else the user's most recent non-tailored resume. */
+/** Resolve the master resume by walking the tailored resume's stored lineage to the ROOT non-snapshot resume, else the user's most recent non-tailored resume. */
 async function resolveMasterResume(
   svc: ServiceClient,
   userId: string,
   // deno-lint-ignore no-explicit-any
   tailoredResume: any,
 ) {
-  const sourceId = asRecord(asRecord(tailoredResume.personal_info)._v2_extras).source_resume_id;
-  if (typeof sourceId === "string" && sourceId) {
+  // The immediate source_resume_id parent may itself be a previous
+  // application snapshot (tailors used to chain off the latest resume).
+  // ats_before must be measured against the true master, not a snapshot.
+  // deno-lint-ignore no-explicit-any
+  let current: any = tailoredResume;
+  for (let hops = 0; hops < 10; hops++) {
+    const sourceId = snapshotSourceId(current);
+    if (!sourceId) break;
     const { data } = await svc.from("resumes").select("*").eq("id", sourceId).eq("user_id", userId).maybeSingle();
-    if (data) return data;
+    if (!data) break;
+    current = data;
+    if (!isApplicationSnapshot(current)) return current;
   }
   const { data } = await svc.from("resumes").select("*")
     .eq("user_id", userId)
@@ -96,9 +61,7 @@ async function resolveMasterResume(
     .limit(10);
   // Fallback must not pick another application snapshot as "master".
   // deno-lint-ignore no-explicit-any
-  return (data ?? []).find((resume: any) =>
-    !asRecord(asRecord(resume.personal_info)._v2_extras).source_resume_id
-  ) ?? null;
+  return (data ?? []).find((resume: any) => !isApplicationSnapshot(resume)) ?? null;
 }
 
 serve(async (req) => {
@@ -177,7 +140,7 @@ serve(async (req) => {
       return jsonResponse({ report });
     }
 
-    const { keywords: jdKeywords, model } = await loadJdKeywords(svc, jdText);
+    const { keywords: jdKeywords, model } = await loadAtsJdKeywords(svc, jdText);
     const before = scoreResumeDeterministic(masterResume, jdKeywords);
     // The "after" score normally comes from the ats_scores row written when the
     // tailored resume was scored; recompute on the same scale if that row is

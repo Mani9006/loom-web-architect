@@ -25,6 +25,13 @@ import {
   enforceDailyCap,
 } from "../_shared/guards.ts";
 import { chatFree } from "../_shared/llm.ts";
+import { resumeToPlainText } from "../_shared/ats-deterministic.ts";
+import { loadAtsJdKeywords } from "../_shared/jd-cache.ts";
+import {
+  augmentSummaryCoverage,
+  rebuildSkillsForJob,
+  splitKeywordsByEvidence,
+} from "../_shared/keyword-aliases.ts";
 
 interface RequestBody {
   resume?: unknown;
@@ -49,8 +56,18 @@ Deno.serve((req) =>
     if (jd.length < 50) throw new HttpError(400, "job_description must be at least 50 chars");
     if (jd.length > 12_000) throw new HttpError(400, "job_description too long (max 12k chars)");
 
+    // The SAME 15 ATS keywords the deterministic scorer uses (shared cache),
+    // split by what the base résumé honestly evidences.
+    let jdKeywords: string[] = [];
+    try {
+      jdKeywords = (await loadAtsJdKeywords(svc, jd)).keywords;
+    } catch {
+      jdKeywords = [];
+    }
+    const { evidenced, unevidenced } = splitKeywordsByEvidence(jdKeywords, resumeToPlainText(resume));
+
     const system = buildSystemPrompt();
-    const userPrompt = buildUserPrompt(resume, jd);
+    const userPrompt = buildUserPrompt(resume, jd, evidenced, unevidenced);
 
     const { text, tokens_in, tokens_out, model } = await chatFree<Record<string, unknown>>(
       "standard",
@@ -67,6 +84,27 @@ Deno.serve((req) =>
     );
 
     const tailored = sanitizeTailored(text, resume);
+
+    // Deterministic coverage floor (evidence-gated, cannot fabricate):
+    // per-job skills rebuild + one "Core strengths" summary sentence for
+    // evidenced-but-missing JD keywords the model left uncovered.
+    if (jdKeywords.length > 0) {
+      const basePlainText = resumeToPlainText(resume);
+      const rebuilt = rebuildSkillsForJob({
+        sourceSkills: normalizeSkills(resume.skills),
+        llmSkills: normalizeSkills(tailored.skills),
+        jdKeywords,
+        baseResumeText: basePlainText,
+        jdText: jd,
+        currentTailoredText: resumeToPlainText(tailored),
+      });
+      tailored.skills = rebuilt.skills;
+      const coverage = augmentSummaryCoverage(
+        typeof tailored.summary === "string" ? tailored.summary : "",
+        { jdKeywords, baseResumeText: basePlainText, tailoredText: resumeToPlainText(tailored) },
+      );
+      tailored.summary = coverage.summary;
+    }
 
     return jsonResponse({ tailored, model, tokens_in, tokens_out });
   }),
@@ -109,12 +147,17 @@ Return ONLY a JSON object matching the ResumeJSON schema:
 No prose, no markdown fences. Just the JSON object.`;
 }
 
-function buildUserPrompt(resume: Record<string, unknown>, jd: string): string {
+function buildUserPrompt(resume: Record<string, unknown>, jd: string, evidenced: string[] = [], unevidenced: string[] = []): string {
+  const coveragePlan = evidenced.length + unevidenced.length > 0
+    ? `\nJD keyword coverage plan (deterministically evidence-checked against the candidate résumé):\n` +
+      `- EVIDENCED keywords — weave these naturally into the summary, skills, and bullet phrasing using the JD's exact vocabulary (same facts, JD's words): ${evidenced.join(", ") || "none"}.\n` +
+      `- NOT EVIDENCED keywords — never use these anywhere; no honest evidence exists: ${unevidenced.join(", ") || "none"}.\n`
+    : "";
   return `JOB DESCRIPTION:
 """
 ${jd}
 """
-
+${coveragePlan}
 CANDIDATE RESUME (ResumeJSON):
 """
 ${JSON.stringify(resume)}

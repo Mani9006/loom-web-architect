@@ -11,6 +11,14 @@ import { truncate } from "../_shared/ai.ts";
 import { chatFree } from "../_shared/llm.ts";
 import { resumeToPlainText, scoreResumeDeterministic } from "../_shared/ats-deterministic.ts";
 import { criticFeedbackToPrompt, runTailorCritic } from "../_shared/tailor-critic.ts";
+import { loadAtsJdKeywords } from "../_shared/jd-cache.ts";
+import {
+  augmentSummaryCoverage,
+  isApplicationSnapshot,
+  rebuildSkillsForJob,
+  snapshotSourceId,
+  splitKeywordsByEvidence,
+} from "../_shared/keyword-aliases.ts";
 import {
   corsHeaders, jsonResponse, withErrorHandler, getAuthedUserOrService,
   enforceAccountActive, enforceDailyCap, logAiUsage, serviceClient, HttpError,
@@ -339,6 +347,37 @@ function constrainSkills(output: unknown, source: unknown, jobDescription: strin
   return result;
 }
 
+/**
+ * Resolve the TRUE master resume for tailoring. Application snapshots
+ * (previously tailored resumes) are never a valid base: job_evaluations
+ * .resume_id and the "latest resume" fallback can both point at a previous
+ * tailored snapshot, which compounds drift — each tailor's skill subsetting
+ * and summary rewrite erodes the evidence base the sanitizer pins against,
+ * until tailored ≈ master and no lift is possible. Walk the
+ * _v2_extras.source_resume_id chain to the root non-snapshot resume.
+ */
+// deno-lint-ignore no-explicit-any
+async function loadBaseResume(svc: ReturnType<typeof serviceClient>, userId: string, resumeIdHint: unknown): Promise<any> {
+  // deno-lint-ignore no-explicit-any
+  let current: any = null;
+  if (typeof resumeIdHint === "string" && resumeIdHint) {
+    const { data } = await svc.from("resumes").select("*").eq("id", resumeIdHint).eq("user_id", userId).maybeSingle();
+    current = data;
+  }
+  for (let hops = 0; current && isApplicationSnapshot(current) && hops < 10; hops++) {
+    const sourceId = snapshotSourceId(current);
+    if (!sourceId) break;
+    const { data } = await svc.from("resumes").select("*").eq("id", sourceId).eq("user_id", userId).maybeSingle();
+    if (!data) break;
+    current = data;
+  }
+  if (current && !isApplicationSnapshot(current)) return current;
+  const { data } = await svc.from("resumes").select("*").eq("user_id", userId)
+    .order("updated_at", { ascending: false }).limit(15);
+  // deno-lint-ignore no-explicit-any
+  return (data ?? []).find((resume: any) => !isApplicationSnapshot(resume)) ?? current ?? null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -403,16 +442,7 @@ serve(async (req) => {
     // a single enforceDailyCap here, one logAiUsage with summed tokens at end.
     await enforceDailyCap(svc, user.id, "tailor", isPro);
 
-    let baseResume: any = null;
-    if (ev.resume_id) {
-      const { data } = await svc.from("resumes").select("*").eq("id", ev.resume_id).maybeSingle();
-      baseResume = data;
-    }
-    if (!baseResume) {
-      const { data } = await svc.from("resumes").select("*").eq("user_id", user.id)
-        .order("updated_at", { ascending: false }).limit(1);
-      baseResume = data?.[0];
-    }
+    const baseResume = await loadBaseResume(svc, user.id, ev.resume_id);
     if (!baseResume) throw new HttpError(412, "no resume found for user");
 
     const { data: preferenceRow } = await svc.from("user_job_prefs")
@@ -425,6 +455,24 @@ serve(async (req) => {
 
     const jdText = truncate(job.description_md, MAX_DESC);
     const baseResumeText = buildResumePrompt(baseResume);
+
+    // Optimize toward the SAME 15 ATS keywords the deterministic scorer and
+    // the tailoring report use (shared read-through cache), not the
+    // evaluation's free-form match/gap lists ("No resume evidence found for
+    // X." is not a keyword). Fall back to the evaluation lists on failure.
+    let jdKeywords: string[] = [];
+    try {
+      jdKeywords = (await loadAtsJdKeywords(svc, job.description_md ?? "")).keywords;
+    } catch {
+      jdKeywords = [];
+    }
+    if (jdKeywords.length === 0) {
+      jdKeywords = [...(ev.keyword_matches || []), ...(ev.gaps || [])].map(String).filter(Boolean);
+    }
+    // Evidence-checked coverage plan: which JD keywords the base résumé can
+    // honestly support (literal or curated alias) vs which must never appear.
+    const { evidenced, unevidenced } = splitKeywordsByEvidence(jdKeywords, resumeToPlainText(baseResume));
+
     const tailorUserPrompt =
       `Company: ${companyName}\n` +
       `Title: ${job.title}\n` +
@@ -433,12 +481,12 @@ serve(async (req) => {
       `JD:\n${jdText}\n\n` +
       `Prior evaluation strengths: ${(ev.keyword_matches || []).join(", ")}. ` +
       `Gaps: ${(ev.gaps || []).join(", ")}.\n\n` +
+      `JD keyword coverage plan (deterministically evidence-checked against the base résumé):\n` +
+      `- EVIDENCED keywords — weave these naturally into the summary, skills, and bullet phrasing using the JD's exact vocabulary (same facts, JD's words): ${evidenced.join(", ") || "none"}.\n` +
+      `- NOT EVIDENCED keywords — never use these anywhere; no honest evidence exists: ${unevidenced.join(", ") || "none"}.\n\n` +
       `Tailoring policy: ${tailoringMode === "coverage_boost"
         ? "coverage_boost — foreground and reorder job terms only when the source résumé already supports them; never add unsupported skills, employers, dates, or metrics."
         : "evidence_only — preserve the candidate story and use only directly supported language; do not add job terms that are not evidenced in the source résumé."}`;
-
-    // Deterministic keyword set for the early-exit no-improvement check.
-    const jdKeywords = [...(ev.keyword_matches || []), ...(ev.gaps || [])].map(String).filter(Boolean);
     // Number of critic-driven rewrites allowed AFTER the first tailor pass.
     const maxCriticIters = Math.max(0, Number(Deno.env.get("TAILOR_CRITIC_MAX_ITERS") ?? "2") || 0);
 
@@ -532,6 +580,39 @@ serve(async (req) => {
     }
 
     if (!payload) throw new HttpError(500, "tailor produced no output");
+
+    // ── Deterministic coverage floor (evidence-gated, cannot fabricate) ────
+    // Whatever the LLM/critic loop left on the table: rebuild the skills
+    // section per job (JD-relevant first, evidenced keywords admissible) and
+    // append one "Core strengths" sentence covering evidenced-but-still-
+    // missing JD keywords. Ungated keywords are never inserted.
+    if (jdKeywords.length > 0) {
+      const basePlainText = resumeToPlainText(baseResume);
+      const snapshotText = () =>
+        resumeToPlainText({
+          personal_info: baseResume.personal_info,
+          summary: payload!.tailored_resume.summary,
+          experience: tailoredExperience,
+          education: baseResume.education || [],
+          skills: tailoredSkills,
+          projects: tailoredProjects,
+        });
+      const rebuilt = rebuildSkillsForJob({
+        sourceSkills: normalizeSkills(baseResume.skills),
+        llmSkills: tailoredSkills,
+        jdKeywords,
+        baseResumeText: basePlainText,
+        jdText: job.description_md ?? "",
+        currentTailoredText: snapshotText(),
+      });
+      tailoredSkills = rebuilt.skills;
+      const coverage = augmentSummaryCoverage(payload.tailored_resume.summary ?? "", {
+        jdKeywords,
+        baseResumeText: basePlainText,
+        tailoredText: snapshotText(),
+      });
+      payload.tailored_resume.summary = coverage.summary;
+    }
 
     const childTitle = `${companyName} — ${job.title} · application resume`.slice(0, 120);
     const sourcePersonalInfo = asRecord(baseResume.personal_info);

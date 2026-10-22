@@ -10,6 +10,52 @@
  */
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { truncate } from "./ai.ts";
+import { callLlmWithFallback } from "./llm.ts";
+
+// Same extraction contract as career-ops-ats / career-ops-tailor-report:
+// identical system prompt and "ats-kw" cache scope, so every function that
+// needs the JD's ATS keyword set shares one cache entry per JD.
+const ATS_KW_SYSTEM = `You are an ATS keyword extractor. You get a job description. Return the 15 most important terms a résumé should demonstrate to pass ATS screening AND human review. Mix hard skills, tools, domains, and seniority indicators. Use standard 1-4 word ATS phrases. Split bundled requirements into separate terms instead of returning a long sentence or slash-separated list. No fluff words.
+
+Then propose 5 crisp suggestions to close the gap, prioritised high/medium/low.
+
+Return ONLY JSON:
+{"jd_keywords": string[15], "suggestions": [{"priority":"high"|"medium"|"low","action":"string"}, ...]}`;
+
+export interface AtsKeywordPayload {
+  jd_keywords: string[];
+  suggestions?: Array<{ priority: string; action: string }>;
+}
+
+/**
+ * Load the 15 ATS keywords for a JD — the SAME set career-ops-ats scores
+ * against — via the shared read-through cache. Returns [] for short/empty JDs.
+ * This is the keyword set the tailor pipeline optimizes toward, so the
+ * deterministic coverage checks measure exactly what the scorer measures.
+ */
+export async function loadAtsJdKeywords(
+  svc: SupabaseClient,
+  jdText: string,
+): Promise<{ keywords: string[]; model: string }> {
+  if (jdText.trim().length <= 100) return { keywords: [], model: "no-jd" };
+  const hash = jdHash(jdText, "ats-kw");
+  const cached = await readJdKeywordCache<AtsKeywordPayload>(svc, hash);
+  if (cached && Array.isArray((cached.keywords as AtsKeywordPayload | null)?.jd_keywords)) {
+    return { keywords: cached.keywords.jd_keywords, model: `cache:${cached.model || "unknown"}` };
+  }
+  const result = await callLlmWithFallback<AtsKeywordPayload>({
+    tier: "cheap",
+    system: ATS_KW_SYSTEM,
+    user: `Job description:\n${truncate(jdText, 10_000)}`,
+    maxTokens: 600,
+    parseJson: true,
+    temperature: 0.1,
+  });
+  const keywords = Array.isArray(result.text?.jd_keywords) ? result.text.jd_keywords : [];
+  await writeJdKeywordCache(svc, hash, { jd_keywords: keywords, suggestions: result.text?.suggestions ?? [] }, result.model);
+  return { keywords, model: result.model };
+}
 
 /** Whitespace/case-insensitive normalization so trivially-different JD copies hash alike. */
 export function normalizeJdText(jdText: string): string {
