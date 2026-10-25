@@ -13,7 +13,8 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Search, Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -68,6 +69,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [query, setQuery] = useState("");
+  const [dragOverCol, setDragOverCol] = useState<TrackedStatus | null>(null);
 
   // Ties the tailor pipeline's waitForJob subscription to this component
   // instance's lifetime, so switching away from the Board tab mid-tailor
@@ -202,7 +205,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
           user_id: freshUserData.user.id,
           session_id: sessionId,
           source_job_id: null,
-          name: `${job.company}, ${job.job_title}`,
+          name: `${job.company} – ${job.job_title}`,
           cv_md: result,
         })
         .select("id")
@@ -230,7 +233,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     }
   }
 
+  const loadSeq = useRef(0);
   async function load() {
+    const seq = ++loadSeq.current;
     setLoading(true);
     // Filter out soft-deleted cards (deleted_at IS NULL). The Trash dialog
     // surfaces deleted_at IS NOT NULL rows separately.
@@ -240,6 +245,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       .eq("session_id", sessionId)
       .is("deleted_at", null)
       .order("updated_at", { ascending: false });
+    // Ignore responses from a previous session/reload that finished late.
+    if (seq !== loadSeq.current) return;
     if (error) {
       toast({ title: "Couldn't load board", description: error.message, variant: "destructive" });
     } else {
@@ -347,6 +354,13 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     );
   }
 
+  const needle = query.trim().toLowerCase();
+  const visibleJobs = needle
+    ? jobs.filter((j) =>
+        [j.job_title, j.company, j.location ?? ""].some((f) => f.toLowerCase().includes(needle))
+      )
+    : jobs;
+
   if (jobs.length === 0) {
     return (
       <>
@@ -374,10 +388,22 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <p className="text-xs text-muted-foreground shrink-0">
+          {query.trim()
+            ? `${visibleJobs.length} of ${jobs.length} cards`
+            : `${jobs.length} ${jobs.length === 1 ? "card" : "cards"} on the board`}
         </p>
+        <div className="relative flex-1 max-w-xs ml-auto">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter by title, company, location"
+            aria-label="Filter board cards"
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
         <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
         </Button>
@@ -385,13 +411,24 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
-            const items = jobs.filter((j) => j.status === col.id);
+            const items = visibleJobs.filter((j) => j.status === col.id);
             return (
               <div
                 key={col.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => draggedId && moveTo(draggedId, col.id)}
-                className="w-[260px] shrink-0"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (dragOverCol !== col.id) setDragOverCol(col.id);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOverCol(null);
+                }}
+                onDrop={() => {
+                  setDragOverCol(null);
+                  if (draggedId) moveTo(draggedId, col.id);
+                }}
+                className={`w-[260px] shrink-0 rounded-md transition-colors ${
+                  dragOverCol === col.id && draggedId ? "bg-primary/5 ring-1 ring-primary/30" : ""
+                }`}
               >
                 <div className={`px-3 py-1.5 rounded-md text-[11px] font-medium ${col.tone} flex items-center justify-between`}>
                   <span>{col.label}</span>
@@ -403,8 +440,19 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       key={job.id}
                       draggable
                       onDragStart={() => setDraggedId(job.id)}
-                      onDragEnd={() => setDraggedId(null)}
+                      onDragEnd={() => {
+                        setDraggedId(null);
+                        setDragOverCol(null);
+                      }}
                       onClick={() => setSelected(job)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                          e.preventDefault();
+                          setSelected(job);
+                        }
+                      }}
                       className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
                     >
                       <button
@@ -412,7 +460,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                         aria-label="Move to trash"
                         title="Move to trash"
                         onClick={(e) => trashJob(job, e)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition [@media(hover:none)]:opacity-100 opacity-0 group-hover:opacity-100 focus:opacity-100"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
