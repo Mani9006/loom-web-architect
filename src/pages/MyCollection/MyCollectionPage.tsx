@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -38,6 +39,7 @@ export default function MyCollectionPage() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -80,7 +82,7 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show a dash if this fails.
     }
   }
 
@@ -88,9 +90,17 @@ export default function MyCollectionPage() {
     loadSessions();
   }, []);
 
-  const activeSessions = sessions.filter((s) => s.status === "active");
-  const archivedSessions = sessions.filter((s) => s.status === "archived");
-  const atCap = activeSessions.length >= ACTIVE_LIMIT;
+  const q = query.trim().toLowerCase();
+  const matchesQuery = (s: MCSession) => {
+    if (!q) return true;
+    const roles = Array.isArray(s.target_profile?.target_roles) ? (s.target_profile.target_roles as string[]) : [];
+    return s.name.toLowerCase().includes(q) || roles.some((r) => String(r).toLowerCase().includes(q));
+  };
+  const allActive = sessions.filter((s) => s.status === "active");
+  const allArchived = sessions.filter((s) => s.status === "archived");
+  const activeSessions = allActive.filter(matchesQuery);
+  const archivedSessions = allArchived.filter(matchesQuery);
+  const atCap = allActive.length >= ACTIVE_LIMIT;
 
   async function archiveSession(id: string) {
     const { error } = await (supabase as any)
@@ -154,21 +164,21 @@ export default function MyCollectionPage() {
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
         <Badge variant="outline" className="font-normal">
-          {activeSessions.length}/{ACTIVE_LIMIT} active
+          {allActive.length}/{ACTIVE_LIMIT} active
         </Badge>
-        {archivedSessions.length > 0 && (
+        {allArchived.length > 0 && (
           <button
             onClick={() => setShowArchived((s) => !s)}
             className="hover:text-foreground transition-colors"
           >
-            {showArchived ? "Hide" : "Show"} {archivedSessions.length} archived
+            {showArchived ? "Hide" : "Show"} {allArchived.length} archived
           </button>
         )}
       </div>
 
       {loading ? (
         <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
-      ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
+      ) : allActive.length === 0 && allArchived.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
           <h3 className="font-medium mb-1">No sessions yet</h3>
@@ -181,6 +191,21 @@ export default function MyCollectionPage() {
         </Card>
       ) : (
         <>
+          {sessions.length > 1 && (
+            <div className="relative mb-4 max-w-sm">
+              <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search sessions or target roles"
+                aria-label="Search sessions"
+                className="pl-8"
+              />
+            </div>
+          )}
+          {q && activeSessions.length === 0 && (!showArchived || archivedSessions.length === 0) && (
+            <p className="text-sm text-muted-foreground py-8 text-center">No sessions match "{query}".</p>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeSessions.map((s) => (
               <SessionCard
@@ -251,8 +276,16 @@ function SessionCard({
 
   return (
     <Card
-      className="p-5 hover:border-primary/40 transition-colors cursor-pointer relative group"
+      className="p-5 hover:border-primary/40 focus-visible:border-primary/60 focus-visible:outline-none transition-colors cursor-pointer relative group"
       onClick={onOpen}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-medium text-[15px] leading-tight pr-8 line-clamp-2">{session.name}</h3>
@@ -262,7 +295,12 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Session actions"
+              className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+            >
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +334,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
