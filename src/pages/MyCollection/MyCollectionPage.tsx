@@ -36,6 +36,7 @@ export default function MyCollectionPage() {
   const [sessions, setSessions] = useState<MCSession[]>([]);
   const [statsMap, setStatsMap] = useState<Record<string, SessionStats>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const navigate = useNavigate();
@@ -43,11 +44,13 @@ export default function MyCollectionPage() {
 
   async function loadSessions() {
     setLoading(true);
+    setLoadError(null);
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
       .order("updated_at", { ascending: false });
     if (error) {
+      setLoadError(error.message);
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
     } else {
       const rows: MCSession[] = data ?? [];
@@ -80,7 +83,7 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "—" if this fails.
     }
   }
 
@@ -168,6 +171,14 @@ export default function MyCollectionPage() {
 
       {loading ? (
         <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
+      ) : loadError && sessions.length === 0 ? (
+        <Card className="p-12 text-center border-dashed">
+          <h3 className="font-medium mb-1">Couldn't load your sessions</h3>
+          <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+          <Button variant="outline" onClick={loadSessions}>
+            Try again
+          </Button>
+        </Card>
       ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
@@ -251,8 +262,16 @@ function SessionCard({
 
   return (
     <Card
-      className="p-5 hover:border-primary/40 transition-colors cursor-pointer relative group"
+      className="p-5 hover:border-primary/40 focus-visible:border-primary/60 focus-visible:outline-none transition-colors cursor-pointer relative group"
+      role="link"
+      tabIndex={0}
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-medium text-[15px] leading-tight pr-8 line-clamp-2">{session.name}</h3>
@@ -262,7 +281,8 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button variant="ghost" size="icon" aria-label="Session actions"
+              className="h-7 w-7 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +316,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
