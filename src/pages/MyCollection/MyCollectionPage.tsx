@@ -41,8 +41,8 @@ export default function MyCollectionPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  async function loadSessions() {
-    setLoading(true);
+  async function loadSessions(showSpinner = false) {
+    if (showSpinner) setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
@@ -61,11 +61,12 @@ export default function MyCollectionPage() {
   async function loadStats(sessionIds: string[]) {
     if (sessionIds.length === 0) return;
     try {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from("mc_tracked_jobs")
         .select("session_id,status")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
+      if (error) return;
       const rows: { session_id: string; status: string }[] = data ?? [];
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
@@ -78,14 +79,15 @@ export default function MyCollectionPage() {
             jobRows.filter((r) => r.status === "take_home").length,
         };
       }
-      setStatsMap(map);
+      setStatsMap((prev) => ({ ...prev, ...map }));
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "—" if this fails.
     }
   }
 
   useEffect(() => {
-    loadSessions();
+    loadSessions(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeSessions = sessions.filter((s) => s.status === "active");
@@ -136,14 +138,14 @@ export default function MyCollectionPage() {
 
   return (
     <div className="container max-w-6xl mx-auto py-8 px-4 md:px-8">
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <FolderOpen className="w-6 h-6 text-primary" />
             My Collection
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Each session is a self-contained job search, its own resume, target profile, board, and tailored
+            Each session is a self-contained job search: its own resume, target profile, board, and tailored
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
@@ -262,7 +264,7 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +298,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
