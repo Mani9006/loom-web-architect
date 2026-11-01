@@ -26,6 +26,9 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = ["discover", "resumes", "board", "inbox", "stats"];
+const isValidTab = (t: string | null): t is string => !!t && VALID_TABS.includes(t);
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -37,13 +40,13 @@ export default function SessionPage() {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (isValidTab(fromQuery)) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return isValidTab(stored) ? stored : "discover";
     } catch {
       return "discover";
     }
@@ -68,7 +71,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (isValidTab(fromQuery) && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -106,6 +109,7 @@ export default function SessionPage() {
           toast({ title: "Session not found" });
           navigate("/my-collection");
         }
+        setLoading(false);
         return;
       }
       hadInitialLoad = true;
