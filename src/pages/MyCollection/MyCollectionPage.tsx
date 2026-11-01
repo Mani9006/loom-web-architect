@@ -41,8 +41,8 @@ export default function MyCollectionPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  async function loadSessions() {
-    setLoading(true);
+  async function loadSessions(silent = false) {
+    if (!silent) setLoading(true);
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
@@ -80,12 +80,12 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "—" if this fails.
     }
   }
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions();
   }, []);
 
   const activeSessions = sessions.filter((s) => s.status === "active");
@@ -100,7 +100,7 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Archive failed", description: error.message, variant: "destructive" });
     } else {
-      await loadSessions();
+      await loadSessions(true);
     }
   }
 
@@ -120,7 +120,7 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Reactivate failed", description: error.message, variant: "destructive" });
     } else {
-      await loadSessions();
+      await loadSessions(true);
     }
   }
 
@@ -130,7 +130,7 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {
-      await loadSessions();
+      await loadSessions(true);
     }
   }
 
@@ -181,6 +181,16 @@ export default function MyCollectionPage() {
         </Card>
       ) : (
         <>
+          {activeSessions.length === 0 && (
+            <Card className="p-8 text-center border-dashed">
+              <p className="text-sm text-muted-foreground mb-3">
+                No active sessions. Start a new one or reactivate an archived session.
+              </p>
+              <Button size="sm" onClick={() => setWizardOpen(true)}>
+                <Plus className="w-4 h-4 mr-1" /> New Session
+              </Button>
+            </Card>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeSessions.map((s) => (
               <SessionCard
@@ -251,8 +261,16 @@ function SessionCard({
 
   return (
     <Card
-      className="p-5 hover:border-primary/40 transition-colors cursor-pointer relative group"
+      className="p-5 hover:border-primary/40 focus-visible:border-primary focus-visible:outline-none transition-colors cursor-pointer relative group"
+      role="link"
+      tabIndex={0}
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-medium text-[15px] leading-tight pr-8 line-clamp-2">{session.name}</h3>
@@ -262,7 +280,12 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Session actions"
+              className="h-7 w-7 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+            >
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -273,7 +296,7 @@ function SessionCard({
             {archived && onReactivate && (
               <DropdownMenuItem onClick={onReactivate}>Reactivate</DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={onDelete} className="text-destructive">
+            <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -296,9 +319,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
