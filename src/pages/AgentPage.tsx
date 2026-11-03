@@ -834,7 +834,7 @@ export default function AgentPage() {
       <section className="mt-5 grid sm:grid-cols-2 xl:grid-cols-4 gap-px border border-rp-rule bg-rp-rule" aria-label="Auto-apply status at a glance">
         {[
           { label: "Matches found", value: matches.length, icon: Radar, note: plan === "free" ? "eligible, from your resume" : "eligible, checked every 10 minutes" },
-          { label: "Resume score", value: latestAts ? `${Math.round(latestAts.overall)}%` : ",", icon: FileCheck2, note: latestAts ? "from your last ATS check" : "no check yet" },
+          { label: "Resume score", value: latestAts ? `${Math.round(latestAts.overall)}%` : "—", icon: FileCheck2, note: latestAts ? "from your last ATS check" : "no check yet" },
           { label: "Ready for you", value: counts.prepared, icon: ShieldCheck, note: `${counts.queued} in line to apply` },
           { label: "Applied", value: counts.submitted, icon: Send, note: counts.failed + counts.skipped > 0 ? `${counts.failed + counts.skipped} need your help` : "confirmed receipts" },
         ].map((item) => (
