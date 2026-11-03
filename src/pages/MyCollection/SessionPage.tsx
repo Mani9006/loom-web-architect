@@ -26,6 +26,9 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = ["discover", "resumes", "board", "inbox", "stats"];
+const safeTab = (t: string | null | undefined) => (t && VALID_TABS.includes(t) ? t : null);
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -37,13 +40,13 @@ export default function SessionPage() {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (safeTab(fromQuery)) return fromQuery as string;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return safeTab(stored) ?? "discover";
     } catch {
       return "discover";
     }
@@ -68,7 +71,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (safeTab(fromQuery) && fromQuery !== tab) setTab(fromQuery as string);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -142,7 +145,7 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
@@ -169,20 +172,20 @@ export default function SessionPage() {
         }}
       >
         <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
-          <TabsTrigger value="discover" className="gap-2">
-            <Search className="w-4 h-4" /> Discover
+          <TabsTrigger value="discover" aria-label="Discover" className="gap-2">
+            <Search className="w-4 h-4" /> <span className="hidden sm:inline">Discover</span>
           </TabsTrigger>
-          <TabsTrigger value="resumes" className="gap-2">
-            <FileText className="w-4 h-4" /> Resumes
+          <TabsTrigger value="resumes" aria-label="Resumes" className="gap-2">
+            <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Resumes</span>
           </TabsTrigger>
-          <TabsTrigger value="board" className="gap-2">
-            <Columns3 className="w-4 h-4" /> Board
+          <TabsTrigger value="board" aria-label="Board" className="gap-2">
+            <Columns3 className="w-4 h-4" /> <span className="hidden sm:inline">Board</span>
           </TabsTrigger>
-          <TabsTrigger value="inbox" className="gap-2">
-            <Inbox className="w-4 h-4" /> Inbox
+          <TabsTrigger value="inbox" aria-label="Inbox" className="gap-2">
+            <Inbox className="w-4 h-4" /> <span className="hidden sm:inline">Inbox</span>
           </TabsTrigger>
-          <TabsTrigger value="stats" className="gap-2">
-            <BarChart3 className="w-4 h-4" /> Stats
+          <TabsTrigger value="stats" aria-label="Stats" className="gap-2">
+            <BarChart3 className="w-4 h-4" /> <span className="hidden sm:inline">Stats</span>
           </TabsTrigger>
         </TabsList>
 
