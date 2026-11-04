@@ -33,17 +33,20 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const VALID_TABS = ["discover", "resumes", "board", "inbox", "stats"];
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (fromQuery && VALID_TABS.includes(fromQuery)) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return stored && VALID_TABS.includes(stored) ? stored : "discover";
     } catch {
       return "discover";
     }
@@ -68,7 +71,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (fromQuery && VALID_TABS.includes(fromQuery) && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -78,6 +81,7 @@ export default function SessionPage() {
     let hadInitialLoad = false;
     (async () => {
       setLoading(true);
+      setLoadFailed(false);
       const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
@@ -98,6 +102,7 @@ export default function SessionPage() {
           });
           toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
         }
+        setLoadFailed(true);
         setLoading(false);
         return;
       }
@@ -120,7 +125,23 @@ export default function SessionPage() {
     // re-fire on every render, which on tab focus produces a flash and
     // can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, reloadNonce]);
+
+  if (loadFailed && !session) {
+    return (
+      <div className="container max-w-7xl mx-auto py-16 px-4 md:px-8 text-center space-y-4">
+        <p className="text-sm text-muted-foreground">This workspace could not be loaded.</p>
+        <div className="flex justify-center gap-2">
+          <Button variant="outline" onClick={() => setReloadNonce((n) => n + 1)}>
+            Try again
+          </Button>
+          <Button asChild variant="ghost">
+            <Link to="/my-collection">Back to My Collection</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
@@ -169,20 +190,20 @@ export default function SessionPage() {
         }}
       >
         <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
-          <TabsTrigger value="discover" className="gap-2">
-            <Search className="w-4 h-4" /> Discover
+          <TabsTrigger value="discover" className="gap-2" aria-label="Discover">
+            <Search className="w-4 h-4" /> <span className="hidden sm:inline">Discover</span>
           </TabsTrigger>
-          <TabsTrigger value="resumes" className="gap-2">
-            <FileText className="w-4 h-4" /> Resumes
+          <TabsTrigger value="resumes" className="gap-2" aria-label="Resumes">
+            <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Resumes</span>
           </TabsTrigger>
-          <TabsTrigger value="board" className="gap-2">
-            <Columns3 className="w-4 h-4" /> Board
+          <TabsTrigger value="board" className="gap-2" aria-label="Board">
+            <Columns3 className="w-4 h-4" /> <span className="hidden sm:inline">Board</span>
           </TabsTrigger>
-          <TabsTrigger value="inbox" className="gap-2">
-            <Inbox className="w-4 h-4" /> Inbox
+          <TabsTrigger value="inbox" className="gap-2" aria-label="Inbox">
+            <Inbox className="w-4 h-4" /> <span className="hidden sm:inline">Inbox</span>
           </TabsTrigger>
-          <TabsTrigger value="stats" className="gap-2">
-            <BarChart3 className="w-4 h-4" /> Stats
+          <TabsTrigger value="stats" className="gap-2" aria-label="Stats">
+            <BarChart3 className="w-4 h-4" /> <span className="hidden sm:inline">Stats</span>
           </TabsTrigger>
         </TabsList>
 
