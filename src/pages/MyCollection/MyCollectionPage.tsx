@@ -38,15 +38,24 @@ export default function MyCollectionPage() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
 
   async function loadSessions() {
     setLoading(true);
-    const { data, error } = await (supabase as any)
-      .from("mc_sessions")
-      .select("*")
-      .order("updated_at", { ascending: false });
+    let data: MCSession[] | null = null;
+    let error: { message: string } | null = null;
+    try {
+      const res = await (supabase as any)
+        .from("mc_sessions")
+        .select("*")
+        .order("updated_at", { ascending: false });
+      data = res.data;
+      error = res.error;
+    } catch (e) {
+      error = { message: e instanceof Error ? e.message : "Network error" };
+    }
     if (error) {
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
     } else {
@@ -80,7 +89,7 @@ export default function MyCollectionPage() {
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "—" if this fails.
     }
   }
 
@@ -88,9 +97,17 @@ export default function MyCollectionPage() {
     loadSessions();
   }, []);
 
-  const activeSessions = sessions.filter((s) => s.status === "active");
-  const archivedSessions = sessions.filter((s) => s.status === "archived");
-  const atCap = activeSessions.length >= ACTIVE_LIMIT;
+  const q = query.trim().toLowerCase();
+  const matches = (s: MCSession) => {
+    if (!q) return true;
+    const roles = (s.target_profile as Record<string, unknown> | null)?.target_roles;
+    const roleText = Array.isArray(roles) ? roles.join(" ") : "";
+    return `${s.name} ${roleText}`.toLowerCase().includes(q);
+  };
+  const allActive = sessions.filter((s) => s.status === "active");
+  const activeSessions = allActive.filter(matches);
+  const archivedSessions = sessions.filter((s) => s.status === "archived").filter(matches);
+  const atCap = allActive.length >= ACTIVE_LIMIT;
 
   async function archiveSession(id: string) {
     const { error } = await (supabase as any)
@@ -136,7 +153,7 @@ export default function MyCollectionPage() {
 
   return (
     <div className="container max-w-6xl mx-auto py-8 px-4 md:px-8">
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <FolderOpen className="w-6 h-6 text-primary" />
@@ -154,8 +171,18 @@ export default function MyCollectionPage() {
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
         <Badge variant="outline" className="font-normal">
-          {activeSessions.length}/{ACTIVE_LIMIT} active
+          {allActive.length}/{ACTIVE_LIMIT} active
         </Badge>
+        {sessions.length > 3 && (
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search sessions…"
+            aria-label="Search sessions"
+            className="h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+          />
+        )}
         {archivedSessions.length > 0 && (
           <button
             onClick={() => setShowArchived((s) => !s)}
@@ -168,6 +195,8 @@ export default function MyCollectionPage() {
 
       {loading ? (
         <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
+      ) : sessions.length > 0 && activeSessions.length === 0 && archivedSessions.length === 0 ? (
+        <div className="text-sm text-muted-foreground py-12 text-center">No sessions match "{query}".</div>
       ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
@@ -251,8 +280,17 @@ function SessionCard({
 
   return (
     <Card
-      className="p-5 hover:border-primary/40 transition-colors cursor-pointer relative group"
+      className="p-5 hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring outline-none transition-colors cursor-pointer relative group"
       onClick={onOpen}
+      role="link"
+      tabIndex={0}
+      aria-label={`Open session ${session.name}`}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-medium text-[15px] leading-tight pr-8 line-clamp-2">{session.name}</h3>
@@ -262,7 +300,7 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button variant="ghost" size="icon" className="h-7 w-7 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100" aria-label="Session actions">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +334,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
