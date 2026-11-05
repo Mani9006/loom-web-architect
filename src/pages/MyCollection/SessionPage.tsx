@@ -142,7 +142,7 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
@@ -168,7 +168,7 @@ export default function SessionPage() {
           if (searchParams.toString()) setSearchParams({}, { replace: true });
         }}
       >
-        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
+        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5 [&>button]:min-w-0 [&>button]:px-1 sm:[&>button]:px-3">
           <TabsTrigger value="discover" className="gap-2">
             <Search className="w-4 h-4" /> Discover
           </TabsTrigger>
