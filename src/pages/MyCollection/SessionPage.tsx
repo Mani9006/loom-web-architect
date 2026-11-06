@@ -26,6 +26,9 @@ interface MCSession {
   updated_at: string;
 }
 
+const VALID_TABS = ["discover", "resumes", "board", "inbox", "stats"];
+const safeTab = (t: string | null | undefined) => (t && VALID_TABS.includes(t) ? t : "discover");
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -33,17 +36,19 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (fromQuery && VALID_TABS.includes(fromQuery)) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return safeTab(stored);
     } catch {
       return "discover";
     }
@@ -68,7 +73,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (fromQuery && VALID_TABS.includes(fromQuery) && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -78,6 +83,7 @@ export default function SessionPage() {
     let hadInitialLoad = false;
     (async () => {
       setLoading(true);
+      setLoadFailed(false);
       const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
@@ -98,6 +104,7 @@ export default function SessionPage() {
           });
           toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
         }
+        if (!hadInitialLoad) setLoadFailed(true);
         setLoading(false);
         return;
       }
@@ -120,7 +127,20 @@ export default function SessionPage() {
     // re-fire on every render, which on tab focus produces a flash and
     // can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, reloadNonce]);
+
+  if (loadFailed) {
+    return (
+      <div className="container max-w-7xl mx-auto py-16 px-4 text-center space-y-3">
+        <h1 className="text-lg font-semibold">Couldn't load this workspace</h1>
+        <p className="text-sm text-muted-foreground">Check your connection and try again.</p>
+        <div className="flex justify-center gap-2">
+          <Button variant="outline" onClick={() => setReloadNonce((n) => n + 1)}>Try again</Button>
+          <Button asChild variant="ghost"><Link to="/my-collection">Back to My Collection</Link></Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
@@ -142,7 +162,7 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
@@ -168,7 +188,7 @@ export default function SessionPage() {
           if (searchParams.toString()) setSearchParams({}, { replace: true });
         }}
       >
-        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
+        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5 [&_svg]:hidden sm:[&_svg]:block">
           <TabsTrigger value="discover" className="gap-2">
             <Search className="w-4 h-4" /> Discover
           </TabsTrigger>
