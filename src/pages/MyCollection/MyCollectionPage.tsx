@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { computeMcStats } from "@/lib/mc-stats";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
 
 interface MCSession {
@@ -70,17 +71,16 @@ export default function MyCollectionPage() {
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
         const jobRows = rows.filter((r) => r.session_id === sid);
+        const st = computeMcStats(jobRows);
         map[sid] = {
           discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
-          interviews:
-            jobRows.filter((r) => r.status === "interview").length +
-            jobRows.filter((r) => r.status === "take_home").length,
+          applied: st.applied,
+          interviews: st.interviews,
         };
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show a dash if this fails.
     }
   }
 
@@ -262,7 +262,7 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100" aria-label="Session actions">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +296,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
