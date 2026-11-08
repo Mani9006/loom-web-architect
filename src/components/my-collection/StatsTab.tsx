@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { computeMcStats } from "@/lib/mc-stats";
 
 interface StatusCounts {
   total: number;
@@ -52,15 +53,15 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
         const rows: { status: string }[] = jobsResult.data ?? [];
-        const tally = (s: string) => rows.filter((r) => r.status === s).length;
+        const st = computeMcStats(rows);
 
         setCounts({
-          total: rows.length,
-          saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
-          offer: tally("offer"),
-          rejected: tally("rejected"),
+          total: st.total,
+          saved: 0,
+          applied: st.applied,
+          interview: st.interviews,
+          offer: st.offers,
+          rejected: st.rejected,
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -81,7 +82,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
   const responseRate =
     counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
+      ? Math.min(100, Math.round(((counts.interview + counts.offer) / counts.applied) * 100))
       : null;
 
   return (
