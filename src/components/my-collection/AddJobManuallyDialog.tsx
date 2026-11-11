@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeApplyUrl } from "@/lib/my-collection";
 
 interface Props {
   open: boolean;
@@ -117,12 +118,39 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       });
       return;
     }
+    const normalizedUrl = normalizeApplyUrl(applyUrl);
+    if (applyUrl.trim() && !normalizedUrl) {
+      toast({
+        title: "That apply URL doesn't look right",
+        description: "Use a full web address like https://company.com/jobs/123, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
 
     const { data: userData, error: userErr } = await supabase.auth.getUser();
     if (userErr || !userData?.user) {
       setSaving(false);
       toast({ title: "Not signed in", variant: "destructive" });
+      return;
+    }
+
+    // Warn before creating a second card for the same role in this session.
+    const { data: dupes } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .select("id,status")
+      .eq("session_id", sessionId)
+      .ilike("company", company.trim().replace(/[\\%_]/g, (c) => `\\${c}`))
+      .ilike("job_title", jobTitle.trim().replace(/[\\%_]/g, (c) => `\\${c}`))
+      .is("deleted_at", null)
+      .limit(1);
+    if (
+      Array.isArray(dupes) &&
+      dupes.length > 0 &&
+      !confirm(`"${company.trim()} · ${jobTitle.trim()}" is already on this board. Add it again anyway?`)
+    ) {
+      setSaving(false);
       return;
     }
 
@@ -135,7 +163,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         job_title: jobTitle.trim(),
         company: company.trim(),
         location: location.trim() || null,
-        apply_url: applyUrl.trim() || null,
+        apply_url: normalizedUrl,
         jd_md: jdMd.trim() || null,
         status: "saved",
       })
