@@ -15,6 +15,7 @@ import SessionSettingsDialog from "@/components/my-collection/SessionSettingsDia
 import TrashDialog from "@/components/my-collection/TrashDialog";
 import ApplicationInboxTab from "@/components/my-collection/ApplicationInboxTab";
 import { toUserFacingError } from "@/lib/user-facing-error";
+import { isSessionTab } from "@/lib/my-collection";
 
 interface MCSession {
   id: string;
@@ -37,13 +38,13 @@ export default function SessionPage() {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (isSessionTab(fromQuery)) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return isSessionTab(stored) ? stored : "discover";
     } catch {
       return "discover";
     }
@@ -53,6 +54,9 @@ export default function SessionPage() {
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
   const focusResumeId = searchParams.get("resume");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by the "Try again" button to re-run the load effect.
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     try {
@@ -68,7 +72,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (isSessionTab(fromQuery) && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -78,6 +82,7 @@ export default function SessionPage() {
     let hadInitialLoad = false;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
@@ -97,6 +102,7 @@ export default function SessionPage() {
             defaultMessage: "This application workspace could not be loaded.",
           });
           toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
+          setLoadError(safeError.message);
         }
         setLoading(false);
         return;
@@ -120,7 +126,25 @@ export default function SessionPage() {
     // re-fire on every render, which on tab focus produces a flash and
     // can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, reloadToken]);
+
+  if (!session && loadError && !loading) {
+    return (
+      <div className="container max-w-7xl mx-auto py-8 px-4 md:px-8">
+        <Button asChild variant="ghost" size="sm" className="-ml-2 mb-4">
+          <Link to="/my-collection">
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            My Collection
+          </Link>
+        </Button>
+        <div className="rounded-lg border border-dashed p-10 text-center">
+          <h2 className="font-medium mb-1">Couldn't load this session</h2>
+          <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+          <Button onClick={() => setReloadToken((t) => t + 1)}>Try again</Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
@@ -142,9 +166,9 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight break-words">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -170,19 +194,19 @@ export default function SessionPage() {
       >
         <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
           <TabsTrigger value="discover" className="gap-2">
-            <Search className="w-4 h-4" /> Discover
+            <Search className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Discover</span>
           </TabsTrigger>
           <TabsTrigger value="resumes" className="gap-2">
-            <FileText className="w-4 h-4" /> Resumes
+            <FileText className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Resumes</span>
           </TabsTrigger>
           <TabsTrigger value="board" className="gap-2">
-            <Columns3 className="w-4 h-4" /> Board
+            <Columns3 className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Board</span>
           </TabsTrigger>
           <TabsTrigger value="inbox" className="gap-2">
-            <Inbox className="w-4 h-4" /> Inbox
+            <Inbox className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Inbox</span>
           </TabsTrigger>
           <TabsTrigger value="stats" className="gap-2">
-            <BarChart3 className="w-4 h-4" /> Stats
+            <BarChart3 className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">Stats</span>
           </TabsTrigger>
         </TabsList>
 

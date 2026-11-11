@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2 } from "lucide-react";
+import { normalizeApplyUrl } from "@/lib/my-collection";
 
 export interface EditableTrackedJob {
   id: string;
@@ -69,12 +70,21 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       });
       return;
     }
+    const normalizedUrl = normalizeApplyUrl(applyUrl);
+    if (applyUrl.trim() && !normalizedUrl) {
+      toast({
+        title: "That apply URL doesn't look right",
+        description: "Use a full web address like https://company.com/jobs/123, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     const updates = {
       company: company.trim(),
       job_title: jobTitle.trim(),
       location: location.trim() || null,
-      apply_url: applyUrl.trim() || null,
+      apply_url: normalizedUrl,
       jd_md: jdMd.trim() || null,
       notes: notes.trim() || null,
     };

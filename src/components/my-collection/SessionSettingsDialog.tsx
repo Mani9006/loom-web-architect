@@ -24,6 +24,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Archive } from "lucide-react";
+import { parseList, parseCompTarget } from "@/lib/my-collection";
 
 interface Resume {
   id: string;
@@ -93,16 +94,10 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
     setSaving(true);
     const targetProfile = {
       ...(session.target_profile ?? {}),
-      target_roles: targetRolesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      target_locations: locationsText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      target_roles: parseList(targetRolesText),
+      target_locations: parseList(locationsText),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: parseCompTarget(compTarget),
       visa_status: visa,
     };
     const updates = {

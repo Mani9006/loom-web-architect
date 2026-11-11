@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { parseList, parseCompTarget } from "@/lib/my-collection";
 
 interface Resume {
   id: string;
@@ -166,16 +167,10 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     }
 
     const targetProfile = {
-      target_roles: targetRolesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      target_locations: locationsText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      target_roles: parseList(targetRolesText),
+      target_locations: parseList(locationsText),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: parseCompTarget(compTarget),
       visa_status: visa,
     };
 
@@ -199,8 +194,11 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     onCreated(data.id);
   }
 
+  // Dismissing (Esc / click outside) keeps the draft; only the explicit
+  // Cancel button wipes it. Previously any stray outside-click erased
+  // everything the user had typed.
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && handleCancel()}>
+    <Dialog open={open} onOpenChange={(v) => !v && !submitting && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>New Session</DialogTitle>
