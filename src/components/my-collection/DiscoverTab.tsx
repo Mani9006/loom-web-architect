@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { safeExternalUrl } from "@/lib/mc-collection";
 import {
   ExternalLink,
   Sparkles,
@@ -119,6 +120,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [savedTitles, setSavedTitles] = useState<Set<string>>(
     new Set(initial.current?.savedKeys ?? []),
   );
+  const savingKeys = useRef<Set<string>>(new Set());
   const [activeJobId, setActiveJobId] = useState<string | null>(
     initial.current?.activeJobId ?? null,
   );
@@ -384,7 +386,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           title: String(j.title ?? "").trim(),
           company: String(j.company ?? "").trim(),
           location: j.location ? String(j.location) : undefined,
-          apply_url: j.apply_url ? String(j.apply_url) : undefined,
+          // AI output is untrusted: drop anything that isn't an http(s) link.
+          apply_url: safeExternalUrl(j.apply_url ? String(j.apply_url) : null) ?? undefined,
           summary: j.summary ? String(j.summary) : undefined,
           fit_score: typeof j.fit_score === "number" ? j.fit_score : undefined,
           fit_reason: j.fit_reason ? String(j.fit_reason) : undefined,
@@ -483,9 +486,36 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
+    const key = `${job.company}::${job.title}`;
+    if (savingKeys.current.has(key)) return; // ignore double-clicks
+    savingKeys.current.add(key);
+    try {
+      await saveToBoardInner(job, key);
+    } finally {
+      savingKeys.current.delete(key);
+    }
+  }
+
+  async function saveToBoardInner(job: FoundJob, key: string) {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       toast({ title: "Not signed in", variant: "destructive" });
+      return;
+    }
+    // The same job often shows up across searches. If it's already a live
+    // card in this session, don't create a duplicate.
+    const { data: existing } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("company", job.company)
+      .eq("job_title", job.title)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) {
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Already on your board", description: `${job.company} · ${job.title}` });
       return;
     }
     const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
@@ -503,7 +533,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(key));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -545,8 +575,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         return;
       }
       let trackedJobId: string | null = null;
-      if (savedTitles.has(key)) {
-        // Already saved, find the existing row.
+      {
+        // Reuse an existing live card for this job (saved now or in an
+        // earlier search) instead of creating a duplicate.
         const { data: existing } = await (supabase as any)
           .from("mc_tracked_jobs")
           .select("id")
@@ -857,9 +888,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
                     {isSaved ? "Saved" : "Save only"}
                   </Button>
-                  {job.apply_url && (
+                  {safeExternalUrl(job.apply_url) && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
-                      <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={safeExternalUrl(job.apply_url)!} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3 h-3 mr-1" /> Open
                       </a>
                     </Button>

@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { safeExternalUrl } from "@/lib/mc-collection";
 
 interface Props {
   open: boolean;
@@ -117,6 +118,15 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       });
       return;
     }
+    const normalizedUrl = applyUrl.trim() ? safeExternalUrl(applyUrl) : null;
+    if (applyUrl.trim() && !normalizedUrl) {
+      toast({
+        title: "Check the application link",
+        description: "Use a full web address, e.g. https://company.com/jobs/123.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
 
     const { data: userData, error: userErr } = await supabase.auth.getUser();
@@ -135,7 +145,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         job_title: jobTitle.trim(),
         company: company.trim(),
         location: location.trim() || null,
-        apply_url: applyUrl.trim() || null,
+        apply_url: normalizedUrl,
         jd_md: jdMd.trim() || null,
         status: "saved",
       })
