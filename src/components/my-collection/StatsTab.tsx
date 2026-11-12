@@ -3,26 +3,13 @@ import { Card } from "@/components/ui/card";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { computePipelineStats, type PipelineStats } from "@/lib/mc-collection";
 
-interface StatusCounts {
-  total: number;
-  saved: number;
-  applied: number;
-  interview: number;
-  offer: number;
-  rejected: number;
+interface StatusCounts extends PipelineStats {
   resumes: number;
 }
 
-const EMPTY_COUNTS: StatusCounts = {
-  total: 0,
-  saved: 0,
-  applied: 0,
-  interview: 0,
-  offer: 0,
-  rejected: 0,
-  resumes: 0,
-};
+const EMPTY_COUNTS: StatusCounts = { ...computePipelineStats([]), resumes: 0 };
 
 export default function StatsTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
@@ -37,7 +24,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         const [jobsResult, resumesResult] = await Promise.all([
           (supabase as any)
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
           (supabase as any)
@@ -51,18 +38,8 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
-        const tally = (s: string) => rows.filter((r) => r.status === s).length;
-
-        setCounts({
-          total: rows.length,
-          saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
-          offer: tally("offer"),
-          rejected: tally("rejected"),
-          resumes: resumesResult.count ?? 0,
-        });
+        const rows: { status: string; applied_at: string | null }[] = jobsResult.data ?? [];
+        setCounts({ ...computePipelineStats(rows), resumes: resumesResult.count ?? 0 });
       } catch (e) {
         if (cancelled) return;
         toast({
@@ -79,10 +56,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     };
   }, [sessionId]);
 
-  const responseRate =
-    counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
-      : null;
+  const responseRate = counts.responseRate;
 
   return (
     <div className="space-y-4">
@@ -99,7 +73,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
         <StatCard
           label="Interviews"
-          value={loading ? "…" : counts.interview}
+          value={loading ? "…" : counts.interviewing}
           icon={<BarChart3 className="w-4 h-4" />}
         />
         <StatCard
@@ -123,7 +97,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
           />
           {responseRate !== null && (
             <StatCard
-              label="Response rate"
+              label="Interview rate"
               value={`${responseRate}%`}
               icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
             />
@@ -131,12 +105,55 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && counts.total > 0 && (
+        <Card className="p-5">
+          <h3 className="text-sm font-medium mb-1">Pipeline</h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            How far your {counts.total} {counts.total === 1 ? "job has" : "jobs have"} progressed. Applied
+            includes jobs that later moved to interview, offer, or rejected.
+          </p>
+          <div className="space-y-3">
+            {[
+              { label: "On the board", value: counts.total, tone: "bg-slate-400" },
+              { label: "Applied", value: counts.applied, tone: "bg-indigo-500" },
+              { label: "Interviewing", value: counts.interviewing, tone: "bg-amber-500" },
+              { label: "Offers", value: counts.offer, tone: "bg-emerald-500" },
+            ].map((stage) => {
+              const pct = counts.total > 0 ? Math.round((stage.value / counts.total) * 100) : 0;
+              return (
+                <div key={stage.label}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span>{stage.label}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {stage.value} · {pct}%
+                    </span>
+                  </div>
+                  <div
+                    className="h-2 rounded-full bg-muted overflow-hidden"
+                    role="progressbar"
+                    aria-label={stage.label}
+                    aria-valuenow={pct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <div className={`h-full rounded-full ${stage.tone}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {!loading && counts.total === 0 && (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            No jobs on the board yet. Save jobs from Discover or add one manually on the Board to start
+            tracking your pipeline.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }
