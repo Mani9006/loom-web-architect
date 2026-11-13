@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { computePipelineCounts } from "@/lib/mc-pipeline";
 
 interface StatusCounts {
   total: number;
@@ -37,7 +38,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         const [jobsResult, resumesResult] = await Promise.all([
           (supabase as any)
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
           (supabase as any)
@@ -51,16 +52,15 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
-        const tally = (s: string) => rows.filter((r) => r.status === s).length;
+        const pipeline = computePipelineCounts(jobsResult.data ?? []);
 
         setCounts({
-          total: rows.length,
-          saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
-          offer: tally("offer"),
-          rejected: tally("rejected"),
+          total: pipeline.total,
+          saved: pipeline.saved,
+          applied: pipeline.applied,
+          interview: pipeline.interviews,
+          offer: pipeline.offers,
+          rejected: pipeline.rejected,
           resumes: resumesResult.count ?? 0,
         });
       } catch (e) {
@@ -81,7 +81,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
 
   const responseRate =
     counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
+      ? Math.round((counts.interview / counts.applied) * 100)
       : null;
 
   return (
