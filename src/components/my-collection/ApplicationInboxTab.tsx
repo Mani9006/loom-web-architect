@@ -96,12 +96,22 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
       .update({ is_read: true })
       .eq("session_id", sessionId)
       .eq("is_read", false);
-    if (!error) setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
+    if (error) {
+      toast({ title: "Couldn't mark messages read", description: "Please try again.", variant: "destructive" });
+      return;
+    }
+    setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
   }
 
   async function copyCode(code: string) {
-    await navigator.clipboard.writeText(code);
-    toast({ title: "Verification code copied" });
+    try {
+      await navigator.clipboard.writeText(code);
+      toast({ title: "Verification code copied" });
+    } catch {
+      // Clipboard API is unavailable on insecure origins and some mobile
+      // browsers; show the code so the user can copy it by hand.
+      toast({ title: "Copy the code manually", description: code });
+    }
   }
 
   return (
