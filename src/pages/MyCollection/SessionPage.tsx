@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox, Archive } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import SessionSettingsDialog from "@/components/my-collection/SessionSettingsDia
 import TrashDialog from "@/components/my-collection/TrashDialog";
 import ApplicationInboxTab from "@/components/my-collection/ApplicationInboxTab";
 import { toUserFacingError } from "@/lib/user-facing-error";
+import { MC_ACTIVE_SESSION_LIMIT } from "@/lib/mc-collection";
 
 interface MCSession {
   id: string;
@@ -24,6 +25,11 @@ interface MCSession {
   target_profile: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+const SESSION_TABS = ["discover", "resumes", "board", "inbox", "stats"] as const;
+function isSessionTab(value: string): boolean {
+  return (SESSION_TABS as readonly string[]).includes(value);
 }
 
 export default function SessionPage() {
@@ -37,13 +43,15 @@ export default function SessionPage() {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (fromQuery && isSessionTab(fromQuery)) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      // Ignore stale values (e.g. a tab that no longer exists) so the
+      // workspace never renders with no tab selected.
+      return stored && isSessionTab(stored) ? stored : "discover";
     } catch {
       return "discover";
     }
@@ -53,6 +61,33 @@ export default function SessionPage() {
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
   const focusResumeId = searchParams.get("resume");
+  const [reactivating, setReactivating] = useState(false);
+
+  async function reactivate() {
+    if (!session) return;
+    setReactivating(true);
+    const { count, error: countErr } = await supabase
+      .from("mc_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "active");
+    if (!countErr && (count ?? 0) >= MC_ACTIVE_SESSION_LIMIT) {
+      setReactivating(false);
+      toast({
+        title: "Reached active session limit",
+        description: `You can have at most ${MC_ACTIVE_SESSION_LIMIT} active sessions. Archive one first.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    const { error } = await supabase.from("mc_sessions").update({ status: "active" }).eq("id", session.id);
+    setReactivating(false);
+    if (error) {
+      toast({ title: "Reactivate failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    setSession((cur) => (cur ? { ...cur, status: "active" } : cur));
+    toast({ title: "Session reactivated" });
+  }
 
   useEffect(() => {
     try {
@@ -68,7 +103,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (fromQuery && isSessionTab(fromQuery) && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -142,12 +177,12 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight break-words">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <WorkerStatusBadge />
           <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
             <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash
@@ -157,6 +192,18 @@ export default function SessionPage() {
           </Button>
         </div>
       </div>
+
+      {session.status === "archived" && (
+        <div className="mb-5 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
+          <span className="flex items-center gap-2">
+            <Archive className="h-4 w-4 shrink-0" />
+            This session is archived. Your data is kept, reactivate it to keep searching.
+          </span>
+          <Button size="sm" variant="outline" onClick={reactivate} disabled={reactivating}>
+            {reactivating ? "Reactivating…" : "Reactivate"}
+          </Button>
+        </div>
+      )}
 
       <Tabs
         value={tab}
@@ -169,20 +216,25 @@ export default function SessionPage() {
         }}
       >
         <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
-          <TabsTrigger value="discover" className="gap-2">
-            <Search className="w-4 h-4" /> Discover
+          <TabsTrigger value="discover" className="gap-2 px-1 sm:px-3" title="Discover" aria-label="Discover">
+            <Search className="w-4 h-4" />
+            <span className="hidden sm:inline">Discover</span>
           </TabsTrigger>
-          <TabsTrigger value="resumes" className="gap-2">
-            <FileText className="w-4 h-4" /> Resumes
+          <TabsTrigger value="resumes" className="gap-2 px-1 sm:px-3" title="Resumes" aria-label="Resumes">
+            <FileText className="w-4 h-4" />
+            <span className="hidden sm:inline">Resumes</span>
           </TabsTrigger>
-          <TabsTrigger value="board" className="gap-2">
-            <Columns3 className="w-4 h-4" /> Board
+          <TabsTrigger value="board" className="gap-2 px-1 sm:px-3" title="Board" aria-label="Board">
+            <Columns3 className="w-4 h-4" />
+            <span className="hidden sm:inline">Board</span>
           </TabsTrigger>
-          <TabsTrigger value="inbox" className="gap-2">
-            <Inbox className="w-4 h-4" /> Inbox
+          <TabsTrigger value="inbox" className="gap-2 px-1 sm:px-3" title="Inbox" aria-label="Inbox">
+            <Inbox className="w-4 h-4" />
+            <span className="hidden sm:inline">Inbox</span>
           </TabsTrigger>
-          <TabsTrigger value="stats" className="gap-2">
-            <BarChart3 className="w-4 h-4" /> Stats
+          <TabsTrigger value="stats" className="gap-2 px-1 sm:px-3" title="Stats" aria-label="Stats">
+            <BarChart3 className="w-4 h-4" />
+            <span className="hidden sm:inline">Stats</span>
           </TabsTrigger>
         </TabsList>
 

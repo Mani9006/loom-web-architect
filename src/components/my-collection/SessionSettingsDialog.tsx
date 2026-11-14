@@ -34,6 +34,7 @@ interface Resume {
 interface MCSession {
   id: string;
   name: string;
+  status?: string;
   master_resume_id: string | null;
   target_profile: Record<string, unknown>;
 }
@@ -102,7 +103,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         .map((s) => s.trim())
         .filter(Boolean),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: compTarget && Number(compTarget) > 0 ? Math.round(Number(compTarget)) : null,
       visa_status: visa,
     };
     const updates = {
@@ -250,9 +251,11 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={archive} disabled={saving} className="text-destructive">
-            <Archive className="w-3.5 h-3.5 mr-1" /> Archive session
-          </Button>
+          {session.status !== "archived" && (
+            <Button variant="outline" onClick={archive} disabled={saving} className="text-destructive">
+              <Archive className="w-3.5 h-3.5 mr-1" /> Archive session
+            </Button>
+          )}
           <div className="flex-1" />
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Close

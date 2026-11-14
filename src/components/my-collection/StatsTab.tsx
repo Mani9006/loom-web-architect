@@ -3,26 +3,11 @@ import { Card } from "@/components/ui/card";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { computeSessionFunnel, type SessionFunnel } from "@/lib/mc-collection";
 
-interface StatusCounts {
-  total: number;
-  saved: number;
-  applied: number;
-  interview: number;
-  offer: number;
-  rejected: number;
-  resumes: number;
-}
+type StatusCounts = SessionFunnel & { resumes: number };
 
-const EMPTY_COUNTS: StatusCounts = {
-  total: 0,
-  saved: 0,
-  applied: 0,
-  interview: 0,
-  offer: 0,
-  rejected: 0,
-  resumes: 0,
-};
+const EMPTY_COUNTS: StatusCounts = { ...computeSessionFunnel([]), resumes: 0 };
 
 export default function StatsTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
@@ -37,7 +22,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         const [jobsResult, resumesResult] = await Promise.all([
           (supabase as any)
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
           (supabase as any)
@@ -51,18 +36,8 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
-        const tally = (s: string) => rows.filter((r) => r.status === s).length;
-
-        setCounts({
-          total: rows.length,
-          saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
-          offer: tally("offer"),
-          rejected: tally("rejected"),
-          resumes: resumesResult.count ?? 0,
-        });
+        const rows: { status: string; applied_at: string | null }[] = jobsResult.data ?? [];
+        setCounts({ ...computeSessionFunnel(rows), resumes: resumesResult.count ?? 0 });
       } catch (e) {
         if (cancelled) return;
         toast({
@@ -79,10 +54,13 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     };
   }, [sessionId]);
 
-  const responseRate =
-    counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
-      : null;
+  const responseRate = counts.responseRate;
+  const funnelSteps = [
+    { label: "On the board", value: counts.total, bar: "bg-slate-400" },
+    { label: "Applied", value: counts.applied, bar: "bg-indigo-500" },
+    { label: "Interviewing", value: counts.interviews, bar: "bg-amber-500" },
+    { label: "Offers", value: counts.offers, bar: "bg-emerald-500" },
+  ];
 
   return (
     <div className="space-y-4">
@@ -99,7 +77,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         />
         <StatCard
           label="Interviews"
-          value={loading ? "…" : counts.interview}
+          value={loading ? "…" : counts.interviews}
           icon={<BarChart3 className="w-4 h-4" />}
         />
         <StatCard
@@ -113,7 +91,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <StatCard
             label="Offers"
-            value={counts.offer}
+            value={counts.offers}
             icon={<Star className="w-4 h-4 text-emerald-600" />}
           />
           <StatCard
@@ -131,12 +109,47 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && counts.total > 0 ? (
+        <Card className="p-5">
+          <div className="text-sm font-medium mb-1">Pipeline</div>
+          <p className="text-xs text-muted-foreground mb-4">
+            How far your cards have moved. Applied includes cards that have since moved on to
+            interviews, offers, or rejections.
+          </p>
+          <div className="space-y-3">
+            {funnelSteps.map((step) => {
+              const pct = counts.total > 0 ? Math.round((step.value / counts.total) * 100) : 0;
+              return (
+                <div key={step.label}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span>{step.label}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {step.value} · {pct}%
+                    </span>
+                  </div>
+                  <div
+                    className="h-2 rounded-full bg-muted overflow-hidden"
+                    role="progressbar"
+                    aria-label={step.label}
+                    aria-valuenow={pct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <div className={`h-full rounded-full ${step.bar}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      ) : !loading ? (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Save jobs to the Board and move them through the columns to see your pipeline here.
+          </p>
+        </Card>
+      ) : null}
     </div>
   );
 }
