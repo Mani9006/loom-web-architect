@@ -28,6 +28,7 @@ import {
   type AIJob,
 } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
+import { dedupeAndRankJobs, jobKey, normalizeFitScore, safeExternalUrl } from "@/lib/mc-collection";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 // Discover state lives in sessionStorage so switching apps/tabs/refreshing the
@@ -128,6 +129,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // Keys of results currently being written to the board, so a double-click
+  // on "Save only" can't insert the same card twice.
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
 
   // Ties every waitForJob/runOnLocalWorker call below to this component
   // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
@@ -379,17 +383,23 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     }
 
     if (Array.isArray(parsed.jobs)) {
-      const jobs = (parsed.jobs as Record<string, unknown>[])
-        .map((j) => ({
-          title: String(j.title ?? "").trim(),
-          company: String(j.company ?? "").trim(),
-          location: j.location ? String(j.location) : undefined,
-          apply_url: j.apply_url ? String(j.apply_url) : undefined,
-          summary: j.summary ? String(j.summary) : undefined,
-          fit_score: typeof j.fit_score === "number" ? j.fit_score : undefined,
-          fit_reason: j.fit_reason ? String(j.fit_reason) : undefined,
-        }))
-        .filter((j) => j.title && j.company);
+      // AI output is untrusted: drop non-http(s) links (e.g. javascript:),
+      // coerce string fit scores, remove duplicate postings, and show the
+      // strongest fits first.
+      const jobs = dedupeAndRankJobs(
+        (parsed.jobs as unknown[])
+          .filter((j): j is Record<string, unknown> => !!j && typeof j === "object")
+          .map((j) => ({
+            title: String(j.title ?? "").trim(),
+            company: String(j.company ?? "").trim(),
+            location: j.location ? String(j.location).trim() || undefined : undefined,
+            apply_url: safeExternalUrl(j.apply_url ? String(j.apply_url) : null) ?? undefined,
+            summary: j.summary ? String(j.summary).trim() || undefined : undefined,
+            fit_score: normalizeFitScore(j.fit_score),
+            fit_reason: j.fit_reason ? String(j.fit_reason).trim() || undefined : undefined,
+          }))
+          .filter((j) => j.title && j.company),
+      );
 
       setFoundJobs(jobs);
       setClarification(null);
@@ -419,11 +429,15 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   async function runSearch(history: ClarificationTurn[]) {
     setBusy(true);
     setProgress("queued");
-    setFoundJobs([]);
-    setClarification(null);
 
     try {
       const resumeMd = await loadResumeMd();
+      // Only clear the previous results once we know a new search will
+      // actually start, so a missing resume doesn't wipe what's on screen.
+      if (resumeMd) {
+        setFoundJobs([]);
+        setClarification(null);
+      }
       if (!resumeMd) {
         toast({
           title: "Create a resume first",
@@ -482,10 +496,47 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     await runSearch(newHistory);
   }
 
+  /** Looks for a live card for this job already on the session's board. */
+  async function findExistingCardId(job: FoundJob): Promise<string | null> {
+    const { data } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .select("id")
+      .eq("session_id", sessionId)
+      .ilike("company", job.company.replace(/[%_]/g, "\\$&"))
+      .ilike("job_title", job.title.replace(/[%_]/g, "\\$&"))
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data?.id ?? null;
+  }
+
   async function saveToBoard(job: FoundJob) {
+    const key = jobKey(job.company, job.title);
+    if (savingKeys.has(key) || savedTitles.has(key)) return;
+    setSavingKeys((s) => new Set(s).add(key));
+    try {
+      await saveToBoardInner(job, key);
+    } finally {
+      setSavingKeys((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
+
+  async function saveToBoardInner(job: FoundJob, key: string) {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       toast({ title: "Not signed in", variant: "destructive" });
+      return;
+    }
+    // A previous search (or a manual add) may already have put this job on
+    // the board. Don't create a duplicate card.
+    if (await findExistingCardId(job)) {
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Already on your board", description: `${job.company} · ${job.title}` });
       return;
     }
     const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
@@ -495,7 +546,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       job_title: job.title,
       company: job.company,
       location: job.location ?? null,
-      apply_url: job.apply_url ?? null,
+      apply_url: safeExternalUrl(job.apply_url),
       jd_md: job.summary ?? null,
       status: "saved",
     });
@@ -503,7 +554,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(key));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -514,7 +565,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * master resume directly from session settings.
    */
   async function tailorFromDiscover(job: FoundJob) {
-    const key = `${job.company}::${job.title}`;
+    const key = jobKey(job.company, job.title);
+    if (tailoringKey) {
+      toast({ title: "One tailor at a time", description: "Wait for the current tailored resume to finish." });
+      return;
+    }
     if (!job.summary || !job.summary.trim()) {
       toast({
         title: "AI didn't return a job description",
@@ -544,21 +599,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         toast({ title: "Not signed in", variant: "destructive" });
         return;
       }
-      let trackedJobId: string | null = null;
-      if (savedTitles.has(key)) {
-        // Already saved, find the existing row.
-        const { data: existing } = await (supabase as any)
-          .from("mc_tracked_jobs")
-          .select("id")
-          .eq("session_id", sessionId)
-          .eq("company", job.company)
-          .eq("job_title", job.title)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        trackedJobId = existing?.id ?? null;
-      }
+      // Reuse the card if this job is already on the board (saved earlier in
+      // this search, a previous search, or added manually).
+      let trackedJobId: string | null = await findExistingCardId(job);
+      if (trackedJobId) setSavedTitles((s) => new Set(s).add(key));
       if (!trackedJobId) {
         const { data: tracked, error: trackErr } = await (supabase as any)
           .from("mc_tracked_jobs")
@@ -569,7 +613,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             job_title: job.title,
             company: job.company,
             location: job.location ?? null,
-            apply_url: job.apply_url ?? null,
+            apply_url: safeExternalUrl(job.apply_url),
             jd_md: job.summary,
             status: "saved",
           })
@@ -796,8 +840,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     foundJobs.length === 0 ? null : (
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
-          const key = `${job.company}::${job.title}`;
+          const key = jobKey(job.company, job.title);
           const isSaved = savedTitles.has(key);
+          const isSaving = savingKeys.has(key);
           return (
             <Card key={`${key}::${idx}`} className="p-4">
               <div className="flex items-start gap-3">
@@ -830,7 +875,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
-                    disabled={tailoringKey === key}
+                    disabled={!!tailoringKey}
                     className="h-7 text-[11px]"
                   >
                     {tailoringKey === key ? (
@@ -851,15 +896,21 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || isSaving || tailoringKey === key}
                     className="h-7 text-[11px]"
                   >
-                    {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
-                    {isSaved ? "Saved" : "Save only"}
+                    {isSaving ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : isSaved ? (
+                      <BookmarkCheck className="w-3 h-3 mr-1" />
+                    ) : (
+                      <Bookmark className="w-3 h-3 mr-1" />
+                    )}
+                    {isSaved ? "Saved" : isSaving ? "Saving…" : "Save only"}
                   </Button>
-                  {job.apply_url && (
+                  {safeExternalUrl(job.apply_url) && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
-                      <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={safeExternalUrl(job.apply_url)!} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3 h-3 mr-1" /> Open
                       </a>
                     </Button>

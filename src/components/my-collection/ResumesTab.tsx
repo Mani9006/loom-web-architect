@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { applyLineSuggestion, sanitizeFilename, splitMarkdownLinePrefix } from "@/lib/mc-collection";
 
 interface TailoredResume {
   id: string;
@@ -51,7 +52,9 @@ export default function ResumesTab({
   const [editing, setEditing] = useState<TailoredResume | null>(null);
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const focusHandled = useRef(false);
+  // Which deep-linked resume id we've already opened, so a later deep link
+  // to a different resume (same mount) still opens.
+  const focusHandled = useRef<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -74,9 +77,9 @@ export default function ResumesTab({
 
   // Open the deep-linked resume's editor once, as soon as it's in the loaded list.
   useEffect(() => {
-    if (focusHandled.current || !focusResumeId || loading) return;
+    if (!focusResumeId || loading || focusHandled.current === focusResumeId) return;
     const match = resumes.find((r) => r.id === focusResumeId);
-    focusHandled.current = true;
+    focusHandled.current = focusResumeId;
     if (match) {
       setEditing(match);
     } else {
@@ -89,19 +92,22 @@ export default function ResumesTab({
   }, [focusResumeId, resumes, loading, toast]);
 
   async function deleteResume(id: string) {
-    if (!confirm("Delete this tailored resume?")) return;
+    const target = resumes.find((r) => r.id === id);
+    if (!confirm(`Delete "${target?.name ?? "this tailored resume"}"?\n\nThis cannot be undone.`)) return;
+    // Unlink from any board card that points at this resume first, so
+    // "View tailored resume" doesn't dead-end and a foreign-key reference
+    // can't block the delete.
+    await (supabase as any)
+      .from("mc_tracked_jobs")
+      .update({ tailored_resume_id: null })
+      .eq("tailored_resume_id", id);
     const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
       return;
     }
-    // Unlink from any board card that pointed at this resume so "View
-    // tailored resume" doesn't dead-end on a card that still thinks it has one.
-    await (supabase as any)
-      .from("mc_tracked_jobs")
-      .update({ tailored_resume_id: null })
-      .eq("tailored_resume_id", id);
-    load();
+    setResumes((arr) => arr.filter((r) => r.id !== id));
+    toast({ title: "Resume deleted" });
   }
 
   async function commitRename() {
@@ -137,8 +143,8 @@ export default function ResumesTab({
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
-          here.
+          No tailored resumes yet. Click "Tailor to job" on a Discover result or a Board card and
+          the tailored copy will appear here.
         </p>
       </Card>
     );
@@ -233,9 +239,12 @@ function downloadAsMarkdown(r: TailoredResume) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  a.download = `${sanitizeFilename(r.name)}.md`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoking synchronously can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
@@ -250,7 +259,7 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
     });
     return;
   }
-  window.open(data.url, "_blank");
+  window.open(data.url, "_blank", "noopener,noreferrer");
 }
 
 // Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness
@@ -291,7 +300,7 @@ async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToa
 
     const doc = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${r.name}.docx`);
+    saveAs(blob, `${sanitizeFilename(r.name)}.docx`);
   } catch (e) {
     toast({
       title: "DOCX export failed",
@@ -322,7 +331,19 @@ function CanvasEditor({
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
 
+  const dirty = name !== resume.name || cv !== resume.cv_md;
+
+  function requestClose() {
+    if (saving) return;
+    if (dirty && !confirm("Discard your unsaved changes to this resume?")) return;
+    onClose();
+  }
+
   async function save() {
+    if (!name.trim()) {
+      toast({ title: "Resume needs a name", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const { error } = await (supabase as any)
       .from("mc_tailored_resumes")
@@ -343,7 +364,13 @@ function CanvasEditor({
     setAiSuggestions([]);
     try {
       const { data, error } = await (supabase as any).functions.invoke("enhance-bullet", {
-        body: { line: selectedLine, mode, context: { full_resume: cv } },
+        // enhance-bullet expects `bullet`; the old `line` key made every
+        // request fail with "Bullet text is required".
+        body: {
+          bullet: splitMarkdownLinePrefix(selectedLine).body,
+          mode,
+          jobTitle: resume.name,
+        },
       });
       if (error) throw error;
       setAiSuggestions(data?.suggestions ?? []);
@@ -361,9 +388,10 @@ function CanvasEditor({
   function applySuggestion(text: string) {
     if (!selectedLine || !selectedRange) return;
     const { start, end } = selectedRange;
-    setCv((c) => c.slice(0, start) + text + c.slice(end));
-    setSelectedLine(text);
-    setSelectedRange({ start, end: start + text.length });
+    const replacement = applyLineSuggestion(cv.slice(start, end), text);
+    setCv((c) => c.slice(0, start) + replacement + c.slice(end));
+    setSelectedLine(replacement.trim());
+    setSelectedRange({ start, end: start + replacement.length });
     setAiSuggestions([]);
   }
 
@@ -378,7 +406,7 @@ function CanvasEditor({
   }
 
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && requestClose()}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -493,10 +521,11 @@ function CanvasEditor({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          {dirty && <span className="mr-auto self-center text-[11px] text-muted-foreground">Unsaved changes</span>}
+          <Button variant="ghost" onClick={requestClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving || !name.trim() || !dirty}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

@@ -175,7 +175,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
         .map((s) => s.trim())
         .filter(Boolean),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: compTarget && Number(compTarget) > 0 ? Math.round(Number(compTarget)) : null,
       visa_status: visa,
     };
 

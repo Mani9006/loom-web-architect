@@ -35,7 +35,14 @@ serve(async (req) => {
       });
     }
 
-    const { bullet, jobTitle, company } = await req.json();
+    const { bullet, jobTitle, company, mode } = await req.json();
+    // Optional rewrite style from the My Collection canvas editor.
+    const modeInstruction: Record<string, string> = {
+      tighten: "Focus on making it shorter and punchier without losing meaning.",
+      keywords: "Focus on working in relevant ATS keywords for the target role where they genuinely fit.",
+      voice: "Keep the candidate's original tone and wording style; make only light improvements.",
+    };
+    const styleNote = typeof mode === "string" && modeInstruction[mode] ? `\n\n${modeInstruction[mode]}` : "";
 
     if (!bullet) {
       return new Response(JSON.stringify({ error: "Bullet text is required" }), {
@@ -60,7 +67,7 @@ Return ONLY a JSON object: {"suggestions": ["improved bullet 1", "improved bulle
         },
         {
           role: "user",
-          content: `Improve this bullet point for a ${jobTitle || "professional"} role at ${company || "a company"}:\n\n"${bullet}"`,
+          content: `Improve this bullet point for a ${jobTitle || "professional"} role at ${company || "a company"}:\n\n"${bullet}"${styleNote}`,
         },
       ],
       { maxTokens: 500, temperature: 0.7 },
