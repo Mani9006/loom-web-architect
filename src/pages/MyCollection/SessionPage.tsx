@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox } from "lucide-react";
+import { ArrowLeft, Search, FileText, Columns3, BarChart3, Settings, Trash2, Inbox, AlertCircle, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import DiscoverTab from "@/components/my-collection/DiscoverTab";
 import ResumesTab from "@/components/my-collection/ResumesTab";
@@ -26,6 +27,12 @@ interface MCSession {
   updated_at: string;
 }
 
+const TAB_VALUES = ["discover", "resumes", "board", "inbox", "stats"] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+function asTab(value: string | null | undefined): TabValue | null {
+  return value && (TAB_VALUES as readonly string[]).includes(value) ? (value as TabValue) : null;
+}
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -36,14 +43,14 @@ export default function SessionPage() {
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
-    const fromQuery = searchParams.get("tab");
+    const fromQuery = asTab(searchParams.get("tab"));
     if (fromQuery) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return asTab(stored) ?? "discover";
     } catch {
       return "discover";
     }
@@ -52,6 +59,8 @@ export default function SessionPage() {
   const [trashOpen, setTrashOpen] = useState(false);
   // Bumped to force the Board to refresh after a Trash restore.
   const [boardReloadKey, setBoardReloadKey] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const focusResumeId = searchParams.get("resume");
 
   useEffect(() => {
@@ -67,7 +76,7 @@ export default function SessionPage() {
   // remount, pick up the change here instead of only reading it once at
   // mount via useState's initializer.
   useEffect(() => {
-    const fromQuery = searchParams.get("tab");
+    const fromQuery = asTab(searchParams.get("tab"));
     if (fromQuery && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -75,9 +84,10 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    let hadInitialLoad = false;
+    const hadInitialLoad = session?.id === sessionId;
     (async () => {
-      setLoading(true);
+      if (!hadInitialLoad) setLoading(true);
+      setLoadError(null);
       const { data, error } = await supabase
         .from("mc_sessions")
         .select("*")
@@ -97,6 +107,7 @@ export default function SessionPage() {
             defaultMessage: "This application workspace could not be loaded.",
           });
           toast({ title: "Couldn't load workspace", description: safeError.message, variant: "destructive" });
+          setLoadError(safeError.message);
         }
         setLoading(false);
         return;
@@ -108,7 +119,6 @@ export default function SessionPage() {
         }
         return;
       }
-      hadInitialLoad = true;
       setSession(data as unknown as MCSession);
       setLoading(false);
     })();
@@ -120,7 +130,29 @@ export default function SessionPage() {
     // re-fire on every render, which on tab focus produces a flash and
     // can navigate the user away on a transient RLS hiccup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, reloadToken]);
+
+  if (loadError && !session) {
+    return (
+      <div className="container max-w-3xl mx-auto py-16 px-4 md:px-8">
+        <Card className="p-10 text-center border-dashed">
+          <AlertCircle className="w-10 h-10 mx-auto text-destructive/60 mb-3" />
+          <h2 className="font-medium mb-1">Couldn't load this session</h2>
+          <p className="text-sm text-muted-foreground mb-5">{loadError}</p>
+          <div className="flex justify-center gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/my-collection">
+                <ArrowLeft className="w-4 h-4 mr-1" /> All sessions
+              </Link>
+            </Button>
+            <Button onClick={() => setReloadToken((t) => t + 1)}>
+              <RotateCcw className="w-4 h-4 mr-1" /> Retry
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading || !session) {
     return (
@@ -142,12 +174,12 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight break-words">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <WorkerStatusBadge />
           <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
             <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash
@@ -161,7 +193,7 @@ export default function SessionPage() {
       <Tabs
         value={tab}
         onValueChange={(v) => {
-          setTab(v);
+          setTab(asTab(v) ?? "discover");
           // Clear any deep-link query params once the user manually
           // switches tabs, so navigating back to Resumes later doesn't
           // keep re-opening the same tailored resume.
@@ -169,20 +201,20 @@ export default function SessionPage() {
         }}
       >
         <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
-          <TabsTrigger value="discover" className="gap-2">
-            <Search className="w-4 h-4" /> Discover
+          <TabsTrigger value="discover" className="gap-2 px-1 sm:px-3" aria-label="Discover">
+            <Search className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Discover</span>
           </TabsTrigger>
-          <TabsTrigger value="resumes" className="gap-2">
-            <FileText className="w-4 h-4" /> Resumes
+          <TabsTrigger value="resumes" className="gap-2 px-1 sm:px-3" aria-label="Resumes">
+            <FileText className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Resumes</span>
           </TabsTrigger>
-          <TabsTrigger value="board" className="gap-2">
-            <Columns3 className="w-4 h-4" /> Board
+          <TabsTrigger value="board" className="gap-2 px-1 sm:px-3" aria-label="Board">
+            <Columns3 className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Board</span>
           </TabsTrigger>
-          <TabsTrigger value="inbox" className="gap-2">
-            <Inbox className="w-4 h-4" /> Inbox
+          <TabsTrigger value="inbox" className="gap-2 px-1 sm:px-3" aria-label="Inbox">
+            <Inbox className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Inbox</span>
           </TabsTrigger>
-          <TabsTrigger value="stats" className="gap-2">
-            <BarChart3 className="w-4 h-4" /> Stats
+          <TabsTrigger value="stats" className="gap-2 px-1 sm:px-3" aria-label="Stats">
+            <BarChart3 className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Stats</span>
           </TabsTrigger>
         </TabsList>
 

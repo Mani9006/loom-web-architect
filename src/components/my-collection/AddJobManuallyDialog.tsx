@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { safeExternalUrl } from "@/lib/my-collection";
 
 interface Props {
   open: boolean;
@@ -117,6 +118,14 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       });
       return;
     }
+    if (applyUrl.trim() && !safeExternalUrl(applyUrl)) {
+      toast({
+        title: "Apply URL looks invalid",
+        description: "Use a full link like https://company.com/jobs/123, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
 
     const { data: userData, error: userErr } = await supabase.auth.getUser();
@@ -135,7 +144,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         job_title: jobTitle.trim(),
         company: company.trim(),
         location: location.trim() || null,
-        apply_url: applyUrl.trim() || null,
+        apply_url: safeExternalUrl(applyUrl),
         jd_md: jdMd.trim() || null,
         status: "saved",
       })
