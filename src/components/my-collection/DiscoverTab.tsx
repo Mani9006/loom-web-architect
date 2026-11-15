@@ -28,6 +28,7 @@ import {
   type AIJob,
 } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
+import { jobIdentityKey, safeExternalUrl } from "@/lib/my-collection";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 // Discover state lives in sessionStorage so switching apps/tabs/refreshing the
@@ -128,6 +129,32 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // Normalized company::title keys of cards already on this session's board,
+  // so results the user saved in an earlier search (or added manually) show
+  // as "Saved" instead of creating duplicate cards.
+  const [boardKeys, setBoardKeys] = useState<Set<string>>(new Set());
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const savingRef = useRef<Set<string>>(new Set());
+
+  async function refreshBoardKeys() {
+    const { data, error } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .select("company,job_title")
+      .eq("session_id", sessionId)
+      .is("deleted_at", null);
+    if (error) return;
+    setBoardKeys(
+      new Set(((data ?? []) as { company: string; job_title: string }[]).map((r) => jobIdentityKey(r.company, r.job_title))),
+    );
+  }
+
+  useEffect(() => {
+    void refreshBoardKeys();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  const isOnBoard = (job: FoundJob) =>
+    savedTitles.has(`${job.company}::${job.title}`) || boardKeys.has(jobIdentityKey(job.company, job.title));
 
   // Ties every waitForJob/runOnLocalWorker call below to this component
   // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
@@ -483,6 +510,25 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
+    const key = `${job.company}::${job.title}`;
+    // Guard against double clicks and jobs that are already on the board.
+    if (savingRef.current.has(key)) return;
+    if (isOnBoard(job)) {
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Already on your board", description: `${job.company} · ${job.title}` });
+      return;
+    }
+    savingRef.current.add(key);
+    setSavingKey(key);
+    try {
+      await insertSavedJob(job);
+    } finally {
+      savingRef.current.delete(key);
+      setSavingKey(null);
+    }
+  }
+
+  async function insertSavedJob(job: FoundJob) {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       toast({ title: "Not signed in", variant: "destructive" });
@@ -495,7 +541,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       job_title: job.title,
       company: job.company,
       location: job.location ?? null,
-      apply_url: job.apply_url ?? null,
+      apply_url: safeExternalUrl(job.apply_url),
       jd_md: job.summary ?? null,
       status: "saved",
     });
@@ -504,6 +550,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       return;
     }
     setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setBoardKeys((s) => new Set(s).add(jobIdentityKey(job.company, job.title)));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -545,14 +592,15 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         return;
       }
       let trackedJobId: string | null = null;
-      if (savedTitles.has(key)) {
-        // Already saved, find the existing row.
+      if (isOnBoard(job)) {
+        // Already saved, find the existing row (case-insensitive so a
+        // manually added "acme" card matches an AI result for "Acme").
         const { data: existing } = await (supabase as any)
           .from("mc_tracked_jobs")
           .select("id")
           .eq("session_id", sessionId)
-          .eq("company", job.company)
-          .eq("job_title", job.title)
+          .ilike("company", job.company.replace(/[%_\\]/g, (c) => `\\${c}`))
+          .ilike("job_title", job.title.replace(/[%_\\]/g, (c) => `\\${c}`))
           .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -569,7 +617,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             job_title: job.title,
             company: job.company,
             location: job.location ?? null,
-            apply_url: job.apply_url ?? null,
+            apply_url: safeExternalUrl(job.apply_url),
             jd_md: job.summary,
             status: "saved",
           })
@@ -580,6 +628,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         }
         trackedJobId = tracked.id;
         setSavedTitles((s) => new Set(s).add(key));
+        setBoardKeys((s) => new Set(s).add(jobIdentityKey(job.company, job.title)));
       }
 
       // 2. Build the tailor prompt, same anti-fabrication rules as BoardTab.
@@ -797,7 +846,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
           const key = `${job.company}::${job.title}`;
-          const isSaved = savedTitles.has(key);
+          const isSaved = isOnBoard(job);
+          const applyHref = safeExternalUrl(job.apply_url);
           return (
             <Card key={`${key}::${idx}`} className="p-4">
               <div className="flex items-start gap-3">
@@ -851,15 +901,21 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || tailoringKey === key || savingKey === key}
                     className="h-7 text-[11px]"
                   >
-                    {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
-                    {isSaved ? "Saved" : "Save only"}
+                    {savingKey === key ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : isSaved ? (
+                      <BookmarkCheck className="w-3 h-3 mr-1" />
+                    ) : (
+                      <Bookmark className="w-3 h-3 mr-1" />
+                    )}
+                    {isSaved ? "Saved" : savingKey === key ? "Saving…" : "Save only"}
                   </Button>
-                  {job.apply_url && (
+                  {applyHref && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
-                      <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={applyHref} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3 h-3 mr-1" /> Open
                       </a>
                     </Button>
@@ -884,7 +940,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         sessionId={sessionId}
-        onCreated={() => setAddOpen(false)}
+        onCreated={() => {
+          setAddOpen(false);
+          void refreshBoardKeys();
+        }}
       />
     </div>
   );

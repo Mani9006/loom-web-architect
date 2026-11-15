@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { safeFileName } from "@/lib/my-collection";
 
 interface TailoredResume {
   id: string;
@@ -233,16 +234,23 @@ function downloadAsMarkdown(r: TailoredResume) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  a.download = `${safeFileName(r.name)}.md`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoking synchronously can cancel the download in Safari/Firefox.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
+  // Open the tab synchronously inside the click handler; opening it after
+  // the await below gets blocked by popup blockers.
+  const pending = window.open("", "_blank");
   const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "pdf" },
   });
   if (error || !data?.url) {
+    pending?.close();
     toast({
       title: "PDF export failed",
       description: error?.message ?? "The server didn't return a download URL.",
@@ -250,7 +258,12 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
     });
     return;
   }
-  window.open(data.url, "_blank");
+  if (pending && !pending.closed) {
+    pending.opener = null;
+    pending.location.href = data.url;
+  } else {
+    window.location.assign(data.url);
+  }
 }
 
 // Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness
@@ -291,7 +304,7 @@ async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToa
 
     const doc = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${r.name}.docx`);
+    saveAs(blob, `${safeFileName(r.name)}.docx`);
   } catch (e) {
     toast({
       title: "DOCX export failed",

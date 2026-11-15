@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase } from "lucide-react";
+import { Plus, FolderOpen, Archive, Sparkles, MoreVertical, Briefcase, Search, AlertCircle, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
+import { computeStatsBySession, type CollectionStats } from "@/lib/my-collection";
 
 interface MCSession {
   id: string;
@@ -24,30 +27,30 @@ interface MCSession {
   updated_at: string;
 }
 
-interface SessionStats {
-  discovered: number;
-  applied: number;
-  interviews: number;
-}
 
 const ACTIVE_LIMIT = 5;
 
 export default function MyCollectionPage() {
   const [sessions, setSessions] = useState<MCSession[]>([]);
-  const [statsMap, setStatsMap] = useState<Record<string, SessionStats>>({});
+  const [statsMap, setStatsMap] = useState<Record<string, CollectionStats>>({});
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
 
   async function loadSessions() {
     setLoading(true);
+    setLoadError(null);
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
+      .neq("status", "deleted")
       .order("updated_at", { ascending: false });
     if (error) {
+      setLoadError(error.message);
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
     } else {
       const rows: MCSession[] = data ?? [];
@@ -63,24 +66,14 @@ export default function MyCollectionPage() {
     try {
       const { data } = await (supabase as any)
         .from("mc_tracked_jobs")
-        .select("session_id,status")
+        .select("session_id,status,applied_at")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
-      const rows: { session_id: string; status: string }[] = data ?? [];
-      const map: Record<string, SessionStats> = {};
-      for (const sid of sessionIds) {
-        const jobRows = rows.filter((r) => r.session_id === sid);
-        map[sid] = {
-          discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
-          interviews:
-            jobRows.filter((r) => r.status === "interview").length +
-            jobRows.filter((r) => r.status === "take_home").length,
-        };
-      }
-      setStatsMap(map);
+      // Applied counts every card that reached "applied" or a later stage,
+      // not only cards currently sitting in the Applied column.
+      setStatsMap(computeStatsBySession(sessionIds, data ?? []));
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "–" if this fails.
     }
   }
 
@@ -88,9 +81,27 @@ export default function MyCollectionPage() {
     loadSessions();
   }, []);
 
-  const activeSessions = sessions.filter((s) => s.status === "active");
-  const archivedSessions = sessions.filter((s) => s.status === "archived");
-  const atCap = activeSessions.length >= ACTIVE_LIMIT;
+  const normalizedQuery = query.trim().toLowerCase();
+  const allActive = useMemo(() => sessions.filter((s) => s.status === "active"), [sessions]);
+  const allArchived = useMemo(() => sessions.filter((s) => s.status === "archived"), [sessions]);
+  const activeSessions = useMemo(
+    () => allActive.filter((s) => sessionMatches(s, normalizedQuery)),
+    [allActive, normalizedQuery],
+  );
+  const archivedSessions = useMemo(
+    () => allArchived.filter((s) => sessionMatches(s, normalizedQuery)),
+    [allArchived, normalizedQuery],
+  );
+  const totals = useMemo(() => {
+    const values = allActive.map((s) => statsMap[s.id]).filter(Boolean) as CollectionStats[];
+    return {
+      onBoard: values.reduce((a, v) => a + v.total, 0),
+      applied: values.reduce((a, v) => a + v.applied, 0),
+      interviews: values.reduce((a, v) => a + v.interviews, 0),
+      offers: values.reduce((a, v) => a + v.offers, 0),
+    };
+  }, [statsMap, allActive]);
+  const atCap = allActive.length >= ACTIVE_LIMIT;
 
   async function archiveSession(id: string) {
     const { error } = await (supabase as any)
@@ -100,6 +111,7 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Archive failed", description: error.message, variant: "destructive" });
     } else {
+      toast({ title: "Session archived", description: "Use \"Show archived\" to find it again." });
       await loadSessions();
     }
   }
@@ -120,6 +132,7 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Reactivate failed", description: error.message, variant: "destructive" });
     } else {
+      toast({ title: "Session reactivated" });
       await loadSessions();
     }
   }
@@ -130,13 +143,14 @@ export default function MyCollectionPage() {
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {
+      toast({ title: "Session deleted" });
       await loadSessions();
     }
   }
 
   return (
     <div className="container max-w-6xl mx-auto py-8 px-4 md:px-8">
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <FolderOpen className="w-6 h-6 text-primary" />
@@ -147,28 +161,74 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> New Session
-        </Button>
+        <div className="flex flex-col items-start sm:items-end gap-1 shrink-0">
+          <Button onClick={() => setWizardOpen(true)} disabled={atCap || loading}>
+            <Plus className="w-4 h-4 mr-1" /> New Session
+          </Button>
+          {atCap && (
+            <span className="text-[11px] text-muted-foreground">
+              {ACTIVE_LIMIT}-session limit reached. Archive one to start another.
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
         <Badge variant="outline" className="font-normal">
-          {activeSessions.length}/{ACTIVE_LIMIT} active
+          {allActive.length}/{ACTIVE_LIMIT} active
         </Badge>
-        {archivedSessions.length > 0 && (
+        {allArchived.length > 0 && (
           <button
+            type="button"
             onClick={() => setShowArchived((s) => !s)}
-            className="hover:text-foreground transition-colors"
+            className="hover:text-foreground transition-colors underline-offset-2 hover:underline"
           >
-            {showArchived ? "Hide" : "Show"} {archivedSessions.length} archived
+            {showArchived ? "Hide" : "Show"} {allArchived.length} archived
           </button>
+        )}
+        {allActive.length > 0 && (
+          <span className="hidden md:inline">
+            · {totals.onBoard} on board · {totals.applied} applied · {totals.interviews} interviewing
+            {totals.offers > 0 ? ` · ${totals.offers} ${totals.offers === 1 ? "offer" : "offers"}` : ""}
+          </span>
+        )}
+        {sessions.length > 3 && (
+          <div className="relative ml-auto w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search sessions or roles"
+              aria-label="Search sessions"
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
         )}
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-12 text-center">Loading…</div>
-      ) : activeSessions.length === 0 && archivedSessions.length === 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-44 w-full" />
+          ))}
+        </div>
+      ) : loadError && sessions.length === 0 ? (
+        <Card className="p-10 text-center border-dashed">
+          <AlertCircle className="w-10 h-10 mx-auto text-destructive/60 mb-3" />
+          <h3 className="font-medium mb-1">Couldn't load your sessions</h3>
+          <p className="text-sm text-muted-foreground mb-4">Check your connection and try again.</p>
+          <Button variant="outline" onClick={() => loadSessions()}>
+            <RotateCcw className="w-4 h-4 mr-1" /> Retry
+          </Button>
+        </Card>
+      ) : normalizedQuery && activeSessions.length === 0 && archivedSessions.length === 0 ? (
+        <Card className="p-10 text-center border-dashed text-sm text-muted-foreground">
+          No sessions match "{query.trim()}".{" "}
+          <button type="button" className="underline" onClick={() => setQuery("")}>
+            Clear search
+          </button>
+        </Card>
+      ) : allActive.length === 0 && allArchived.length === 0 ? (
         <Card className="p-12 text-center border-dashed">
           <Briefcase className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
           <h3 className="font-medium mb-1">No sessions yet</h3>
@@ -181,6 +241,16 @@ export default function MyCollectionPage() {
         </Card>
       ) : (
         <>
+          {activeSessions.length === 0 && !normalizedQuery && (
+            <Card className="p-8 text-center border-dashed text-sm text-muted-foreground">
+              No active sessions.{" "}
+              {!atCap && (
+                <button type="button" className="underline" onClick={() => setWizardOpen(true)}>
+                  Start a new one
+                </button>
+              )}
+            </Card>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeSessions.map((s) => (
               <SessionCard
@@ -194,7 +264,7 @@ export default function MyCollectionPage() {
             ))}
           </div>
 
-          {showArchived && archivedSessions.length > 0 && (
+          {(showArchived || (normalizedQuery && activeSessions.length === 0)) && archivedSessions.length > 0 && (
             <>
               <h2 className="text-sm font-medium text-muted-foreground mt-10 mb-3 flex items-center gap-2">
                 <Archive className="w-4 h-4" /> Archived
@@ -239,7 +309,7 @@ function SessionCard({
   onDelete,
 }: {
   session: MCSession;
-  stats?: SessionStats;
+  stats?: CollectionStats;
   archived?: boolean;
   onOpen: () => void;
   onArchive?: () => void;
@@ -251,8 +321,18 @@ function SessionCard({
 
   return (
     <Card
-      className="p-5 hover:border-primary/40 transition-colors cursor-pointer relative group"
+      className="p-5 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors cursor-pointer relative group"
       onClick={onOpen}
+      role="link"
+      tabIndex={0}
+      aria-label={`Open session ${session.name}`}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-medium text-[15px] leading-tight pr-8 line-clamp-2">{session.name}</h3>
@@ -262,7 +342,12 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Session actions"
+              className="h-7 w-7 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+            >
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +381,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.total ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
@@ -316,4 +401,11 @@ function SessionStat({ label, value }: { label: string; value: string | number }
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
     </div>
   );
+}
+
+function sessionMatches(session: MCSession, normalizedQuery: string): boolean {
+  if (!normalizedQuery) return true;
+  const tp = (session.target_profile ?? {}) as Record<string, unknown>;
+  const roles = Array.isArray(tp.target_roles) ? (tp.target_roles as unknown[]) : [];
+  return [session.name, ...roles].some((v) => String(v ?? "").toLowerCase().includes(normalizedQuery));
 }
