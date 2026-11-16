@@ -3,6 +3,20 @@ import { Card } from "@/components/ui/card";
 import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { summarizeTrackedJobs, TRACKED_STATUSES, type StatusRow } from "@/lib/mc-collection";
+
+const STATUS_LABELS: Record<string, string> = {
+  discovered: "Discovered",
+  saved: "Saved",
+  applied: "Applied",
+  viewed: "Viewed",
+  interview: "Interview",
+  take_home: "Take-home",
+  offer: "Offer",
+  hold: "Hold",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn",
+};
 
 interface StatusCounts {
   total: number;
@@ -12,6 +26,8 @@ interface StatusCounts {
   offer: number;
   rejected: number;
   resumes: number;
+  responseRate: number | null;
+  byStatus: Record<string, number>;
 }
 
 const EMPTY_COUNTS: StatusCounts = {
@@ -22,6 +38,8 @@ const EMPTY_COUNTS: StatusCounts = {
   offer: 0,
   rejected: 0,
   resumes: 0,
+  responseRate: null,
+  byStatus: {},
 };
 
 export default function StatsTab({ sessionId }: { sessionId: string }) {
@@ -37,7 +55,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         const [jobsResult, resumesResult] = await Promise.all([
           (supabase as any)
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
           (supabase as any)
@@ -51,17 +69,21 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
-        const tally = (s: string) => rows.filter((r) => r.status === s).length;
+        const rows: StatusRow[] = jobsResult.data ?? [];
+        const summary = summarizeTrackedJobs(rows);
+        const byStatus: Record<string, number> = {};
+        for (const r of rows) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
 
         setCounts({
-          total: rows.length,
-          saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
-          offer: tally("offer"),
-          rejected: tally("rejected"),
+          total: summary.total,
+          saved: summary.saved,
+          applied: summary.applied,
+          interview: summary.interviews,
+          offer: summary.offers,
+          rejected: summary.rejected,
           resumes: resumesResult.count ?? 0,
+          responseRate: summary.responseRate,
+          byStatus,
         });
       } catch (e) {
         if (cancelled) return;
@@ -79,10 +101,8 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     };
   }, [sessionId]);
 
-  const responseRate =
-    counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
-      : null;
+  const responseRate = counts.responseRate;
+  const maxStatusCount = Math.max(1, ...Object.values(counts.byStatus));
 
   return (
     <div className="space-y-4">
@@ -131,12 +151,38 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
+      {!loading && counts.total > 0 ? (
+        <Card className="p-5">
+          <h3 className="text-sm font-medium mb-3">Pipeline</h3>
+          <div className="space-y-2">
+            {TRACKED_STATUSES.filter((s) => (counts.byStatus[s] ?? 0) > 0).map((s) => {
+              const n = counts.byStatus[s] ?? 0;
+              return (
+                <div key={s} className="flex items-center gap-3 text-xs">
+                  <span className="w-24 shrink-0 text-muted-foreground">{STATUS_LABELS[s] ?? s}</span>
+                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Math.round((n / maxStatusCount) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="w-8 text-right tabular-nums font-medium">{n}</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-4">
+            Applied and Interviews are cumulative: a card that moved on to an interview or offer still counts as applied.
+          </p>
+        </Card>
+      ) : !loading ? (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            No cards on the board yet. Save jobs from Discover or add one manually to see your pipeline here.
+          </p>
+        </Card>
+      ) : null}
     </div>
   );
 }

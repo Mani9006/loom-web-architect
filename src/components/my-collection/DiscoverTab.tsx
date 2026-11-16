@@ -28,6 +28,7 @@ import {
   type AIJob,
 } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
+import { jobIdentityKey, safeExternalUrl } from "@/lib/mc-collection";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 // Discover state lives in sessionStorage so switching apps/tabs/refreshing the
@@ -128,6 +129,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const savingKeysRef = useRef<Set<string>>(new Set());
 
   // Ties every waitForJob/runOnLocalWorker call below to this component
   // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
@@ -483,9 +485,40 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
+    const key = `${job.company}::${job.title}`;
+    // Guard against double-clicks creating duplicate cards while the first
+    // insert is still in flight.
+    if (savingKeysRef.current.has(key)) return;
+    savingKeysRef.current.add(key);
+    try {
+      await saveToBoardInner(job, key);
+    } finally {
+      savingKeysRef.current.delete(key);
+    }
+  }
+
+  async function saveToBoardInner(job: FoundJob, key: string) {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       toast({ title: "Not signed in", variant: "destructive" });
+      return;
+    }
+    // The saved-key set only lives in this browser's sessionStorage, so also
+    // check the board itself: re-running a search often returns jobs that
+    // were already saved in an earlier visit.
+    const { data: existingRows } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .select("company,job_title")
+      .eq("session_id", sessionId)
+      .is("deleted_at", null)
+      .ilike("company", job.company.trim());
+    const target = jobIdentityKey(job.company, job.title);
+    const alreadyOnBoard = ((existingRows ?? []) as { company: string; job_title: string }[]).some(
+      (r) => jobIdentityKey(r.company, r.job_title) === target,
+    );
+    if (alreadyOnBoard) {
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Already on your board", description: `${job.company} · ${job.title}` });
       return;
     }
     const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
@@ -503,7 +536,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(key));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -857,9 +890,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
                     {isSaved ? "Saved" : "Save only"}
                   </Button>
-                  {job.apply_url && (
+                  {safeExternalUrl(job.apply_url) && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
-                      <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={safeExternalUrl(job.apply_url)!} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3 h-3 mr-1" /> Open
                       </a>
                     </Button>
