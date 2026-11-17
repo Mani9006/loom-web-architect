@@ -80,7 +80,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         .from("resumes")
         .select("id,title,updated_at")
         .order("updated_at", { ascending: false })
-        .limit(20);
+        .limit(100);
       setResumes((data as Resume[]) ?? []);
     })();
   }, [open, session]);
@@ -102,7 +102,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
         .map((s) => s.trim())
         .filter(Boolean),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: compTarget && Number(compTarget) > 0 ? Number(compTarget) : null,
       visa_status: visa,
     };
     const updates = {
