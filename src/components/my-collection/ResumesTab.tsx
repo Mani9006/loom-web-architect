@@ -20,7 +20,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles, Search } from "lucide-react";
+import { safeFilename } from "@/lib/my-collection";
 
 interface TailoredResume {
   id: string;
@@ -52,6 +53,7 @@ export default function ResumesTab({
   const [renaming, setRenaming] = useState<TailoredResume | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const focusHandled = useRef(false);
+  const [query, setQuery] = useState("");
 
   async function load() {
     setLoading(true);
@@ -89,19 +91,22 @@ export default function ResumesTab({
   }, [focusResumeId, resumes, loading, toast]);
 
   async function deleteResume(id: string) {
-    if (!confirm("Delete this tailored resume?")) return;
+    const target = resumes.find((r) => r.id === id);
+    if (!confirm(`Delete ${target ? `"${target.name}"` : "this tailored resume"}? This cannot be undone.`)) return;
+    // Unlink from any board card that pointed at this resume first, so "View
+    // tailored resume" doesn't dead-end on a card that still thinks it has one.
+    // (The FK is ON DELETE SET NULL too; this keeps older databases correct.)
+    await (supabase as any)
+      .from("mc_tracked_jobs")
+      .update({ tailored_resume_id: null })
+      .eq("tailored_resume_id", id);
     const { error } = await (supabase as any).from("mc_tailored_resumes").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
       return;
     }
-    // Unlink from any board card that pointed at this resume so "View
-    // tailored resume" doesn't dead-end on a card that still thinks it has one.
-    await (supabase as any)
-      .from("mc_tracked_jobs")
-      .update({ tailored_resume_id: null })
-      .eq("tailored_resume_id", id);
-    load();
+    setResumes((arr) => arr.filter((r) => r.id !== id));
+    toast({ title: "Resume deleted" });
   }
 
   async function commitRename() {
@@ -137,17 +142,36 @@ export default function ResumesTab({
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
-          here.
+          No tailored resumes yet. Find a job in Discover (or open a card on the Board) and click
+          "Tailor to job" to create one here.
         </p>
       </Card>
     );
   }
 
+  const visibleResumes = query.trim()
+    ? resumes.filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : resumes;
+
   return (
     <>
+      {resumes.length > 5 && (
+        <div className="relative mb-3 max-w-xs">
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter resumes…"
+            aria-label="Filter tailored resumes"
+            className="h-8 pl-7 text-xs"
+          />
+        </div>
+      )}
       <div className="space-y-2">
-        {resumes.map((r) => (
+        {visibleResumes.length === 0 && (
+          <p className="text-xs text-muted-foreground py-4 text-center">No resumes match "{query}".</p>
+        )}
+        {visibleResumes.map((r) => (
           <Card key={r.id} className="p-3 flex items-center gap-3">
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
@@ -164,7 +188,7 @@ export default function ResumesTab({
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-7 w-7">
+                <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Resume actions">
                   <MoreVertical className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -233,16 +257,23 @@ function downloadAsMarkdown(r: TailoredResume) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  a.download = `${safeFilename(r.name)}.md`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoking synchronously can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
+  // Open the tab synchronously while we still have the click's user
+  // activation; opening it after the network round-trip gets popup-blocked.
+  const win = window.open("", "_blank");
   const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "pdf" },
   });
   if (error || !data?.url) {
+    win?.close();
     toast({
       title: "PDF export failed",
       description: error?.message ?? "The server didn't return a download URL.",
@@ -250,7 +281,12 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
     });
     return;
   }
-  window.open(data.url, "_blank");
+  if (win) {
+    win.opener = null;
+    win.location.href = data.url;
+  } else {
+    window.open(data.url, "_blank", "noopener");
+  }
 }
 
 // Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness
@@ -291,7 +327,7 @@ async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToa
 
     const doc = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${r.name}.docx`);
+    saveAs(blob, `${safeFilename(r.name)}.docx`);
   } catch (e) {
     toast({
       title: "DOCX export failed",
@@ -322,7 +358,19 @@ function CanvasEditor({
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
 
+  const dirty = name !== resume.name || cv !== resume.cv_md;
+
+  function requestClose() {
+    if (saving) return;
+    if (dirty && !confirm("Discard your unsaved changes to this resume?")) return;
+    onClose();
+  }
+
   async function save() {
+    if (!name.trim()) {
+      toast({ title: "Resume needs a name", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const { error } = await (supabase as any)
       .from("mc_tailored_resumes")
@@ -378,7 +426,7 @@ function CanvasEditor({
   }
 
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && requestClose()}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -493,10 +541,10 @@ function CanvasEditor({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="ghost" onClick={requestClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving || !dirty || !name.trim()}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

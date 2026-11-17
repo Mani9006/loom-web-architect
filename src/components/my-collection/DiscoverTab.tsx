@@ -28,6 +28,7 @@ import {
   type AIJob,
 } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
+import { jobKey, parseDiscoverResponse, safeExternalUrl } from "@/lib/my-collection";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 // Discover state lives in sessionStorage so switching apps/tabs/refreshing the
@@ -128,6 +129,33 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  // jobKey -> mc_tracked_jobs.id for cards already on this session's board,
+  // so Discover never creates duplicate cards (even across browser sessions).
+  const boardIdsRef = useRef<Map<string, string>>(new Map());
+
+  async function refreshBoardKeys() {
+    const { data, error } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .select("id,company,job_title")
+      .eq("session_id", sessionId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(2000);
+    if (error || !data) return;
+    const map = new Map<string, string>();
+    for (const row of data as { id: string; company: string; job_title: string }[]) {
+      const key = jobKey(row.company, row.job_title);
+      if (!map.has(key)) map.set(key, row.id);
+    }
+    boardIdsRef.current = map;
+    setSavedTitles(new Set(map.keys()));
+  }
+
+  useEffect(() => {
+    void refreshBoardKeys();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   // Ties every waitForJob/runOnLocalWorker call below to this component
   // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
@@ -331,27 +359,14 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * (when we explicitly start a search) and the auto-reattach effect on
    * mount (when we picked up an in-flight search the user started before).
    */
-  async function handleSearchResult(job: AIJob, history: ClarificationTurn[]) {
+  async function handleSearchResult(job: AIJob, _history: ClarificationTurn[]) {
     const result = job.result ?? "";
-    const resultJson = job.result_json;
+    const parsed = parseDiscoverResponse(result, job.result_json);
+    // Whatever the outcome, this AI job has been consumed.
+    setActiveJobId(null);
+    setActiveJobHistory([]);
 
-    let parsed: Record<string, unknown> | null =
-      resultJson && typeof resultJson === "object" ? (resultJson as Record<string, unknown>) : null;
-
-    if (!parsed && result) {
-      const fence = result.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
-      if (fence) {
-        try { parsed = JSON.parse(fence[1].trim()); } catch { /* Try the broader object match below. */ }
-      }
-    }
-    if (!parsed && result) {
-      const objMatch = result.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-      if (objMatch) {
-        try { parsed = JSON.parse(objMatch[0]); } catch { /* A user-safe parse error is handled below. */ }
-      }
-    }
-
-    if (!parsed) {
+    if (parsed.kind === "invalid") {
       const preview = result.slice(0, 280).trim();
       toast({
         title: "AI didn't return valid JSON",
@@ -360,17 +375,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           : "Empty response. Click Search again.",
         variant: "destructive",
       });
-      // Job consumed, clear activeJobId
-      setActiveJobId(null);
-      setActiveJobHistory([]);
       return;
     }
 
-    if (parsed.needs_clarification && Array.isArray(parsed.questions)) {
-      const qs = (parsed.questions as unknown[]).map(String).slice(0, 5);
+    if (parsed.kind === "clarification") {
+      const qs = parsed.questions;
       setClarification({ questions: qs, answers: qs.map(() => "") });
-      setActiveJobId(null);
-      setActiveJobHistory([]);
       toast({
         title: "AI needs a bit more info",
         description: `${qs.length} quick question${qs.length === 1 ? "" : "s"} below.`,
@@ -378,42 +388,28 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       return;
     }
 
-    if (Array.isArray(parsed.jobs)) {
-      const jobs = (parsed.jobs as Record<string, unknown>[])
-        .map((j) => ({
-          title: String(j.title ?? "").trim(),
-          company: String(j.company ?? "").trim(),
-          location: j.location ? String(j.location) : undefined,
-          apply_url: j.apply_url ? String(j.apply_url) : undefined,
-          summary: j.summary ? String(j.summary) : undefined,
-          fit_score: typeof j.fit_score === "number" ? j.fit_score : undefined,
-          fit_reason: j.fit_reason ? String(j.fit_reason) : undefined,
-        }))
-        .filter((j) => j.title && j.company);
-
+    if (parsed.kind === "jobs") {
+      const jobs = parsed.jobs;
       setFoundJobs(jobs);
       setClarification(null);
-      setActiveJobId(null);
-      setActiveJobHistory([]);
+      const alreadySaved = jobs.filter((j) => boardIdsRef.current.has(jobKey(j.company, j.title))).length;
       toast({
         title: jobs.length === 0 ? "No matches found" : `Found ${jobs.length} jobs`,
         description:
           jobs.length === 0
             ? "Try widening your target roles in Settings, or ask for jobs more directly."
-            : "Click Tailor to job on any result to save it and create a tailored copy.",
+            : alreadySaved > 0
+              ? `${alreadySaved} already on your board. Click Tailor to job on any other result to save it and create a tailored copy.`
+              : "Click Tailor to job on any result to save it and create a tailored copy.",
       });
       return;
     }
 
-    setActiveJobId(null);
-    setActiveJobHistory([]);
     toast({
       title: "Unexpected AI response",
       description: "The AI didn't return jobs or clarification questions. Try again.",
       variant: "destructive",
     });
-    // Suppress unused-history warning, kept in signature for future use.
-    void history;
   }
 
   async function runSearch(history: ClarificationTurn[]) {
@@ -483,27 +479,37 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
+    const key = jobKey(job.company, job.title);
+    if (savingKey === key) return;
+    if (boardIdsRef.current.has(key)) {
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Already on your board", description: `${job.company} · ${job.title}` });
+      return;
+    }
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       toast({ title: "Not signed in", variant: "destructive" });
       return;
     }
-    const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
+    setSavingKey(key);
+    const { data: inserted, error } = await (supabase as any).from("mc_tracked_jobs").insert({
       user_id: userData.user.id,
       session_id: sessionId,
       scanned_job_id: null,
       job_title: job.title,
       company: job.company,
       location: job.location ?? null,
-      apply_url: job.apply_url ?? null,
+      apply_url: safeExternalUrl(job.apply_url),
       jd_md: job.summary ?? null,
       status: "saved",
-    });
+    }).select("id").single();
+    setSavingKey(null);
     if (error) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    if (inserted?.id) boardIdsRef.current.set(key, inserted.id);
+    setSavedTitles((s) => new Set(s).add(key));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -514,7 +520,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * master resume directly from session settings.
    */
   async function tailorFromDiscover(job: FoundJob) {
-    const key = `${job.company}::${job.title}`;
+    const key = jobKey(job.company, job.title);
+    if (tailoringKey) {
+      toast({ title: "A tailor is already running", description: "Wait for it to finish, then try again." });
+      return;
+    }
     if (!job.summary || !job.summary.trim()) {
       toast({
         title: "AI didn't return a job description",
@@ -544,21 +554,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         toast({ title: "Not signed in", variant: "destructive" });
         return;
       }
-      let trackedJobId: string | null = null;
-      if (savedTitles.has(key)) {
-        // Already saved, find the existing row.
-        const { data: existing } = await (supabase as any)
-          .from("mc_tracked_jobs")
-          .select("id")
-          .eq("session_id", sessionId)
-          .eq("company", job.company)
-          .eq("job_title", job.title)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        trackedJobId = existing?.id ?? null;
-      }
+      let trackedJobId: string | null = boardIdsRef.current.get(key) ?? null;
       if (!trackedJobId) {
         const { data: tracked, error: trackErr } = await (supabase as any)
           .from("mc_tracked_jobs")
@@ -569,7 +565,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             job_title: job.title,
             company: job.company,
             location: job.location ?? null,
-            apply_url: job.apply_url ?? null,
+            apply_url: safeExternalUrl(job.apply_url),
             jd_md: job.summary,
             status: "saved",
           })
@@ -579,6 +575,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           throw new Error(trackErr?.message || "Couldn't save card before tailoring");
         }
         trackedJobId = tracked.id;
+        boardIdsRef.current.set(key, tracked.id);
         setSavedTitles((s) => new Set(s).add(key));
       }
 
@@ -663,7 +660,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     setFoundJobs([]);
     setClarification(null);
     setConversation([]);
-    setSavedTitles(new Set());
+    setSavedTitles(new Set(boardIdsRef.current.keys()));
     setActiveJobId(null);
     setActiveJobHistory([]);
     clearPersisted(sessionId);
@@ -796,11 +793,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     foundJobs.length === 0 ? null : (
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
-          const key = `${job.company}::${job.title}`;
+          const key = jobKey(job.company, job.title);
           const isSaved = savedTitles.has(key);
+          const applyHref = safeExternalUrl(job.apply_url);
           return (
             <Card key={`${key}::${idx}`} className="p-4">
-              <div className="flex items-start gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-2 flex-wrap">
                     <h4 className="font-medium text-[14px] leading-snug">{job.title}</h4>
@@ -825,12 +823,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     </p>
                   )}
                 </div>
-                <div className="flex flex-col gap-1.5 shrink-0 min-w-[8rem]">
+                <div className="flex flex-row flex-wrap sm:flex-col gap-1.5 shrink-0 sm:min-w-[8rem]">
                   <Button
                     size="sm"
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
-                    disabled={tailoringKey === key}
+                    disabled={!!tailoringKey}
                     className="h-7 text-[11px]"
                   >
                     {tailoringKey === key ? (
@@ -851,15 +849,15 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || tailoringKey === key || savingKey === key}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
                     {isSaved ? "Saved" : "Save only"}
                   </Button>
-                  {job.apply_url && (
+                  {applyHref && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
-                      <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={applyHref} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3 h-3 mr-1" /> Open
                       </a>
                     </Button>
@@ -884,7 +882,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         sessionId={sessionId}
-        onCreated={() => setAddOpen(false)}
+        onCreated={() => {
+          setAddOpen(false);
+          void refreshBoardKeys();
+        }}
       />
     </div>
   );

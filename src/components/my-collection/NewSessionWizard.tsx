@@ -105,7 +105,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
         .from("resumes")
         .select("id,title,updated_at")
         .order("updated_at", { ascending: false })
-        .limit(20);
+        .limit(100);
       setResumes(data ?? []);
     })();
   }, [open]);
@@ -175,7 +175,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
         .map((s) => s.trim())
         .filter(Boolean),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: compTarget && Number(compTarget) > 0 ? Number(compTarget) : null,
       visa_status: visa,
     };
 

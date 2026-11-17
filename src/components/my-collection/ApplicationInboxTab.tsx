@@ -86,7 +86,10 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
   async function markRead(id: string, isRead: boolean) {
     setMessages((current) => current.map((message) => message.id === id ? { ...message, is_read: isRead } : message));
     const { error } = await (supabase as any).from("mc_inbound_emails").update({ is_read: isRead }).eq("id", id);
-    if (error) await load().catch(() => undefined);
+    if (error) {
+      toast({ title: "Couldn't update message", description: "Please try again.", variant: "destructive" });
+      await load().catch(() => undefined);
+    }
   }
 
   async function markAllRead() {
@@ -96,12 +99,20 @@ export default function ApplicationInboxTab({ sessionId }: { sessionId: string }
       .update({ is_read: true })
       .eq("session_id", sessionId)
       .eq("is_read", false);
-    if (!error) setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
+    if (error) {
+      toast({ title: "Couldn't mark messages read", description: "Please try again.", variant: "destructive" });
+      return;
+    }
+    setMessages((current) => current.map((message) => ({ ...message, is_read: true })));
   }
 
   async function copyCode(code: string) {
-    await navigator.clipboard.writeText(code);
-    toast({ title: "Verification code copied" });
+    try {
+      await navigator.clipboard.writeText(code);
+      toast({ title: "Verification code copied" });
+    } catch {
+      toast({ title: "Couldn't copy automatically", description: `Your code is ${code}.` });
+    }
   }
 
   return (

@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeApplyUrl } from "@/lib/my-collection";
 
 interface Props {
   open: boolean;
@@ -117,6 +118,15 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       });
       return;
     }
+    const url = normalizeApplyUrl(applyUrl);
+    if (!url.ok) {
+      toast({
+        title: "Apply URL doesn't look right",
+        description: "Use a full web link like https://company.com/jobs/123, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
 
     const { data: userData, error: userErr } = await supabase.auth.getUser();
@@ -135,7 +145,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         job_title: jobTitle.trim(),
         company: company.trim(),
         location: location.trim() || null,
-        apply_url: applyUrl.trim() || null,
+        apply_url: url.url,
         jd_md: jdMd.trim() || null,
         status: "saved",
       })
@@ -175,7 +185,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add job manually</DialogTitle>
           <DialogDescription>
@@ -185,7 +195,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-add-company">Company *</Label>
               <Input
@@ -207,7 +217,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-add-location">Location</Label>
               <Input
