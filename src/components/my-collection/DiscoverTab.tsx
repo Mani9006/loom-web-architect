@@ -28,6 +28,15 @@ import {
   type AIJob,
 } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
+import { escapeLikePattern, jobIdentityKey, normalizeFitScore, safeHttpUrl } from "@/lib/my-collection";
+
+/** Re-normalizes keys persisted by older builds ("Company::Title") to the current identity format. */
+function normalizeSavedKeys(keys: string[] | undefined): string[] {
+  return (keys ?? []).map((k) => {
+    const [company, ...rest] = k.split("::");
+    return jobIdentityKey(company ?? "", rest.join("::"));
+  });
+}
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 // Discover state lives in sessionStorage so switching apps/tabs/refreshing the
@@ -109,7 +118,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<JobStatus | null>(null);
-  const [foundJobs, setFoundJobs] = useState<FoundJob[]>(initial.current?.foundJobs ?? []);
+  const [foundJobs, setFoundJobs] = useState<FoundJob[]>(() =>
+    (initial.current?.foundJobs ?? []).map((j) => ({ ...j, apply_url: safeHttpUrl(j.apply_url) ?? undefined })),
+  );
   const [clarification, setClarification] = useState<{ questions: string[]; answers: string[] } | null>(
     initial.current?.clarification ?? null,
   );
@@ -117,8 +128,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     initial.current?.conversation ?? [],
   );
   const [savedTitles, setSavedTitles] = useState<Set<string>>(
-    new Set(initial.current?.savedKeys ?? []),
+    new Set(normalizeSavedKeys(initial.current?.savedKeys)),
   );
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(
     initial.current?.activeJobId ?? null,
   );
@@ -139,6 +151,28 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     abortRef.current = controller;
     return () => controller.abort();
   }, []);
+
+  // Mark results that are already on the Board (saved from an earlier search,
+  // another device, or added manually) so "Save only" can't create duplicates.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from("mc_tracked_jobs")
+        .select("company,job_title")
+        .eq("session_id", sessionId)
+        .is("deleted_at", null)
+        .limit(1000);
+      if (cancelled || error || !data) return;
+      const keys = (data as { company: string; job_title: string }[]).map((r) =>
+        jobIdentityKey(r.company ?? "", r.job_title ?? ""),
+      );
+      if (keys.length) setSavedTitles((s) => new Set([...s, ...keys]));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   // Mirror state to sessionStorage on every change.
   useEffect(() => {
@@ -384,21 +418,32 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           title: String(j.title ?? "").trim(),
           company: String(j.company ?? "").trim(),
           location: j.location ? String(j.location) : undefined,
-          apply_url: j.apply_url ? String(j.apply_url) : undefined,
+          apply_url: safeHttpUrl(j.apply_url ? String(j.apply_url) : null) ?? undefined,
           summary: j.summary ? String(j.summary) : undefined,
-          fit_score: typeof j.fit_score === "number" ? j.fit_score : undefined,
+          fit_score: normalizeFitScore(j.fit_score),
           fit_reason: j.fit_reason ? String(j.fit_reason) : undefined,
         }))
         .filter((j) => j.title && j.company);
 
-      setFoundJobs(jobs);
+      // Drop duplicates the AI returned from multiple sources, then show the
+      // strongest fits first (stable for equal scores).
+      const seen = new Set<string>();
+      const deduped = jobs.filter((j) => {
+        const k = jobIdentityKey(j.company, j.title);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      deduped.sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0));
+
+      setFoundJobs(deduped);
       setClarification(null);
       setActiveJobId(null);
       setActiveJobHistory([]);
       toast({
-        title: jobs.length === 0 ? "No matches found" : `Found ${jobs.length} jobs`,
+        title: deduped.length === 0 ? "No matches found" : `Found ${deduped.length} jobs`,
         description:
-          jobs.length === 0
+          deduped.length === 0
             ? "Try widening your target roles in Settings, or ask for jobs more directly."
             : "Click Tailor to job on any result to save it and create a tailored copy.",
       });
@@ -419,8 +464,6 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   async function runSearch(history: ClarificationTurn[]) {
     setBusy(true);
     setProgress("queued");
-    setFoundJobs([]);
-    setClarification(null);
 
     try {
       const resumeMd = await loadResumeMd();
@@ -433,6 +476,11 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         });
         return;
       }
+
+      // Only clear previous results once we know the new search can run, so
+      // a missing resume doesn't wipe a list the user was still working through.
+      setFoundJobs([]);
+      setClarification(null);
 
       const prompt = buildPrompt(resumeMd, history);
 
@@ -483,9 +531,33 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
+    const key = jobIdentityKey(job.company, job.title);
+    if (savedTitles.has(key) || savingKey === key) return;
+    setSavingKey(key);
+    try {
+      await insertTrackedJob(job, key);
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function insertTrackedJob(job: FoundJob, key: string) {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       toast({ title: "Not signed in", variant: "destructive" });
+      return;
+    }
+    const { data: existing } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .select("id")
+      .eq("session_id", sessionId)
+      .ilike("company", escapeLikePattern(job.company))
+      .ilike("job_title", escapeLikePattern(job.title))
+      .is("deleted_at", null)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Already on your board", description: `${job.company} · ${job.title}` });
       return;
     }
     const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
@@ -503,7 +575,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(key));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -514,7 +586,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * master resume directly from session settings.
    */
   async function tailorFromDiscover(job: FoundJob) {
-    const key = `${job.company}::${job.title}`;
+    const key = jobIdentityKey(job.company, job.title);
     if (!job.summary || !job.summary.trim()) {
       toast({
         title: "AI didn't return a job description",
@@ -551,8 +623,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           .from("mc_tracked_jobs")
           .select("id")
           .eq("session_id", sessionId)
-          .eq("company", job.company)
-          .eq("job_title", job.title)
+          .ilike("company", escapeLikePattern(job.company))
+          .ilike("job_title", escapeLikePattern(job.title))
           .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -796,8 +868,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     foundJobs.length === 0 ? null : (
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
-          const key = `${job.company}::${job.title}`;
+          const key = jobIdentityKey(job.company, job.title);
           const isSaved = savedTitles.has(key);
+          const isSaving = savingKey === key;
           return (
             <Card key={`${key}::${idx}`} className="p-4">
               <div className="flex items-start gap-3">
@@ -851,15 +924,21 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || isSaving || tailoringKey === key}
                     className="h-7 text-[11px]"
                   >
-                    {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
-                    {isSaved ? "Saved" : "Save only"}
+                    {isSaving ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : isSaved ? (
+                      <BookmarkCheck className="w-3 h-3 mr-1" />
+                    ) : (
+                      <Bookmark className="w-3 h-3 mr-1" />
+                    )}
+                    {isSaved ? "On board" : isSaving ? "Saving…" : "Save only"}
                   </Button>
-                  {job.apply_url && (
+                  {safeHttpUrl(job.apply_url) && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
-                      <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={safeHttpUrl(job.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3 h-3 mr-1" /> Open
                       </a>
                     </Button>
@@ -892,9 +971,9 @@ export default function DiscoverTab({ sessionId, session }: Props) {
 
 function FitBadge({ score }: { score: number }) {
   const map: Record<number, { label: string; cls: string }> = {
-    3: { label: "Strong fit", cls: "bg-green-100 text-green-800 border-green-300" },
-    2: { label: "Good fit", cls: "bg-blue-100 text-blue-800 border-blue-300" },
-    1: { label: "Stretch", cls: "bg-yellow-100 text-yellow-800 border-yellow-300" },
+    3: { label: "Strong fit", cls: "bg-green-100 text-green-800 border-green-300 dark:bg-green-950/60 dark:text-green-300 dark:border-green-800" },
+    2: { label: "Good fit", cls: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800" },
+    1: { label: "Stretch", cls: "bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-950/60 dark:text-yellow-300 dark:border-yellow-800" },
   };
   const m = map[score] ?? { label: `Fit ${score}`, cls: "bg-rp-paper text-gray-800 border-rp-rule-2" };
   return <Badge className={`text-[10px] border ${m.cls}`}>{m.label}</Badge>;

@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { safeHttpUrl } from "@/lib/my-collection";
 import { Trash2 } from "lucide-react";
 
 export interface EditableTrackedJob {
@@ -59,6 +60,8 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
     setNotes(job.notes ?? "");
   }, [job]);
 
+  const urlInvalid = !!applyUrl.trim() && safeHttpUrl(applyUrl) === null;
+
   async function save() {
     if (!job) return;
     if (!company.trim() || !jobTitle.trim()) {
@@ -74,7 +77,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       company: company.trim(),
       job_title: jobTitle.trim(),
       location: location.trim() || null,
-      apply_url: applyUrl.trim() || null,
+      apply_url: safeHttpUrl(applyUrl),
       jd_md: jdMd.trim() || null,
       notes: notes.trim() || null,
     };
@@ -124,7 +127,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-edit-company">Company *</Label>
               <Input
@@ -145,7 +148,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-edit-location">Location</Label>
               <Input
@@ -159,12 +162,21 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
               <Label htmlFor="mc-edit-url">Apply URL</Label>
               <Input
                 id="mc-edit-url"
+                type="url"
+                inputMode="url"
+                aria-invalid={urlInvalid}
                 value={applyUrl}
                 onChange={(e) => setApplyUrl(e.target.value)}
                 disabled={saving}
               />
             </div>
           </div>
+
+          {urlInvalid && (
+            <p className="text-xs text-destructive -mt-1">
+              That apply link doesn't look like a web address. Use a full link like https://company.com/jobs/123.
+            </p>
+          )}
 
           <div>
             <Label htmlFor="mc-edit-jd">Job description</Label>
@@ -199,7 +211,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving || !company.trim() || !jobTitle.trim()}>
+          <Button onClick={save} disabled={saving || !company.trim() || !jobTitle.trim() || urlInvalid}>
             {saving ? "Saving…" : "Save changes"}
           </Button>
         </DialogFooter>

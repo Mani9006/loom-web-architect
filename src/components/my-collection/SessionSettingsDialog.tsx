@@ -24,6 +24,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Archive } from "lucide-react";
+import { parseCompTarget, parseList } from "@/lib/my-collection";
 
 interface Resume {
   id: string;
@@ -85,6 +86,8 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
     })();
   }, [open, session]);
 
+  const compInvalid = !!compTarget.trim() && parseCompTarget(compTarget) === null;
+
   async function save() {
     if (!name.trim()) {
       toast({ title: "Session needs a name", variant: "destructive" });
@@ -93,16 +96,10 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
     setSaving(true);
     const targetProfile = {
       ...(session.target_profile ?? {}),
-      target_roles: targetRolesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      target_locations: locationsText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      target_roles: parseList(targetRolesText),
+      target_locations: parseList(locationsText),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: parseCompTarget(compTarget),
       visa_status: visa,
     };
     const updates = {
@@ -219,11 +216,16 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
             <Label htmlFor="mc-set-comp">Target total comp ($, optional)</Label>
             <Input
               id="mc-set-comp"
-              type="number"
+              inputMode="numeric"
+              placeholder="120000 or 150k"
               value={compTarget}
               onChange={(e) => setCompTarget(e.target.value)}
+              aria-invalid={compInvalid}
               disabled={saving}
             />
+            {compInvalid && (
+              <p className="text-xs text-destructive mt-1">Enter a number like 120000 or 150k.</p>
+            )}
           </div>
 
           <div>
@@ -257,7 +259,7 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Close
           </Button>
-          <Button onClick={save} disabled={saving || !name.trim()}>
+          <Button onClick={save} disabled={saving || !name.trim() || compInvalid}>
             {saving ? "Saving…" : "Save changes"}
           </Button>
         </DialogFooter>

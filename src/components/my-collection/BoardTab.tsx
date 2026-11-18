@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -13,36 +14,25 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
 import EditTrackedJobDialog from "./EditTrackedJobDialog";
+import { isPostApplyStatus, safeHttpUrl, type TrackedStatus } from "@/lib/my-collection";
 
 const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
-  { id: "discovered", label: "Discovered", tone: "bg-rp-paper text-slate-700" },
-  { id: "saved", label: "Saved", tone: "bg-blue-50 text-blue-700" },
-  { id: "applied", label: "Applied", tone: "bg-indigo-50 text-indigo-700" },
-  { id: "viewed", label: "Viewed", tone: "bg-purple-50 text-purple-700" },
-  { id: "interview", label: "Interview", tone: "bg-amber-50 text-amber-700" },
-  { id: "take_home", label: "Take-home", tone: "bg-orange-50 text-orange-700" },
-  { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700" },
-  { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2" },
-  { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
-  { id: "withdrawn", label: "Withdrawn", tone: "bg-slate-100 text-slate-600" },
+  { id: "discovered", label: "Discovered", tone: "bg-rp-paper text-slate-700 dark:bg-slate-800/60 dark:text-slate-300" },
+  { id: "saved", label: "Saved", tone: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300" },
+  { id: "applied", label: "Applied", tone: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300" },
+  { id: "viewed", label: "Viewed", tone: "bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300" },
+  { id: "interview", label: "Interview", tone: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300" },
+  { id: "take_home", label: "Take-home", tone: "bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300" },
+  { id: "offer", label: "Offer", tone: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300" },
+  { id: "hold", label: "Hold", tone: "bg-rp-paper text-rp-ink-2 dark:bg-zinc-800/60 dark:text-zinc-300" },
+  { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300" },
+  { id: "withdrawn", label: "Withdrawn", tone: "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-400" },
 ];
-
-type TrackedStatus =
-  | "discovered"
-  | "saved"
-  | "applied"
-  | "viewed"
-  | "interview"
-  | "take_home"
-  | "offer"
-  | "hold"
-  | "rejected"
-  | "withdrawn";
 
 interface TrackedJob {
   id: string;
@@ -68,6 +58,16 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [dropTarget, setDropTarget] = useState<TrackedStatus | null>(null);
+  const [filter, setFilter] = useState("");
+
+  const visibleJobs = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return jobs;
+    return jobs.filter((j) =>
+      [j.job_title, j.company, j.location ?? "", j.notes ?? ""].some((v) => v.toLowerCase().includes(q)),
+    );
+  }, [jobs, filter]);
 
   // Ties the tailor pipeline's waitForJob subscription to this component
   // instance's lifetime, so switching away from the Board tab mid-tailor
@@ -307,7 +307,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     const job = jobs.find((j) => j.id === jobId);
     if (!job || job.status === status) return;
     const updates: Record<string, unknown> = { status };
-    if (status === "applied" && !job.applied_at) updates.applied_at = new Date().toISOString();
+    // Jumping straight to Interview/Offer still implies the user applied, so
+    // stamp applied_at for any post-application stage, not just "Applied".
+    if (isPostApplyStatus(status) && !job.applied_at) updates.applied_at = new Date().toISOString();
 
     // Optimistic update: reflect the move immediately in the UI.
     const previousStatus = job.status;
@@ -317,8 +319,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
       // Roll back the optimistic update on failure.
-      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
-      setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, status: previousStatus } as TrackedJob) : cur));
+      const rollback = { status: previousStatus, applied_at: job.applied_at };
+      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...rollback } : j) as TrackedJob));
+      setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...rollback } as TrackedJob) : cur));
       toast({ title: "Move failed", description: error.message, variant: "destructive" });
       return;
     }
@@ -374,24 +377,50 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
+          {filter.trim()
+            ? `${visibleJobs.length} of ${jobs.length} cards match`
+            : `${jobs.length} ${jobs.length === 1 ? "card" : "cards"} on the board`}
+          <span className="hidden md:inline"> · drag cards between columns, or open one to change its stage</span>
         </p>
-        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-          <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter cards"
+              aria-label="Filter cards"
+              className="h-8 w-40 sm:w-52 pl-8 text-xs"
+            />
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+            <Plus className="w-3.5 h-3.5 mr-1" /> Add job
+          </Button>
+        </div>
       </div>
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
-            const items = jobs.filter((j) => j.status === col.id);
+            const items = visibleJobs.filter((j) => j.status === col.id);
             return (
               <div
                 key={col.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => draggedId && moveTo(draggedId, col.id)}
-                className="w-[260px] shrink-0"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedId && dropTarget !== col.id) setDropTarget(col.id);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget(null);
+                }}
+                onDrop={() => {
+                  setDropTarget(null);
+                  if (draggedId) void moveTo(draggedId, col.id);
+                }}
+                className={`w-[260px] shrink-0 rounded-md transition-colors ${
+                  dropTarget === col.id ? "bg-primary/5 ring-1 ring-primary/30" : ""
+                }`}
               >
                 <div className={`px-3 py-1.5 rounded-md text-[11px] font-medium ${col.tone} flex items-center justify-between`}>
                   <span>{col.label}</span>
@@ -402,17 +431,37 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                     <div
                       key={job.id}
                       draggable
-                      onDragStart={() => setDraggedId(job.id)}
-                      onDragEnd={() => setDraggedId(null)}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move";
+                        // Firefox won't start a drag without data set.
+                        e.dataTransfer.setData("text/plain", job.id);
+                        setDraggedId(job.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedId(null);
+                        setDropTarget(null);
+                      }}
                       onClick={() => setSelected(job)}
-                      className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelected(job);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${job.job_title} at ${job.company}`}
+                      className={`group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        draggedId === job.id ? "opacity-50" : ""
+                      }`}
                     >
                       <button
                         type="button"
                         aria-label="Move to trash"
                         title="Move to trash"
                         onClick={(e) => trashJob(job, e)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -426,6 +475,11 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                           <MapPin className="w-3 h-3" />
                           {job.location}
                         </div>
+                      )}
+                      {job.tailored_resume_id && (
+                        <Badge variant="outline" className="mt-1.5 text-[10px] font-normal gap-1">
+                          <FileText className="w-3 h-3" /> Tailored
+                        </Badge>
                       )}
                       {job.applied_at && (
                         <div className="text-muted-foreground text-[10px] mt-1.5 flex items-center gap-1">
@@ -469,9 +523,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {selected.apply_url && (
+                  {safeHttpUrl(selected.apply_url) && (
                     <Button asChild variant="outline" size="sm">
-                      <a href={selected.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={safeHttpUrl(selected.apply_url) ?? undefined} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open application
                       </a>
                     </Button>
@@ -520,7 +574,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 {selected.notes && (
                   <div>
                     <h4 className="font-medium text-sm mb-2">Notes</h4>
-                    <p className="text-sm text-muted-foreground">{selected.notes}</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">{selected.notes}</p>
                   </div>
                 )}
               </div>

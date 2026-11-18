@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { preserveLinePrefix, safeFilename, safeHttpUrl } from "@/lib/my-collection";
 
 interface TailoredResume {
   id: string;
@@ -137,8 +138,8 @@ export default function ResumesTab({
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
-          here.
+          No tailored resumes yet. Open a job on the Board (or a result in Discover) and click
+          "Tailor to job" to create one here.
         </p>
       </Card>
     );
@@ -233,16 +234,24 @@ function downloadAsMarkdown(r: TailoredResume) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  a.download = `${safeFilename(r.name)}.md`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoking synchronously can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
+  // Open the tab synchronously inside the click so popup blockers allow it,
+  // then point it at the signed URL once the render finishes.
+  const pending = window.open("", "_blank");
   const { data, error } = await (supabase as any).functions.invoke("mc-render-resume", {
     body: { resume_id: r.id, format: "pdf" },
   });
-  if (error || !data?.url) {
+  const url = safeHttpUrl(data?.url);
+  if (error || !url) {
+    pending?.close();
     toast({
       title: "PDF export failed",
       description: error?.message ?? "The server didn't return a download URL.",
@@ -250,7 +259,11 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
     });
     return;
   }
-  window.open(data.url, "_blank");
+  if (pending) {
+    pending.location.href = url;
+  } else {
+    window.location.assign(url);
+  }
 }
 
 // Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness
@@ -291,7 +304,7 @@ async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToa
 
     const doc = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${r.name}.docx`);
+    saveAs(blob, `${safeFilename(r.name)}.docx`);
   } catch (e) {
     toast({
       title: "DOCX export failed",
@@ -322,11 +335,14 @@ function CanvasEditor({
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
 
+  const dirty = name.trim() !== resume.name || cv !== resume.cv_md;
+
   async function save() {
+    const finalName = name.trim() || resume.name;
     setSaving(true);
     const { error } = await (supabase as any)
       .from("mc_tailored_resumes")
-      .update({ name: name.trim(), cv_md: cv })
+      .update({ name: finalName, cv_md: cv })
       .eq("id", resume.id);
     setSaving(false);
     if (error) {
@@ -334,7 +350,13 @@ function CanvasEditor({
       return;
     }
     toast({ title: "Saved" });
-    onSaved({ ...resume, name: name.trim(), cv_md: cv, updated_at: new Date().toISOString() });
+    onSaved({ ...resume, name: finalName, cv_md: cv, updated_at: new Date().toISOString() });
+  }
+
+  function requestClose() {
+    if (saving) return;
+    if (dirty && !confirm("Discard your unsaved changes to this resume?")) return;
+    onClose();
   }
 
   async function rewriteSelected(mode: "tighten" | "keywords" | "voice") {
@@ -361,9 +383,12 @@ function CanvasEditor({
   function applySuggestion(text: string) {
     if (!selectedLine || !selectedRange) return;
     const { start, end } = selectedRange;
-    setCv((c) => c.slice(0, start) + text + c.slice(end));
-    setSelectedLine(text);
-    setSelectedRange({ start, end: start + text.length });
+    // Keep the original bullet/numbering so accepting a rewrite doesn't
+    // silently turn a list item into a plain paragraph.
+    const replacement = preserveLinePrefix(cv.slice(start, end), text);
+    setCv((c) => c.slice(0, start) + replacement + c.slice(end));
+    setSelectedLine(replacement.trim());
+    setSelectedRange({ start, end: start + replacement.length });
     setAiSuggestions([]);
   }
 
@@ -378,11 +403,16 @@ function CanvasEditor({
   }
 
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && requestClose()}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="max-w-md font-medium" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-label="Resume name"
+              className="max-w-md font-medium"
+            />
             <Badge variant="outline" className="text-[10px]">Canvas</Badge>
           </DialogTitle>
         </DialogHeader>
@@ -493,11 +523,11 @@ function CanvasEditor({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="ghost" onClick={requestClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
+          <Button onClick={save} disabled={saving || !dirty}>
+            {saving ? "Saving…" : dirty ? "Save" : "Saved"}
           </Button>
         </DialogFooter>
       </DialogContent>
