@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { safeHttpUrl } from "@/lib/my-collection";
 
 interface Props {
   open: boolean;
@@ -108,6 +109,8 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
     clearDraft(sessionId);
   }
 
+  const urlInvalid = !!applyUrl.trim() && safeHttpUrl(applyUrl) === null;
+
   async function save() {
     if (!company.trim() || !jobTitle.trim()) {
       toast({
@@ -135,7 +138,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         job_title: jobTitle.trim(),
         company: company.trim(),
         location: location.trim() || null,
-        apply_url: applyUrl.trim() || null,
+        apply_url: safeHttpUrl(applyUrl),
         jd_md: jdMd.trim() || null,
         status: "saved",
       })
@@ -185,7 +188,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-add-company">Company *</Label>
               <Input
@@ -207,7 +210,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-add-location">Location</Label>
               <Input
@@ -221,12 +224,21 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
               <Label htmlFor="mc-add-url">Apply URL</Label>
               <Input
                 id="mc-add-url"
+                type="url"
+                inputMode="url"
+                aria-invalid={urlInvalid}
                 placeholder="https://stripe.com/jobs/..."
                 value={applyUrl}
                 onChange={(e) => setApplyUrl(e.target.value)}
               />
             </div>
           </div>
+
+          {urlInvalid && (
+            <p className="text-xs text-destructive -mt-1">
+              That apply link doesn't look like a web address. Use a full link like https://company.com/jobs/123.
+            </p>
+          )}
 
           <div>
             <Label htmlFor="mc-add-jd">Job description</Label>
@@ -252,7 +264,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
           <Button variant="outline" onClick={handleClose} disabled={saving}>
             Close (keep draft)
           </Button>
-          <Button onClick={save} disabled={saving || !company.trim() || !jobTitle.trim()}>
+          <Button onClick={save} disabled={saving || !company.trim() || !jobTitle.trim() || urlInvalid}>
             {saving ? "Saving…" : "Save to board"}
           </Button>
         </DialogFooter>

@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { parseCompTarget, parseList } from "@/lib/my-collection";
 
 interface Resume {
   id: string;
@@ -166,16 +167,10 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     }
 
     const targetProfile = {
-      target_roles: targetRolesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      target_locations: locationsText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      target_roles: parseList(targetRolesText),
+      target_locations: parseList(locationsText),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: parseCompTarget(compTarget),
       visa_status: visa,
     };
 
@@ -219,6 +214,13 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
                 placeholder="e.g. ML Engineer, financial services"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && name.trim()) {
+                    e.preventDefault();
+                    setStep(2);
+                  }
+                }}
+                maxLength={120}
                 autoFocus
               />
             </div>
@@ -274,11 +276,15 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
               <Label htmlFor="mc-comp">Target total comp ($, optional)</Label>
               <Input
                 id="mc-comp"
-                placeholder="120000"
-                type="number"
+                placeholder="120000 or 150k"
+                inputMode="numeric"
                 value={compTarget}
                 onChange={(e) => setCompTarget(e.target.value)}
+                aria-invalid={!!compTarget.trim() && parseCompTarget(compTarget) === null}
               />
+              {!!compTarget.trim() && parseCompTarget(compTarget) === null && (
+                <p className="text-xs text-destructive mt-1">Enter a number like 120000 or 150k.</p>
+              )}
             </div>
             <div>
               <Label htmlFor="mc-visa">Work authorization</Label>
@@ -318,7 +324,10 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
               Next
             </Button>
           ) : (
-            <Button onClick={createSession} disabled={submitting}>
+            <Button
+              onClick={createSession}
+              disabled={submitting || (!!compTarget.trim() && parseCompTarget(compTarget) === null)}
+            >
               {submitting ? "Creating..." : "Create session"}
             </Button>
           )}

@@ -15,6 +15,7 @@ import SessionSettingsDialog from "@/components/my-collection/SessionSettingsDia
 import TrashDialog from "@/components/my-collection/TrashDialog";
 import ApplicationInboxTab from "@/components/my-collection/ApplicationInboxTab";
 import { toUserFacingError } from "@/lib/user-facing-error";
+import { isSessionTab, type SessionTab } from "@/lib/my-collection";
 
 interface MCSession {
   id: string;
@@ -33,17 +34,18 @@ export default function SessionPage() {
   const { toast } = useToast();
   const [session, setSession] = useState<MCSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<string>(() => {
+  const [tab, setTab] = useState<SessionTab>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
-    // takes priority so deep links land on the right tab.
+    // takes priority so deep links land on the right tab. Unknown values
+    // (typos, stale links) are ignored rather than rendering an empty page.
     const fromQuery = searchParams.get("tab");
-    if (fromQuery) return fromQuery;
+    if (isSessionTab(fromQuery)) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return isSessionTab(stored) ? stored : "discover";
     } catch {
       return "discover";
     }
@@ -68,7 +70,7 @@ export default function SessionPage() {
   // mount via useState's initializer.
   useEffect(() => {
     const fromQuery = searchParams.get("tab");
-    if (fromQuery && fromQuery !== tab) setTab(fromQuery);
+    if (isSessionTab(fromQuery) && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -142,12 +144,12 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight break-words">{session.name}</h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <WorkerStatusBadge />
           <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
             <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash
@@ -161,6 +163,7 @@ export default function SessionPage() {
       <Tabs
         value={tab}
         onValueChange={(v) => {
+          if (!isSessionTab(v)) return;
           setTab(v);
           // Clear any deep-link query params once the user manually
           // switches tabs, so navigating back to Resumes later doesn't
@@ -168,21 +171,21 @@ export default function SessionPage() {
           if (searchParams.toString()) setSearchParams({}, { replace: true });
         }}
       >
-        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
-          <TabsTrigger value="discover" className="gap-2">
-            <Search className="w-4 h-4" /> Discover
+        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5 [&>button]:px-1.5 sm:[&>button]:px-3">
+          <TabsTrigger aria-label="Discover" value="discover" className="gap-2">
+            <Search className="w-4 h-4" /> <span className="hidden sm:inline">Discover</span>
           </TabsTrigger>
-          <TabsTrigger value="resumes" className="gap-2">
-            <FileText className="w-4 h-4" /> Resumes
+          <TabsTrigger aria-label="Resumes" value="resumes" className="gap-2">
+            <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Resumes</span>
           </TabsTrigger>
-          <TabsTrigger value="board" className="gap-2">
-            <Columns3 className="w-4 h-4" /> Board
+          <TabsTrigger aria-label="Board" value="board" className="gap-2">
+            <Columns3 className="w-4 h-4" /> <span className="hidden sm:inline">Board</span>
           </TabsTrigger>
-          <TabsTrigger value="inbox" className="gap-2">
-            <Inbox className="w-4 h-4" /> Inbox
+          <TabsTrigger aria-label="Inbox" value="inbox" className="gap-2">
+            <Inbox className="w-4 h-4" /> <span className="hidden sm:inline">Inbox</span>
           </TabsTrigger>
-          <TabsTrigger value="stats" className="gap-2">
-            <BarChart3 className="w-4 h-4" /> Stats
+          <TabsTrigger aria-label="Stats" value="stats" className="gap-2">
+            <BarChart3 className="w-4 h-4" /> <span className="hidden sm:inline">Stats</span>
           </TabsTrigger>
         </TabsList>
 
