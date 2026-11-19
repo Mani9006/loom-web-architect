@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { toSafeHttpUrl } from "@/lib/job-url";
 import { Trash2 } from "lucide-react";
 
 export interface EditableTrackedJob {
@@ -69,12 +70,22 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       });
       return;
     }
+    const trimmedUrl = applyUrl.trim();
+    const safeUrl = toSafeHttpUrl(trimmedUrl);
+    if (trimmedUrl && !safeUrl) {
+      toast({
+        title: "Check the application link",
+        description: "It needs to be a normal web address, like https://company.com/careers/123.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     const updates = {
       company: company.trim(),
       job_title: jobTitle.trim(),
       location: location.trim() || null,
-      apply_url: applyUrl.trim() || null,
+      apply_url: safeUrl,
       jd_md: jdMd.trim() || null,
       notes: notes.trim() || null,
     };

@@ -26,6 +26,14 @@ interface MCSession {
   updated_at: string;
 }
 
+const TABS = ["discover", "resumes", "board", "inbox", "stats"] as const;
+type SessionTab = (typeof TABS)[number];
+
+/** Unknown/stale tab values (old links, typos) would render an empty workspace. */
+function normalizeTab(value: string | null | undefined): SessionTab | null {
+  return value && (TABS as readonly string[]).includes(value) ? (value as SessionTab) : null;
+}
+
 export default function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -36,14 +44,14 @@ export default function SessionPage() {
   const [tab, setTab] = useState<string>(() => {
     // A ?tab= query param (e.g. from BoardTab's "View tailored resume" link)
     // takes priority so deep links land on the right tab.
-    const fromQuery = searchParams.get("tab");
+    const fromQuery = normalizeTab(searchParams.get("tab"));
     if (fromQuery) return fromQuery;
     // Otherwise restore the active tab on remount (tab switches, browser
     // back/forward) so a tab-app switch doesn't reset the user to "discover".
     if (typeof window === "undefined") return "discover";
     try {
       const stored = sessionStorage.getItem(`mc:active-tab:${window.location.pathname}`);
-      return stored || "discover";
+      return normalizeTab(stored) ?? "discover";
     } catch {
       return "discover";
     }
@@ -67,7 +75,7 @@ export default function SessionPage() {
   // remount, pick up the change here instead of only reading it once at
   // mount via useState's initializer.
   useEffect(() => {
-    const fromQuery = searchParams.get("tab");
+    const fromQuery = normalizeTab(searchParams.get("tab"));
     if (fromQuery && fromQuery !== tab) setTab(fromQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -142,12 +150,19 @@ export default function SessionPage() {
           </Link>
         </Button>
       </div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{session.name}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight break-words">
+            {session.name}
+            {session.status === "archived" && (
+              <span className="ml-2 align-middle text-xs font-normal rounded border px-1.5 py-0.5 text-muted-foreground">
+                Archived
+              </span>
+            )}
+          </h1>
           <p className="text-xs text-muted-foreground mt-1">Job discovery, tailored resumes, applications, and replies in one workspace.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <WorkerStatusBadge />
           <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
             <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash
@@ -161,27 +176,27 @@ export default function SessionPage() {
       <Tabs
         value={tab}
         onValueChange={(v) => {
-          setTab(v);
+          setTab(normalizeTab(v) ?? "discover");
           // Clear any deep-link query params once the user manually
           // switches tabs, so navigating back to Resumes later doesn't
           // keep re-opening the same tailored resume.
           if (searchParams.toString()) setSearchParams({}, { replace: true });
         }}
       >
-        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5">
-          <TabsTrigger value="discover" className="gap-2">
+        <TabsList className="flex h-auto w-full max-w-3xl justify-start overflow-x-auto sm:grid sm:grid-cols-5">
+          <TabsTrigger value="discover" className="gap-2 shrink-0">
             <Search className="w-4 h-4" /> Discover
           </TabsTrigger>
-          <TabsTrigger value="resumes" className="gap-2">
+          <TabsTrigger value="resumes" className="gap-2 shrink-0">
             <FileText className="w-4 h-4" /> Resumes
           </TabsTrigger>
-          <TabsTrigger value="board" className="gap-2">
+          <TabsTrigger value="board" className="gap-2 shrink-0">
             <Columns3 className="w-4 h-4" /> Board
           </TabsTrigger>
-          <TabsTrigger value="inbox" className="gap-2">
+          <TabsTrigger value="inbox" className="gap-2 shrink-0">
             <Inbox className="w-4 h-4" /> Inbox
           </TabsTrigger>
-          <TabsTrigger value="stats" className="gap-2">
+          <TabsTrigger value="stats" className="gap-2 shrink-0">
             <BarChart3 className="w-4 h-4" /> Stats
           </TabsTrigger>
         </TabsList>
