@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGoogleJobSearch,
+  toSafeHttpUrl,
   buildLinkedInFallback,
   isDirectJobLink,
   isGenericCareerPage,
@@ -114,5 +115,21 @@ describe("job-url utilities", () => {
         label: "Apply",
       });
     });
+  });
+});
+
+describe("toSafeHttpUrl", () => {
+  it("keeps http(s) URLs and prefixes bare hosts", () => {
+    expect(toSafeHttpUrl("https://acme.com/jobs/1")).toBe("https://acme.com/jobs/1");
+    expect(toSafeHttpUrl("acme.com/jobs/1")).toBe("https://acme.com/jobs/1");
+  });
+
+  it("rejects script/data schemes and junk", () => {
+    expect(toSafeHttpUrl("javascript:alert(1)")).toBeNull();
+    expect(toSafeHttpUrl("JavaScript:alert(1)")).toBeNull();
+    expect(toSafeHttpUrl("data:text/html,hi")).toBeNull();
+    expect(toSafeHttpUrl("not a url")).toBeNull();
+    expect(toSafeHttpUrl("")).toBeNull();
+    expect(toSafeHttpUrl(null)).toBeNull();
   });
 });

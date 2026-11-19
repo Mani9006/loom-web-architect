@@ -156,3 +156,23 @@ export function resolveJobUrl(
   // Otherwise, trust the URL (could be a company ATS we don't recognize)
   return { url, isFallback: false, label: "Apply" };
 }
+
+/**
+ * Normalise a user- or AI-supplied URL for use as a link href. Only http(s)
+ * is allowed; bare hosts ("acme.com/jobs/1") get https:// prefixed. Anything
+ * else — javascript:, data:, garbage — returns null so it is never rendered
+ * as a clickable link.
+ */
+export function toSafeHttpUrl(raw: string | null | undefined): string | null {
+  const value = (raw ?? "").trim();
+  if (!value) return null;
+  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value.replace(/^\/+/, "")}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!url.hostname.includes(".") && url.hostname !== "localhost") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
