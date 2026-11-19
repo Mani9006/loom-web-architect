@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { parseListInput, parseCompTarget } from "@/lib/mc-stats";
 
 interface Resume {
   id: string;
@@ -166,16 +167,10 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
     }
 
     const targetProfile = {
-      target_roles: targetRolesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      target_locations: locationsText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      target_roles: parseListInput(targetRolesText),
+      target_locations: parseListInput(locationsText),
       remote_only: remoteOnly,
-      comp_target: compTarget ? Number(compTarget) : null,
+      comp_target: parseCompTarget(compTarget),
       visa_status: visa,
     };
 
