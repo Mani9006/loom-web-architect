@@ -4,6 +4,7 @@ import {
   escapeLike,
   jobKey,
   matchesBoardQuery,
+  needsFollowUp,
   parseFitScore,
   safeExternalUrl,
   safeFilename,
@@ -123,5 +124,18 @@ describe("matchesBoardQuery", () => {
 describe("escapeLike", () => {
   it("escapes wildcard characters", () => {
     expect(escapeLike(" 100%_Remote\\ ")).toBe("100\\%\\_Remote\\\\");
+  });
+});
+
+describe("needsFollowUp", () => {
+  const now = new Date("2026-03-15T00:00:00Z");
+  it("flags applied cards idle for 7+ days", () => {
+    expect(needsFollowUp({ status: "applied", updated_at: "2026-03-08T00:00:00Z" }, now)).toBe(true);
+    expect(needsFollowUp({ status: "viewed", applied_at: "2026-03-01T00:00:00Z" }, now)).toBe(true);
+  });
+  it("ignores recent or non-applied cards", () => {
+    expect(needsFollowUp({ status: "applied", updated_at: "2026-03-10T00:00:00Z" }, now)).toBe(false);
+    expect(needsFollowUp({ status: "interview", updated_at: "2026-01-01T00:00:00Z" }, now)).toBe(false);
+    expect(needsFollowUp({ status: "applied" }, now)).toBe(false);
   });
 });

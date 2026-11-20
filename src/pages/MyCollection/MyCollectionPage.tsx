@@ -29,6 +29,8 @@ interface SessionStats {
   discovered: number;
   applied: number;
   interviews: number;
+  /** Latest card change, session.updated_at only moves on settings edits. */
+  lastActivity: string | null;
 }
 
 const ACTIVE_LIMIT = 5;
@@ -64,10 +66,11 @@ export default function MyCollectionPage() {
     try {
       const { data } = await (supabase as any)
         .from("mc_tracked_jobs")
-        .select("session_id,status,applied_at")
+        .select("session_id,status,applied_at,updated_at")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
-      const rows: { session_id: string; status: string; applied_at: string | null }[] = data ?? [];
+      const rows: { session_id: string; status: string; applied_at: string | null; updated_at: string }[] =
+        data ?? [];
       const bySession = new Map<string, typeof rows>();
       for (const row of rows) {
         const list = bySession.get(row.session_id) ?? [];
@@ -76,11 +79,17 @@ export default function MyCollectionPage() {
       }
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
-        const stats = computeSessionStats(bySession.get(sid) ?? []);
+        const sessionRows = bySession.get(sid) ?? [];
+        const stats = computeSessionStats(sessionRows);
+        const lastActivity = sessionRows.reduce<string | null>(
+          (latest, row) => (!latest || row.updated_at > latest ? row.updated_at : latest),
+          null,
+        );
         map[sid] = {
           discovered: stats.onBoard,
           applied: stats.applied,
           interviews: stats.interviews,
+          lastActivity,
         };
       }
       setStatsMap(map);
@@ -346,7 +355,10 @@ function SessionCard({
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
         <Sparkles className="w-3 h-3" />
-        Updated {new Date(session.updated_at).toLocaleDateString()}
+        Updated{" "}
+        {new Date(
+          stats?.lastActivity && stats.lastActivity > session.updated_at ? stats.lastActivity : session.updated_at,
+        ).toLocaleDateString()}
       </div>
     </Card>
   );

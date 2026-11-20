@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { matchesBoardQuery, safeExternalUrl } from "@/lib/my-collection";
+import { FOLLOW_UP_AFTER_DAYS, matchesBoardQuery, needsFollowUp, safeExternalUrl } from "@/lib/my-collection";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sheet,
@@ -15,7 +15,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search, BellRing } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -73,6 +73,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [dropTarget, setDropTarget] = useState<TrackedStatus | null>(null);
   const [query, setQuery] = useState("");
   const visibleJobs = useMemo(() => jobs.filter((j) => matchesBoardQuery(j, query)), [jobs, query]);
+  const followUpCount = useMemo(() => jobs.filter((j) => needsFollowUp(j)).length, [jobs]);
 
   // Ties the tailor pipeline's waitForJob subscription to this component
   // instance's lifetime, so switching away from the Board tab mid-tailor
@@ -395,6 +396,15 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
               className="h-8 pl-8 text-xs"
             />
           </div>
+          {followUpCount > 0 && (
+            <Badge
+              variant="outline"
+              className="gap-1 text-[10px] font-normal border-amber-300 text-amber-700 whitespace-nowrap"
+              title={`Applied ${FOLLOW_UP_AFTER_DAYS}+ days ago with no update`}
+            >
+              <BellRing className="w-3 h-3" /> {followUpCount} to follow up
+            </Badge>
+          )}
           <p className="text-xs text-muted-foreground whitespace-nowrap">
             {query.trim()
               ? `${visibleJobs.length} of ${jobs.length}`
@@ -484,10 +494,23 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                           {job.location}
                         </div>
                       )}
-                      {job.tailored_resume_id && (
-                        <Badge variant="secondary" className="mt-1.5 text-[9px] font-normal gap-1">
-                          <FileText className="w-2.5 h-2.5" /> Tailored
-                        </Badge>
+                      {(job.tailored_resume_id || needsFollowUp(job)) && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {job.tailored_resume_id && (
+                            <Badge variant="secondary" className="text-[9px] font-normal gap-1">
+                              <FileText className="w-2.5 h-2.5" /> Tailored
+                            </Badge>
+                          )}
+                          {needsFollowUp(job) && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] font-normal gap-1 border-amber-300 text-amber-700"
+                              title={`No update in ${FOLLOW_UP_AFTER_DAYS}+ days, consider a follow-up email`}
+                            >
+                              <BellRing className="w-2.5 h-2.5" /> Follow up
+                            </Badge>
+                          )}
+                        </div>
                       )}
                       {job.applied_at && (
                         <div className="text-muted-foreground text-[10px] mt-1.5 flex items-center gap-1">

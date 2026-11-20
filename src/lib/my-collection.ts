@@ -150,3 +150,22 @@ export function matchesBoardQuery(
 export function escapeLike(value: string): string {
   return value.trim().replace(/[\\%_]/g, (c) => `\\${c}`);
 }
+
+/** Days after applying with no movement before we nudge the user to follow up. */
+export const FOLLOW_UP_AFTER_DAYS = 7;
+
+/**
+ * True when a card has sat in applied/viewed for FOLLOW_UP_AFTER_DAYS or more
+ * since the last change, the point where a polite follow-up email helps.
+ */
+export function needsFollowUp(
+  job: { status: string; applied_at?: string | null; updated_at?: string | null },
+  now: Date = new Date(),
+): boolean {
+  if (job.status !== "applied" && job.status !== "viewed") return false;
+  const ref = job.updated_at || job.applied_at;
+  if (!ref) return false;
+  const t = new Date(ref).getTime();
+  if (!Number.isFinite(t)) return false;
+  return now.getTime() - t >= FOLLOW_UP_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
