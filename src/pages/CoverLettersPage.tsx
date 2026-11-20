@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -89,8 +90,11 @@ export default function CoverLettersPage() {
     }
   };
 
-  const copyResult = () => {
-    navigator.clipboard.writeText(result);
+  const copyResult = async () => {
+    if (!(await copyToClipboard(result))) {
+      toast({ title: "Couldn't copy", description: "Your browser blocked clipboard access. Select the text and copy it manually.", variant: "destructive" });
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

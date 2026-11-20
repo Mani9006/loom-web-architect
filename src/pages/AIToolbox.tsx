@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { PageHeader } from "@/components/PageHeader";
 import { useNavigate } from "react-router-dom";
 import { FunctionsHttpError } from "@supabase/supabase-js";
@@ -133,8 +134,11 @@ export default function AIToolbox() {
     }
   };
 
-  const copyResult = () => {
-    navigator.clipboard.writeText(result);
+  const copyResult = async () => {
+    if (!(await copyToClipboard(result))) {
+      toast({ title: "Couldn't copy", description: "Your browser blocked clipboard access. Select the text and copy it manually.", variant: "destructive" });
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     toast({ title: "Copied!", description: "Content copied to clipboard" });

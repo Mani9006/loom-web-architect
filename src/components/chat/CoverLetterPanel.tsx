@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -108,11 +109,14 @@ export function CoverLetterPanel({
     return [...messages].reverse().find(m => m.role === "assistant" && m.content && !m.isThinking);
   };
 
-  const handleCopyLetter = () => {
+  const handleCopyLetter = async () => {
     const lastAssistant = getLatestCoverLetter();
     if (lastAssistant) {
-      navigator.clipboard.writeText(lastAssistant.content);
-      toast({ title: "Copied!", description: "Cover letter copied to clipboard." });
+      if (await copyToClipboard(lastAssistant.content)) {
+        toast({ title: "Copied!", description: "Cover letter copied to clipboard." });
+      } else {
+        toast({ title: "Couldn't copy", description: "Your browser blocked clipboard access. Select the text and copy it manually.", variant: "destructive" });
+      }
     }
   };
 

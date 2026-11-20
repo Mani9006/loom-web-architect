@@ -3,15 +3,28 @@ import { ResumeJSON, getSkillCategoryLabel } from "@/types/resume";
 
 export default function PrintResume() {
   const [data, setData] = useState<ResumeJSON | null>(null);
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
     // Get resume data from localStorage (passed from main app)
-    const storedData = localStorage.getItem("printResumeData");
-    if (storedData) {
-      setData(JSON.parse(storedData));
-      // Clean up after reading
-      localStorage.removeItem("printResumeData");
+    let parsed: ResumeJSON | null = null;
+    try {
+      const storedData = localStorage.getItem("printResumeData");
+      if (storedData) {
+        parsed = JSON.parse(storedData) as ResumeJSON;
+        // Clean up after reading
+        localStorage.removeItem("printResumeData");
+      }
+    } catch {
+      parsed = null;
     }
+
+    if (!parsed) {
+      // Reload/bookmark: the one-shot data is gone, so don't print a blank page.
+      setMissing(true);
+      return;
+    }
+    setData(parsed);
 
     // Auto-trigger print dialog after a short delay
     const timer = setTimeout(() => {
@@ -23,8 +36,20 @@ export default function PrintResume() {
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p>Loading resume...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-3 p-6 text-center">
+        {missing ? (
+          <>
+            <p>Nothing to print yet.</p>
+            <p className="text-sm text-muted-foreground">
+              Open the print view from the resume builder to print your resume.
+            </p>
+            <a href="/resume-builder" className="text-sm font-medium text-primary underline">
+              Go to Resume Builder
+            </a>
+          </>
+        ) : (
+          <p>Loading resume...</p>
+        )}
       </div>
     );
   }

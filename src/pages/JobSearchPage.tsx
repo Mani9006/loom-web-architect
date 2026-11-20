@@ -335,7 +335,9 @@ export default function JobSearchPage() {
       return;
     }
 
-    if (abortControllerRef.current) abortControllerRef.current.abort();
+    // "superseded" lets the previous search exit quietly instead of showing a
+    // false "timed out" toast and tearing down this new search's state.
+    if (abortControllerRef.current) abortControllerRef.current.abort("superseded");
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
 
     const controller = new AbortController();
@@ -439,7 +441,7 @@ export default function JobSearchPage() {
       }
     } catch (err: any) {
       if (err.name === "AbortError") {
-        if (controller.signal.reason !== "user-cancel") {
+        if (controller.signal.reason !== "user-cancel" && controller.signal.reason !== "superseded") {
           toast({ title: "Search timed out", description: "Try a simpler search query", variant: "destructive" });
         }
       } else {
@@ -478,12 +480,16 @@ export default function JobSearchPage() {
         }
       }
     } finally {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-        progressIntervalRef.current = null;
+      // Only the latest search owns the shared refs and loading flag; a
+      // superseded search must not clear the newer one's interval/controller.
+      if (abortControllerRef.current === controller) {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+        abortControllerRef.current = null;
+        setLoading(false);
       }
-      abortControllerRef.current = null;
-      setLoading(false);
     }
   }, [
     datePosted,
