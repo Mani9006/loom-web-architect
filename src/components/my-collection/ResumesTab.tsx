@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { safeFilename } from "@/lib/my-collection";
 
 interface TailoredResume {
   id: string;
@@ -137,8 +138,8 @@ export default function ResumesTab({
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
-          here.
+          No tailored resumes yet. Click "Tailor to job" on a Discover result or a Board card and
+          the tailored copy will show up here.
         </p>
       </Card>
     );
@@ -233,9 +234,12 @@ function downloadAsMarkdown(r: TailoredResume) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  a.download = `${safeFilename(r.name)}.md`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoking synchronously can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
@@ -250,7 +254,7 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
     });
     return;
   }
-  window.open(data.url, "_blank");
+  window.open(data.url, "_blank", "noopener,noreferrer");
 }
 
 // Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness
@@ -291,7 +295,7 @@ async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToa
 
     const doc = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${r.name}.docx`);
+    saveAs(blob, `${safeFilename(r.name)}.docx`);
   } catch (e) {
     toast({
       title: "DOCX export failed",
@@ -323,6 +327,14 @@ function CanvasEditor({
   const [copied, setCopied] = useState(false);
 
   async function save() {
+    if (!name.trim()) {
+      toast({ title: "Resume needs a name", variant: "destructive" });
+      return;
+    }
+    if (!cv.trim()) {
+      toast({ title: "Resume is empty", description: "Add some content before saving.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const { error } = await (supabase as any)
       .from("mc_tailored_resumes")
@@ -382,7 +394,12 @@ function CanvasEditor({
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="max-w-md font-medium" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-label="Resume name"
+              className="max-w-md font-medium"
+            />
             <Badge variant="outline" className="text-[10px]">Canvas</Badge>
           </DialogTitle>
         </DialogHeader>
@@ -496,7 +513,7 @@ function CanvasEditor({
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving || !name.trim()}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

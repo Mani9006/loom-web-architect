@@ -21,11 +21,25 @@ export default function WorkerStatusBadge() {
     let interval: ReturnType<typeof setInterval> | null = null;
 
     async function refresh() {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData?.user) return;
-      const status = await isWorkerOnline(userData.user.id);
-      if (!stopped) setState(status);
+      // Skip polling while the tab is hidden; we refresh on visibility change.
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      try {
+        // getSession reads the cached session locally; getUser would hit the
+        // auth server every 20s just to learn the id we already have.
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) return;
+        const status = await isWorkerOnline(userId);
+        if (!stopped) setState(status);
+      } catch (e) {
+        // A transient network/auth blip shouldn't surface as an unhandled rejection.
+        console.warn("[WorkerStatusBadge] heartbeat check failed:", e);
+      }
     }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     refresh();
     interval = setInterval(refresh, 20000);
@@ -33,6 +47,7 @@ export default function WorkerStatusBadge() {
     return () => {
       stopped = true;
       if (interval) clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

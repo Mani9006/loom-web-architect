@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -467,6 +468,11 @@ export default function ResumeBuilder() {
     const stopWords = new Set(["the", "a", "an", "and", "or", "is", "in", "to", "for", "of", "with", "on", "at", "by", "from", "as", "be", "are", "was", "were", "will", "can", "has", "have", "had", "do", "does", "this", "that", "it", "we", "you", "they", "our", "your", "their", "its", "not", "but", "if", "about", "all", "also", "into", "than", "then", "up", "out", "no", "so", "what", "which", "who", "how", "each", "she", "he", "my", "over"]);
     const words = jd.toLowerCase().replace(/[^a-z0-9+#.\- ]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !stopWords.has(w));
     const uniqueKeywords = [...new Set(words)];
+    if (uniqueKeywords.length === 0) {
+      // Nothing to match against: avoid a 0/0 "NaN%" score.
+      setKeywordMatches(null);
+      return;
+    }
 
     const matched: string[] = [];
     const missing: string[] = [];
@@ -541,7 +547,7 @@ export default function ResumeBuilder() {
   };
 
   // ── Copy resume as plain text ───────────────────────────────────────
-  const copyAsPlainText = () => {
+  const copyAsPlainText = async () => {
     const lines: string[] = [];
     if (data.header.name) lines.push(data.header.name);
     if (data.header.title) lines.push(data.header.title);
@@ -563,7 +569,10 @@ export default function ResumeBuilder() {
       lines.push("", "SKILLS");
       Object.entries(data.skills).forEach(([k, v]) => { if (v.length > 0) lines.push(`${getSkillCategoryLabel(k)}: ${v.join(", ")}`); });
     }
-    navigator.clipboard.writeText(lines.join("\n"));
+    if (!(await copyToClipboard(lines.join("\n")))) {
+      toast({ title: "Couldn't copy", description: "Your browser blocked clipboard access. Select the text and copy it manually.", variant: "destructive" });
+      return;
+    }
     setCopiedField("resume");
     setTimeout(() => setCopiedField(null), 2000);
   };

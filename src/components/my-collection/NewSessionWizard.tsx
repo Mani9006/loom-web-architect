@@ -144,6 +144,7 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
   }
 
   async function createSession() {
+    if (submitting) return;
     if (!name.trim()) {
       toast({ title: "Session needs a name" });
       return;
@@ -219,6 +220,12 @@ export default function NewSessionWizard({ open, onClose, onCreated }: Props) {
                 placeholder="e.g. ML Engineer, financial services"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && name.trim()) {
+                    e.preventDefault();
+                    setStep(2);
+                  }
+                }}
                 autoFocus
               />
             </div>

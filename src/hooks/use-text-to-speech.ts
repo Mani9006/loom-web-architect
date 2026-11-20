@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 interface UseTextToSpeechOptions {
   onStart?: () => void;
@@ -22,6 +22,14 @@ export function useTextToSpeech({
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const isSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  // Stop any in-progress speech when the consumer unmounts, otherwise the
+  // browser keeps reading the interview question on the next page.
+  useEffect(() => {
+    return () => {
+      if (isSupported) window.speechSynthesis.cancel();
+    };
+  }, [isSupported]);
 
   const speak = useCallback((text: string) => {
     if (!isSupported) {

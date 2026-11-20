@@ -28,6 +28,7 @@ import {
   type AIJob,
 } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
+import { escapeLike, jobKey, parseFitScore, safeExternalUrl } from "@/lib/my-collection";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 // Discover state lives in sessionStorage so switching apps/tabs/refreshing the
@@ -128,6 +129,41 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  // Mark results that are already on this session's board as saved, so the
+  // user can't create duplicate cards (e.g. after "Start over", a new search
+  // that returns the same posting, or a fresh browser tab).
+  const [boardSyncTick, setBoardSyncTick] = useState(0);
+  useEffect(() => {
+    if (foundJobs.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from("mc_tracked_jobs")
+        .select("company,job_title")
+        .eq("session_id", sessionId)
+        .is("deleted_at", null);
+      if (cancelled || error || !data) return;
+      const onBoard = new Set<string>(
+        (data as { company: string; job_title: string }[]).map((r) => jobKey(r.company, r.job_title)),
+      );
+      setSavedTitles((prev) => {
+        const next = new Set<string>();
+        // Keep only keys that are still on the board (a trashed card can be saved again).
+        for (const k of prev) if (onBoard.has(k)) next.add(k);
+        for (const j of foundJobs) {
+          const k = jobKey(j.company, j.title);
+          if (onBoard.has(k)) next.add(k);
+        }
+        if (next.size === prev.size && [...next].every((k) => prev.has(k))) return prev;
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, foundJobs, boardSyncTick]);
 
   // Ties every waitForJob/runOnLocalWorker call below to this component
   // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
@@ -384,9 +420,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           title: String(j.title ?? "").trim(),
           company: String(j.company ?? "").trim(),
           location: j.location ? String(j.location) : undefined,
-          apply_url: j.apply_url ? String(j.apply_url) : undefined,
+          // AI output can be steered by scraped pages; only keep http(s) links.
+          apply_url: safeExternalUrl(j.apply_url ? String(j.apply_url) : null) ?? undefined,
           summary: j.summary ? String(j.summary) : undefined,
-          fit_score: typeof j.fit_score === "number" ? j.fit_score : undefined,
+          fit_score: parseFitScore(j.fit_score),
           fit_reason: j.fit_reason ? String(j.fit_reason) : undefined,
         }))
         .filter((j) => j.title && j.company);
@@ -458,6 +495,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       // The user switched away mid-search (waitForJob was aborted on
       // unmount), not a real failure, so stay silent rather than toast.
       if (isJobCancelled(e)) return;
+      // The job failed or timed out: forget it so the next mount doesn't try
+      // to re-attach to a dead search and show a phantom spinner.
+      setActiveJobId(null);
+      setActiveJobHistory([]);
       const msg = e instanceof Error ? e.message : String(e);
       toast({ title: "Search failed", description: msg, variant: "destructive" });
     } finally {
@@ -483,9 +524,33 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
+    const key = jobKey(job.company, job.title);
+    if (savingKey === key || savedTitles.has(key)) return;
+    setSavingKey(key);
+    try {
+      await saveToBoardInner(job, key);
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function saveToBoardInner(job: FoundJob, key: string) {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       toast({ title: "Not signed in", variant: "destructive" });
+      return;
+    }
+    const { data: existing } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .select("id")
+      .eq("session_id", sessionId)
+      .ilike("company", escapeLike(job.company))
+      .ilike("job_title", escapeLike(job.title))
+      .is("deleted_at", null)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Already on your board", description: `${job.company} · ${job.title}` });
       return;
     }
     const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
@@ -495,7 +560,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       job_title: job.title,
       company: job.company,
       location: job.location ?? null,
-      apply_url: job.apply_url ?? null,
+      apply_url: safeExternalUrl(job.apply_url),
       jd_md: job.summary ?? null,
       status: "saved",
     });
@@ -503,7 +568,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(key));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -514,7 +579,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * master resume directly from session settings.
    */
   async function tailorFromDiscover(job: FoundJob) {
-    const key = `${job.company}::${job.title}`;
+    const key = jobKey(job.company, job.title);
+    if (tailoringKey) return;
     if (!job.summary || !job.summary.trim()) {
       toast({
         title: "AI didn't return a job description",
@@ -551,8 +617,8 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           .from("mc_tracked_jobs")
           .select("id")
           .eq("session_id", sessionId)
-          .eq("company", job.company)
-          .eq("job_title", job.title)
+          .ilike("company", escapeLike(job.company))
+          .ilike("job_title", escapeLike(job.title))
           .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -569,7 +635,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             job_title: job.title,
             company: job.company,
             location: job.location ?? null,
-            apply_url: job.apply_url ?? null,
+            apply_url: safeExternalUrl(job.apply_url),
             jd_md: job.summary,
             status: "saved",
           })
@@ -796,11 +862,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
     foundJobs.length === 0 ? null : (
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
-          const key = `${job.company}::${job.title}`;
+          const key = jobKey(job.company, job.title);
           const isSaved = savedTitles.has(key);
+          const applyUrl = safeExternalUrl(job.apply_url);
           return (
             <Card key={`${key}::${idx}`} className="p-4">
-              <div className="flex items-start gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-2 flex-wrap">
                     <h4 className="font-medium text-[14px] leading-snug">{job.title}</h4>
@@ -825,12 +892,12 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     </p>
                   )}
                 </div>
-                <div className="flex flex-col gap-1.5 shrink-0 min-w-[8rem]">
+                <div className="flex flex-row flex-wrap sm:flex-col gap-1.5 shrink-0 sm:min-w-[8rem]">
                   <Button
                     size="sm"
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
-                    disabled={tailoringKey === key}
+                    disabled={!!tailoringKey}
                     className="h-7 text-[11px]"
                   >
                     {tailoringKey === key ? (
@@ -851,15 +918,15 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || savingKey === key || tailoringKey === key}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
                     {isSaved ? "Saved" : "Save only"}
                   </Button>
-                  {job.apply_url && (
+                  {applyUrl && (
                     <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
-                      <a href={job.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={applyUrl} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3 h-3 mr-1" /> Open
                       </a>
                     </Button>
@@ -884,7 +951,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         sessionId={sessionId}
-        onCreated={() => setAddOpen(false)}
+        onCreated={() => {
+          setAddOpen(false);
+          setBoardSyncTick((t) => t + 1);
+        }}
       />
     </div>
   );

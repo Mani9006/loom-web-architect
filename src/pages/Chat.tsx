@@ -133,9 +133,18 @@ export default function Chat() {
 
   // Track if we've initialized for the current user to prevent re-initialization on token refresh
   const userInitializedRef = useRef<string | null>(null);
+  // Set right before navigating to a conversation this page just created and
+  // is about to stream into. Reloading it from the DB at that moment would
+  // replace local state mid-stream and drop the in-flight assistant reply.
+  const locallyCreatedConversationRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (conversationId && user) {
+      if (locallyCreatedConversationRef.current === conversationId) {
+        locallyCreatedConversationRef.current = null;
+        setChatMode("resume-chat");
+        return;
+      }
       loadConversation(conversationId);
       setChatMode("resume-chat");
     } else if (!conversationId) {
@@ -332,6 +341,9 @@ export default function Chat() {
       toast({ title: "Error", description: "Failed to create conversation", variant: "destructive" });
       return null;
     }
+    // Set it here too: the route effect skips the DB reload for a
+    // conversation created locally, so it won't set this for us.
+    setCurrentConversation(data);
     await fetchConversations();
     return data.id;
   };
@@ -1285,6 +1297,7 @@ Format with clear headers and bullet points. Be specific to the role and company
         setChatMode("resume-form");
         return;
       }
+      locallyCreatedConversationRef.current = convId;
       navigate(`/c/${convId}`);
 
       // Build context message from experience
