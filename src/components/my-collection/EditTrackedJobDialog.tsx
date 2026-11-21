@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { toSafeExternalUrl } from "@/lib/mc-pipeline";
 import {
   Dialog,
   DialogContent,
@@ -69,12 +70,21 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       });
       return;
     }
+    const normalizedUrl = applyUrl.trim() ? toSafeExternalUrl(applyUrl) : null;
+    if (applyUrl.trim() && !normalizedUrl) {
+      toast({
+        title: "Apply URL looks invalid",
+        description: "Use a full web address like https://company.com/jobs/123, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     const updates = {
       company: company.trim(),
       job_title: jobTitle.trim(),
       location: location.trim() || null,
-      apply_url: applyUrl.trim() || null,
+      apply_url: normalizedUrl,
       jd_md: jdMd.trim() || null,
       notes: notes.trim() || null,
     };
