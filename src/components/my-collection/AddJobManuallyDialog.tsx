@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { toSafeExternalUrl } from "@/lib/mc-pipeline";
 import {
   Dialog,
   DialogContent,
@@ -117,6 +118,15 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       });
       return;
     }
+    const normalizedUrl = applyUrl.trim() ? toSafeExternalUrl(applyUrl) : null;
+    if (applyUrl.trim() && !normalizedUrl) {
+      toast({
+        title: "Apply URL looks invalid",
+        description: "Use a full web address like https://company.com/jobs/123, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
 
     const { data: userData, error: userErr } = await supabase.auth.getUser();
@@ -135,7 +145,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         job_title: jobTitle.trim(),
         company: company.trim(),
         location: location.trim() || null,
-        apply_url: applyUrl.trim() || null,
+        apply_url: normalizedUrl,
         jd_md: jdMd.trim() || null,
         status: "saved",
       })
