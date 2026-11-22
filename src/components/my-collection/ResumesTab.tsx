@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { safeFileName } from "@/lib/safe-file-name";
 
 interface TailoredResume {
   id: string;
@@ -101,6 +102,7 @@ export default function ResumesTab({
       .from("mc_tracked_jobs")
       .update({ tailored_resume_id: null })
       .eq("tailored_resume_id", id);
+    toast({ title: "Tailored resume deleted" });
     load();
   }
 
@@ -137,8 +139,8 @@ export default function ResumesTab({
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
-          here.
+          No tailored resumes yet. Save a job in Discover or on the Board, then click "Tailor to job" and
+          the result will appear here.
         </p>
       </Card>
     );
@@ -233,9 +235,12 @@ function downloadAsMarkdown(r: TailoredResume) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  a.download = `${safeFileName(r.name)}.md`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoking synchronously can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
@@ -291,7 +296,7 @@ async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToa
 
     const doc = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${r.name}.docx`);
+    saveAs(blob, `${safeFileName(r.name)}.docx`);
   } catch (e) {
     toast({
       title: "DOCX export failed",
@@ -323,6 +328,10 @@ function CanvasEditor({
   const [copied, setCopied] = useState(false);
 
   async function save() {
+    if (!name.trim()) {
+      toast({ title: "Resume needs a name", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const { error } = await (supabase as any)
       .from("mc_tailored_resumes")
@@ -496,7 +505,7 @@ function CanvasEditor({
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving || !name.trim()}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
