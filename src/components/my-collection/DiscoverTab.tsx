@@ -128,6 +128,32 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  // savedTitles is otherwise only rehydrated from sessionStorage, so after a
+  // fresh login / new tab every result looked unsaved and "Save only" happily
+  // created duplicate cards. Seed it from what is actually on the board.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from("mc_tracked_jobs")
+        .select("company,job_title")
+        .eq("session_id", sessionId)
+        .is("deleted_at", null);
+      if (cancelled || error || !Array.isArray(data) || data.length === 0) return;
+      setSavedTitles((prev) => {
+        const next = new Set(prev);
+        for (const row of data as { company: string; job_title: string }[]) {
+          next.add(`${row.company}::${row.job_title}`);
+        }
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   // Ties every waitForJob/runOnLocalWorker call below to this component
   // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
@@ -483,6 +509,18 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
+    const key = `${job.company}::${job.title}`;
+    // Guard against double-clicks inserting the same card twice.
+    if (savingKey === key || savedTitles.has(key)) return;
+    setSavingKey(key);
+    try {
+      await insertSavedJob(job, key);
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function insertSavedJob(job: FoundJob, key: string) {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       toast({ title: "Not signed in", variant: "destructive" });
@@ -503,7 +541,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
       return;
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
+    setSavedTitles((s) => new Set(s).add(key));
     toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
@@ -514,6 +552,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    * master resume directly from session settings.
    */
   async function tailorFromDiscover(job: FoundJob) {
+    if (tailoringKey) return;
     const key = `${job.company}::${job.title}`;
     if (!job.summary || !job.summary.trim()) {
       toast({
@@ -830,7 +869,10 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant="default"
                     onClick={() => tailorFromDiscover(job)}
-                    disabled={tailoringKey === key}
+                    // One tailor at a time: a second run would clobber the
+                    // shared tailoringKey/status and mislabel both buttons.
+                    disabled={!!tailoringKey}
+                    title={tailoringKey && tailoringKey !== key ? "Another resume is being tailored" : undefined}
                     className="h-7 text-[11px]"
                   >
                     {tailoringKey === key ? (
@@ -851,7 +893,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || savingKey === key || tailoringKey === key}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}

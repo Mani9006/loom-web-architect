@@ -177,9 +177,24 @@ export default function SessionSettingsDialog({ open, onClose, session, onSaved,
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              The AI tailor uses this as the source of truth for the candidate's experience.
-            </p>
+            <div className="flex items-center justify-between gap-2 mt-1">
+              <p className="text-[10px] text-muted-foreground">
+                The AI tailor uses this as the source of truth for the candidate's experience. With none
+                picked, it falls back to your most recently edited resume.
+              </p>
+              {resumeId && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[10px] shrink-0"
+                  onClick={() => setResumeId("")}
+                  disabled={saving}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
           </div>
 
           <Separator />
