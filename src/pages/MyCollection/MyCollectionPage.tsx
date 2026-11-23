@@ -13,6 +13,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { computeFunnel, type FunnelRow } from "@/lib/mc-funnel";
 
 interface MCSession {
   id: string;
@@ -46,6 +57,7 @@ export default function MyCollectionPage() {
     const { data, error } = await (supabase as any)
       .from("mc_sessions")
       .select("*")
+      .neq("status", "deleted")
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Couldn't load sessions", description: error.message, variant: "destructive" });
@@ -61,31 +73,29 @@ export default function MyCollectionPage() {
   async function loadStats(sessionIds: string[]) {
     if (sessionIds.length === 0) return;
     try {
-      const { data } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from("mc_tracked_jobs")
-        .select("session_id,status")
+        .select("session_id,status,applied_at")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
-      const rows: { session_id: string; status: string }[] = data ?? [];
+      if (error) return;
+      const rows: (FunnelRow & { session_id: string })[] = data ?? [];
+      const bySession: Record<string, FunnelRow[]> = {};
+      for (const r of rows) (bySession[r.session_id] ??= []).push(r);
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
-        const jobRows = rows.filter((r) => r.session_id === sid);
-        map[sid] = {
-          discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
-          interviews:
-            jobRows.filter((r) => r.status === "interview").length +
-            jobRows.filter((r) => r.status === "take_home").length,
-        };
+        const f = computeFunnel(bySession[sid] ?? []);
+        map[sid] = { discovered: f.total, applied: f.applied, interviews: f.interviews };
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show a dash if this fails.
     }
   }
 
   useEffect(() => {
     loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeSessions = sessions.filter((s) => s.status === "active");
@@ -124,19 +134,21 @@ export default function MyCollectionPage() {
     }
   }
 
+  const [pendingDelete, setPendingDelete] = useState<MCSession | null>(null);
+
   async function deleteSession(id: string) {
-    if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
     const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     } else {
+      toast({ title: "Session deleted" });
       await loadSessions();
     }
   }
 
   return (
     <div className="container max-w-6xl mx-auto py-8 px-4 md:px-8">
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <FolderOpen className="w-6 h-6 text-primary" />
@@ -147,10 +159,20 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+        <Button
+          onClick={() => setWizardOpen(true)}
+          disabled={atCap}
+          className="shrink-0"
+          title={atCap ? `Archive a session to start a new one (limit ${ACTIVE_LIMIT} active)` : undefined}
+        >
           <Plus className="w-4 h-4 mr-1" /> New Session
         </Button>
       </div>
+      {atCap && (
+        <p className="text-xs text-muted-foreground mt-2">
+          You have {ACTIVE_LIMIT} active sessions, the maximum. Archive one to start a new search.
+        </p>
+      )}
 
       <div className="flex items-center gap-2 mt-4 mb-6 text-xs text-muted-foreground">
         <Badge variant="outline" className="font-normal">
@@ -181,6 +203,23 @@ export default function MyCollectionPage() {
         </Card>
       ) : (
         <>
+          {activeSessions.length === 0 && (
+            <Card className="p-8 text-center border-dashed">
+              <p className="text-sm text-muted-foreground mb-4">
+                No active sessions. Reactivate an archived one or start a new search.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {!showArchived && (
+                  <Button variant="outline" onClick={() => setShowArchived(true)}>
+                    <Archive className="w-4 h-4 mr-1" /> Show archived
+                  </Button>
+                )}
+                <Button onClick={() => setWizardOpen(true)}>
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </div>
+            </Card>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeSessions.map((s) => (
               <SessionCard
@@ -189,7 +228,7 @@ export default function MyCollectionPage() {
                 stats={statsMap[s.id]}
                 onOpen={() => navigate(`/my-collection/${s.id}`)}
                 onArchive={() => archiveSession(s.id)}
-                onDelete={() => deleteSession(s.id)}
+                onDelete={() => setPendingDelete(s)}
               />
             ))}
           </div>
@@ -208,7 +247,7 @@ export default function MyCollectionPage() {
                     archived
                     onOpen={() => navigate(`/my-collection/${s.id}`)}
                     onReactivate={() => reactivateSession(s.id)}
-                    onDelete={() => deleteSession(s.id)}
+                    onDelete={() => setPendingDelete(s)}
                   />
                 ))}
               </div>
@@ -216,6 +255,30 @@ export default function MyCollectionPage() {
           )}
         </>
       )}
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(v) => !v && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{pendingDelete?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes every job, tailored resume, and status history inside this session. It can't be undone.
+              Archive it instead if you might come back to it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingDelete) void deleteSession(pendingDelete.id);
+                setPendingDelete(null);
+              }}
+            >
+              Delete session
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <NewSessionWizard
         open={wizardOpen}
@@ -251,8 +314,18 @@ function SessionCard({
 
   return (
     <Card
-      className="p-5 hover:border-primary/40 transition-colors cursor-pointer relative group"
+      className="p-5 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors cursor-pointer relative group"
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      role="link"
+      tabIndex={0}
+      aria-label={`Open session ${session.name}`}
     >
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-medium text-[15px] leading-tight pr-8 line-clamp-2">{session.name}</h3>
@@ -262,7 +335,12 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Session actions"
+              className="h-7 w-7 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+            >
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +374,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "–"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "–"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "–"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
