@@ -11,8 +11,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import NewSessionWizard from "@/components/my-collection/NewSessionWizard";
+import { computePipelineStats } from "@/lib/mc-pipeline-stats";
 
 interface MCSession {
   id: string;
@@ -38,6 +49,8 @@ export default function MyCollectionPage() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<MCSession | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -63,29 +76,29 @@ export default function MyCollectionPage() {
     try {
       const { data } = await (supabase as any)
         .from("mc_tracked_jobs")
-        .select("session_id,status")
+        .select("session_id,status,applied_at")
         .in("session_id", sessionIds)
         .is("deleted_at", null);
-      const rows: { session_id: string; status: string }[] = data ?? [];
+      const rows: { session_id: string; status: string; applied_at: string | null }[] = data ?? [];
+      const grouped: Record<string, typeof rows> = {};
+      for (const r of rows) (grouped[r.session_id] ??= []).push(r);
       const map: Record<string, SessionStats> = {};
       for (const sid of sessionIds) {
-        const jobRows = rows.filter((r) => r.session_id === sid);
-        map[sid] = {
-          discovered: jobRows.length,
-          applied: jobRows.filter((r) => r.status === "applied").length,
-          interviews:
-            jobRows.filter((r) => r.status === "interview").length +
-            jobRows.filter((r) => r.status === "take_home").length,
-        };
+        // Cumulative funnel counts: a card that moved on to Interview or
+        // Offer still counts as Applied.
+        const s = computePipelineStats(grouped[sid] ?? []);
+        map[sid] = { discovered: s.total, applied: s.applied, interviews: s.interviews };
       }
       setStatsMap(map);
     } catch {
-      // Non-critical, cards just show "," if this fails.
+      // Non-critical, cards just show "—" if this fails.
     }
   }
 
   useEffect(() => {
     loadSessions();
+    // Load once on mount; toast is an unstable reference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeSessions = sessions.filter((s) => s.status === "active");
@@ -124,19 +137,23 @@ export default function MyCollectionPage() {
     }
   }
 
-  async function deleteSession(id: string) {
-    if (!confirm("Delete this session? This removes all jobs, resumes, and history inside it. Cannot be undone.")) return;
-    const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", id);
+  async function confirmDeleteSession() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    const { error } = await (supabase as any).from("mc_sessions").delete().eq("id", pendingDelete.id);
+    setDeleting(false);
     if (error) {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
-    } else {
-      await loadSessions();
+      return;
     }
+    toast({ title: "Session deleted", description: pendingDelete.name });
+    setPendingDelete(null);
+    await loadSessions();
   }
 
   return (
     <div className="container max-w-6xl mx-auto py-8 px-4 md:px-8">
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <FolderOpen className="w-6 h-6 text-primary" />
@@ -147,7 +164,12 @@ export default function MyCollectionPage() {
             applications. Run multiple at once for different roles or industries.
           </p>
         </div>
-        <Button onClick={() => setWizardOpen(true)} disabled={atCap} className="shrink-0">
+        <Button
+          onClick={() => setWizardOpen(true)}
+          disabled={atCap}
+          className="shrink-0 self-start"
+          title={atCap ? `You can have at most ${ACTIVE_LIMIT} active sessions. Archive one first.` : undefined}
+        >
           <Plus className="w-4 h-4 mr-1" /> New Session
         </Button>
       </div>
@@ -189,10 +211,28 @@ export default function MyCollectionPage() {
                 stats={statsMap[s.id]}
                 onOpen={() => navigate(`/my-collection/${s.id}`)}
                 onArchive={() => archiveSession(s.id)}
-                onDelete={() => deleteSession(s.id)}
+                onDelete={() => setPendingDelete(s)}
               />
             ))}
           </div>
+
+          {activeSessions.length === 0 && (
+            <Card className="p-8 text-center border-dashed">
+              <p className="text-sm text-muted-foreground mb-4">
+                No active sessions. Reactivate an archived one or start a new search.
+              </p>
+              <div className="flex justify-center gap-2">
+                {!showArchived && (
+                  <Button variant="outline" onClick={() => setShowArchived(true)}>
+                    <Archive className="w-4 h-4 mr-1" /> Show archived
+                  </Button>
+                )}
+                <Button onClick={() => setWizardOpen(true)}>
+                  <Plus className="w-4 h-4 mr-1" /> New Session
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {showArchived && archivedSessions.length > 0 && (
             <>
@@ -208,7 +248,7 @@ export default function MyCollectionPage() {
                     archived
                     onOpen={() => navigate(`/my-collection/${s.id}`)}
                     onReactivate={() => reactivateSession(s.id)}
-                    onDelete={() => deleteSession(s.id)}
+                    onDelete={() => setPendingDelete(s)}
                   />
                 ))}
               </div>
@@ -216,6 +256,31 @@ export default function MyCollectionPage() {
           )}
         </>
       )}
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(v) => !v && !deleting && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete “{pendingDelete?.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the session with all its jobs, tailored resumes, and history. Archive it
+              instead if you might come back to it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDeleteSession();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting…" : "Delete session"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <NewSessionWizard
         open={wizardOpen}
@@ -251,8 +316,18 @@ function SessionCard({
 
   return (
     <Card
-      className="p-5 hover:border-primary/40 transition-colors cursor-pointer relative group"
+      className="p-5 hover:border-primary/40 transition-colors cursor-pointer relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onOpen}
+      role="link"
+      tabIndex={0}
+      aria-label={`Open session ${session.name}`}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-medium text-[15px] leading-tight pr-8 line-clamp-2">{session.name}</h3>
@@ -262,7 +337,12 @@ function SessionCard({
             onClick={(e) => e.stopPropagation()}
             className="absolute top-3 right-3"
           >
-            <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Actions for ${session.name}`}
+              className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+            >
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -296,9 +376,9 @@ function SessionCard({
       )}
 
       <div className="grid grid-cols-3 gap-2 text-center mt-4 pt-3 border-t">
-        <SessionStat label="On board" value={stats?.discovered ?? ","} />
-        <SessionStat label="Applied" value={stats?.applied ?? ","} />
-        <SessionStat label="Interviews" value={stats?.interviews ?? ","} />
+        <SessionStat label="On board" value={stats?.discovered ?? "—"} />
+        <SessionStat label="Applied" value={stats?.applied ?? "—"} />
+        <SessionStat label="Interviews" value={stats?.interviews ?? "—"} />
       </div>
 
       <div className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">

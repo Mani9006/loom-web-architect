@@ -40,11 +40,13 @@ export default function WorkerStatusBadge() {
     return null;
   }
 
-  const dotColor = state.online ? "bg-emerald-500" : "bg-zinc-400";
-  const label = state.online ? "AI ready" : "AI offline";
+  // AI is always available: a connected local worker runs jobs first, and
+  // the cloud runner (mc-ai-run) takes over whenever no worker is online.
+  const dotColor = state.online ? "bg-emerald-500" : "bg-sky-500";
+  const label = state.online ? "AI ready · local" : "AI ready · cloud";
   const description = state.online
-    ? "AI features are available. Tailoring jobs typically takes 5–15 seconds."
-    : "AI features are temporarily unavailable. Try again in a few minutes.";
+    ? "Your local AI worker is connected and will run tailoring and searches first."
+    : "AI runs in the cloud. Tailoring usually takes 20–60 seconds; job discovery pulls live listings from company career boards.";
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -59,7 +61,7 @@ export default function WorkerStatusBadge() {
           {description}
           {state.lastSeen && (
             <div className="mt-1 opacity-60">
-              Last heartbeat: {new Date(state.lastSeen).toLocaleTimeString()}
+              Last worker heartbeat: {new Date(state.lastSeen).toLocaleTimeString()}
             </div>
           )}
         </TooltipContent>

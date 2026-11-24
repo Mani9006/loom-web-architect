@@ -1,10 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // mc-ai-jobs.ts, frontend helper for the local-Claude job queue.
 //
-// The website never calls Anthropic API directly. Instead it inserts a row
-// into mc_ai_jobs (Supabase). The user's Mac mini runs a worker that picks
-// up queued jobs, runs `claude -p` locally using their Max plan, and writes
-// the result back. This file gives the frontend a clean async API on top.
+// The website never calls an LLM API directly. Instead it inserts a row
+// into mc_ai_jobs (Supabase). An optional self-hosted local worker picks up
+// queued jobs and writes the result back; when no worker claims a job, the
+// mc-ai-run edge function runs it in the cloud instead (see waitForJob).
+// This file gives the frontend a clean async API on top.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from "@/integrations/supabase/client";
@@ -90,8 +91,8 @@ export interface EnqueueResult {
 }
 
 /**
- * Insert a job into the queue. Returns the jobId, the worker on the user's
- * Mac will pick it up within ~3 seconds.
+ * Insert a job into the queue. Returns the jobId. A local worker (if any)
+ * picks it up within ~3 seconds; otherwise waitForJob hands it to the cloud.
  */
 export async function enqueueJob(args: EnqueueArgs): Promise<EnqueueResult> {
   const { data: userData, error: userErr } = await supabase.auth.getUser();
@@ -132,7 +133,13 @@ export async function enqueueJob(args: EnqueueArgs): Promise<EnqueueResult> {
  */
 export async function waitForJob(
   jobId: string,
-  opts: { timeoutMs?: number; onProgress?: (status: JobStatus) => void; signal?: AbortSignal } = {}
+  opts: {
+    timeoutMs?: number;
+    onProgress?: (status: JobStatus) => void;
+    signal?: AbortSignal;
+    /** Run the job on the server when no local worker claims it. Default true. */
+    cloudFallback?: boolean;
+  } = {}
 ): Promise<AIJob> {
   const timeoutMs = opts.timeoutMs ?? 5 * 60 * 1000;
   const start = Date.now();
@@ -155,11 +162,13 @@ export async function waitForJob(
   return new Promise<AIJob>((resolve, reject) => {
     let resolved = false;
     let pollHandle: ReturnType<typeof setInterval> | null = null;
+    let cloudHandle: ReturnType<typeof setTimeout> | null = null;
 
     const finish = (job: AIJob | null, err?: Error) => {
       if (resolved) return;
       resolved = true;
       if (pollHandle) clearInterval(pollHandle);
+      if (cloudHandle) clearTimeout(cloudHandle);
       opts.signal?.removeEventListener("abort", onAbort);
       try {
         channel.unsubscribe();
@@ -196,6 +205,26 @@ export async function waitForJob(
       )
       .subscribe();
 
+    // Cloud fallback: if no local worker picks the job up, run it on the
+    // server (mc-ai-run). Immediately when no worker is online, otherwise
+    // after a grace period so an online-but-busy/stalled worker can't leave
+    // the user waiting for the full timeout.
+    if (initial.status === "queued" && opts.cloudFallback !== false) {
+      void (async () => {
+        const online = await isWorkerOnlineForJob(initial.user_id);
+        if (resolved) return;
+        const trigger = async () => {
+          if (resolved) return;
+          const outcome = await requestCloudRun(jobId);
+          if (outcome.error && !online && !resolved) {
+            finish(null, new Error(outcome.error));
+          }
+        };
+        if (online) cloudHandle = setTimeout(() => void trigger(), CLOUD_FALLBACK_GRACE_MS);
+        else void trigger();
+      })();
+    }
+
     // Belt-and-suspenders polling in case realtime drops.
     pollHandle = setInterval(async () => {
       if (Date.now() - start > timeoutMs) {
@@ -212,6 +241,41 @@ export async function waitForJob(
       } catch { /* The next polling cycle can recover from a transient read. */ }
     }, 4000);
   });
+}
+
+/** How long an online local worker gets to claim a job before the cloud runs it. */
+export const CLOUD_FALLBACK_GRACE_MS = 20_000;
+
+async function isWorkerOnlineForJob(userId: string): Promise<boolean> {
+  try {
+    return (await isWorkerOnline(userId)).online;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ask the mc-ai-run edge function to process a still-queued job. The claim
+ * is atomic server-side, so calling this for a job a local worker already
+ * took is a harmless no-op. Resolves (never throws) with a user-facing
+ * error only when the request itself failed before a claim.
+ */
+export async function requestCloudRun(jobId: string): Promise<{ error: string | null }> {
+  try {
+    const { error } = await supabase.functions.invoke("mc-ai-run", { body: { job_id: jobId } });
+    if (!error) return { error: null };
+    let detail = error.message;
+    try {
+      const ctx = (error as { context?: Response }).context;
+      if (ctx && typeof ctx.json === "function") {
+        const body = await ctx.json();
+        if (body?.error) detail = String(body.error);
+      }
+    } catch { /* Keep the generic message. */ }
+    return { error: `AI service unavailable: ${detail}` };
+  } catch (e) {
+    return { error: `AI service unavailable: ${e instanceof Error ? e.message : String(e)}` };
+  }
 }
 
 async function fetchJob(jobId: string): Promise<AIJob | null> {
@@ -337,13 +401,16 @@ export async function isWorkerOnline(userId: string): Promise<{
 }> {
   const { data, error } = await (supabase as any)
     .from("mc_worker_heartbeats")
-    .select("last_seen,hostname")
+    .select("last_seen,hostname,version")
     .eq("user_id", userId)
     .maybeSingle();
   if (error || !data) return { online: false, lastSeen: null, hostname: null };
   const ageMs = Date.now() - new Date(data.last_seen).getTime();
+  // The ApplyPass browser-automation worker shares this heartbeat table but
+  // never drains mc_ai_jobs, so its heartbeat must not count as "AI online".
+  const isAiWorker = !String(data.version ?? "").startsWith("applypass-browser");
   return {
-    online: ageMs < 90 * 1000,
+    online: isAiWorker && ageMs < 90 * 1000,
     lastSeen: data.last_seen,
     hostname: data.hostname,
   };

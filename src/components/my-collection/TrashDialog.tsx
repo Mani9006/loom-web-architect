@@ -79,6 +79,24 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
     onRestored();
   }
 
+  async function emptyTrash() {
+    if (items.length === 0) return;
+    if (!confirm(`Permanently delete all ${items.length} card${items.length === 1 ? "" : "s"} in the trash?\n\nThis cannot be undone.`)) return;
+    setBusyId("__all__");
+    const { error } = await (supabase as any)
+      .from("mc_tracked_jobs")
+      .delete()
+      .eq("session_id", sessionId)
+      .not("deleted_at", "is", null);
+    setBusyId(null);
+    if (error) {
+      toast({ title: "Couldn't empty trash", description: error.message, variant: "destructive" });
+      return;
+    }
+    setItems([]);
+    toast({ title: "Trash emptied" });
+  }
+
   async function deleteForever(id: string, label: string) {
     if (!confirm(`Permanently delete "${label}"?\n\nThis cannot be undone.`)) return;
     setBusyId(id);
@@ -142,7 +160,7 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
                       size="sm"
                       variant="outline"
                       onClick={() => restore(job.id)}
-                      disabled={busyId === job.id}
+                      disabled={busyId === job.id || busyId === "__all__"}
                     >
                       <RotateCcw className="w-3.5 h-3.5 mr-1" /> Restore
                     </Button>
@@ -151,7 +169,9 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
                       variant="ghost"
                       className="text-destructive hover:bg-destructive/10"
                       onClick={() => deleteForever(job.id, `${job.company} · ${job.job_title}`)}
-                      disabled={busyId === job.id}
+                      disabled={busyId === job.id || busyId === "__all__"}
+                      aria-label={`Delete ${job.company} · ${job.job_title} forever`}
+                      title="Delete forever"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
@@ -162,7 +182,19 @@ export default function TrashDialog({ open, onClose, sessionId, onRestored }: Pr
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:justify-between">
+          {items.length > 0 ? (
+            <Button
+              variant="outline"
+              className="text-destructive hover:bg-destructive/10"
+              onClick={emptyTrash}
+              disabled={!!busyId}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1" /> Empty trash
+            </Button>
+          ) : (
+            <span />
+          )}
           <Button variant="ghost" onClick={onClose} disabled={!!busyId}>
             Close
           </Button>
