@@ -81,8 +81,15 @@ interface FoundJob {
   location?: string;
   apply_url?: string;
   summary?: string;
+  /** Full posting text when the source provided it (cloud discovery). */
+  description?: string;
   fit_score?: number;
   fit_reason?: string;
+}
+
+/** Best job-description text available for saving / tailoring. */
+function jobDescriptionOf(job: FoundJob): string {
+  return (job.description && job.description.trim()) || (job.summary ?? "").trim();
 }
 
 interface ClarificationTurn {
@@ -97,9 +104,10 @@ interface Props {
 
 /**
  * AI-driven job discovery. Standalone, does NOT touch the rest of the
- * site's job-search / matches / scanned_jobs infrastructure. The user's
- * Mac mini worker runs Claude with their master resume + target profile,
- * and Claude either asks clarifying questions or returns a list of jobs.
+ * site's job-search / matches / scanned_jobs infrastructure. A connected
+ * local worker runs Claude with the master resume + target profile and
+ * either asks clarifying questions or returns a list of jobs; without one,
+ * the mc-ai-run edge function pulls live ATS listings and scores fit.
  */
 export default function DiscoverTab({ sessionId, session }: Props) {
   const { toast } = useToast();
@@ -386,6 +394,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           location: j.location ? String(j.location) : undefined,
           apply_url: j.apply_url ? String(j.apply_url) : undefined,
           summary: j.summary ? String(j.summary) : undefined,
+          description: j.description ? String(j.description) : undefined,
           fit_score: typeof j.fit_score === "number" ? j.fit_score : undefined,
           fit_reason: j.fit_reason ? String(j.fit_reason) : undefined,
         }))
@@ -443,7 +452,17 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         sessionId,
         prompt,
         model: "sonnet-4-6",
-        input: { feature: "find_jobs", history },
+        // Structured targets + resume let the cloud runner (mc-ai-run)
+        // search real ATS listings and score fit when no local worker is
+        // online; the local worker keeps using the full prompt.
+        input: {
+          feature: "find_jobs",
+          history,
+          target_roles: targetRoles,
+          target_locations: targetLocations,
+          remote_only: remoteOnly,
+          resume_md: resumeMd.slice(0, 6000),
+        },
       });
       setActiveJobId(enq.jobId);
       setActiveJobHistory(history);
@@ -496,7 +515,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       company: job.company,
       location: job.location ?? null,
       apply_url: job.apply_url ?? null,
-      jd_md: job.summary ?? null,
+      jd_md: jobDescriptionOf(job) || null,
       status: "saved",
     });
     if (error) {
@@ -515,7 +534,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
    */
   async function tailorFromDiscover(job: FoundJob) {
     const key = `${job.company}::${job.title}`;
-    if (!job.summary || !job.summary.trim()) {
+    if (!jobDescriptionOf(job)) {
       toast({
         title: "AI didn't return a job description",
         description: "Open the application link, copy the JD, and use Add manually instead.",
@@ -570,7 +589,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
             company: job.company,
             location: job.location ?? null,
             apply_url: job.apply_url ?? null,
-            jd_md: job.summary,
+            jd_md: jobDescriptionOf(job),
             status: "saved",
           })
           .select("id")
@@ -597,7 +616,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         job.location ? `Location: ${job.location}` : "",
         "",
         "Job description:",
-        job.summary,
+        jobDescriptionOf(job),
         "",
         "──────── CANDIDATE'S MASTER RESUME ────────",
         masterMd,
@@ -698,7 +717,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
           {busy ? (
             <>
               <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              {progress === "queued" ? "Queued on your Mac…" : progress === "running" ? "AI is searching…" : "Working…"}
+              {progress === "queued" ? "Queued…" : progress === "running" ? "AI is searching…" : "Working…"}
             </>
           ) : (
             <>
