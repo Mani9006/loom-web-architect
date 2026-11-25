@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { jobIdentityKey } from "@/lib/mc-stats";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -128,6 +129,28 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   const [tailoringKey, setTailoringKey] = useState<string | null>(null);
   const [tailoringStatus, setTailoringStatus] = useState<JobStatus | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // Normalized company::title keys of cards already on this session's board,
+  // loaded from the DB so a fresh search doesn't offer to re-save (and
+  // duplicate) jobs the user saved in an earlier visit.
+  const [boardKeys, setBoardKeys] = useState<Set<string>>(new Set());
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from("mc_tracked_jobs")
+        .select("company,job_title")
+        .eq("session_id", sessionId)
+        .is("deleted_at", null);
+      if (cancelled || error) return;
+      const rows: { company: string; job_title: string }[] = data ?? [];
+      setBoardKeys(new Set(rows.map((r) => jobIdentityKey(r.company, r.job_title))));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   // Ties every waitForJob/runOnLocalWorker call below to this component
   // instance's lifetime, so a tab switch that unmounts DiscoverTab (Radix
@@ -483,28 +506,42 @@ export default function DiscoverTab({ sessionId, session }: Props) {
   }
 
   async function saveToBoard(job: FoundJob) {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) {
-      toast({ title: "Not signed in", variant: "destructive" });
+    const key = `${job.company}::${job.title}`;
+    const identity = jobIdentityKey(job.company, job.title);
+    if (savingKey === key) return;
+    if (boardKeys.has(identity)) {
+      setSavedTitles((s) => new Set(s).add(key));
+      toast({ title: "Already on your board", description: `${job.company} · ${job.title}` });
       return;
     }
-    const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
-      user_id: userData.user.id,
-      session_id: sessionId,
-      scanned_job_id: null,
-      job_title: job.title,
-      company: job.company,
-      location: job.location ?? null,
-      apply_url: job.apply_url ?? null,
-      jd_md: job.summary ?? null,
-      status: "saved",
-    });
-    if (error) {
-      toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
-      return;
+    setSavingKey(key);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) {
+        toast({ title: "Not signed in", variant: "destructive" });
+        return;
+      }
+      const { error } = await (supabase as any).from("mc_tracked_jobs").insert({
+        user_id: userData.user.id,
+        session_id: sessionId,
+        scanned_job_id: null,
+        job_title: job.title,
+        company: job.company,
+        location: job.location ?? null,
+        apply_url: job.apply_url ?? null,
+        jd_md: job.summary ?? null,
+        status: "saved",
+      });
+      if (error) {
+        toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
+        return;
+      }
+      setSavedTitles((s) => new Set(s).add(key));
+      setBoardKeys((s) => new Set(s).add(identity));
+      toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
+    } finally {
+      setSavingKey(null);
     }
-    setSavedTitles((s) => new Set(s).add(`${job.company}::${job.title}`));
-    toast({ title: "Saved to board", description: `${job.company} · ${job.title}` });
   }
 
   /**
@@ -545,7 +582,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         return;
       }
       let trackedJobId: string | null = null;
-      if (savedTitles.has(key)) {
+      if (savedTitles.has(key) || boardKeys.has(jobIdentityKey(job.company, job.title))) {
         // Already saved, find the existing row.
         const { data: existing } = await (supabase as any)
           .from("mc_tracked_jobs")
@@ -580,6 +617,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
         }
         trackedJobId = tracked.id;
         setSavedTitles((s) => new Set(s).add(key));
+        setBoardKeys((s) => new Set(s).add(jobIdentityKey(job.company, job.title)));
       }
 
       // 2. Build the tailor prompt, same anti-fabrication rules as BoardTab.
@@ -797,7 +835,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
       <div className="space-y-2">
         {foundJobs.map((job, idx) => {
           const key = `${job.company}::${job.title}`;
-          const isSaved = savedTitles.has(key);
+          const isSaved = savedTitles.has(key) || boardKeys.has(jobIdentityKey(job.company, job.title));
           return (
             <Card key={`${key}::${idx}`} className="p-4">
               <div className="flex items-start gap-3">
@@ -851,7 +889,7 @@ export default function DiscoverTab({ sessionId, session }: Props) {
                     size="sm"
                     variant={isSaved ? "outline" : "ghost"}
                     onClick={() => saveToBoard(job)}
-                    disabled={isSaved || tailoringKey === key}
+                    disabled={isSaved || savingKey === key || tailoringKey === key}
                     className="h-7 text-[11px]"
                   >
                     {isSaved ? <BookmarkCheck className="w-3 h-3 mr-1" /> : <Bookmark className="w-3 h-3 mr-1" />}
