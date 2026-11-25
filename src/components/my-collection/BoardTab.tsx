@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sheet,
@@ -13,7 +14,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -68,6 +69,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [query, setQuery] = useState("");
 
   // Ties the tailor pipeline's waitForJob subscription to this component
   // instance's lifetime, so switching away from the Board tab mid-tailor
@@ -316,9 +318,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
     const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
-      // Roll back the optimistic update on failure.
-      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
-      setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, status: previousStatus } as TrackedJob) : cur));
+      // Roll back the optimistic update on failure (status AND applied_at).
+      setJobs((arr) => arr.map((j) => (j.id === jobId ? job : j)));
+      setSelected((cur) => (cur && cur.id === jobId ? job : cur));
       toast({ title: "Move failed", description: error.message, variant: "destructive" });
       return;
     }
@@ -334,6 +336,13 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       });
     }
   }
+
+  const q = query.trim().toLowerCase();
+  const visibleJobs = q
+    ? jobs.filter((j) =>
+        [j.job_title, j.company, j.location, j.notes].some((v) => v?.toLowerCase().includes(q))
+      )
+    : jobs;
 
   if (loading) {
     return (
@@ -374,10 +383,24 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <p className="text-xs text-muted-foreground shrink-0">
+            {q
+              ? `${visibleJobs.length} of ${jobs.length} cards`
+              : `${jobs.length} ${jobs.length === 1 ? "card" : "cards"} on the board`}
+          </p>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter by title, company, location"
+              aria-label="Filter board"
+              className="h-8 w-56 pl-7 text-xs"
+            />
+          </div>
+        </div>
         <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
         </Button>
@@ -385,7 +408,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
-            const items = jobs.filter((j) => j.status === col.id);
+            const items = visibleJobs.filter((j) => j.status === col.id);
             return (
               <div
                 key={col.id}
@@ -405,14 +428,23 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       onDragStart={() => setDraggedId(job.id)}
                       onDragEnd={() => setDraggedId(null)}
                       onClick={() => setSelected(job)}
-                      className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelected(job);
+                        }
+                      }}
+                      className={`group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition ${draggedId === job.id ? "opacity-50" : ""}`}
                     >
                       <button
                         type="button"
                         aria-label="Move to trash"
                         title="Move to trash"
                         onClick={(e) => trashJob(job, e)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus:opacity-100"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -520,7 +552,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 {selected.notes && (
                   <div>
                     <h4 className="font-medium text-sm mb-2">Notes</h4>
-                    <p className="text-sm text-muted-foreground">{selected.notes}</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{selected.notes}</p>
                   </div>
                 )}
               </div>
