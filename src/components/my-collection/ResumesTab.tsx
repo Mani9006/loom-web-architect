@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { FileText, Download, MoreVertical, Pencil, Loader2, Sparkles } from "lucide-react";
+import { safeFilename } from "@/lib/mc-collection";
 
 interface TailoredResume {
   id: string;
@@ -137,8 +138,8 @@ export default function ResumesTab({
       <Card className="p-8 text-center border-dashed">
         <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground">
-          No tailored resumes yet. Save a job in Discover, then click "Tailor to job" to create one.
-          here.
+          No tailored resumes yet. Click "Tailor to job" on a Discover result or a Board card and the
+          tailored copy will appear here.
         </p>
       </Card>
     );
@@ -233,9 +234,12 @@ function downloadAsMarkdown(r: TailoredResume) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  a.download = `${safeFilename(r.name)}.md`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoking synchronously can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
@@ -250,7 +254,7 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
     });
     return;
   }
-  window.open(data.url, "_blank");
+  window.open(data.url, "_blank", "noopener,noreferrer");
 }
 
 // Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness
@@ -291,7 +295,7 @@ async function downloadAsDocx(r: TailoredResume, toast: ReturnType<typeof useToa
 
     const doc = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${r.name}.docx`);
+    saveAs(blob, `${safeFilename(r.name)}.docx`);
   } catch (e) {
     toast({
       title: "DOCX export failed",
@@ -322,7 +326,19 @@ function CanvasEditor({
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
 
+  const dirty = name !== resume.name || cv !== resume.cv_md;
+
+  function requestClose() {
+    if (saving) return;
+    if (dirty && !confirm("Discard unsaved changes to this resume?")) return;
+    onClose();
+  }
+
   async function save() {
+    if (!name.trim()) {
+      toast({ title: "Resume needs a name", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const { error } = await (supabase as any)
       .from("mc_tailored_resumes")
@@ -342,11 +358,23 @@ function CanvasEditor({
     setAiBusy(true);
     setAiSuggestions([]);
     try {
+      // enhance-bullet requires a `bullet` field; sending only `line` made
+      // every request fail with "Bullet text is required".
       const { data, error } = await (supabase as any).functions.invoke("enhance-bullet", {
-        body: { line: selectedLine, mode, context: { full_resume: cv } },
+        body: {
+          bullet: selectedLine.replace(/^[-*•]\s+/, ""),
+          mode,
+          context: { full_resume: cv.slice(0, 8000) },
+        },
       });
       if (error) throw error;
-      setAiSuggestions(data?.suggestions ?? []);
+      const suggestions: string[] = Array.isArray(data?.suggestions)
+        ? data.suggestions.map(String).filter((x: string) => x.trim())
+        : [];
+      if (suggestions.length === 0) {
+        toast({ title: "No suggestions this time", description: "Try a different line or mode." });
+      }
+      setAiSuggestions(suggestions);
     } catch (e) {
       toast({
         title: "AI rewrite failed",
@@ -361,9 +389,14 @@ function CanvasEditor({
   function applySuggestion(text: string) {
     if (!selectedLine || !selectedRange) return;
     const { start, end } = selectedRange;
-    setCv((c) => c.slice(0, start) + text + c.slice(end));
-    setSelectedLine(text);
-    setSelectedRange({ start, end: start + text.length });
+    // Keep the line's indentation and bullet marker so markdown lists survive.
+    const original = cv.slice(start, end);
+    const prefix = original.match(/^\s*(?:[-*•]\s+)?/)?.[0] ?? "";
+    const cleaned = text.replace(/^[-*•]\s+/, "").trim();
+    const next = prefix + cleaned;
+    setCv((c) => c.slice(0, start) + next + c.slice(end));
+    setSelectedLine(next.trim());
+    setSelectedRange({ start, end: start + next.length });
     setAiSuggestions([]);
   }
 
@@ -378,12 +411,18 @@ function CanvasEditor({
   }
 
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && requestClose()}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="max-w-md font-medium" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-label="Resume name"
+              className="max-w-md font-medium"
+            />
             <Badge variant="outline" className="text-[10px]">Canvas</Badge>
+            {dirty && <span className="text-[10px] font-normal text-muted-foreground">Unsaved changes</span>}
           </DialogTitle>
         </DialogHeader>
 
@@ -493,10 +532,10 @@ function CanvasEditor({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="ghost" onClick={requestClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving || !dirty || !name.trim()}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
