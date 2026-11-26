@@ -13,7 +13,14 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  matchesJobQuery,
+  safeExternalUrl,
+  statusUpdatePatch,
+  type TrackedStatus,
+} from "@/lib/mc-collection";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -31,18 +38,6 @@ const COLUMNS: { id: TrackedStatus; label: string; tone: string }[] = [
   { id: "rejected", label: "Rejected", tone: "bg-red-50 text-red-700" },
   { id: "withdrawn", label: "Withdrawn", tone: "bg-slate-100 text-slate-600" },
 ];
-
-type TrackedStatus =
-  | "discovered"
-  | "saved"
-  | "applied"
-  | "viewed"
-  | "interview"
-  | "take_home"
-  | "offer"
-  | "hold"
-  | "rejected"
-  | "withdrawn";
 
 interface TrackedJob {
   id: string;
@@ -68,6 +63,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [query, setQuery] = useState("");
+  const [dragOverCol, setDragOverCol] = useState<TrackedStatus | null>(null);
 
   // Ties the tailor pipeline's waitForJob subscription to this component
   // instance's lifetime, so switching away from the Board tab mid-tailor
@@ -306,19 +303,22 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   async function moveTo(jobId: string, status: TrackedStatus) {
     const job = jobs.find((j) => j.id === jobId);
     if (!job || job.status === status) return;
-    const updates: Record<string, unknown> = { status };
-    if (status === "applied" && !job.applied_at) updates.applied_at = new Date().toISOString();
+    // Moving straight to Interview/Offer still means the user applied, so
+    // stamp applied_at on any post-apply column, not only "applied".
+    const updates = statusUpdatePatch(job, status);
 
     // Optimistic update: reflect the move immediately in the UI.
     const previousStatus = job.status;
+    const previousAppliedAt = job.applied_at;
     setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
     setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...updates } as TrackedJob) : cur));
 
     const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
       // Roll back the optimistic update on failure.
-      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
-      setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, status: previousStatus } as TrackedJob) : cur));
+      const rollback = { status: previousStatus, applied_at: previousAppliedAt };
+      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...rollback } : j)));
+      setSelected((cur) => (cur && cur.id === jobId ? { ...cur, ...rollback } : cur));
       toast({ title: "Move failed", description: error.message, variant: "destructive" });
       return;
     }
@@ -372,26 +372,67 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     );
   }
 
+  const visibleJobs = query.trim() ? jobs.filter((j) => matchesJobQuery(j, query)) : jobs;
+  const selectedApplyUrl = selected ? safeExternalUrl(selected.apply_url) : null;
+
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
         <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
+          {query.trim()
+            ? `${visibleJobs.length} of ${jobs.length} cards match`
+            : `${jobs.length} ${jobs.length === 1 ? "card" : "cards"} on the board`}
         </p>
-        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-          <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 sm:w-64 sm:flex-none">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search title, company, notes"
+              aria-label="Search board"
+              className="h-8 pl-8 pr-7 text-xs"
+            />
+            {query && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="shrink-0">
+            <Plus className="w-3.5 h-3.5 mr-1" /> Add job
+          </Button>
+        </div>
       </div>
+      <p className="text-[11px] text-muted-foreground mb-2 md:hidden">
+        Tap a card to change its status.
+      </p>
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
-            const items = jobs.filter((j) => j.status === col.id);
+            const items = visibleJobs.filter((j) => j.status === col.id);
             return (
               <div
                 key={col.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => draggedId && moveTo(draggedId, col.id)}
-                className="w-[260px] shrink-0"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedId && dragOverCol !== col.id) setDragOverCol(col.id);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOverCol(null);
+                }}
+                onDrop={() => {
+                  setDragOverCol(null);
+                  if (draggedId) moveTo(draggedId, col.id);
+                }}
+                className={`w-[260px] shrink-0 rounded-md transition-colors ${
+                  dragOverCol === col.id ? "bg-primary/5 ring-1 ring-primary/30" : ""
+                }`}
               >
                 <div className={`px-3 py-1.5 rounded-md text-[11px] font-medium ${col.tone} flex items-center justify-between`}>
                   <span>{col.label}</span>
@@ -403,8 +444,21 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                       key={job.id}
                       draggable
                       onDragStart={() => setDraggedId(job.id)}
-                      onDragEnd={() => setDraggedId(null)}
+                      onDragEnd={() => {
+                        setDraggedId(null);
+                        setDragOverCol(null);
+                      }}
                       onClick={() => setSelected(job)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelected(job);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${job.job_title} at ${job.company}`}
                       className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
                     >
                       <button
@@ -412,7 +466,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                         aria-label="Move to trash"
                         title="Move to trash"
                         onClick={(e) => trashJob(job, e)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -427,10 +481,19 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                           {job.location}
                         </div>
                       )}
-                      {job.applied_at && (
-                        <div className="text-muted-foreground text-[10px] mt-1.5 flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(job.applied_at).toLocaleDateString()}
+                      {(job.applied_at || job.tailored_resume_id) && (
+                        <div className="text-muted-foreground text-[10px] mt-1.5 flex items-center gap-2 flex-wrap">
+                          {job.applied_at && (
+                            <span className="flex items-center gap-1" title="Applied on">
+                              <Calendar className="w-3 h-3" />
+                              {new Date(job.applied_at).toLocaleDateString()}
+                            </span>
+                          )}
+                          {job.tailored_resume_id && (
+                            <span className="flex items-center gap-1 text-primary" title="Has a tailored resume">
+                              <FileText className="w-3 h-3" /> Tailored
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -469,9 +532,9 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {selected.apply_url && (
+                  {selectedApplyUrl && (
                     <Button asChild variant="outline" size="sm">
-                      <a href={selected.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a href={selectedApplyUrl} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open application
                       </a>
                     </Button>
@@ -508,6 +571,12 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                   </Button>
                 )}
 
+                {selected.applied_at && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5" /> Applied {new Date(selected.applied_at).toLocaleDateString()}
+                  </p>
+                )}
+
                 {selected.jd_md && (
                   <div>
                     <h4 className="font-medium text-sm mb-2">Job description</h4>
@@ -520,7 +589,7 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 {selected.notes && (
                   <div>
                     <h4 className="font-medium text-sm mb-2">Notes</h4>
-                    <p className="text-sm text-muted-foreground">{selected.notes}</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{selected.notes}</p>
                   </div>
                 )}
               </div>

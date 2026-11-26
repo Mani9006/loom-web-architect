@@ -35,7 +35,19 @@ serve(async (req) => {
       });
     }
 
-    const { bullet, jobTitle, company } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { jobTitle, company } = body ?? {};
+    // Accept `line` as an alias: the My Collection canvas editor historically
+    // sent { line, mode } and every request failed the required-field check.
+    const bullet = typeof body?.bullet === "string" && body.bullet.trim()
+      ? body.bullet.trim()
+      : typeof body?.line === "string" ? body.line.trim() : "";
+    const MODE_HINTS: Record<string, string> = {
+      tighten: "Focus on making it shorter and punchier without losing meaning.",
+      keywords: "Focus on weaving in relevant, ATS-friendly industry keywords the original genuinely supports.",
+      voice: "Keep the candidate's own tone and wording style; only polish clarity and impact.",
+    };
+    const modeHint = typeof body?.mode === "string" ? MODE_HINTS[body.mode] ?? "" : "";
 
     if (!bullet) {
       return new Response(JSON.stringify({ error: "Bullet text is required" }), {
@@ -60,7 +72,7 @@ Return ONLY a JSON object: {"suggestions": ["improved bullet 1", "improved bulle
         },
         {
           role: "user",
-          content: `Improve this bullet point for a ${jobTitle || "professional"} role at ${company || "a company"}:\n\n"${bullet}"`,
+          content: `Improve this bullet point for a ${jobTitle || "professional"} role at ${company || "a company"}:\n\n"${bullet.slice(0, 1000)}"${modeHint ? `\n\n${modeHint}` : ""}\n\nNever invent employers, dates, or metrics that are not implied by the original.`,
         },
       ],
       { maxTokens: 500, temperature: 0.7 },
