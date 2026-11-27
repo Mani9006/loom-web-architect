@@ -233,9 +233,14 @@ function downloadAsMarkdown(r: TailoredResume) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${r.name}.md`;
+  // Strip characters that are invalid in filenames on Windows/macOS.
+  const safeName = (r.name || "tailored-resume").replace(/[\\/:*?"<>|]+/g, "-").trim() || "tailored-resume";
+  a.download = `${safeName}.md`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoking synchronously can cancel the download in Safari/Firefox.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToast>["toast"]) {
@@ -250,7 +255,7 @@ async function downloadAsPdf(r: TailoredResume, toast: ReturnType<typeof useToas
     });
     return;
   }
-  window.open(data.url, "_blank");
+  window.open(data.url, "_blank", "noopener,noreferrer");
 }
 
 // Splits a line on **bold** markers into alternating plain/bold runs. Bold-ness

@@ -1,32 +1,22 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart3, Briefcase, FileText, Star } from "lucide-react";
+import { BarChart3, Briefcase, Building2, FileText, Star, Send, XCircle, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import {
+  computeCollectionStats,
+  topCompanies,
+  type CollectionStats,
+  type TrackedJobLike,
+} from "@/lib/my-collection";
 
-interface StatusCounts {
-  total: number;
-  saved: number;
-  applied: number;
-  interview: number;
-  offer: number;
-  rejected: number;
-  resumes: number;
-}
-
-const EMPTY_COUNTS: StatusCounts = {
-  total: 0,
-  saved: 0,
-  applied: 0,
-  interview: 0,
-  offer: 0,
-  rejected: 0,
-  resumes: 0,
-};
+const EMPTY_STATS: CollectionStats = computeCollectionStats([]);
 
 export default function StatsTab({ sessionId }: { sessionId: string }) {
   const { toast } = useToast();
-  const [counts, setCounts] = useState<StatusCounts>(EMPTY_COUNTS);
+  const [stats, setStats] = useState<CollectionStats>(EMPTY_STATS);
+  const [companies, setCompanies] = useState<{ company: string; count: number }[]>([]);
+  const [resumeCount, setResumeCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,7 +27,7 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         const [jobsResult, resumesResult] = await Promise.all([
           (supabase as any)
             .from("mc_tracked_jobs")
-            .select("status")
+            .select("status,applied_at,company")
             .eq("session_id", sessionId)
             .is("deleted_at", null),
           (supabase as any)
@@ -51,18 +41,10 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
         if (jobsResult.error) throw new Error(jobsResult.error.message);
         if (resumesResult.error) throw new Error(resumesResult.error.message);
 
-        const rows: { status: string }[] = jobsResult.data ?? [];
-        const tally = (s: string) => rows.filter((r) => r.status === s).length;
-
-        setCounts({
-          total: rows.length,
-          saved: tally("saved"),
-          applied: tally("applied"),
-          interview: tally("interview") + tally("take_home"),
-          offer: tally("offer"),
-          rejected: tally("rejected"),
-          resumes: resumesResult.count ?? 0,
-        });
+        const rows: TrackedJobLike[] = jobsResult.data ?? [];
+        setStats(computeCollectionStats(rows));
+        setCompanies(topCompanies(rows, 5));
+        setResumeCount(resumesResult.count ?? 0);
       } catch (e) {
         if (cancelled) return;
         toast({
@@ -77,66 +59,100 @@ export default function StatsTab({ sessionId }: { sessionId: string }) {
     return () => {
       cancelled = true;
     };
+    // toast is an unstable reference; only refetch when the session changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  const responseRate =
-    counts.applied > 0
-      ? Math.round(((counts.interview + counts.offer) / counts.applied) * 100)
-      : null;
+  const v = (n: number | string) => (loading ? "…" : n);
+
+  const funnel = [
+    { label: "On the board", value: stats.total, tone: "bg-slate-400" },
+    { label: "Applied", value: stats.applied, tone: "bg-indigo-500" },
+    { label: "Interviewing", value: stats.interviews, tone: "bg-amber-500" },
+    { label: "Offers", value: stats.offers, tone: "bg-emerald-500" },
+  ];
+  const funnelMax = Math.max(1, stats.total);
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="On the board" value={v(stats.total)} icon={<Briefcase className="w-4 h-4" />} />
+        <StatCard label="Applied" value={v(stats.applied)} icon={<Send className="w-4 h-4" />} />
+        <StatCard label="Interviews" value={v(stats.interviews)} icon={<BarChart3 className="w-4 h-4" />} />
+        <StatCard label="Tailored resumes" value={v(resumeCount)} icon={<FileText className="w-4 h-4" />} />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="Ready to apply" value={v(stats.pipeline)} icon={<Star className="w-4 h-4" />} />
         <StatCard
-          label="On the board"
-          value={loading ? "…" : counts.total}
-          icon={<Briefcase className="w-4 h-4" />}
+          label="Offers"
+          value={v(stats.offers)}
+          icon={<Star className="w-4 h-4 text-emerald-600" />}
         />
         <StatCard
-          label="Applied"
-          value={loading ? "…" : counts.applied}
-          icon={<Star className="w-4 h-4" />}
+          label="Rejected"
+          value={v(stats.rejected)}
+          icon={<XCircle className="w-4 h-4 text-red-500" />}
         />
         <StatCard
-          label="Interviews"
-          value={loading ? "…" : counts.interview}
-          icon={<BarChart3 className="w-4 h-4" />}
-        />
-        <StatCard
-          label="Tailored resumes"
-          value={loading ? "…" : counts.resumes}
-          icon={<FileText className="w-4 h-4" />}
+          label="Response rate"
+          value={v(stats.responseRate === null ? "—" : `${stats.responseRate}%`)}
+          hint="Applications that reached interview, take-home, or offer"
+          icon={<TrendingUp className="w-4 h-4 text-amber-500" />}
         />
       </div>
 
-      {!loading && counts.applied > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <StatCard
-            label="Offers"
-            value={counts.offer}
-            icon={<Star className="w-4 h-4 text-emerald-600" />}
-          />
-          <StatCard
-            label="Rejected"
-            value={counts.rejected}
-            icon={<BarChart3 className="w-4 h-4 text-red-500" />}
-          />
-          {responseRate !== null && (
-            <StatCard
-              label="Response rate"
-              value={`${responseRate}%`}
-              icon={<BarChart3 className="w-4 h-4 text-amber-500" />}
-            />
-          )}
+      {!loading && stats.total === 0 ? (
+        <Card className="p-6 text-center border-dashed">
+          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Save jobs from Discover or add them to the Board to start tracking your pipeline here.
+          </p>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card className="p-5">
+            <h3 className="text-sm font-medium mb-4">Pipeline</h3>
+            <div className="space-y-3">
+              {funnel.map((step) => (
+                <div key={step.label}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-muted-foreground">{step.label}</span>
+                    <span className="font-medium tabular-nums">{v(step.value)}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${step.tone} transition-all`}
+                      style={{ width: loading ? "0%" : `${(step.value / funnelMax) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <h3 className="text-sm font-medium mb-4">Top companies</h3>
+            {companies.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{loading ? "Loading…" : "No companies yet."}</p>
+            ) : (
+              <ul className="space-y-2">
+                {companies.map((c) => (
+                  <li key={c.company} className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate">{c.company}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {c.count} {c.count === 1 ? "card" : "cards"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         </div>
       )}
-
-      <Card className="p-6 text-center border-dashed">
-        <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Detailed charts (days-to-interview, top companies, AI tokens used) coming in a future update.
-        </p>
-      </Card>
     </div>
   );
 }
@@ -145,18 +161,20 @@ function StatCard({
   label,
   value,
   icon,
+  hint,
 }: {
   label: string;
   value: string | number;
   icon?: React.ReactNode;
+  hint?: string;
 }) {
   return (
-    <Card className="p-5">
+    <Card className="p-5" title={hint}>
       <div className="flex items-center justify-between mb-1">
         <div className="text-xs text-muted-foreground">{label}</div>
         {icon && <span className="text-muted-foreground/60">{icon}</span>}
       </div>
-      <div className="text-2xl font-semibold">{value}</div>
+      <div className="text-2xl font-semibold tabular-nums">{value}</div>
     </Card>
   );
 }
