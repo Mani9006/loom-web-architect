@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeApplyUrl } from "@/lib/my-collection";
 
 interface Props {
   open: boolean;
@@ -117,6 +118,15 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       });
       return;
     }
+    const normalizedUrl = normalizeApplyUrl(applyUrl);
+    if (!normalizedUrl.ok) {
+      toast({
+        title: "That application link doesn't look right",
+        description: "Paste the full job link, e.g. https://jobs.lever.co/company/123, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
 
     const { data: userData, error: userErr } = await supabase.auth.getUser();
@@ -135,7 +145,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         job_title: jobTitle.trim(),
         company: company.trim(),
         location: location.trim() || null,
-        apply_url: applyUrl.trim() || null,
+        apply_url: normalizedUrl.url,
         jd_md: jdMd.trim() || null,
         status: "saved",
       })

@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeApplyUrl } from "@/lib/my-collection";
 import { Trash2 } from "lucide-react";
 
 export interface EditableTrackedJob {
@@ -69,12 +70,21 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       });
       return;
     }
+    const normalizedUrl = normalizeApplyUrl(applyUrl);
+    if (!normalizedUrl.ok) {
+      toast({
+        title: "That application link doesn't look right",
+        description: "Paste the full job link, e.g. https://jobs.lever.co/company/123, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     const updates = {
       company: company.trim(),
       job_title: jobTitle.trim(),
       location: location.trim() || null,
-      apply_url: applyUrl.trim() || null,
+      apply_url: normalizedUrl.url,
       jd_md: jdMd.trim() || null,
       notes: notes.trim() || null,
     };
