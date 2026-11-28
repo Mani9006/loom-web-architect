@@ -13,7 +13,9 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, MapPin, ExternalLink, FileText, Calendar, Sparkles, Loader2, Plus, Pencil, Trash2, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { matchesQuery, safeExternalUrl } from "@/lib/mc-pipeline";
 import { ToastAction } from "@/components/ui/toast";
 import { runOnLocalWorker, resumeRowToMarkdown, isJobCancelled, type JobStatus } from "@/lib/mc-ai-jobs";
 import AddJobManuallyDialog from "./AddJobManuallyDialog";
@@ -68,6 +70,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
   const [tailoring, setTailoring] = useState<{ jobId: string; status: JobStatus } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedJob | null>(null);
+  const [query, setQuery] = useState("");
+  const [dropTarget, setDropTarget] = useState<TrackedStatus | null>(null);
 
   // Ties the tailor pipeline's waitForJob subscription to this component
   // instance's lifetime, so switching away from the Board tab mid-tailor
@@ -303,6 +307,16 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
     load();
   }, [sessionId]);
 
+  // Record the first time the user opens the application link, so the
+  // card shows they started applying even before moving it to "Applied".
+  async function markClicked(job: TrackedJob) {
+    if (job.clicked_at) return;
+    const clicked_at = new Date().toISOString();
+    setJobs((arr) => arr.map((j) => (j.id === job.id ? { ...j, clicked_at } : j)));
+    setSelected((cur) => (cur && cur.id === job.id ? { ...cur, clicked_at } : cur));
+    await (supabase as any).from("mc_tracked_jobs").update({ clicked_at }).eq("id", job.id);
+  }
+
   async function moveTo(jobId: string, status: TrackedStatus) {
     const job = jobs.find((j) => j.id === jobId);
     if (!job || job.status === status) return;
@@ -311,14 +325,16 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
     // Optimistic update: reflect the move immediately in the UI.
     const previousStatus = job.status;
+    const previousAppliedAt = job.applied_at;
     setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...updates } : j) as TrackedJob));
     setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...updates } as TrackedJob) : cur));
 
     const { error } = await (supabase as any).from("mc_tracked_jobs").update(updates).eq("id", jobId);
     if (error) {
       // Roll back the optimistic update on failure.
-      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, status: previousStatus } : j) as TrackedJob));
-      setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, status: previousStatus } as TrackedJob) : cur));
+      const rollback = { status: previousStatus, applied_at: previousAppliedAt };
+      setJobs((arr) => arr.map((j) => (j.id === jobId ? { ...j, ...rollback } : j) as TrackedJob));
+      setSelected((cur) => (cur && cur.id === jobId ? ({ ...cur, ...rollback } as TrackedJob) : cur));
       toast({ title: "Move failed", description: error.message, variant: "destructive" });
       return;
     }
@@ -334,6 +350,8 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       });
     }
   }
+
+  const visibleJobs = query.trim() ? jobs.filter((j) => matchesQuery(j, query)) : jobs;
 
   if (loading) {
     return (
@@ -374,10 +392,34 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-muted-foreground">
-          {jobs.length} {jobs.length === 1 ? "card" : "cards"} on the board
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter by title, company, location…"
+              aria-label="Filter board"
+              className="h-8 w-64 pl-8 pr-7 text-xs"
+            />
+            {query && (
+              <button
+                type="button"
+                aria-label="Clear filter"
+                onClick={() => setQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {query
+              ? `${visibleJobs.length} of ${jobs.length} ${jobs.length === 1 ? "card" : "cards"}`
+              : `${jobs.length} ${jobs.length === 1 ? "card" : "cards"} on the board`}
+          </p>
+        </div>
         <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1" /> Add job manually
         </Button>
@@ -385,13 +427,24 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-fit">
           {COLUMNS.map((col) => {
-            const items = jobs.filter((j) => j.status === col.id);
+            const items = visibleJobs.filter((j) => j.status === col.id);
+            const isDropTarget = dropTarget === col.id && !!draggedId;
             return (
               <div
                 key={col.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => draggedId && moveTo(draggedId, col.id)}
-                className="w-[260px] shrink-0"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (dropTarget !== col.id) setDropTarget(col.id);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDropTarget(null);
+                  if (draggedId) void moveTo(draggedId, col.id);
+                }}
+                className={`w-[260px] shrink-0 rounded-md transition-colors ${isDropTarget ? "bg-primary/5 ring-2 ring-primary/30" : ""}`}
               >
                 <div className={`px-3 py-1.5 rounded-md text-[11px] font-medium ${col.tone} flex items-center justify-between`}>
                   <span>{col.label}</span>
@@ -402,17 +455,34 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                     <div
                       key={job.id}
                       draggable
-                      onDragStart={() => setDraggedId(job.id)}
-                      onDragEnd={() => setDraggedId(null)}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", job.id);
+                        setDraggedId(job.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedId(null);
+                        setDropTarget(null);
+                      }}
                       onClick={() => setSelected(job)}
-                      className="group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm transition"
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelected(job);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${job.job_title} at ${job.company}`}
+                      className={`group relative bg-card border rounded-md p-3 text-[12px] cursor-pointer hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition ${draggedId === job.id ? "opacity-50" : ""}`}
                     >
                       <button
                         type="button"
                         aria-label="Move to trash"
                         title="Move to trash"
                         onClick={(e) => trashJob(job, e)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus:opacity-100"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -425,6 +495,11 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                         <div className="text-muted-foreground text-[11px] mt-0.5 flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
                           {job.location}
+                        </div>
+                      )}
+                      {job.tailored_resume_id && (
+                        <div className="text-primary text-[10px] mt-1.5 flex items-center gap-1">
+                          <FileText className="w-3 h-3" /> Tailored resume
                         </div>
                       )}
                       {job.applied_at && (
@@ -469,9 +544,14 @@ export default function BoardTab({ sessionId }: { sessionId: string }) {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {selected.apply_url && (
+                  {safeExternalUrl(selected.apply_url) && (
                     <Button asChild variant="outline" size="sm">
-                      <a href={selected.apply_url} target="_blank" rel="noopener noreferrer">
+                      <a
+                        href={safeExternalUrl(selected.apply_url)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => void markClicked(selected)}
+                      >
                         <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open application
                       </a>
                     </Button>

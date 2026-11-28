@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { safeExternalUrl } from "@/lib/mc-pipeline";
 import { Trash2 } from "lucide-react";
 
 export interface EditableTrackedJob {
@@ -69,12 +70,22 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
       });
       return;
     }
+    const trimmedUrl = applyUrl.trim();
+    const normalizedUrl = trimmedUrl ? safeExternalUrl(trimmedUrl) : null;
+    if (trimmedUrl && !normalizedUrl) {
+      toast({
+        title: "Application link looks invalid",
+        description: "Use a full web address starting with https://, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     const updates = {
       company: company.trim(),
       job_title: jobTitle.trim(),
       location: location.trim() || null,
-      apply_url: applyUrl.trim() || null,
+      apply_url: normalizedUrl,
       jd_md: jdMd.trim() || null,
       notes: notes.trim() || null,
     };
@@ -124,7 +135,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-edit-company">Company *</Label>
               <Input
@@ -145,7 +156,7 @@ export default function EditTrackedJobDialog({ open, onClose, job, onSaved, onDe
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-edit-location">Location</Label>
               <Input
