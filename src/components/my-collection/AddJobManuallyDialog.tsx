@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { safeExternalUrl } from "@/lib/mc-pipeline";
 
 interface Props {
   open: boolean;
@@ -117,6 +118,16 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
       });
       return;
     }
+    const trimmedUrl = applyUrl.trim();
+    const normalizedUrl = trimmedUrl ? safeExternalUrl(trimmedUrl) : null;
+    if (trimmedUrl && !normalizedUrl) {
+      toast({
+        title: "Application link looks invalid",
+        description: "Use a full web address starting with https://, or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
 
     const { data: userData, error: userErr } = await supabase.auth.getUser();
@@ -135,7 +146,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         job_title: jobTitle.trim(),
         company: company.trim(),
         location: location.trim() || null,
-        apply_url: applyUrl.trim() || null,
+        apply_url: normalizedUrl,
         jd_md: jdMd.trim() || null,
         status: "saved",
       })
@@ -185,7 +196,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-add-company">Company *</Label>
               <Input
@@ -207,7 +218,7 @@ export default function AddJobManuallyDialog({ open, onClose, sessionId, onCreat
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="mc-add-location">Location</Label>
               <Input
